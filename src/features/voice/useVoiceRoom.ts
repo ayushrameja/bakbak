@@ -1,4 +1,6 @@
 import {
+  ConnectionError,
+  ConnectionErrorReason,
   Room,
   RoomEvent,
   type Participant,
@@ -14,7 +16,13 @@ import {
   hasSeenSoundEvent,
   parseSoundEvent,
 } from "../soundboard/sound-events";
-import { playBundledSound } from "../soundboard/sounds";
+import { SoundPlaybackController } from "../soundboard/sound-playback";
+import {
+  resumeAudioPlayback,
+  setAudioDeafened,
+  switchAudioInput,
+} from "./audio-actions";
+import { RemoteAudioRenderer } from "./remote-audio";
 import {
   buildLiveKitTokenRequest,
   parseLiveKitTokenResponse,
@@ -38,13 +46,16 @@ interface VoiceRoomState {
   participants: VoiceParticipant[];
   muted: boolean;
   deafened: boolean;
+  audioPlaybackBlocked: boolean;
   error: string | null;
+  inputDeviceError: string | null;
   inputDevices: MediaDeviceInfo[];
   selectedInputId: string;
   join: (channel: Channel) => Promise<void>;
   leave: () => Promise<void>;
   toggleMute: () => Promise<void>;
-  toggleDeafen: () => void;
+  toggleDeafen: () => Promise<void>;
+  resumeAudio: () => Promise<void>;
   setParticipantVolume: (participantId: string, volume: number) => void;
   setInputDevice: (deviceId: string) => Promise<void>;
   dispatchSound: (soundId: string) => Promise<void>;
@@ -56,10 +67,17 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
   const [participants, setParticipants] = useState<VoiceParticipant[]>([]);
   const [muted, setMuted] = useState(false);
   const [deafened, setDeafened] = useState(false);
+  const [audioPlaybackBlocked, setAudioPlaybackBlocked] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inputDeviceError, setInputDeviceError] = useState<string | null>(null);
   const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedInputId, setSelectedInputId] = useState("default");
+  const [remoteAudio] = useState(() => new RemoteAudioRenderer());
+  const [soundPlayback] = useState(() => new SoundPlaybackController());
   const roomRef = useRef<Room | null>(null);
+  const deafenedRef = useRef(false);
+  const joinOperationRef = useRef(0);
+  const playbackOperationRef = useRef(0);
   const seenSoundEvents = useRef(new Set<string>());
 
   const refreshParticipants = useCallback((room: Room) => {
@@ -95,63 +113,121 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
       );
   }, [refreshDevices]);
 
+  const resetVoiceMedia = useCallback(() => {
+    playbackOperationRef.current += 1;
+    remoteAudio.cleanup();
+    soundPlayback.stopAll();
+    soundPlayback.setDeafened(false);
+    deafenedRef.current = false;
+    seenSoundEvents.current.clear();
+    setParticipants([]);
+    setMuted(false);
+    setDeafened(false);
+    setAudioPlaybackBlocked(false);
+  }, [remoteAudio, soundPlayback]);
+
   const bindRoomEvents = useCallback(
     (room: Room) => {
-      const sync = () => refreshParticipants(room);
+      const isCurrentRoom = () => roomRef.current === room;
+      const sync = () => {
+        if (isCurrentRoom()) refreshParticipants(room);
+      };
       room
         .on(RoomEvent.ParticipantConnected, sync)
         .on(RoomEvent.ParticipantDisconnected, sync)
         .on(RoomEvent.ActiveSpeakersChanged, sync)
         .on(RoomEvent.TrackMuted, sync)
         .on(RoomEvent.TrackUnmuted, sync)
-        .on(RoomEvent.Reconnecting, () => setStatus("reconnecting"))
-        .on(RoomEvent.Reconnected, () => setStatus("connected"))
-        .on(RoomEvent.MediaDevicesChanged, () => void refreshDevices())
+        .on(RoomEvent.TrackSubscribed, (track) => {
+          if (isCurrentRoom()) remoteAudio.attach(track);
+        })
+        .on(RoomEvent.TrackUnsubscribed, (track) => {
+          if (isCurrentRoom()) remoteAudio.detach(track);
+        })
+        .on(RoomEvent.Reconnecting, () => {
+          if (isCurrentRoom()) setStatus("reconnecting");
+        })
+        .on(RoomEvent.Reconnected, () => {
+          if (isCurrentRoom()) setStatus("connected");
+        })
+        .on(RoomEvent.AudioPlaybackStatusChanged, (playing) => {
+          if (isCurrentRoom()) setAudioPlaybackBlocked(!playing);
+        })
+        .on(RoomEvent.MediaDevicesChanged, () => {
+          if (isCurrentRoom()) void refreshDevices();
+        })
         .on(RoomEvent.MediaDevicesError, () => {
-          setError(
+          if (!isCurrentRoom()) return;
+          setInputDeviceError(
             "Bakbak could not use that microphone. Check macOS Privacy settings.",
           );
         })
         .on(RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
-          if (topic !== "bakbak-soundboard") return;
+          if (!isCurrentRoom() || topic !== "bakbak-soundboard") return;
           const event = parseSoundEvent(payload);
           if (!event || hasSeenSoundEvent(event, seenSoundEvents.current))
             return;
           seenSoundEvents.current.add(event.eventId);
-          playBundledSound(event.soundId, event.volume);
+          soundPlayback.play(event.soundId, event.volume);
         })
         .on(RoomEvent.Disconnected, () => {
+          if (roomRef.current !== room) return;
           roomRef.current = null;
+          resetVoiceMedia();
           setStatus("disconnected");
-          setParticipants([]);
           setChannel(null);
         });
     },
-    [refreshDevices, refreshParticipants],
+    [
+      refreshDevices,
+      refreshParticipants,
+      remoteAudio,
+      resetVoiceMedia,
+      soundPlayback,
+    ],
+  );
+
+  const disconnectCurrentRoom = useCallback(
+    async (preserveJoinState = false) => {
+      const room = roomRef.current;
+      roomRef.current = null;
+      resetVoiceMedia();
+      if (!preserveJoinState) {
+        setStatus("disconnected");
+        setChannel(null);
+      }
+      setError(null);
+      setInputDeviceError(null);
+      if (room) await room.disconnect();
+    },
+    [resetVoiceMedia],
   );
 
   const leave = useCallback(async () => {
-    const room = roomRef.current;
-    roomRef.current = null;
-    if (room) await room.disconnect();
-    setStatus("disconnected");
-    setChannel(null);
-    setParticipants([]);
-    setMuted(false);
-    setDeafened(false);
-    setError(null);
-  }, []);
+    joinOperationRef.current += 1;
+    await disconnectCurrentRoom();
+  }, [disconnectCurrentRoom]);
 
   const join = useCallback(
     async (nextChannel: Channel) => {
       if (nextChannel.kind !== "voice") return;
-      if (roomRef.current) await leave();
+      const joinOperation = joinOperationRef.current + 1;
+      joinOperationRef.current = joinOperation;
+      playbackOperationRef.current += 1;
+      const isCurrentJoin = () => joinOperationRef.current === joinOperation;
+
       setChannel(nextChannel);
       setStatus("connecting");
       setError(null);
+      setInputDeviceError(null);
+      setAudioPlaybackBlocked(false);
+
+      await disconnectCurrentRoom(true);
+      if (!isCurrentJoin()) return;
 
       if (mode === "mock") {
         await new Promise((resolve) => window.setTimeout(resolve, 420));
+        if (!isCurrentJoin()) return;
         setParticipants([
           {
             id: user.id,
@@ -182,11 +258,14 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
         return;
       }
 
+      let joiningRoom: Room | null = null;
+      let attemptedRelay = false;
       try {
         const supabase = getSupabaseClient();
         const invocation = await supabase.functions.invoke("livekit-token", {
           body: buildLiveKitTokenRequest(nextChannel.id),
         });
+        if (!isCurrentJoin()) return;
         if (invocation.error) throw invocation.error;
         const data: unknown = invocation.data;
         const response = parseLiveKitTokenResponse(
@@ -197,34 +276,73 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
         );
         if (!response.ok) throw new Error(response.message);
 
-        const room = new Room({ adaptiveStream: true, dynacast: true });
-        roomRef.current = room;
-        bindRoomEvents(room);
-        await room.connect(response.value.serverUrl, response.value.token);
+        const createJoiningRoom = () => {
+          const room = new Room({ adaptiveStream: true, dynacast: true });
+          roomRef.current = room;
+          bindRoomEvents(room);
+          return room;
+        };
+
+        let room = createJoiningRoom();
+        joiningRoom = room;
+        try {
+          await room.connect(response.value.serverUrl, response.value.token);
+        } catch (initialError) {
+          if (!isPeerConnectionFailure(initialError) || !isCurrentJoin()) {
+            throw initialError;
+          }
+
+          attemptedRelay = true;
+          if (roomRef.current === room) roomRef.current = null;
+          await room.disconnect().catch(() => undefined);
+          if (!isCurrentJoin()) return;
+
+          room = createJoiningRoom();
+          joiningRoom = room;
+          await room.connect(response.value.serverUrl, response.value.token, {
+            rtcConfig: { iceTransportPolicy: "relay" },
+            maxRetries: 0,
+          });
+        }
+        if (!isCurrentJoin() || roomRef.current !== room) {
+          void room.disconnect();
+          return;
+        }
         await room.localParticipant.setMicrophoneEnabled(
           true,
           selectedInputId === "default"
             ? undefined
             : { deviceId: selectedInputId },
         );
+        if (!isCurrentJoin() || roomRef.current !== room) {
+          void room.disconnect();
+          return;
+        }
         refreshParticipants(room);
         setStatus("connected");
+        setAudioPlaybackBlocked(!room.canPlaybackAudio);
         void refreshDevices();
       } catch (caught) {
-        void roomRef.current?.disconnect();
-        roomRef.current = null;
+        if (!isCurrentJoin()) {
+          void joiningRoom?.disconnect();
+          return;
+        }
+
+        const room = joiningRoom;
+        if (roomRef.current === room) roomRef.current = null;
+        resetVoiceMedia();
+        void room?.disconnect();
         setStatus("error");
-        setError(
-          caught instanceof Error ? caught.message : "Voice connection failed.",
-        );
+        setError(describeVoiceConnectionError(caught, attemptedRelay));
       }
     },
     [
       bindRoomEvents,
-      leave,
+      disconnectCurrentRoom,
       mode,
       refreshDevices,
       refreshParticipants,
+      resetVoiceMedia,
       selectedInputId,
       user.displayName,
       user.id,
@@ -232,10 +350,13 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
   );
 
   const toggleMute = useCallback(async () => {
+    if (status !== "connected") return;
+    const room = roomRef.current;
     const nextMuted = !muted;
-    if (roomRef.current) {
-      await roomRef.current.localParticipant.setMicrophoneEnabled(!nextMuted);
-      refreshParticipants(roomRef.current);
+    if (room) {
+      await room.localParticipant.setMicrophoneEnabled(!nextMuted);
+      if (roomRef.current !== room) return;
+      refreshParticipants(room);
     } else {
       setParticipants((current) =>
         current.map((participant) =>
@@ -246,18 +367,68 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
       );
     }
     setMuted(nextMuted);
-  }, [muted, refreshParticipants]);
+  }, [muted, refreshParticipants, status]);
 
-  const toggleDeafen = useCallback(() => {
-    const nextDeafened = !deafened;
+  const toggleDeafen = useCallback(async () => {
+    if (status !== "connected") return;
+    const operationId = playbackOperationRef.current + 1;
+    playbackOperationRef.current = operationId;
     const room = roomRef.current;
-    room?.remoteParticipants.forEach((participant) => {
-      participant.audioTrackPublications.forEach((publication) =>
-        publication.setEnabled(!nextDeafened),
-      );
-    });
+    const nextDeafened = !deafenedRef.current;
+    deafenedRef.current = nextDeafened;
     setDeafened(nextDeafened);
-  }, [deafened]);
+
+    const result = await setAudioDeafened(
+      nextDeafened,
+      audioPlaybackBlocked,
+      room,
+      {
+        isCurrent: () =>
+          playbackOperationRef.current === operationId &&
+          roomRef.current === room,
+        remoteAudio,
+        soundPlayback,
+      },
+    );
+    if (
+      !result ||
+      playbackOperationRef.current !== operationId ||
+      roomRef.current !== room
+    )
+      return;
+
+    if (result.ok) {
+      setAudioPlaybackBlocked(false);
+      setError(null);
+      return;
+    }
+
+    setAudioPlaybackBlocked(true);
+    setError(result.message);
+  }, [audioPlaybackBlocked, remoteAudio, soundPlayback, status]);
+
+  const resumeAudio = useCallback(async () => {
+    const room = roomRef.current;
+    if (status !== "connected" || !room || deafenedRef.current) return;
+
+    const operationId = playbackOperationRef.current + 1;
+    playbackOperationRef.current = operationId;
+    const result = await resumeAudioPlayback(room);
+    if (
+      playbackOperationRef.current !== operationId ||
+      roomRef.current !== room
+    )
+      return;
+    remoteAudio.setMuted(deafenedRef.current);
+    if (result.ok) {
+      setAudioPlaybackBlocked(false);
+      setError(null);
+      return;
+    }
+
+    setAudioPlaybackBlocked(true);
+    setError(result.message);
+  }, [remoteAudio, status]);
 
   const setParticipantVolume = useCallback(
     (participantId: string, volume: number) => {
@@ -276,11 +447,29 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
     [],
   );
 
-  const setInputDevice = useCallback(async (deviceId: string) => {
-    setSelectedInputId(deviceId);
-    if (roomRef.current)
-      await roomRef.current.switchActiveDevice("audioinput", deviceId);
-  }, []);
+  const setInputDevice = useCallback(
+    async (deviceId: string) => {
+      if (status === "connecting" || status === "reconnecting") return;
+
+      const room = roomRef.current;
+      if (!room) {
+        setSelectedInputId(deviceId);
+        setInputDeviceError(null);
+        return;
+      }
+
+      const result = await switchAudioInput(room, deviceId);
+      if (roomRef.current !== room) return;
+      if (!result.ok) {
+        setInputDeviceError(result.message);
+        return;
+      }
+
+      setSelectedInputId(deviceId);
+      setInputDeviceError(null);
+    },
+    [status],
+  );
 
   const dispatchSound = useCallback(
     async (soundId: string) => {
@@ -294,7 +483,7 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
         volume: 0.72,
       });
       seenSoundEvents.current.add(event.eventId);
-      playBundledSound(soundId, event.volume);
+      soundPlayback.play(soundId, event.volume);
       if (roomRef.current) {
         await roomRef.current.localParticipant.publishData(
           encodeSoundEvent(event),
@@ -305,14 +494,20 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
         );
       }
     },
-    [status, user.id],
+    [soundPlayback, status, user.id],
   );
 
   useEffect(
     () => () => {
-      void roomRef.current?.disconnect();
+      joinOperationRef.current += 1;
+      playbackOperationRef.current += 1;
+      const room = roomRef.current;
+      roomRef.current = null;
+      remoteAudio.cleanup();
+      soundPlayback.stopAll();
+      void room?.disconnect();
     },
-    [],
+    [remoteAudio, soundPlayback],
   );
 
   return {
@@ -321,17 +516,49 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
     participants,
     muted,
     deafened,
+    audioPlaybackBlocked,
     error,
+    inputDeviceError,
     inputDevices,
     selectedInputId,
     join,
     leave,
     toggleMute,
     toggleDeafen,
+    resumeAudio,
     setParticipantVolume,
     setInputDevice,
     dispatchSound,
   };
+}
+
+export function isPeerConnectionFailure(error: unknown): boolean {
+  if (error instanceof ConnectionError) {
+    if (
+      error.reason === ConnectionErrorReason.NotAllowed ||
+      error.reason === ConnectionErrorReason.Cancelled
+    ) {
+      return false;
+    }
+  }
+
+  return (
+    error instanceof Error &&
+    /(?:could not establish|peer.?connection|pc connection|\bice\b)/i.test(
+      error.message,
+    )
+  );
+}
+
+export function describeVoiceConnectionError(
+  error: unknown,
+  attemptedRelay: boolean,
+): string {
+  if (attemptedRelay && isPeerConnectionFailure(error)) {
+    return "Voice signaling worked, but media could not connect even through relay. Try Arc or Chrome, disable a VPN or Private Relay, or allow *.turn.livekit.cloud on TCP 443.";
+  }
+
+  return error instanceof Error ? error.message : "Voice connection failed.";
 }
 
 function participantToView(

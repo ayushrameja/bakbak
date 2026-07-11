@@ -212,7 +212,7 @@ export function AuthScreen({
                   onChange={(event) =>
                     setInviteCode(event.target.value.toUpperCase())
                   }
-                  placeholder="BK-XXXX-XXXX"
+                  placeholder="BK-XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX"
                   autoComplete="off"
                   required
                 />

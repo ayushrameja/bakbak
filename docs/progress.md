@@ -89,3 +89,348 @@ competing task-status, session, or handoff logs.
   pgTAP suites, bootstrap the first admin, deploy the token function, configure
   LiveKit, execute the two-client macOS acceptance matrix, then decide whether
   the first friend-test build is ready for distribution.
+
+## 2026-07-11 — Live-service readiness and local policy validation
+
+- **Completed:** Aligned client invite validation with the backend's real
+  `BK` plus 32-hex format; fixed an ambiguous invite-redemption conflict target
+  found by database lint; attached and cleaned up subscribed LiveKit audio;
+  added autoplay recovery, safe microphone-switch errors, and all-audio Deafen
+  behavior; cancelled stale or signed-out connection attempts before microphone
+  publication; added focused tests; configured the macOS microphone purpose
+  string, audio-input entitlement, hardened runtime, and ad-hoc signing; started
+  a local Supabase stack and passed the complete schema, invite, and RLS suites.
+- **Decisions:** Deafen stops remote speech and active/future soundboard
+  rendering on that client while still publishing outbound sound events, with
+  no replay after undeafening. Remote media elements are owned by a small
+  teardown boundary. The undeployed migration now targets
+  `memberships_pkey` explicitly so PL/pgSQL output variables cannot make the
+  conflict target ambiguous. The first hosted admin will be created through the
+  Supabase dashboard after migrations, then promoted with the documented SQL.
+  Voice joins own their local room and use generation checks after every async
+  boundary, while mute, Deafen, and device changes wait for a stable connection.
+- **Validation:**
+  - Initial `supabase db lint --local` — reported SQLSTATE `42702`, ambiguous
+    `server_id` in `redeem_invite_code`; corrected before hosted deployment.
+  - Initial `supabase test db` — failed 6/12 invite assertions because of that
+    ambiguity; schema and RLS files passed.
+  - `supabase db reset` after the correction — passed all three migrations and
+    seed data from a clean database.
+  - `supabase db lint --local` after the correction — passed with no schema
+    errors.
+  - `supabase test db` after the correction — 48/48 pgTAP assertions passed
+    across schema, invite, and admin/member/non-member RLS behavior.
+  - `pnpm check` — passed Prettier, ESLint, strict TypeScript, 70 Vitest tests
+    across 11 files, the Vite production build, and compiled-artifact secret
+    scanning; the existing large-chunk warning remains non-blocking.
+  - `deno task --config supabase/deno.json check` — passed lint and type checks.
+  - `deno task --config supabase/deno.json test` — 8/8 Edge Function tests
+    passed.
+  - `pnpm tauri build` — the sandboxed run built and signed the app but failed
+    at Apple's DMG tooling; the approved host run passed and produced the
+    ad-hoc-signed app and ARM64 DMG.
+  - `codesign --verify --deep --strict --verbose=4` — passed; the release app
+    contains the expected microphone purpose string and
+    `com.apple.security.device.audio-input` entitlement.
+  - `pnpm security:scan` and a direct executable marker scan — passed with no
+    forbidden service-role or LiveKit secret material found.
+  - In-app browser mock safety smoke — Mute and Deafen were disabled while a
+    join was connecting; signing out before that join settled returned to the
+    welcome screen and produced no new console logs.
+  - `git diff --check` — passed.
+- **Documentation updated:** Updated current architecture, hosted/local setup,
+  first-admin bootstrap, the Phase 2 policy-test criterion, and this canonical
+  log.
+- **Known limitations:** Hosted Supabase and LiveKit creation, managed secrets,
+  migration/function deployment, live `.env`, admin bootstrap, and the
+  native-plus-browser rehearsal are not complete because both available service
+  dashboard sessions require the user to sign in. The real macOS microphone
+  permission prompt and capture remain untested. Colima required excluding the
+  optional vector container, and the current Supabase config emits a deprecated
+  `inbucket` warning. Developer ID signing/notarization and a real two-Mac friend
+  test remain deferred.
+- **Next:** Sign in to Supabase and LiveKit Cloud, create the friend-test
+  projects, deploy the tracked migrations and protected token function, add only
+  public renderer values to ignored `.env`, bootstrap the admin/invite, then run
+  and record the one-Mac native-plus-browser rehearsal without marking the real
+  two-person voice or synchronized-soundboard criteria complete.
+
+## 2026-07-11 — Dashboard-session limitation recorded
+
+- **Completed:** Recorded the current limitation affecting hosted Supabase and
+  LiveKit setup: the embedded browser has no authenticated dashboard session.
+- **Decisions:** Perform dashboard-only actions (service login, project setup,
+  managed secrets, migrations/function deployment, and live verification) in
+  the user's signed-in Arc session. This does not affect Bakbak's desktop
+  runtime; it only blocks operator dashboard work in the embedded browser.
+- **Validation:** Inspected the current architecture, active plan, canonical
+  progress log, and working tree. No hosted-service action or automated check
+  was run in this documentation-only task.
+- **Documentation updated:** `docs/progress.md`.
+- **Known limitations:** Hosted Supabase and LiveKit remain unverified until
+  the operator completes the dashboard setup in Arc.
+- **Next:** In Arc, sign in to Supabase and LiveKit Cloud, then continue the
+  documented hosted setup and one-Mac native-plus-browser rehearsal.
+
+## 2026-07-11 — Configure the local renderer for live services
+
+- **Completed:** Replaced the ignored root `.env.local` with the four
+  renderer-visible variables Bakbak expects and switched `VITE_DATA_MODE` from
+  `mock` to `live`. Derived the public Supabase project URL from the existing
+  JWKS URL, mapped the Supabase publishable key to the current client variable,
+  mapped the public LiveKit URL, and removed backend-only credentials from the
+  renderer environment file.
+- **Decisions:** Keep `.env.local` limited to public `VITE_*` values. LiveKit
+  signing credentials remain reserved for Supabase-managed Edge Function
+  secrets and are never exposed to the renderer bundle.
+- **Validation:**
+  - Environment-name inspection — passed: exactly `VITE_DATA_MODE`,
+    `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_LIVEKIT_URL` are
+    present; values were not printed.
+  - `git check-ignore -v .env.local` — passed; the local file remains ignored.
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 70 Vitest tests,
+    the Vite live-mode production build, and compiled-artifact secret scanning.
+    The existing non-blocking large-chunk warning remains.
+- **Documentation updated:** `docs/progress.md`.
+- **Known limitations:** Hosted migrations, Edge Function deployment, managed
+  LiveKit secrets, admin bootstrap, and multi-client acceptance remain
+  unverified.
+- **Next:** Complete Supabase/LiveKit hosted deployment, bootstrap the first
+  admin and invite, then run the Arc-plus-macOS friend-test matrix.
+
+## 2026-07-11 — Deploy hosted Supabase backend
+
+- **Completed:** Authenticated the Supabase CLI through the user's Arc session,
+  linked the checkout to the hosted `bakbak` project, previewed and deployed
+  all three tracked migrations, and deployed the protected `livekit-token`
+  Edge Function.
+- **Decisions:** Applied only tracked migration files so hosted migration
+  history remains authoritative. No hosted users were created before the
+  profile trigger existed. The LiveKit function was deployed before managed
+  secrets; Supabase exposes newly added function secrets without requiring a
+  redeploy.
+- **Validation:**
+  - `supabase projects list` — passed; the linked project is `bakbak` in Canada
+    Central.
+  - `supabase db push --dry-run` — passed and listed only migrations
+    `202607110001`, `202607110002`, and `202607110003`.
+  - `supabase db push` — passed; all three migrations applied successfully.
+  - `supabase migration list` — passed; all three local and remote migration
+    versions match.
+  - Initial `supabase functions deploy livekit-token` — failed because the
+    local bundler did not produce its temporary `output.eszip` file.
+  - `supabase functions deploy livekit-token --use-api` — passed; function
+    version 1 is active.
+  - `supabase secrets list` — passed and returned no configured secrets.
+- **Documentation updated:** `docs/architecture.md` and `docs/progress.md`.
+- **Known limitations:** `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and
+  `LIVEKIT_API_SECRET` still need to be added as hosted Edge Function secrets.
+  No hosted admin, invite, or second test account exists yet, and the
+  Arc-plus-macOS acceptance matrix has not run.
+- **Next:** Add the three managed LiveKit secrets, create the first hosted Auth
+  user, promote that profile to admin, issue one invite, create the second user
+  through Bakbak, and run the two-client acceptance checks.
+
+## 2026-07-11 — Add local Edge Function secret template
+
+- **Completed:** Created the ignored `supabase/functions/.env.local` file with
+  placeholders for `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET`.
+- **Decisions:** Kept real values out of the repository and out of chat. The
+  file is only a local handoff template for loading managed Edge Function
+  secrets; it is not used by the desktop renderer.
+- **Validation:**
+  - `git check-ignore -v supabase/functions/.env.local` — passed; the file is
+    ignored by the repository's `.env.*` rule.
+  - Placeholder/name inspection — passed; only the three documented variable
+    names and placeholders are present.
+- **Documentation updated:** `docs/progress.md`.
+- **Known limitations:** The placeholders still need to be replaced locally
+  with the user's LiveKit values and uploaded to Supabase Edge Function
+  secrets. No real secret was added or tested.
+- **Next:** Replace the placeholders locally, then upload and verify the three
+  managed secrets before creating test accounts.
+
+## 2026-07-11 — Bootstrap hosted friend-test accounts
+
+- **Completed:** Uploaded the three ignored LiveKit values to Supabase-managed
+  Edge Function secrets, confirmed the hosted profile trigger created both test
+  profiles, assigned the first profile as server admin and the second as a
+  member, and recorded the admin as creator of the default Bakbak server.
+- **Decisions:** Used the two dashboard-created accounts directly for the first
+  Arc-plus-macOS media rehearsal. Invite issuance and redemption remain a
+  separate manual acceptance check; no plaintext invite was written to the
+  repository or task log.
+- **Validation:**
+  - `supabase secrets set --env-file supabase/functions/.env.local` — passed.
+  - `supabase secrets list` — passed; `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and
+    `LIVEKIT_API_SECRET` are present alongside Supabase-managed defaults.
+  - Linked profile query — passed; both supplied Auth UUIDs have corresponding
+    `public.profiles` rows created by the trigger.
+  - Linked membership transaction — passed; the default server has one `admin`
+    and one `member` matching the supplied profiles.
+  - Unauthenticated hosted `livekit-token` POST — returned HTTP 401 as required
+    by the JWT gate.
+- **Documentation updated:** `docs/architecture.md` and `docs/progress.md`.
+- **Known limitations:** An authenticated LiveKit token, real microphone audio,
+  Realtime text chat, synchronized soundboard playback, reconnect behavior, and
+  invite redemption have not yet been verified across two clients.
+- **Next:** Sign in as the two test users in Arc and the macOS app, run the
+  Phase 4 acceptance matrix, and record each observed result without marking
+  untested criteria complete.
+
+## 2026-07-11 — Launch hosted two-client rehearsal
+
+- **Completed:** Revalidated the live-mode renderer and launched the Tauri
+  development app with its shared Vite server at `http://localhost:1420` for an
+  isolated Arc login session.
+- **Decisions:** Use the admin account in the native app and the member account
+  in Arc for the first rehearsal. Both accounts were assigned membership
+  directly; this session does not count as invite-redemption acceptance.
+- **Validation:**
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 70 Vitest tests,
+    the live Vite production build, and compiled-artifact secret scanning. The
+    existing non-blocking large-chunk warning remains.
+  - `git diff --check` — passed.
+  - `pnpm tauri dev` — passed startup; Vite is serving on port 1420 and the
+    native debug application launched successfully.
+- **Documentation updated:** `docs/progress.md`.
+- **Known limitations:** The two-client chat, microphone, voice, soundboard,
+  reconnect, and device controls are ready for user observation but have not
+  yet been claimed as passing.
+- **Next:** Complete the Arc-plus-macOS acceptance sequence and report exact
+  successes or errors for the canonical log.
+
+## 2026-07-11 — Fix live presence and add voice relay fallback
+
+- **Completed:** Replaced the static member status with server-scoped Supabase
+  Realtime Presence, added private Presence authorization by server membership,
+  and added one relay-only LiveKit retry after a peer-connection/ICE failure.
+  The final voice error now distinguishes successful signaling from blocked
+  TURN/TLS media connectivity.
+- **Decisions:** Presence uses a private topic and is an ephemeral UI hint, not
+  an authorization source. A unique session key supports the same user being
+  connected on multiple devices. Voice retries relay only for peer-connection
+  failures and never retries rejected credentials or cancelled joins.
+- **Validation:**
+  - Reported browser trace — token issuance and LiveKit signaling reached India
+    West; failure occurred during ICE peer-connection establishment. The
+    `about:webrtc` diagnostic is Firefox-specific, and the rejected Cloudflare
+    cookie is unrelated to media connectivity.
+  - Focused Presence and voice tests — 7/7 passed.
+  - `supabase db reset` — passed all four migrations from a clean local database.
+  - `supabase db lint --local` — passed with no schema errors.
+  - `supabase test db` — 53/53 schema, invite, RLS, and Presence authorization
+    assertions passed.
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 73 Vitest tests,
+    the live production build, and compiled-artifact secret scanning. The
+    existing non-blocking large-chunk warning remains.
+  - Hosted migration dry run — listed only
+    `202607110004_private_presence.sql`.
+  - Hosted `supabase db push` and migration-list verification — passed; local
+    and remote migration versions `001` through `004` match.
+- **Documentation updated:** `docs/architecture.md`, `supabase/README.md`, and
+  `docs/progress.md`.
+- **Known limitations:** Real Presence sync still needs observation with both
+  clients. Relay-only retry cannot bypass a device, VPN, DNS filter, or firewall
+  that blocks `*.turn.livekit.cloud` on TCP 443. The reported browser should be
+  retested in actual Arc/Chrome because the supplied console trace came from
+  Firefox.
+- **Next:** Relaunch both clients, confirm both members become online, and retry
+  Lounge in Arc. If relay also fails, test without VPN/Private Relay and verify
+  TURN/TLS access before marking voice acceptance complete.
+
+## 2026-07-11 — Install latest live macOS build
+
+- **Completed:** Stopped the development session, created fresh macOS app and
+  DMG release bundles from the current live-mode working tree, replaced the
+  existing `/Applications/Bakbak.app`, and launched the installed application.
+- **Decisions:** Kept the existing local friend-test release model: the app is
+  ad-hoc signed for this Mac and uses the ignored live Supabase and LiveKit
+  renderer configuration. Developer ID signing and Apple notarization remain a
+  later distribution concern.
+- **Validation:**
+  - `pnpm tauri build` — passed; built `Bakbak.app` and
+    `Bakbak_0.1.0_aarch64.dmg`. The existing non-blocking renderer chunk-size
+    warning remains, and notarization was skipped because distribution
+    credentials are not configured.
+  - `codesign --verify --deep --strict --verbose=4
+src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
+  - `pnpm security:scan` — passed for `dist` and the Tauri release bundle.
+  - Installed executable SHA-256 comparison — passed; the source bundle and
+    `/Applications/Bakbak.app` executables are identical.
+  - `codesign --verify --deep --strict --verbose=4
+/Applications/Bakbak.app` — passed.
+  - Installed bundle version check — passed; version is `0.1.0`.
+  - `open /Applications/Bakbak.app` — passed.
+  - `pnpm format:check` — passed after formatting this entry.
+  - `git diff --check` — passed.
+- **Documentation updated:** `docs/progress.md`.
+- **Known limitations:** This local build is ad-hoc signed and not notarized, so
+  it is suitable for local testing but not yet a polished public distribution.
+  The Presence and relay-fallback changes still need two-client observation.
+- **Next:** Test the installed app against Arc: confirm both members become
+  online, join Lounge from both clients, then verify microphone and soundboard
+  playback.
+
+## 2026-07-11 — Replace isolated Presence and polish chat UI
+
+- **Completed:** Replaced the private-channel Presence implementation that
+  showed only the current client with membership-checked database heartbeats,
+  RLS-filtered heartbeat reads, Postgres Realtime refreshes, and automatic stale
+  client expiry. Deployed migration `005` to the hosted project. Added a soft
+  incoming-message tone, background-channel unread emphasis, and read clearing
+  when a channel opens. Removed the duplicate rail avatar, fake typing status,
+  and decorative controls for servers, channel creation, help, notifications,
+  pins, search, attachments, soundboard, and emoji. Rebuilt, installed, and
+  launched the updated native app; the existing Bakbak Vite process remains
+  available for Arc on port 1420.
+- **Decisions:** Used the proven Postgres Realtime path already carrying chat
+  messages instead of continuing with Supabase Presence sessions that were
+  isolated in the two observed clients. Heartbeats run every 20 seconds and
+  expire after 55 seconds. The RPC derives the user and database timestamp so
+  renderer clients cannot forge rows. Message sounds are synthesized with Web
+  Audio, avoiding another binary asset, and are armed on the first user gesture
+  to respect autoplay rules. Unread state is intentionally session-local in v1.
+- **Validation:**
+  - User screenshots — confirmed persistent two-client chat and reproduced the
+    online-status defect: each client showed only itself online.
+  - Focused renderer tests — passed as part of the 13-file, 78-test suite.
+  - `pnpm typecheck` and `pnpm lint` — passed before database deployment.
+  - `pnpm dlx supabase@latest db reset` — passed all five migrations from a
+    clean local database.
+  - `pnpm dlx supabase@latest db lint --local` — passed with no schema errors.
+  - `pnpm dlx supabase@latest test db` — passed 59/59 schema, invite, RLS, and
+    heartbeat assertions.
+  - Hosted migration dry run — listed only
+    `202607110005_presence_heartbeats.sql`.
+  - Hosted database push and migration-list verification — passed; local and
+    remote versions `001` through `005` match.
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 78 Vitest tests,
+    the live production build, and compiled-artifact secret scanning. The
+    existing non-blocking large-chunk warning remains.
+  - `pnpm tauri build` — the signed app bundle succeeded, but the optional DMG
+    wrapper failed without a diagnostic after app signing.
+  - `pnpm tauri build --bundles app` — passed; the ad-hoc-signed macOS app
+    bundle was created successfully.
+  - Source and installed bundle signature verification, secret scan, and
+    executable SHA-256 comparison — passed.
+  - Installed app launch — passed.
+  - Targeted Prettier write including SQL files — returned exit code 2 because
+    this repository has no SQL parser; supported files were formatted and the
+    later full `pnpm format:check` passed.
+  - Fresh `pnpm dev` attempt — failed because the existing Bakbak Vite process
+    already owns port 1420; its workspace and HTTP 200 response were verified,
+    so it was preserved instead of terminated.
+  - `open -a Arc http://localhost:1420` — passed.
+- **Documentation updated:** `docs/architecture.md`,
+  `docs/plans/0001-bakbak-desktop-v1.md`, `supabase/README.md`, and
+  `docs/progress.md`.
+- **Known limitations:** The new cross-client heartbeat display, notification
+  tone, and unread clearing still require observation with the signed-in Arc and
+  native accounts. A closed client can remain online for at most 55 seconds by
+  design. Unread state does not persist across restart. The DMG wrapper failure
+  remains unexplained; local app installation is unaffected.
+- **Next:** Reload Arc at `http://localhost:1420`, keep the installed app open,
+  and verify both members appear online within one heartbeat cycle. Then send a
+  message to `#random` while viewing `#general` and confirm the tone plus bold
+  unread channel, followed by read clearing when `#random` opens.

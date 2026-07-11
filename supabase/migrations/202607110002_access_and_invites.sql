@@ -258,7 +258,7 @@ begin
 
   insert into public.memberships (server_id, user_id, role)
   values (invite.server_id, requesting_user_id, 'member')
-  on conflict (server_id, user_id) do nothing
+  on conflict on constraint memberships_pkey do nothing
   returning true into membership_created;
 
   -- Two different invite codes can be redeemed for the same user at the same
@@ -373,4 +373,3 @@ alter default privileges in schema private
 revoke execute on functions from public, anon, authenticated;
 
 commit;
-

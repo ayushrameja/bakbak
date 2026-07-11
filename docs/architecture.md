@@ -10,21 +10,34 @@ and phase completion belong in `docs/plans/0001-bakbak-desktop-v1.md`.
 As of 2026-07-11, Bakbak has a complete local/mock product path and
 production-oriented Supabase and LiveKit adapters. The renderer provides the
 invite-only welcome flow, server rail, channel sidebar, realtime-capable text
-chat, member list, voice rooms, device selection, mute/deafen, per-participant
-volume, reconnect/error states, persistent voice controls, and a synchronized
-bundled soundboard. Mock mode exercises those interactions without credentials
+chat, incoming-message sounds, per-channel unread emphasis, member list, voice
+rooms, device selection, mute/deafen, per-participant volume, remote-track audio
+rendering, autoplay recovery, reconnect/error states, persistent voice controls,
+and a synchronized bundled soundboard. Deafen stops remote speech plus active
+and future incoming or local soundboard playback while still allowing outbound
+sound events. Mock mode exercises the product interactions without credentials
 or a backend.
 
-The repository also contains the Supabase schema, least-privilege grants, Row
-Level Security policies, atomic hashed invite flow, deterministic default
-rooms, Realtime publication, operator bootstrap instructions, and the protected
-`livekit-token` Edge Function. Live mode is implemented but has not been
-deployed to a real Supabase/LiveKit project in this repository, so the two-client
-friend-test matrix and database tests against a running local stack remain open.
+The Supabase schema, least-privilege grants, Row Level Security policies,
+atomic hashed invite flow, deterministic default rooms, and Realtime
+publication are deployed to the hosted Bakbak project. The protected
+`livekit-token` Edge Function is deployed with the three managed LiveKit
+credentials and its unauthenticated JWT-gate probe returns the required 401.
+The hosted profile trigger created both initial test profiles, and the default
+server has one admin plus one member. Database-backed server presence is
+deployed through a membership-checked heartbeat RPC, an RLS-filtered heartbeat
+table, and Postgres Realtime change events; stale clients expire locally after
+55 seconds. The expanded local schema, invite, RLS, and presence suite passes 59
+assertions against a clean Supabase reset. Voice connections retry one time with
+relay-only ICE after a normal peer-connection failure and report a specific
+TURN/TLS diagnostic if that also fails. Authenticated voice, soundboard, invite
+redemption, and the remaining native-plus-browser friend-test matrix remain
+open.
 
 The Tauri metadata, window sizing, Content Security Policy, minimal capability
-set, and Bakbak icons are configured. A macOS application and unsigned DMG can
-be built locally; signing and notarization remain deferred as approved.
+set, Bakbak icons, microphone purpose string, and audio-input entitlement are
+configured. A hardened-runtime macOS application and DMG can be ad-hoc signed
+locally; Developer ID signing and notarization remain deferred as approved.
 
 ## Technology stack
 
@@ -177,6 +190,24 @@ An invite-management UI is deferred until post-v1.
 4. Supabase Realtime broadcasts the committed row to authorized clients.
 5. Clients reconcile realtime events with the loaded message list without
    duplicating optimistic messages.
+6. A committed message from another user plays a short local notification tone.
+   Messages received for a background channel mark that channel unread until it
+   is opened; the selected channel remains read.
+
+### Application presence
+
+1. After loading a server, each authenticated client calls the
+   `heartbeat_presence(server_id)` RPC immediately and every 20 seconds.
+2. The security-definer RPC derives the user from `auth.uid()`, verifies current
+   server membership, and upserts the server/user row using database time. The
+   renderer cannot insert or update heartbeat rows directly.
+3. Server members can select heartbeat rows only for servers they belong to.
+   Postgres Realtime change events refresh the cached rows on every client.
+4. Clients derive the online member set from rows seen in the last 55 seconds
+   and re-evaluate the cache every five seconds, so a crashed or closed client
+   becomes offline without needing a graceful disconnect.
+5. Online state is a UI hint only. Database RLS and Edge Function checks remain
+   authoritative for access.
 
 ### Voice room
 
@@ -186,9 +217,20 @@ An invite-management UI is deferred until post-v1.
    channel type.
 3. The function creates a narrowly scoped, short-lived LiveKit participant
    token and returns it with the public LiveKit URL.
-4. The renderer connects directly to LiveKit and manages device, mute, deafen,
-   participant, speaking, reconnect, and error state.
-5. Leaving the channel disconnects the room and releases local media tracks.
+4. The renderer generation-gates connection attempts so a newer join, leave,
+   sign-out, or unmount invalidates pending token, connection, and microphone
+   work. A stale attempt can disconnect only the LiveKit room it created.
+5. The current connection attaches subscribed remote audio tracks to hidden
+   media elements and manages autoplay recovery, device, mute, deafen,
+   participant, speaking, reconnect, and error state. Device changes are paused
+   while connecting or reconnecting so the displayed and published microphone
+   cannot diverge.
+6. Unsubscription, leaving, disconnecting, and unmounting detach remote media,
+   stop active local sounds, disconnect the room, and release local tracks.
+7. If signaling succeeds but the initial WebRTC peer connection fails, the
+   renderer retries once with `iceTransportPolicy: relay`. A second failure is
+   reported as a TURN/TLS or local network-policy problem rather than a token or
+   authentication error.
 
 ### Soundboard
 
@@ -201,8 +243,10 @@ An invite-management UI is deferred until post-v1.
 
 3. Every connected client validates the version, message type, and bundled
    sound ID.
-4. Each client plays its own matching bundled clip. No audio file is uploaded
-   or streamed through Supabase.
+4. Each non-deafened client plays its own matching bundled clip. A deafened
+   sender still publishes the event for friends but renders no local copy, and
+   suppressed sounds are never queued for replay. No audio file is uploaded or
+   streamed through Supabase.
 
 Unknown message types or sound IDs are ignored safely.
 
@@ -289,16 +333,17 @@ that it has passed.
 - No hosted Supabase or LiveKit project is configured in the repository. Live
   auth, invite redemption, Realtime, and two-person voice still require
   deployment and friend testing with real public client values.
-- The pgTAP database tests exist but have not run against a local Supabase stack
-  because the Supabase CLI and a running Docker daemon are not available in the
-  current environment.
+- The local schema, invite, and admin/member/non-member policy suites pass all
+  48 pgTAP assertions. Hosted migration history and hosted RLS behavior still
+  require deployment and rehearsal against the selected Supabase project.
 - The synthesized v1 sound pack is bundled as deterministic Web Audio recipes
   rather than third-party audio files, avoiding uploads and licensing risk.
 - The current production renderer is roughly 283 kB compressed; LiveKit and
   Supabase can be lazy-loaded in a later performance pass if startup profiling
   shows a meaningful benefit.
-- The macOS app and DMG are unsigned and unnotarized, so Gatekeeper warnings are
-  expected outside the development machine.
+- The macOS app and DMG use an ad-hoc hardened-runtime signature with the audio
+  input entitlement, but have no Developer ID signature or notarization, so
+  Gatekeeper warnings are expected outside the development machine.
 - Screen sharing, webcam video, uploads, cloud sounds, advanced roles, global
   push-to-talk, notifications, tray behavior, Windows/Linux distribution, and
   signing/notarization are outside the first usable release.

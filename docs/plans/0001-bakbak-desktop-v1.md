@@ -87,7 +87,7 @@ plan.
 - [x] Apply Row Level Security so only members can access their rooms and
       messages.
 - [x] Unit-test invite validation and permissions.
-- [ ] Test Supabase policies as an admin, member, and non-member.
+- [x] Test Supabase policies as an admin, member, and non-member.
 - [x] Update architecture, plan status, and the append-only progress log.
 
 ### Phase 3 — Voice rooms
@@ -113,7 +113,7 @@ plan.
 - [x] Play the bundled matching clip on every connected client.
 - [x] Unit-test sound dispatch.
 - [ ] Manually validate login and invite redemption on macOS.
-- [ ] Manually validate persistent two-client text chat.
+- [x] Manually validate persistent two-client text chat.
 - [ ] Manually validate two-person voice, mute/deafen, device changes, and
       reconnect behavior.
 - [ ] Manually validate synchronized soundboard playback.

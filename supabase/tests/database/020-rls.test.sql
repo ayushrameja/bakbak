@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(16);
+select plan(21);
 
 insert into auth.users (id, email, raw_user_meta_data)
 values
@@ -95,6 +95,10 @@ select throws_ok(
   'permission denied for table invite_codes',
   'member cannot inspect invite hashes'
 );
+select lives_ok(
+  $$select public.heartbeat_presence('00000000-0000-4000-8000-000000000001')$$,
+  'member can publish a heartbeat for its server'
+);
 
 reset role;
 select is(
@@ -105,6 +109,15 @@ select is(
   ),
   '20000000-0000-4000-8000-000000000002'::uuid,
   'message author is derived from auth.uid()'
+);
+select is(
+  (
+    select user_id
+    from public.presence_heartbeats
+    where server_id = '00000000-0000-4000-8000-000000000001'
+  ),
+  '20000000-0000-4000-8000-000000000002'::uuid,
+  'presence heartbeat user is derived from auth.uid()'
 );
 
 set local role authenticated;
@@ -120,6 +133,21 @@ select throws_ok(
   '42501',
   'new row violates row-level security policy for table "messages"',
   'outsider cannot write into the Bakbak server'
+);
+select is(
+  (select count(*) from public.presence_heartbeats),
+  0::bigint,
+  'outsider cannot see another server presence heartbeat'
+);
+select throws_ok(
+  $$select public.heartbeat_presence('00000000-0000-4000-8000-000000000001')$$,
+  '42501',
+  'Server membership required.',
+  'outsider cannot publish a heartbeat for the Bakbak server'
+);
+select lives_ok(
+  $$select public.heartbeat_presence('20000000-0000-4000-8000-000000000100')$$,
+  'outsider can publish a heartbeat for its own server'
 );
 
 set local "request.jwt.claim.sub" = '20000000-0000-4000-8000-000000000002';
@@ -142,4 +170,3 @@ select is(
 
 select * from finish();
 rollback;
-

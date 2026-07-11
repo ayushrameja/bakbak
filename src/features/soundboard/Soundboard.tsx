@@ -4,10 +4,15 @@ import { bundledSounds } from "./sounds";
 
 interface SoundboardProps {
   connected: boolean;
+  deafened?: boolean;
   onPlay: (soundId: string) => Promise<void>;
 }
 
-export function Soundboard({ connected, onPlay }: SoundboardProps) {
+export function Soundboard({
+  connected,
+  deafened = false,
+  onPlay,
+}: SoundboardProps) {
   const [activeSound, setActiveSound] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,7 +37,12 @@ export function Soundboard({ connected, onPlay }: SoundboardProps) {
           <h3>Perfectly timed nonsense</h3>
         </div>
         <span className={`soundboard-status ${connected ? "online" : ""}`}>
-          <Radio size={14} /> {connected ? "Room synced" : "Join to sync"}
+          <Radio size={14} />
+          {connected
+            ? deafened
+              ? "Sending silently"
+              : "Room synced"
+            : "Join to sync"}
         </span>
       </header>
       <div className="sound-grid">
@@ -55,8 +65,9 @@ export function Soundboard({ connected, onPlay }: SoundboardProps) {
         <p className="soundboard-error">{error}</p>
       ) : (
         <p className="soundboard-note">
-          Everyone in the room hears the same bundled clip. No uploads, no
-          mystery files.
+          {deafened
+            ? "You are deafened, so friends still receive sounds you send while your copy stays silent."
+            : "Everyone in the room hears the same bundled clip. No uploads, no mystery files."}
         </p>
       )}
     </section>

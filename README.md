@@ -30,17 +30,26 @@ or LiveKit.
 
 ## Connect Supabase and LiveKit
 
-1. Create a Supabase project and apply the migration in `supabase/migrations`.
-2. Follow `supabase/admin/README.md` to assign the first admin and issue an
-   invite. Plaintext invite codes are returned once and are never stored.
-3. Deploy `supabase/functions/livekit-token` with JWT verification enabled.
-4. Store `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` as managed
-   Edge Function secrets.
-5. Copy `.env.example` to an ignored `.env`, set the three public `VITE_*`
-   service values, and change `VITE_DATA_MODE` to `live`.
+1. Create a Supabase project, link it with the current Supabase CLI, inspect
+   `supabase db push --dry-run`, then run `supabase db push`. This applies the
+   three tracked migrations in order and records their migration history.
+2. Create a LiveKit Cloud project using its global endpoint. Store
+   `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` only in Supabase
+   Edge Function Secrets.
+3. Deploy `supabase/functions/livekit-token` from this repository with JWT
+   verification enabled; never pass `--no-verify-jwt`.
+4. Follow `supabase/admin/README.md` to create and assign the first admin, then
+   issue an invite. Plaintext invite codes are returned once and never stored.
+5. Copy `.env.example` to an ignored `.env`, set the three public service
+   values, and change `VITE_DATA_MODE` to `live`. Restart or rebuild after
+   changing these values because Vite embeds them at build time.
 
 Every `VITE_*` value is public in the compiled desktop renderer. Never place a
 LiveKit secret or Supabase service-role key there.
+
+For the internal rehearsal, email/password authentication remains enabled while
+email confirmation may be disabled temporarily. Before external friend testing,
+configure custom SMTP and re-enable confirmation.
 
 ## Checks
 

@@ -1,5 +1,6 @@
 import {
   AudioLines,
+  CircleAlert,
   HeadphoneOff,
   Headphones,
   Mic,
@@ -111,6 +112,38 @@ export function VoiceRoom({
 
       {isConnected ? (
         <>
+          {voice.audioPlaybackBlocked ? (
+            <div className="voice-audio-notice" role="alert">
+              <Volume2 size={18} />
+              <div>
+                <strong>Room audio needs one click</strong>
+                <span>
+                  {voice.deafened
+                    ? "Room audio stays paused while Deafen is on. Undeafen to retry."
+                    : (voice.error ??
+                      "Your browser paused autoplay. Enable it to hear everyone.")}
+                </span>
+              </div>
+              {!voice.deafened ? (
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => void voice.resumeAudio()}
+                >
+                  Enable audio
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          {voice.inputDeviceError ? (
+            <div className="voice-device-error" role="alert">
+              <CircleAlert size={16} />
+              <span>{voice.inputDeviceError}</span>
+              <button type="button" onClick={onOpenSettings}>
+                Review device
+              </button>
+            </div>
+          ) : null}
           <div className="participant-grid">
             {voice.participants.map((participant) => {
               const avatarUser = participant.isLocal
@@ -188,7 +221,7 @@ export function VoiceRoom({
             <button
               className={voice.deafened ? "is-danger" : ""}
               type="button"
-              onClick={voice.toggleDeafen}
+              onClick={() => void voice.toggleDeafen()}
             >
               {voice.deafened ? (
                 <HeadphoneOff size={20} />
@@ -210,7 +243,11 @@ export function VoiceRoom({
               <span>Leave</span>
             </button>
           </div>
-          <Soundboard connected onPlay={voice.dispatchSound} />
+          <Soundboard
+            connected
+            deafened={voice.deafened}
+            onPlay={voice.dispatchSound}
+          />
         </>
       ) : null}
     </section>

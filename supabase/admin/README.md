@@ -12,9 +12,12 @@ The migrations create the default server with this stable ID:
 
 ## 1. Bootstrap the first admin
 
-First create the account through normal Supabase email/password authentication.
-That creates its `public.profiles` row. Copy the user's UUID from Authentication
-in the Supabase dashboard, then substitute it below:
+Apply all migrations first, then create the initial confirmed email/password
+user from Authentication in the Supabase dashboard. This operator-only step
+avoids the first-admin loop: the desktop join flow expects an invite, while an
+invite cannot be issued until an admin exists. The auth trigger creates the
+matching `public.profiles` row. Copy the user's UUID from Authentication, then
+substitute it below:
 
 ```sql
 insert into public.memberships (server_id, user_id, role)
@@ -33,7 +36,9 @@ where id = '00000000-0000-4000-8000-000000000001'
 ```
 
 No password belongs in SQL or source control. If the `insert` finds no matching
-profile, stop and confirm that the user completed signup in the same project.
+profile, stop and confirm that the user was created after the migrations in the
+same project. After promotion, sign in through Bakbak to validate the live auth
+path.
 
 ## 2. Issue a single-use invite
 

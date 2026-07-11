@@ -1,12 +1,10 @@
 import {
-  ChevronDown,
   Hash,
   HeadphoneOff,
   Headphones,
   LogOut,
   Mic,
   MicOff,
-  Plus,
   Settings,
   Volume2,
 } from "lucide-react";
@@ -20,6 +18,7 @@ interface ChannelSidebarProps {
   selectedChannelId: string;
   user: AppUser;
   voice: ReturnType<typeof useVoiceRoom>;
+  unreadChannelIds: ReadonlySet<string>;
   onSelect: (channel: Channel) => void;
   onOpenSettings: () => void;
   onSignOut: () => void;
@@ -31,6 +30,7 @@ export function ChannelSidebar({
   selectedChannelId,
   user,
   voice,
+  unreadChannelIds,
   onSelect,
   onOpenSettings,
   onSignOut,
@@ -40,18 +40,17 @@ export function ChannelSidebar({
 
   return (
     <aside className="channel-sidebar">
-      <button className="server-switcher" type="button">
+      <header className="server-switcher">
         <div>
           <strong>{server.name}</strong>
           <span>Private server</span>
         </div>
-        <ChevronDown size={17} />
-      </button>
+      </header>
       <nav className="channel-nav" aria-label="Channels">
         <ChannelGroup label="Conversations">
           {textChannels.map((channel) => (
             <button
-              className={`channel-row ${selectedChannelId === channel.id ? "active" : ""}`}
+              className={`channel-row ${selectedChannelId === channel.id ? "active" : ""} ${unreadChannelIds.has(channel.id) ? "channel-row--unread" : ""}`}
               type="button"
               key={channel.id}
               onClick={() => onSelect(channel)}
@@ -110,6 +109,7 @@ export function ChannelSidebar({
           <div className="voice-dock__controls">
             <button
               type="button"
+              disabled={voice.status !== "connected"}
               onClick={() => void voice.toggleMute()}
               aria-label={voice.muted ? "Unmute" : "Mute"}
             >
@@ -117,7 +117,8 @@ export function ChannelSidebar({
             </button>
             <button
               type="button"
-              onClick={voice.toggleDeafen}
+              disabled={voice.status !== "connected"}
+              onClick={() => void voice.toggleDeafen()}
               aria-label={voice.deafened ? "Undeafen" : "Deafen"}
             >
               {voice.deafened ? (
@@ -165,9 +166,6 @@ function ChannelGroup({
     <section className="channel-group">
       <header>
         <span>{label}</span>
-        <button type="button" aria-label={`Add to ${label}`}>
-          <Plus size={14} />
-        </button>
       </header>
       {children}
     </section>

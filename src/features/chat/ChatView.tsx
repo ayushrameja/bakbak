@@ -1,4 +1,4 @@
-import { Gift, Plus, Send, Smile, Sparkles } from "lucide-react";
+import { Send, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Avatar } from "../../components/Avatar";
 import type {
@@ -105,18 +105,7 @@ export function ChatView({
       </div>
 
       <div className="composer-wrap">
-        <div className="typing-line">
-          <i />
-          <span>Mira is thinking about typing something profound</span>
-        </div>
         <form className="composer" onSubmit={handleSubmit}>
-          <button
-            type="button"
-            className="composer__utility"
-            aria-label="Add attachment"
-          >
-            <Plus size={19} />
-          </button>
           <input
             aria-label={`Message #${channel.name}`}
             value={draft}
@@ -124,20 +113,6 @@ export function ChatView({
             placeholder={`Message #${channel.name}`}
             maxLength={4000}
           />
-          <button
-            type="button"
-            className="composer__utility"
-            aria-label="Open soundboard"
-          >
-            <Gift size={19} />
-          </button>
-          <button
-            type="button"
-            className="composer__utility"
-            aria-label="Choose emoji"
-          >
-            <Smile size={19} />
-          </button>
           <button
             type="submit"
             className="composer__send"

@@ -4,6 +4,8 @@ import { Modal } from "../../components/Modal";
 interface SettingsModalProps {
   inputDevices: MediaDeviceInfo[];
   selectedInputId: string;
+  inputError: string | null;
+  inputDisabled: boolean;
   onInputChange: (deviceId: string) => void;
   onClose: () => void;
 }
@@ -11,6 +13,8 @@ interface SettingsModalProps {
 export function SettingsModal({
   inputDevices,
   selectedInputId,
+  inputError,
+  inputDisabled,
   onInputChange,
   onClose,
 }: SettingsModalProps) {
@@ -30,6 +34,7 @@ export function SettingsModal({
             <span>Input device</span>
             <select
               value={selectedInputId}
+              disabled={inputDisabled}
               onChange={(event) => onInputChange(event.target.value)}
             >
               <option value="default">System default</option>
@@ -42,6 +47,16 @@ export function SettingsModal({
                 ))}
             </select>
           </label>
+          {inputError ? (
+            <p className="settings-error" role="alert">
+              {inputError}
+            </p>
+          ) : null}
+          {inputDisabled ? (
+            <p className="settings-note">
+              Finish connecting before changing microphones.
+            </p>
+          ) : null}
           <div className="audio-meter" aria-label="Input level preview">
             <i />
             <i />

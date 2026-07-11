@@ -1,5 +1,7 @@
-export const INVITE_CODE_MIN_LENGTH = 8;
-export const INVITE_CODE_MAX_LENGTH = 32;
+export const INVITE_CODE_MIN_LENGTH = 34;
+export const INVITE_CODE_MAX_LENGTH = 34;
+
+const INVITE_CODE_PATTERN = /^BK[0-9A-F]{32}$/;
 
 export type InviteCodeError =
   "required" | "too_short" | "too_long" | "invalid_characters";
@@ -22,8 +24,9 @@ export type InviteEligibility =
   | { ok: false; code: string; error: InviteEligibilityError };
 
 /**
- * Produces the canonical representation stored by the backend. Separators are
- * presentation-only, so users can paste `ABCD-EFGH` or type `abcd efgh`.
+ * Produces the canonical representation hashed by the backend. Separators are
+ * presentation-only, so users can paste the grouped code returned by
+ * `private.issue_invite_code` or type it with spaces instead of hyphens.
  */
 export function normalizeInviteCode(value: string): string {
   return value
@@ -43,6 +46,10 @@ export function validateInviteCode(value: string): InviteCodeValidation {
     return { ok: false, code, error: "required" };
   }
 
+  if (!/^[A-Z0-9]+$/.test(code)) {
+    return { ok: false, code, error: "invalid_characters" };
+  }
+
   if (code.length < INVITE_CODE_MIN_LENGTH) {
     return { ok: false, code, error: "too_short" };
   }
@@ -51,7 +58,7 @@ export function validateInviteCode(value: string): InviteCodeValidation {
     return { ok: false, code, error: "too_long" };
   }
 
-  if (!/^[A-Z0-9]+$/.test(code)) {
+  if (!INVITE_CODE_PATTERN.test(code)) {
     return { ok: false, code, error: "invalid_characters" };
   }
 

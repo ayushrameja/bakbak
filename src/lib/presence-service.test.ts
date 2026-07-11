@@ -1,0 +1,126 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  onlineUserIdsFromHeartbeats,
+  PRESENCE_EXPIRY_MS,
+  subscribeToServerPresence,
+} from "./presence-service";
+
+const presenceState = vi.hoisted(() => {
+  const query = {
+    eq: vi.fn(),
+    returns: vi.fn(),
+  };
+  const channel = {
+    on: vi.fn(),
+    subscribe: vi.fn(),
+  };
+  return {
+    authGetSession: vi.fn(),
+    channel,
+    channelFactory: vi.fn(),
+    from: vi.fn(),
+    query,
+    realtimeSetAuth: vi.fn(),
+    removeChannel: vi.fn(),
+    rpc: vi.fn(),
+    select: vi.fn(),
+  };
+});
+
+vi.mock("./supabase", () => ({
+  getSupabaseClient: () => ({
+    auth: { getSession: presenceState.authGetSession },
+    channel: presenceState.channelFactory,
+    from: presenceState.from,
+    realtime: { setAuth: presenceState.realtimeSetAuth },
+    removeChannel: presenceState.removeChannel,
+    rpc: presenceState.rpc,
+  }),
+}));
+
+describe("server presence", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    presenceState.authGetSession.mockResolvedValue({
+      data: { session: { access_token: "session-token" } },
+      error: null,
+    });
+    presenceState.realtimeSetAuth.mockResolvedValue(undefined);
+    presenceState.rpc.mockResolvedValue({
+      data: new Date().toISOString(),
+      error: null,
+    });
+    presenceState.channel.on.mockReturnValue(presenceState.channel);
+    presenceState.channel.subscribe.mockReturnValue(presenceState.channel);
+    presenceState.channelFactory.mockReturnValue(presenceState.channel);
+    presenceState.from.mockReturnValue({ select: presenceState.select });
+    presenceState.select.mockReturnValue(presenceState.query);
+    presenceState.query.eq.mockReturnValue(presenceState.query);
+    presenceState.query.returns.mockResolvedValue({
+      data: [
+        { user_id: "user-1", last_seen_at: new Date().toISOString() },
+        { user_id: "user-2", last_seen_at: new Date().toISOString() },
+      ],
+      error: null,
+    });
+  });
+
+  it("keeps fresh heartbeats and expires stale users", () => {
+    const now = Date.now();
+    expect([
+      ...onlineUserIdsFromHeartbeats(
+        [
+          {
+            user_id: "fresh",
+            last_seen_at: new Date(now - 1000).toISOString(),
+          },
+          {
+            user_id: "stale",
+            last_seen_at: new Date(now - PRESENCE_EXPIRY_MS - 1).toISOString(),
+          },
+        ],
+        now,
+      ),
+    ]).toEqual(["fresh"]);
+  });
+
+  it("authenticates, publishes a heartbeat, syncs rows, and cleans up", async () => {
+    const onSync = vi.fn();
+    const unsubscribe = subscribeToServerPresence({
+      serverId: "server-1",
+      userId: "user-1",
+      onSync,
+    });
+
+    await vi.waitFor(() =>
+      expect(presenceState.realtimeSetAuth).toHaveBeenCalledWith(
+        "session-token",
+      ),
+    );
+    await vi.waitFor(() =>
+      expect(presenceState.rpc).toHaveBeenCalledWith("heartbeat_presence", {
+        p_server_id: "server-1",
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(onSync).toHaveBeenCalledWith(new Set(["user-1", "user-2"])),
+    );
+
+    expect(presenceState.channelFactory).toHaveBeenCalledWith(
+      "presence-heartbeats:server-1",
+    );
+    expect(presenceState.channel.on).toHaveBeenCalledWith(
+      "postgres_changes",
+      expect.objectContaining({
+        table: "presence_heartbeats",
+        filter: "server_id=eq.server-1",
+      }),
+      expect.any(Function),
+    );
+
+    unsubscribe();
+    expect(presenceState.removeChannel).toHaveBeenCalledWith(
+      presenceState.channel,
+    );
+  });
+});

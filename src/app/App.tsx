@@ -1,23 +1,25 @@
 import {
-  Bell,
   CircleAlert,
-  Command,
   Hash,
-  HelpCircle,
   MessageCircle,
-  Pin,
-  Plus,
-  Search,
   Users,
   Volume2,
   Wifi,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Avatar } from "../components/Avatar";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AuthScreen } from "../features/auth/AuthScreen";
 import { InviteGate } from "../features/auth/InviteGate";
 import { ChannelSidebar } from "../features/channels/ChannelSidebar";
+import {
+  markChannelRead,
+  shouldPlayIncomingMessageSound,
+  unreadChannelsAfterMessage,
+} from "../features/chat/channel-activity";
 import { ChatView } from "../features/chat/ChatView";
+import {
+  enableIncomingMessageSound,
+  playIncomingMessageSound,
+} from "../features/chat/message-sound";
 import { MemberList } from "../features/server/MemberList";
 import { SettingsModal } from "../features/settings/SettingsModal";
 import { VoiceRoom } from "../features/voice/VoiceRoom";
@@ -26,6 +28,7 @@ import { sessionToAppUser, signOut } from "../lib/auth-service";
 import { appConfig } from "../lib/env";
 import { mockCurrentUser, mockMessages, mockWorkspace } from "../lib/mock-data";
 import { getSupabaseClient } from "../lib/supabase";
+import { subscribeToServerPresence } from "../lib/presence-service";
 import type {
   AppUser,
   Channel,
@@ -51,7 +54,22 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [needsInvite, setNeedsInvite] = useState(false);
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
+  const [unreadChannelIds, setUnreadChannelIds] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+  const selectedChannelIdRef = useRef(selectedChannelId);
   const voice = useVoiceRoom(user ?? mockCurrentUser, appConfig.dataMode);
+  const workspaceServerId = workspace?.server.id;
+
+  useEffect(() => {
+    const enable = () => void enableIncomingMessageSound();
+    window.addEventListener("pointerdown", enable, { once: true });
+    window.addEventListener("keydown", enable, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", enable);
+      window.removeEventListener("keydown", enable);
+    };
+  }, []);
 
   useEffect(() => {
     if (appConfig.dataMode !== "live") {
@@ -76,6 +94,7 @@ export default function App() {
       setNeedsInvite(false);
       setSelectedChannelId("");
       setMessages([]);
+      setUnreadChannelIds(new Set());
       return;
     }
     let cancelled = false;
@@ -113,12 +132,82 @@ export default function App() {
     };
   }, [user, workspaceRevision]);
 
+  useEffect(() => {
+    if (appConfig.dataMode !== "live" || !user || !workspaceServerId) {
+      return;
+    }
+
+    return subscribeToServerPresence({
+      serverId: workspaceServerId,
+      userId: user.id,
+      onSync: (onlineUserIds) => {
+        setWorkspace((current) => {
+          if (!current || current.server.id !== workspaceServerId)
+            return current;
+          const members = current.members.map((member) => ({
+            ...member,
+            status:
+              member.id === user.id || onlineUserIds.has(member.id)
+                ? ("online" as const)
+                : ("offline" as const),
+          }));
+          return { ...current, members };
+        });
+      },
+      onError: setAppError,
+    });
+  }, [user, workspaceServerId]);
+
   const selectedChannel = useMemo(
     () =>
       workspace?.channels.find((channel) => channel.id === selectedChannelId) ??
       null,
     [selectedChannelId, workspace],
   );
+
+  const textChannelIds = useMemo(
+    () =>
+      workspace?.channels
+        .filter((channel) => channel.kind === "text")
+        .map((channel) => channel.id) ?? [],
+    [workspace?.channels],
+  );
+
+  useEffect(() => {
+    selectedChannelIdRef.current = selectedChannelId;
+    if (selectedChannelId) {
+      setUnreadChannelIds((current) =>
+        markChannelRead(current, selectedChannelId),
+      );
+    }
+  }, [selectedChannelId]);
+
+  useEffect(() => {
+    if (appConfig.dataMode !== "live" || !user) return;
+    const unsubscribers = textChannelIds.map((channelId) =>
+      subscribeToLiveMessages(channelId, (message) => {
+        if (message.channelId === selectedChannelIdRef.current) {
+          setMessages((current) =>
+            current.some((item) => item.id === message.id)
+              ? current
+              : [...current, message],
+          );
+        }
+        setUnreadChannelIds((current) =>
+          unreadChannelsAfterMessage(
+            current,
+            message,
+            selectedChannelIdRef.current,
+            user.id,
+          ),
+        );
+        if (shouldPlayIncomingMessageSound(message, user.id)) {
+          void playIncomingMessageSound();
+        }
+      }),
+    );
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+  }, [textChannelIds, user]);
 
   useEffect(() => {
     if (!user || !selectedChannel || selectedChannel.kind !== "text") return;
@@ -144,19 +233,8 @@ export default function App() {
       }
     };
     void load();
-    const unsubscribe =
-      appConfig.dataMode === "live"
-        ? subscribeToLiveMessages(selectedChannel.id, (message) => {
-            setMessages((current) =>
-              current.some((item) => item.id === message.id)
-                ? current
-                : [...current, message],
-            );
-          })
-        : undefined;
     return () => {
       cancelled = true;
-      unsubscribe?.();
     };
   }, [selectedChannel, user]);
 
@@ -232,6 +310,8 @@ export default function App() {
   }
 
   function handleSelectChannel(channel: Channel) {
+    selectedChannelIdRef.current = channel.id;
+    setUnreadChannelIds((current) => markChannelRead(current, channel.id));
     setSelectedChannelId(channel.id);
   }
 
@@ -297,13 +377,14 @@ export default function App() {
 
   return (
     <div className="desktop-shell">
-      <ServerRail currentUser={user} />
+      <ServerRail />
       <ChannelSidebar
         server={workspace.server}
         channels={workspace.channels}
         selectedChannelId={selectedChannel.id}
         user={user}
         voice={voice}
+        unreadChannelIds={unreadChannelIds}
         onSelect={handleSelectChannel}
         onOpenSettings={() => setSettingsOpen(true)}
         onSignOut={() => void handleSignOut()}
@@ -350,6 +431,10 @@ export default function App() {
         <SettingsModal
           inputDevices={voice.inputDevices}
           selectedInputId={voice.selectedInputId}
+          inputError={voice.inputDeviceError}
+          inputDisabled={
+            voice.status === "connecting" || voice.status === "reconnecting"
+          }
           onInputChange={(deviceId) => void voice.setInputDevice(deviceId)}
           onClose={() => setSettingsOpen(false)}
         />
@@ -358,39 +443,18 @@ export default function App() {
   );
 }
 
-function ServerRail({ currentUser }: { currentUser: AppUser }) {
+function ServerRail() {
   return (
     <aside className="server-rail" aria-label="Servers">
-      <button
-        className="server-rail__home active"
-        type="button"
-        aria-label="Bakbak home"
-      >
+      <span className="server-rail__home active" aria-label="Bakbak home">
         <MessageCircle size={23} />
-      </button>
+      </span>
       <div className="server-rail__divider" />
-      <button
-        className="server-rail__server"
-        type="button"
-        aria-label="The Corner"
-      >
+      <span className="server-rail__server" aria-label="The Corner">
         <span>TC</span>
         <i />
-      </button>
-      <button
-        className="server-rail__add"
-        type="button"
-        aria-label="Add server"
-        disabled
-        title="One server in v1"
-      >
-        <Plus size={20} />
-      </button>
+      </span>
       <div className="server-rail__spacer" />
-      <button className="server-rail__utility" type="button" aria-label="Help">
-        <HelpCircle size={18} />
-      </button>
-      <Avatar user={currentUser} size="small" />
     </aside>
   );
 }
@@ -417,23 +481,13 @@ function TopBar({
         <span className={`connection-chip connection-chip--${mode}`}>
           <Wifi size={13} /> {mode === "mock" ? "Local preview" : "Live"}
         </span>
-        <button type="button" aria-label="Notifications">
-          <Bell size={18} />
-        </button>
-        <button type="button" aria-label="Pinned messages">
-          <Pin size={18} />
-        </button>
-        <button type="button" aria-label={`${memberCount} members`}>
+        <span
+          className="top-bar__member-count"
+          aria-label={`${memberCount} members`}
+        >
           <Users size={18} />
           <span>{memberCount}</span>
-        </button>
-        <label className="search-field">
-          <Search size={15} />
-          <input aria-label="Search messages" placeholder="Search" />
-          <kbd>
-            <Command size={11} />K
-          </kbd>
-        </label>
+        </span>
       </div>
     </header>
   );
