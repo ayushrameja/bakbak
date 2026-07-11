@@ -66,7 +66,7 @@ export function ChatView({
         {messages.length === 0 ? (
           <div className="empty-conversation">
             <span>There is an admirably suspicious amount of peace here.</span>
-            <p>Send the first message before someone ruins it with “hey”.</p>
+            <p>Tai, yaar apna kaam kar—then send the first message.</p>
           </div>
         ) : null}
 

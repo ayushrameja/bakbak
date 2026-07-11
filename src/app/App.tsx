@@ -1,11 +1,4 @@
-import {
-  CircleAlert,
-  Hash,
-  MessageCircle,
-  Users,
-  Volume2,
-  Wifi,
-} from "lucide-react";
+import { CircleAlert, Hash, MessageCircle, Users, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AuthScreen } from "../features/auth/AuthScreen";
 import { InviteGate } from "../features/auth/InviteGate";
@@ -21,6 +14,7 @@ import {
   playIncomingMessageSound,
 } from "../features/chat/message-sound";
 import { MemberList } from "../features/server/MemberList";
+import { ConnectionStatus } from "../features/server/ConnectionStatus";
 import { SettingsModal } from "../features/settings/SettingsModal";
 import { VoiceRoom } from "../features/voice/VoiceRoom";
 import { useVoiceRoom } from "../features/voice/useVoiceRoom";
@@ -429,7 +423,6 @@ export default function App() {
 
   return (
     <div className="desktop-shell">
-      <ServerRail />
       <ChannelSidebar
         server={workspace.server}
         channels={workspace.channels}
@@ -447,40 +440,43 @@ export default function App() {
           channel={selectedChannel}
           memberCount={workspace.members.length}
           mode={appConfig.dataMode}
+          voiceConnected={voice.status === "connected"}
         />
-        {appError ? (
-          <div className="app-alert" role="alert">
-            <CircleAlert size={16} />
-            <span>{appError}</span>
-            <button type="button" onClick={() => setAppError(null)}>
-              Dismiss
-            </button>
-          </div>
-        ) : null}
-        <div className="content-grid">
-          {selectedChannel.kind === "text" ? (
-            <>
-              <ChatView
+        <div className="content-stage">
+          {appError ? (
+            <div className="app-alert" role="alert">
+              <CircleAlert size={16} />
+              <span>{appError}</span>
+              <button type="button" onClick={() => setAppError(null)}>
+                Dismiss
+              </button>
+            </div>
+          ) : null}
+          <div className="content-grid">
+            {selectedChannel.kind === "text" ? (
+              <>
+                <ChatView
+                  channel={selectedChannel}
+                  messages={messages}
+                  members={workspace.members}
+                  currentUser={user}
+                  sending={sending}
+                  onSend={handleSend}
+                />
+                <MemberList members={workspace.members} />
+              </>
+            ) : (
+              <VoiceRoom
                 channel={selectedChannel}
-                messages={messages}
-                members={workspace.members}
-                currentUser={user}
-                sending={sending}
-                onSend={handleSend}
+                user={user}
+                voice={voice}
+                occupants={voiceOccupants.filter(
+                  (occupant) => occupant.channelId === selectedChannel.id,
+                )}
+                onOpenSettings={() => setSettingsOpen(true)}
               />
-              <MemberList members={workspace.members} />
-            </>
-          ) : (
-            <VoiceRoom
-              channel={selectedChannel}
-              user={user}
-              voice={voice}
-              occupants={voiceOccupants.filter(
-                (occupant) => occupant.channelId === selectedChannel.id,
-              )}
-              onOpenSettings={() => setSettingsOpen(true)}
-            />
-          )}
+            )}
+          </div>
         </div>
       </main>
       {settingsOpen ? (
@@ -508,30 +504,16 @@ export default function App() {
   );
 }
 
-function ServerRail() {
-  return (
-    <aside className="server-rail" aria-label="Servers">
-      <span className="server-rail__home active" aria-label="Bakbak home">
-        <MessageCircle size={23} />
-      </span>
-      <div className="server-rail__divider" />
-      <span className="server-rail__server" aria-label="The Corner">
-        <span>TC</span>
-        <i />
-      </span>
-      <div className="server-rail__spacer" />
-    </aside>
-  );
-}
-
 function TopBar({
   channel,
   memberCount,
   mode,
+  voiceConnected,
 }: {
   channel: Channel;
   memberCount: number;
   mode: "mock" | "live";
+  voiceConnected: boolean;
 }) {
   return (
     <header className="top-bar">
@@ -543,9 +525,12 @@ function TopBar({
         </div>
       </div>
       <div className="top-bar__actions">
-        <span className={`connection-chip connection-chip--${mode}`}>
-          <Wifi size={13} /> {mode === "mock" ? "Local preview" : "Live"}
-        </span>
+        <ConnectionStatus
+          mode={mode}
+          backendUrl={appConfig.supabaseUrl}
+          backendRegion={appConfig.backendRegion}
+          voiceConnected={voiceConnected}
+        />
         <span
           className="top-bar__member-count"
           aria-label={`${memberCount} members`}

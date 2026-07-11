@@ -41,8 +41,9 @@ starts with context instead of archaeological guessing.
 - Place shared UI in `src/components`, service clients in `src/lib`, and the
   application shell/providers in `src/app`.
 - Keep native configuration and Rust code isolated in `src-tauri`.
-- Use a dark, calm, polished desktop interface with a server rail, channel
-  sidebar, main content area, and persistent voice controls.
+- Use a dark, calm, polished desktop interface with a channel sidebar, main
+  content area, full-height member panel, and persistent voice controls. The
+  deferred server rail is removed until multi-server navigation is in scope.
 - Commit `.env.example` only. Use ignored `.env` files locally and
   platform-managed secrets for backend functions.
 

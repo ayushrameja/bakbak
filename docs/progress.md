@@ -504,3 +504,48 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
   join Lounge from one side first to confirm pre-join occupancy, then join from
   the second side and run the media/device/reconnect/expiry checklist. Record
   the observed results before closing plan `0002`.
+
+## 2026-07-11 — Repair chat layout and streamline the private room UI
+
+- **Completed:** Repaired the desktop grid so the chat composer stays pinned to
+  the bottom of the window and the member panel fills the remaining height.
+  Removed the unused server/DM rail, simplified the sign-in experience to one
+  centered private-room card, and added light Nahan/Hinglish copy in the mock
+  experience. Added a hover/focus connection detail that measures a Supabase
+  Auth health round trip every 30 seconds, labels the deployed Supabase backend
+  as Canada Central (`ca-central-1`), and separately identifies the observed
+  LiveKit voice region as India West.
+- **Decisions:** Kept backend and voice status distinct: API latency is not
+  presented as voice latency. Made the backend region a public
+  `VITE_BACKEND_REGION` label with the deployed region as the default, so a
+  future backend move changes the label without leaking any secret. Deferred
+  the server rail until multi-server navigation is actually in scope. Local
+  jokes appear only in friendly, non-critical copy; authentication, errors,
+  and voice controls remain direct.
+- **Validation:**
+  - `pnpm test -- ConnectionStatus.test.tsx ChannelSidebar.test.tsx` — passed;
+    18 files and 93 tests passed.
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 18 Vitest files
+    with 93 tests, production renderer build, and compiled-artifact secret
+    scan. The existing non-blocking large-chunk warning remains.
+  - `pnpm tauri build` — completed the renderer build and Rust compilation but
+    did not return a final bundle result in the terminal capture.
+  - `pnpm tauri build --bundles app` — passed; produced an ad-hoc-signed macOS
+    `Bakbak.app`. Notarization was skipped because Apple distribution
+    credentials are not configured.
+  - Local mock visual check at `http://127.0.0.1:1421` — passed: the composer
+    bottom was 27 px above a 720 px viewport and the member panel ran from the
+    67 px header to the viewport bottom. The simplified sign-in and chat
+    layouts rendered with the rail removed. The browser harness did not expose
+    a synthetic CSS hover state, but the connection detail content is present
+    in the accessible DOM and covered by its component test.
+  - `git diff --check` — passed.
+- **Documentation updated:** `.env.example`, `docs/architecture.md`,
+  `docs/plans/0001-bakbak-desktop-v1.md`, and `docs/progress.md`.
+- **Known limitations:** The top-bar voice entry identifies the last observed
+  India West signaling region and connected/standby state; it does not yet
+  expose a LiveKit media RTT. The full native friend-test acceptance sequence
+  for presence, voice, video, devices, reconnect, and soundboard remains open.
+- **Next:** Relaunch the installed app for a human two-account friend-test;
+  verify the connection detail in live mode and record the actual API and media
+  behavior alongside the existing voice/video acceptance checklist.

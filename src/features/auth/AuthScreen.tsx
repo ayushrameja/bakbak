@@ -1,11 +1,4 @@
-import {
-  ArrowRight,
-  Check,
-  LockKeyhole,
-  MessageCircle,
-  Radio,
-  Sparkles,
-} from "lucide-react";
+import { ArrowRight, Check, MessageCircle } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { signIn, signUpAndRedeemInvite } from "../../lib/auth-service";
 import type { AppUser, DataMode } from "../../lib/types";
@@ -70,66 +63,33 @@ export function AuthScreen({
       <div className="auth-page__glow auth-page__glow--one" />
       <div className="auth-page__glow auth-page__glow--two" />
 
-      <section className="auth-story">
-        <div className="brand-lockup">
-          <span className="brand-mark">
-            <MessageCircle size={24} />
-          </span>
-          <span>bakbak</span>
-        </div>
-        <div className="auth-story__copy">
-          <span className="availability-pill">
-            <i /> Private by design
-          </span>
-          <h1>
-            Your people.
-            <br />
-            <em>Your room.</em>
-          </h1>
-          <p>
-            Voice, messages, and just enough soundboard chaos for the friends
-            who already understand the context.
-          </p>
-          <div className="auth-benefits">
-            <span>
-              <Radio size={17} /> Drop-in voice rooms
-            </span>
-            <span>
-              <Sparkles size={17} /> Shared sound moments
-            </span>
-            <span>
-              <LockKeyhole size={17} /> Invite-only access
-            </span>
-          </div>
-        </div>
-        <blockquote>
-          “A good conversation does not need an algorithm.”
-          <span>— the refreshingly boring product strategy</span>
-        </blockquote>
-      </section>
-
       <section className="auth-panel">
         <div className="auth-card">
           <div className="auth-card__topline">
+            <div className="brand-lockup">
+              <span className="brand-mark">
+                <MessageCircle size={21} />
+              </span>
+              <span>bakbak</span>
+            </div>
             <span className={`mode-badge mode-badge--${mode}`}>
-              {mode === "mock" ? "Local preview" : "Private server"}
+              {mode === "mock" ? "Preview" : "Private"}
             </span>
-            <span className="platform-label">Desktop v1</span>
           </div>
           <header>
             <h2>
               {mode === "mock"
-                ? "Come see the room"
+                ? "Come see the room."
                 : view === "join"
-                  ? "Join your friends"
-                  : "Welcome back"}
+                  ? "Join the room."
+                  : "Welcome back."}
             </h2>
             <p>
               {mode === "mock"
-                ? "Explore the complete interface with friendly sample data. Nothing leaves this device."
+                ? "Apne log. Apni bakbak. Nothing leaves this device."
                 : view === "join"
-                  ? "Create your account with the single-use code you received."
-                  : "Sign in to pick up where the conversation wandered off."}
+                  ? "Use the invite your friend sent. No public rooms, no nonsense."
+                  : "Sign in and get back to the bakbak."}
             </p>
           </header>
 
@@ -241,13 +201,10 @@ export function AuthScreen({
 
           <footer>
             <span>
-              <Check size={15} /> 5–10 friends
+              <Check size={15} /> invite-only
             </span>
             <span>
               <Check size={15} /> no public discovery
-            </span>
-            <span>
-              <Check size={15} /> no ads, obviously
             </span>
           </footer>
         </div>

@@ -9,7 +9,7 @@ and phase completion belong in the numbered files under `docs/plans`.
 
 As of 2026-07-11, Bakbak has a complete local/mock product path and
 production Supabase and LiveKit adapters. The renderer provides the
-invite-only welcome flow, server rail, channel sidebar, realtime-capable text
+invite-only welcome flow, channel sidebar, realtime-capable text
 chat, incoming-message sounds, per-channel unread emphasis, member list, voice
 rooms, locally persisted microphone/speaker/camera selection, opt-in 720p
 camera calls, pre-join room occupancy with elapsed timers, mute/deafen,
@@ -104,18 +104,24 @@ architectural placeholder folders are not used.
 
 ## UI composition
 
-The renderer uses a four-part desktop layout:
+The renderer uses a three-part desktop layout:
 
-1. A compact server rail. V1 displays one private server but retains a boundary
-   that can support more later.
-2. A channel sidebar containing text and voice rooms.
-3. A main content area for chat, room state, empty states, and errors.
+1. A channel sidebar containing the current private server's text and voice
+   rooms.
+2. A main content area for chat, room state, empty states, and errors, with a
+   bottom-pinned composer and independently scrollable messages.
+3. A desktop member panel that shares the main content area's full height.
+   Narrow windows hide it without changing the chat layout.
 4. Persistent voice controls for connection status, microphone, camera, mute,
    deafen, and leave.
 
-The visual language is dark, calm, and polished. Accessibility, clear focus
-states, readable contrast, and reduced-motion behavior are requirements rather
-than post-v1 garnish.
+The top bar includes an accessible hover/focus connection detail. In live mode
+it measures a Supabase Auth health round trip every 30 seconds and labels the
+publicly configured backend region. Voice is separately labelled India West,
+the observed LiveKit signaling region; it is never presented as the database
+ping. The visual language is dark, calm, and polished. Accessibility, clear
+focus states, readable contrast, and reduced-motion behavior are requirements
+rather than post-v1 garnish.
 
 ## Runtime and trust boundaries
 
@@ -331,6 +337,7 @@ credential in a `VITE_*` variable.
 | `VITE_SUPABASE_URL`      | Public Supabase project URL                                                    | No      |
 | `VITE_SUPABASE_ANON_KEY` | Supabase public/anonymous client credential; RLS remains mandatory             | No      |
 | `VITE_LIVEKIT_URL`       | Public LiveKit WebSocket URL                                                   | No      |
+| `VITE_BACKEND_REGION`    | Public label for the deployed Supabase backend, currently Canada Central       | No      |
 
 ### Edge Function managed values
 
