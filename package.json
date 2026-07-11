@@ -1,7 +1,8 @@
 {
   "name": "bakbak",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
+  "packageManager": "pnpm@11.3.0",
   "description": "A private voice, text, and soundboard desktop space for close friends.",
   "type": "module",
   "scripts": {
@@ -11,11 +12,12 @@
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "vitest run",
+    "test": "vitest run && node --test scripts/*.test.mjs",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "security:scan": "node scripts/check-bundle-secrets.mjs",
-    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm security:scan",
+    "version:check": "node scripts/set-version.mjs --check",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm version:check && pnpm build && pnpm security:scan",
     "preview": "vite preview",
     "tauri": "tauri"
   },
@@ -23,6 +25,8 @@
     "@supabase/supabase-js": "^2.110.2",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "livekit-client": "^2.20.1",
     "lucide-react": "^1.24.0",
     "react": "^19.1.0",

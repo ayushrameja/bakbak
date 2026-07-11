@@ -3,7 +3,8 @@
 - **Status:** Active
 - **Approved:** 2026-07-11
 - **Target users:** One private group of 5–10 friends
-- **Primary platform:** macOS first; Windows and Linux after friend testing
+- **Primary platform:** macOS and Windows desktop releases; Linux after friend
+  testing
 - **First usable release:** Voice, persistent text chat, and a bundled
   synchronized soundboard
 
@@ -52,7 +53,7 @@ starts with context instead of archaeological guessing.
 - One private server with multiple text and voice rooms.
 - Email/password authentication plus a single-use invite code.
 - One seeded admin; all invited users become members.
-- macOS first; Windows and Linux afterward.
+- macOS and Windows installers; Linux afterward.
 - The first usable release includes voice, text, and a bundled soundboard.
 
 ## Phased implementation
@@ -137,9 +138,18 @@ the approved follow-up plan `0002-voice-video-and-presence.md`.
 
 ### Phase 6 — Distribution
 
-- [ ] Build and validate macOS first.
+- [x] Add synchronized SemVer tooling with patch-by-default release labels.
+- [x] Add signed Tauri update artifacts, a public GitHub Releases endpoint, and
+      an explicit in-app update-and-restart experience.
+- [x] Add gated GitHub Actions validation and draft release workflows for macOS
+      Apple Silicon, macOS Intel, and Windows x64 NSIS installers.
+- [ ] Configure the updater signing secrets and live renderer variables in
+      GitHub Actions.
+- [ ] Publish and validate the first updater-enabled `0.2.0` release.
+- [ ] Manually validate a `0.2.0` to later-version update on macOS and Windows.
+- [ ] Build and validate macOS installers in GitHub Actions.
 - [ ] Document any initial unsigned or unnotarized installer warnings.
-- [ ] Add Windows installer builds after friend testing.
+- [ ] Build and validate the Windows x64 installer in GitHub Actions.
 - [ ] Add Linux installer builds after friend testing.
 - [ ] Revisit signing and notarization after the core product is stable.
 - [ ] Update architecture, plan status, and the append-only progress log.
@@ -194,5 +204,5 @@ After every phase:
 - Advanced roles and permission management.
 - Invite-management UI.
 - Desktop notifications and tray controls.
-- Windows and Linux distribution before friend testing.
+- Linux distribution before friend testing.
 - Signing and notarization before the core product is stable.

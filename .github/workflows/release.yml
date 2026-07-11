@@ -1,0 +1,201 @@
+name: Desktop release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: SemVer bump for a manually requested release
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+env:
+  VITE_DATA_MODE: live
+  VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+  VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+  VITE_LIVEKIT_URL: ${{ vars.VITE_LIVEKIT_URL }}
+  VITE_BACKEND_REGION: ${{ vars.VITE_BACKEND_REGION }}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      bump: ${{ steps.version.outputs.bump }}
+      skip: ${{ steps.version.outputs.skip }}
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Read merged pull request labels
+        id: labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          labels=""
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            labels="$(gh api "/repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '.[0].labels[].name' 2>/dev/null | paste -sd, - || true)"
+          fi
+          echo "labels=$labels" >> "$GITHUB_OUTPUT"
+      - name: Resolve release version
+        id: version
+        env:
+          LABELS: ${{ steps.labels.outputs.labels }}
+          MANUAL_BUMP: ${{ inputs.bump }}
+        shell: bash
+        run: |
+          current="$(git tag --list 'v[0-9]*' --sort=-v:refname | head -n 1)"
+          fallback="$(node -p "JSON.parse(require('fs').readFileSync('package.json')).version")"
+          node scripts/release-version.mjs \
+            --current "$current" \
+            --fallback "$fallback" \
+            --labels "$LABELS" \
+            --bump "$MANUAL_BUMP" >> "$GITHUB_OUTPUT"
+
+  validate:
+    needs: prepare
+    if: needs.prepare.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/check-release-env.mjs
+      - run: pnpm check
+      - run: cargo check --locked --manifest-path src-tauri/Cargo.toml
+
+  build:
+    needs: [prepare, validate]
+    if: needs.prepare.outputs.skip != 'true'
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Apple Silicon
+            platform: macos-latest
+            args: --target aarch64-apple-darwin --bundles dmg
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+          - name: macOS Intel
+            platform: macos-latest
+            args: --target x86_64-apple-darwin --bundles dmg
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+          - name: Windows x64
+            platform: windows-latest
+            args: --bundles nsis
+            rust-targets: ""
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/set-version.mjs ${{ needs.prepare.outputs.version }}
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: v__VERSION__
+          releaseName: Bakbak v__VERSION__
+          releaseBody: Install the build for your platform. Existing updater-enabled Bakbak installations will offer this release in-app.
+          releaseCommitish: ${{ github.sha }}
+          releaseDraft: true
+          prerelease: false
+          generateReleaseNotes: true
+          updaterJsonPreferNsis: true
+          retryAttempts: 1
+          args: ${{ matrix.args }}
+
+  publish:
+    needs: [prepare, build]
+    if: needs.prepare.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Download and verify updater manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        shell: bash
+        run: |
+          mkdir release-assets
+          gh release download "$RELEASE_TAG" --pattern latest.json --dir release-assets
+          node scripts/verify-updater-manifest.mjs release-assets/latest.json "$RELEASE_VERSION"
+      - name: Verify release installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        shell: bash
+        run: |
+          assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+          dmg_count="$(printf '%s\n' "$assets" | grep -c '\.dmg$' || true)"
+          exe_count="$(printf '%s\n' "$assets" | grep -c '\.exe$' || true)"
+          test "$dmg_count" -ge 2
+          test "$exe_count" -ge 1
+      - name: Publish verified release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: gh release edit "$RELEASE_TAG" --draft=false --latest

@@ -549,3 +549,115 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
 - **Next:** Relaunch the installed app for a human two-account friend-test;
   verify the connection detail in live mode and record the actual API and media
   behavior alongside the existing voice/video acceptance checklist.
+
+## 2026-07-11 — Add versioned desktop releases and signed updates
+
+- **Completed:** Advanced the approved distribution scope to macOS and Windows,
+  synchronized the tracked application version at `0.2.0`, added tested SemVer
+  resolution and manifest verification scripts, and added pull-request CI plus
+  a serialized release workflow. The release matrix builds macOS Apple Silicon,
+  macOS Intel, and Windows x64 NSIS installers, keeps releases in draft state
+  until every installer and updater target is verified, and then publishes the
+  release as latest. Added the Tauri updater and process plugins, minimal
+  updater/restart capabilities, signed updater artifacts, a public GitHub
+  Releases endpoint, passive Windows installation, and a global update notice
+  that checks automatically but requires an explicit Update and restart action.
+- **Decisions:** Git tags and published releases are the release source of
+  truth; `0.2.0` is the first-release floor and later CI builds inject their
+  calculated version without bot commits. Merged changes default to a patch;
+  `release:minor`, `release:major`, and `release:skip` labels control exceptions.
+  Installation remains user-confirmed so Bakbak does not interrupt an active
+  conversation. The first updater keypair was discarded before use when the
+  pnpm wrapper echoed its generated password; a fresh password-protected pair
+  was generated through the underlying Tauri binary, and only its public key is
+  present in the repository.
+- **Validation:**
+  - `pnpm exec vitest run src/features/settings/AppUpdateNotice.test.tsx` —
+    passed; both updater UI tests passed.
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 19 Vitest files
+    with 95 tests, four Node release-script tests, version synchronization,
+    production renderer build, and compiled-artifact secret scanning. The
+    existing non-blocking large-chunk warning remains.
+  - `cargo check --locked --manifest-path src-tauri/Cargo.toml` — passed with
+    the updater and process plugins locked.
+  - Workflow YAML parse, representative patch/minor/skip calculations, and
+    `git diff --check` — passed. `actionlint` is not installed, so the workflows
+    have not yet been executed by GitHub Actions.
+  - `pnpm tauri build` with the updater signing key — compiled and signed the
+    `0.2.0` macOS app, then failed in the local DMG wrapper with the repository's
+    existing diagnostic-free `bundle_dmg.sh` error.
+  - `pnpm tauri build --bundles app` with the updater signing key — passed and
+    produced the ad-hoc-signed `Bakbak.app`, `Bakbak.app.tar.gz`, and its 404-byte
+    updater signature. Code-sign verification, bundle version checks, and the
+    post-bundle secret scan passed.
+  - GitHub Actions variable and label configuration — failed because the active
+    GitHub CLI credentials are invalid/read-only. Updater-secret upload was not
+    attempted after the security approval gate rejected sending the private key
+    without explicit user authorization.
+- **Documentation updated:** `README.md`, `docs/architecture.md`,
+  `docs/plans/0001-bakbak-desktop-v1.md`, and `docs/progress.md`.
+- **Known limitations:** GitHub Actions still needs the four public live
+  renderer variables plus the two updater signing secrets, and the release
+  labels do not yet exist remotely. The current valid private key and password
+  remain only in protected temporary local files and need a durable operator
+  backup. The macOS DMGs, Windows installer, `latest.json`, first `0.2.0`
+  release, and a real cross-version update have not been validated in CI.
+  macOS remains ad-hoc signed/unnotarized and Windows remains unsigned.
+- **Next:** Explicitly approve the updater-key upload, authenticate GitHub CLI
+  as `ayushrameja` with repository and Actions settings access, back up the key,
+  configure the variables/secrets/labels, then merge and observe the first
+  `0.2.0` release before testing an update to the next version on both platforms.
+
+## 2026-07-11 — Pin pnpm for GitHub Actions
+
+- **Completed:** Fixed the pull-request CI failure reported by
+  `pnpm/action-setup@v4` by declaring `pnpm@11.3.0` in the root
+  `packageManager` field. Both CI and release workflows now discover the same
+  pnpm version used by the working repository without duplicating it in each
+  workflow.
+- **Decisions:** Kept the package-manager version in `package.json` as the one
+  source of truth instead of adding separate workflow-specific versions that
+  could drift.
+- **Validation:**
+  - User-supplied GitHub Actions screenshot — confirmed the setup job failed
+    before installation with `Error: No pnpm version is specified`.
+  - `pnpm --version` — confirmed local version `11.3.0` before pinning.
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 19 Vitest files
+    with 95 tests, four release-script tests, version synchronization, the
+    production renderer build, and compiled-artifact secret scanning. The
+    existing non-blocking large-chunk warning remains.
+  - Workflow YAML parse for `ci.yml` and `release.yml` — passed.
+  - `git diff --check` — passed.
+- **Documentation updated:** `docs/architecture.md` and `docs/progress.md`.
+- **Known limitations:** The corrected workflow still needs a GitHub-hosted
+  rerun; this local change does not prove the remote runner or later release
+  jobs pass.
+- **Next:** Commit and push this fix to the open PR, confirm CI advances past
+  pnpm setup, and address only any newly surfaced downstream failure before
+  merging.
+
+## 2026-07-11 — Install Tauri Linux prerequisites in CI
+
+- **Completed:** Fixed the Ubuntu Cargo validation failure by installing the
+  official Tauri Debian/Ubuntu development dependencies before Rust checks in
+  both the pull-request CI job and the release validation job.
+- **Decisions:** Kept the Linux prerequisite list identical across CI and
+  release validation and aligned it with Tauri's documented WebKitGTK 4.1,
+  AppIndicator, SVG, X11, OpenSSL, and compiler requirements rather than adding
+  only the first missing GLib package from the error.
+- **Validation:**
+  - User-supplied GitHub Actions log — confirmed `cargo check --locked` reached
+    native compilation and failed because `pkg-config` could not find
+    `glib-2.0`, `gobject-2.0`, or `gio-2.0` on the Ubuntu runner.
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 19 Vitest files
+    with 95 tests, four release-script tests, version synchronization, the
+    production renderer build, and compiled-artifact secret scanning. The
+    existing non-blocking large-chunk warning remains.
+  - Workflow YAML parse for `ci.yml` and `release.yml` — passed.
+  - `git diff --check` — passed.
+- **Documentation updated:** `docs/architecture.md` and `docs/progress.md`.
+- **Known limitations:** The Ubuntu package installation and subsequent Cargo
+  check require a new GitHub-hosted run; macOS and Windows release jobs remain
+  unvalidated.
+- **Next:** Commit and push this workflow fix, confirm pull-request CI passes,
+  then merge only after the green result so the first desktop release can run.

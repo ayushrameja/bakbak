@@ -41,10 +41,12 @@ voice, video, device, soundboard, reconnect, and crash-expiry rehearsal remains
 open for human observation.
 
 The Tauri metadata, window sizing, Content Security Policy, minimal capability
-set, Bakbak icons, microphone and camera purpose strings, and audio-input plus
-camera entitlements are configured. A hardened-runtime macOS application can
-be ad-hoc signed locally; Developer ID signing and notarization remain deferred
-as approved.
+set, Bakbak icons, microphone and camera purpose strings, audio-input plus
+camera entitlements, and signed updater are configured. GitHub Actions validate
+pull requests and prepare versioned macOS Apple Silicon, macOS Intel, and
+Windows x64 releases. A hardened-runtime macOS application can be ad-hoc signed
+locally; Developer ID signing/notarization and Windows code signing remain
+deferred as approved.
 
 ## Technology stack
 
@@ -58,8 +60,10 @@ as approved.
 | Voice/data transport | LiveKit                           | Voice rooms, participant state, and soundboard data messages                |
 | Validation/testing   | Zod, Vitest, Testing Library      | Boundary validation and unit/component tests                                |
 
-There is one pnpm application, not a frontend/backend monorepo. Supabase assets
-will live alongside it for local development and deployment.
+There is one pnpm application, not a frontend/backend monorepo. `package.json`
+pins pnpm `11.3.0` through `packageManager` so local installs and GitHub Actions
+use the same package-manager release. Supabase assets live alongside the app for
+local development and deployment.
 
 ## Repository structure
 
@@ -68,6 +72,8 @@ The intended structure is:
 ```text
 bakbak/
 ├── AGENTS.md
+├── .github/
+│   └── workflows/                 # Pull-request validation and desktop releases
 ├── docs/
 │   ├── architecture.md
 │   ├── progress.md
@@ -76,6 +82,7 @@ bakbak/
 │       └── 0002-voice-video-and-presence.md
 ├── public/
 │   └── bakbak.svg                 # renderer favicon/source logo
+├── scripts/                       # Secret scan, SemVer, and release verification
 ├── src/
 │   ├── app/                       # application shell, routing, providers
 │   ├── components/                # reusable presentation components
@@ -137,7 +144,10 @@ sounds. It must never contain a service-role key or LiveKit API secret.
 Tauri owns the native window, capabilities, application identity, and desktop
 bundles. V1 should expose the smallest capability set needed by the renderer.
 Native commands are not an authorization substitute for Supabase RLS or Edge
-Function validation.
+Function validation. The updater capability may check, download, and install a
+manifest-signed update, while the process capability is narrowed to restart.
+The committed updater public key verifies artifacts; its password-protected
+private key must exist only in release infrastructure and an operator backup.
 
 ### Supabase
 
@@ -284,6 +294,32 @@ cameraDeviceId }` under the versioned local-storage key
 remembered device is absent, the selector returns to the runtime's default
 device. Chat notification audio deliberately bypasses the selected call output.
 
+### Desktop release and update
+
+1. Pull requests run formatting, lint, strict TypeScript, renderer/unit tests,
+   release-script tests, version synchronization, production build, secret
+   scan, and a locked Rust check.
+2. A merge to `main` resolves the next stable SemVer from the newest `v*` tag.
+   Patch is the default; `release:minor` and `release:major` labels override it,
+   while `release:skip` suppresses documentation-only releases.
+3. The release checkout synchronizes the calculated version across
+   `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`.
+4. Tauri Action builds macOS `aarch64`, macOS `x86_64`, and Windows `x86_64`
+   installers with the production renderer configuration. Update artifacts are
+   signed with the separate Tauri updater key.
+5. The workflow holds the GitHub Release as a draft until it verifies two DMGs,
+   one NSIS setup executable, and `latest.json` entries with URLs and signatures
+   for all three targets.
+6. Desktop clients check the public GitHub Releases `latest.json` shortly after
+   startup. An available update is shown globally; installation and restart
+   require an explicit user action so an active conversation is not interrupted.
+   Windows uses Tauri's passive installer mode.
+
+Git tags and published Releases are the release source of truth. The tracked
+`0.2.0` version is the first-release floor and the local-development version;
+CI injects later versions into its isolated checkout without creating version
+bump commits on `main`.
+
 ## Backend contracts
 
 These contracts match the current implementation.
@@ -354,6 +390,12 @@ credential in a `VITE_*` variable.
 ignored local `.env` files; Edge Function secrets use Supabase's managed secret
 store.
 
+Release workflows read the renderer-visible values from GitHub Actions
+repository variables and force `VITE_DATA_MODE=live`. They read
+`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` from
+GitHub Actions secrets. The updater private key and password are never Vite
+variables, renderer inputs, release assets, or committed files.
+
 ## Validation strategy
 
 Required repository-level checks are:
@@ -363,12 +405,21 @@ pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm test
+pnpm version:check
 pnpm build
 ```
 
 Run `pnpm tauri build` when validating platform integration or a distributable
 bundle. Database phases add Supabase migration/RLS tests. The first friend-test
 release also requires the manual macOS matrix in the active plan.
+
+GitHub release validation additionally requires successful native builds on
+both macOS architectures and Windows x64, updater signatures for every target,
+two DMG assets, one NSIS executable, and a complete version-matched
+`latest.json`. A release remains a draft when any platform or manifest check
+fails. Ubuntu validation runners install Tauri's WebKitGTK, GLib-transitive,
+AppIndicator, SVG, X11 automation, OpenSSL, and compiler development packages
+before invoking Cargo.
 
 Security validation must scan built renderer and desktop artifacts for forbidden
 service-role or LiveKit secret values. Record commands, results, and skipped
@@ -388,7 +439,13 @@ that it has passed.
 - The macOS app uses an ad-hoc hardened-runtime signature with audio-input and
   camera entitlements, but has no Developer ID signature or notarization, so
   Gatekeeper warnings are expected outside the development machine.
+- The Windows release job produces an unsigned x64 NSIS installer until a
+  Windows code-signing identity is configured, so SmartScreen warnings are
+  expected during the initial friend test.
+- The automated release workflow cannot run until its public renderer
+  variables and updater-signing secrets are configured in GitHub Actions.
 - Screen sharing, recording, camera effects, uploads, cloud sounds, advanced
-  roles, global push-to-talk, notifications, tray behavior, Windows/Linux
-  distribution, and signing/notarization are outside the first usable release.
+  roles, global push-to-talk, notifications, tray behavior, Linux distribution,
+  and operating-system signing/notarization are outside the first usable
+  release.
 - System-audio sharing requires a separate per-operating-system investigation.
