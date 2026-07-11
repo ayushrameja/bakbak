@@ -1793,6 +1793,96 @@ button:disabled {
   font-size: 9px;
   line-height: 1.45;
 }
+
+.update-notice {
+  position: fixed;
+  z-index: 45;
+  right: 22px;
+  bottom: 22px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  width: min(390px, calc(100vw - 36px));
+  padding: 16px;
+  border: 1px solid rgba(143, 134, 255, 0.32);
+  border-radius: 15px;
+  background: rgba(24, 24, 32, 0.96);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.46);
+  backdrop-filter: blur(16px);
+  animation: rise-in 220ms ease both;
+}
+.update-notice__icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  color: var(--accent-bright);
+  background: rgba(124, 114, 238, 0.14);
+}
+.update-notice__content {
+  min-width: 0;
+}
+.update-notice__content > strong,
+.update-notice__content > span {
+  display: block;
+}
+.update-notice__content > strong {
+  color: #eeeef7;
+  font-size: 12px;
+}
+.update-notice__content > span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+.update-notice__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+.update-notice__install {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 0 11px;
+  font-size: 10px;
+}
+.update-notice__actions .text-button {
+  min-height: 30px;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.update-notice__dismiss {
+  width: 28px;
+  height: 28px;
+  color: var(--faint);
+}
+.update-notice__progress {
+  height: 3px;
+  overflow: hidden;
+  margin-top: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.update-notice__progress i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--accent-bright));
+  transition: width 140ms ease;
+}
+
+@media (max-width: 640px) {
+  .update-notice {
+    right: 18px;
+    bottom: 18px;
+  }
+}
 .app-loading {
   width: 100%;
   height: 100%;
