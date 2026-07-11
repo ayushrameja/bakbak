@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "lib": ["deno.ns", "dom", "dom.iterable", "esnext"]
+  },
+  "imports": {
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.110.2",
+    "livekit-server-sdk": "npm:livekit-server-sdk@2.17.0"
+  },
+  "tasks": {
+    "check": "deno lint functions && deno check functions/livekit-token/index.ts",
+    "test": "deno test --allow-env functions/tests"
+  }
+}
