@@ -60,8 +60,10 @@ deferred as approved.
 | Voice/data transport | LiveKit                           | Voice rooms, participant state, and soundboard data messages                |
 | Validation/testing   | Zod, Vitest, Testing Library      | Boundary validation and unit/component tests                                |
 
-There is one pnpm application, not a frontend/backend monorepo. Supabase assets
-will live alongside it for local development and deployment.
+There is one pnpm application, not a frontend/backend monorepo. `package.json`
+pins pnpm `11.3.0` through `packageManager` so local installs and GitHub Actions
+use the same package-manager release. Supabase assets live alongside the app for
+local development and deployment.
 
 ## Repository structure
 

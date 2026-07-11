@@ -607,3 +607,31 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
   as `ayushrameja` with repository and Actions settings access, back up the key,
   configure the variables/secrets/labels, then merge and observe the first
   `0.2.0` release before testing an update to the next version on both platforms.
+
+## 2026-07-11 — Pin pnpm for GitHub Actions
+
+- **Completed:** Fixed the pull-request CI failure reported by
+  `pnpm/action-setup@v4` by declaring `pnpm@11.3.0` in the root
+  `packageManager` field. Both CI and release workflows now discover the same
+  pnpm version used by the working repository without duplicating it in each
+  workflow.
+- **Decisions:** Kept the package-manager version in `package.json` as the one
+  source of truth instead of adding separate workflow-specific versions that
+  could drift.
+- **Validation:**
+  - User-supplied GitHub Actions screenshot — confirmed the setup job failed
+    before installation with `Error: No pnpm version is specified`.
+  - `pnpm --version` — confirmed local version `11.3.0` before pinning.
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 19 Vitest files
+    with 95 tests, four release-script tests, version synchronization, the
+    production renderer build, and compiled-artifact secret scanning. The
+    existing non-blocking large-chunk warning remains.
+  - Workflow YAML parse for `ci.yml` and `release.yml` — passed.
+  - `git diff --check` — passed.
+- **Documentation updated:** `docs/architecture.md` and `docs/progress.md`.
+- **Known limitations:** The corrected workflow still needs a GitHub-hosted
+  rerun; this local change does not prove the remote runner or later release
+  jobs pass.
+- **Next:** Commit and push this fix to the open PR, confirm CI advances past
+  pnpm setup, and address only any newly surfaced downstream failure before
+  merging.
