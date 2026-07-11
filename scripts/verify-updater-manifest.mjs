@@ -13,11 +13,17 @@ export function verifyUpdaterManifest(manifest, expectedVersion) {
     throw new Error("Updater manifest has no platforms object.");
   }
 
+  const platformKeys = Object.keys(manifest.platforms);
+
   for (const target of requiredTargets) {
-    const matchingKey = Object.keys(manifest.platforms).find(
+    const matchingKey = platformKeys.find(
       (key) => key === target || key.startsWith(`${target}-`),
     );
-    if (!matchingKey) throw new Error(`Updater manifest is missing ${target}.`);
+    if (!matchingKey) {
+      throw new Error(
+        `Updater manifest is missing ${target}. Found: ${platformKeys.join(", ") || "<none>"}.`,
+      );
+    }
 
     const entry = manifest.platforms[matchingKey];
     if (!entry?.url || !entry?.signature) {

@@ -661,3 +661,45 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
   unvalidated.
 - **Next:** Commit and push this workflow fix, confirm pull-request CI passes,
   then merge only after the green result so the first desktop release can run.
+
+## 2026-07-11 — Generate macOS updater artifacts in releases
+
+- **Completed:** Fixed the publish-stage manifest failure by changing both
+  macOS release jobs from DMG-only builds to `app,dmg` builds. This preserves
+  the user-facing DMGs while also generating the `.app.tar.gz` updater bundles
+  and signatures required for Darwin entries in `latest.json`. Added a
+  regression test for both macOS matrix arguments and improved manifest errors
+  to report the platform keys that were actually found.
+- **Decisions:** Kept Tauri Action responsible for merging platform entries
+  into the release manifest. The build logs explicitly showed that DMG is not
+  an updater-enabled target and identified `app` as the required macOS target,
+  so the fix corrects artifact generation rather than weakening the final
+  three-platform assertion.
+- **Validation:**
+  - GitHub Actions run `29162883239` — prepare, validation, macOS Apple Silicon,
+    macOS Intel, and Windows x64 jobs passed. Both DMGs and the Windows NSIS
+    installer uploaded successfully.
+  - The two macOS job logs — each warned that `--bundles dmg` created no
+    updater-enabled target and skipped updater JSON contribution because no
+    signature was found. The Windows job uploaded its installer, signature, and
+    a Windows-only `latest.json`; publish then truthfully failed on missing
+    `darwin-aarch64`.
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 19 Vitest files
+    with 95 tests, five release-script tests including the new workflow guard,
+    version synchronization, the production renderer build, and compiled
+    artifact secret scanning. The existing non-blocking large-chunk warning
+    remains.
+  - Workflow YAML parse for `ci.yml` and `release.yml` — passed before the final
+    formatting-only test adjustment.
+  - `git diff --check` — passed.
+- **Documentation updated:** `README.md`, `docs/architecture.md`,
+  `docs/plans/0001-bakbak-desktop-v1.md`, and `docs/progress.md`.
+- **Known limitations:** The corrected macOS artifact generation still needs a
+  new hosted release run. Re-running only the failed publish job would reuse the
+  incomplete `0.2.0` artifacts. Because that draft release already created a
+  `v0.2.0` tag, the next normal merge will resolve to `v0.2.1` unless the failed
+  draft and tag are deleted first. End-to-end update installation remains
+  unvalidated.
+- **Next:** Open and merge a small release-workflow fix PR without
+  `release:skip`, allow the new run to publish `v0.2.1`, then delete the failed
+  `v0.2.0` draft and test the published installers plus the next in-app update.
