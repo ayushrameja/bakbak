@@ -143,13 +143,14 @@ the approved follow-up plan `0002-voice-video-and-presence.md`.
       an explicit in-app update-and-restart experience.
 - [x] Add gated GitHub Actions validation and draft release workflows for macOS
       Apple Silicon, macOS Intel, and Windows x64 NSIS installers.
-- [ ] Configure the updater signing secrets and live renderer variables in
+- [x] Configure the updater signing secrets and live renderer variables in
       GitHub Actions.
-- [ ] Publish and validate the first updater-enabled `0.2.0` release.
-- [ ] Manually validate a `0.2.0` to later-version update on macOS and Windows.
-- [ ] Build and validate macOS installers in GitHub Actions.
-- [ ] Document any initial unsigned or unnotarized installer warnings.
-- [ ] Build and validate the Windows x64 installer in GitHub Actions.
+- [ ] Publish and validate the first updater-enabled `0.2.x` release.
+- [ ] Manually validate an update from the first updater-enabled release to a
+      later version on macOS and Windows.
+- [x] Build and validate macOS installers in GitHub Actions.
+- [x] Document initial unsigned and unnotarized installer warnings.
+- [x] Build and validate the Windows x64 installer in GitHub Actions.
 - [ ] Add Linux installer builds after friend testing.
 - [ ] Revisit signing and notarization after the core product is stable.
 - [ ] Update architecture, plan status, and the append-only progress log.

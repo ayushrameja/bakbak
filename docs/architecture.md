@@ -442,8 +442,11 @@ that it has passed.
 - The Windows release job produces an unsigned x64 NSIS installer until a
   Windows code-signing identity is configured, so SmartScreen warnings are
   expected during the initial friend test.
-- The automated release workflow cannot run until its public renderer
-  variables and updater-signing secrets are configured in GitHub Actions.
+- GitHub Actions has the public renderer variables and updater-signing secrets.
+  The first run built both macOS DMGs and the Windows NSIS installer, but its
+  release remains a draft because the macOS jobs initially omitted the
+  updater-enabled `app` bundle and therefore contributed no Darwin entries to
+  `latest.json`. The corrected matrix still needs a hosted run.
 - Screen sharing, recording, camera effects, uploads, cloud sounds, advanced
   roles, global push-to-talk, notifications, tray behavior, Linux distribution,
   and operating-system signing/notarization are outside the first usable

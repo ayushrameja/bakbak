@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { resolveRelease } from "./release-version.mjs";
 import { verifyUpdaterManifest } from "./verify-updater-manifest.mjs";
@@ -64,4 +65,14 @@ test("validates all updater targets and their signatures", () => {
       "0.2.1",
     ),
   );
+});
+
+test("macOS release jobs build installer and updater-enabled app bundles", async () => {
+  const workflow = await readFile(
+    new URL("../.github/workflows/release.yml", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(workflow, /--target aarch64-apple-darwin --bundles app,dmg/);
+  assert.match(workflow, /--target x86_64-apple-darwin --bundles app,dmg/);
 });

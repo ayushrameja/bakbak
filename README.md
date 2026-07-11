@@ -79,7 +79,8 @@ x64 NSIS installer. It keeps the GitHub Release in draft state until every
 installer and the signed `latest.json` updater manifest are present. Installed
 desktop clients check that manifest shortly after launch and offer an explicit
 **Update and restart** action. Existing `0.1.0` installations must install
-`0.2.0` manually once because they do not contain the updater.
+the first published updater-enabled release manually once because they do not
+contain the updater.
 
 Release builds require these GitHub Actions repository variables:
 
