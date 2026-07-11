@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(26);
+select plan(29);
 
 select has_table('public', 'profiles', 'profiles table exists');
 select has_table('public', 'servers', 'servers table exists');
@@ -59,6 +59,12 @@ select has_function(
   array['uuid'],
   'authenticated presence heartbeat RPC exists'
 );
+select has_function(
+  'public',
+  'heartbeat_presence_v2',
+  array['uuid', 'uuid'],
+  'voice-aware presence heartbeat RPC exists'
+);
 
 select ok(
   has_table_privilege('authenticated', 'public.messages', 'SELECT'),
@@ -86,6 +92,10 @@ select ok(
   'authenticated users cannot forge presence heartbeats directly'
 );
 select ok(
+  not has_table_privilege('authenticated', 'public.presence_heartbeats', 'UPDATE'),
+  'authenticated users cannot update presence heartbeats directly'
+);
+select ok(
   not has_function_privilege(
     'authenticated',
     'private.issue_invite_code(uuid, uuid, timestamp with time zone)',
@@ -108,6 +118,14 @@ select ok(
     'EXECUTE'
   ),
   'authenticated users can execute the presence heartbeat RPC'
+);
+select ok(
+  has_function_privilege(
+    'authenticated',
+    'public.heartbeat_presence_v2(uuid, uuid)',
+    'EXECUTE'
+  ),
+  'authenticated users can execute the voice-aware heartbeat RPC'
 );
 
 select * from finish();

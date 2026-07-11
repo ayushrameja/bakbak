@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   resumeAudioPlayback,
+  switchAudioOutput,
   setAudioDeafened,
   switchAudioInput,
+  switchCameraInput,
 } from "./audio-actions";
 
 describe("switchAudioInput", () => {
@@ -28,6 +30,35 @@ describe("switchAudioInput", () => {
     if (!result.ok) {
       expect(result.message).toContain("previous microphone is still active");
     }
+  });
+});
+
+describe("media output and camera switching", () => {
+  it("switches output and camera through LiveKit", async () => {
+    const room = { switchActiveDevice: vi.fn().mockResolvedValue(true) };
+    await expect(switchAudioOutput(room, "speaker-1")).resolves.toEqual({
+      ok: true,
+    });
+    await expect(switchCameraInput(room, "camera-1")).resolves.toEqual({
+      ok: true,
+    });
+    expect(room.switchActiveDevice).toHaveBeenNthCalledWith(
+      1,
+      "audiooutput",
+      "speaker-1",
+    );
+    expect(room.switchActiveDevice).toHaveBeenNthCalledWith(
+      2,
+      "videoinput",
+      "camera-1",
+    );
+  });
+
+  it("reports output switching failure without claiming success", async () => {
+    const room = { switchActiveDevice: vi.fn().mockRejectedValue(new Error()) };
+    await expect(switchAudioOutput(room, "speaker-1")).resolves.toEqual(
+      expect.objectContaining({ ok: false }),
+    );
   });
 });
 

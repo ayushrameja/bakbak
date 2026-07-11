@@ -3,6 +3,9 @@ import {
   ConnectionErrorReason,
   Room,
   RoomEvent,
+  Track,
+  VideoPresets,
+  supportsAudioOutputSelection,
   type Participant,
   type RemoteParticipant,
 } from "livekit-client";
@@ -10,6 +13,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { appConfig } from "../../lib/env";
 import { getSupabaseClient } from "../../lib/supabase";
 import type { AppUser, Channel, DataMode } from "../../lib/types";
+import {
+  availableDeviceId,
+  loadDevicePreferences,
+  saveDevicePreferences,
+} from "../settings/device-preferences";
 import {
   createSoundEvent,
   encodeSoundEvent,
@@ -20,8 +28,11 @@ import { SoundPlaybackController } from "../soundboard/sound-playback";
 import {
   resumeAudioPlayback,
   setAudioDeafened,
+  switchAudioOutput,
   switchAudioInput,
+  switchCameraInput,
 } from "./audio-actions";
+import { AudioOutputRouter } from "./audio-output-router";
 import { RemoteAudioRenderer } from "./remote-audio";
 import {
   buildLiveKitTokenRequest,
@@ -38,6 +49,14 @@ export interface VoiceParticipant {
   isSpeaking: boolean;
   isMuted: boolean;
   volume: number;
+  joinedAt: string | null;
+  cameraEnabled: boolean;
+  cameraTrack: VideoTrackLike | null;
+}
+
+export interface VideoTrackLike {
+  attach(element: HTMLMediaElement): HTMLMediaElement;
+  detach(element: HTMLMediaElement): HTMLMediaElement;
 }
 
 interface VoiceRoomState {
@@ -49,8 +68,17 @@ interface VoiceRoomState {
   audioPlaybackBlocked: boolean;
   error: string | null;
   inputDeviceError: string | null;
+  outputDeviceError: string | null;
+  cameraDeviceError: string | null;
   inputDevices: MediaDeviceInfo[];
+  outputDevices: MediaDeviceInfo[];
+  cameraDevices: MediaDeviceInfo[];
   selectedInputId: string;
+  selectedOutputId: string;
+  selectedCameraId: string;
+  outputSelectionSupported: boolean;
+  cameraEnabled: boolean;
+  cameraPending: boolean;
   join: (channel: Channel) => Promise<void>;
   leave: () => Promise<void>;
   toggleMute: () => Promise<void>;
@@ -58,10 +86,14 @@ interface VoiceRoomState {
   resumeAudio: () => Promise<void>;
   setParticipantVolume: (participantId: string, volume: number) => void;
   setInputDevice: (deviceId: string) => Promise<void>;
+  setOutputDevice: (deviceId: string) => Promise<void>;
+  setCameraDevice: (deviceId: string) => Promise<void>;
+  toggleCamera: () => Promise<void>;
   dispatchSound: (soundId: string) => Promise<void>;
 }
 
 export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
+  const [initialPreferences] = useState(loadDevicePreferences);
   const [status, setStatus] = useState<VoiceConnectionStatus>("disconnected");
   const [channel, setChannel] = useState<Channel | null>(null);
   const [participants, setParticipants] = useState<VoiceParticipant[]>([]);
@@ -70,14 +102,38 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
   const [audioPlaybackBlocked, setAudioPlaybackBlocked] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [inputDeviceError, setInputDeviceError] = useState<string | null>(null);
+  const [outputDeviceError, setOutputDeviceError] = useState<string | null>(
+    null,
+  );
+  const [cameraDeviceError, setCameraDeviceError] = useState<string | null>(
+    null,
+  );
   const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedInputId, setSelectedInputId] = useState("default");
+  const [outputDevices, setOutputDevices] = useState<MediaDeviceInfo[]>([]);
+  const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedInputId, setSelectedInputId] = useState(
+    initialPreferences.inputDeviceId,
+  );
+  const [selectedOutputId, setSelectedOutputId] = useState(
+    initialPreferences.outputDeviceId,
+  );
+  const [selectedCameraId, setSelectedCameraId] = useState(
+    initialPreferences.cameraDeviceId,
+  );
+  const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [cameraPending, setCameraPending] = useState(false);
   const [remoteAudio] = useState(() => new RemoteAudioRenderer());
-  const [soundPlayback] = useState(() => new SoundPlaybackController());
+  const [audioOutput] = useState(() => new AudioOutputRouter());
+  const [soundPlayback] = useState(
+    () => new SoundPlaybackController(undefined, () => audioOutput.soundTarget),
+  );
+  const outputSelectionSupported =
+    audioOutput.supported && supportsAudioOutputSelection();
   const roomRef = useRef<Room | null>(null);
   const deafenedRef = useRef(false);
   const joinOperationRef = useRef(0);
   const playbackOperationRef = useRef(0);
+  const cameraOperationRef = useRef(0);
   const seenSoundEvents = useRef(new Set<string>());
 
   const refreshParticipants = useCallback((room: Room) => {
@@ -88,16 +144,37 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
       next.push(participantToView(participant, false));
     });
     setParticipants(next);
+    setCameraEnabled(room.localParticipant.isCameraEnabled);
   }, []);
 
   const refreshDevices = useCallback(async () => {
     if (!navigator.mediaDevices) return;
     try {
-      setInputDevices(await Room.getLocalDevices("audioinput", false));
+      const [inputs, outputs, cameras] = await Promise.all([
+        Room.getLocalDevices("audioinput", false),
+        Room.getLocalDevices("audiooutput", false),
+        Room.getLocalDevices("videoinput", false),
+      ]);
+      setInputDevices(inputs);
+      setOutputDevices(outputs);
+      setCameraDevices(cameras);
+      setSelectedInputId((current) => availableDeviceId(current, inputs));
+      setSelectedOutputId((current) => availableDeviceId(current, outputs));
+      setSelectedCameraId((current) => availableDeviceId(current, cameras));
     } catch {
       setInputDevices([]);
+      setOutputDevices([]);
+      setCameraDevices([]);
     }
   }, []);
+
+  useEffect(() => {
+    saveDevicePreferences({
+      inputDeviceId: selectedInputId,
+      outputDeviceId: selectedOutputId,
+      cameraDeviceId: selectedCameraId,
+    });
+  }, [selectedCameraId, selectedInputId, selectedOutputId]);
 
   useEffect(() => {
     void refreshDevices();
@@ -115,6 +192,7 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
 
   const resetVoiceMedia = useCallback(() => {
     playbackOperationRef.current += 1;
+    cameraOperationRef.current += 1;
     remoteAudio.cleanup();
     soundPlayback.stopAll();
     soundPlayback.setDeafened(false);
@@ -124,6 +202,8 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
     setMuted(false);
     setDeafened(false);
     setAudioPlaybackBlocked(false);
+    setCameraEnabled(false);
+    setCameraPending(false);
   }, [remoteAudio, soundPlayback]);
 
   const bindRoomEvents = useCallback(
@@ -138,11 +218,19 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
         .on(RoomEvent.ActiveSpeakersChanged, sync)
         .on(RoomEvent.TrackMuted, sync)
         .on(RoomEvent.TrackUnmuted, sync)
+        .on(RoomEvent.TrackPublished, sync)
+        .on(RoomEvent.TrackUnpublished, sync)
+        .on(RoomEvent.LocalTrackPublished, sync)
+        .on(RoomEvent.LocalTrackUnpublished, sync)
         .on(RoomEvent.TrackSubscribed, (track) => {
-          if (isCurrentRoom()) remoteAudio.attach(track);
+          if (!isCurrentRoom()) return;
+          remoteAudio.attach(track);
+          sync();
         })
         .on(RoomEvent.TrackUnsubscribed, (track) => {
-          if (isCurrentRoom()) remoteAudio.detach(track);
+          if (!isCurrentRoom()) return;
+          remoteAudio.detach(track);
+          sync();
         })
         .on(RoomEvent.Reconnecting, () => {
           if (isCurrentRoom()) setStatus("reconnecting");
@@ -156,11 +244,17 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
         .on(RoomEvent.MediaDevicesChanged, () => {
           if (isCurrentRoom()) void refreshDevices();
         })
-        .on(RoomEvent.MediaDevicesError, () => {
+        .on(RoomEvent.MediaDevicesError, (mediaError) => {
           if (!isCurrentRoom()) return;
-          setInputDeviceError(
-            "Bakbak could not use that microphone. Check macOS Privacy settings.",
-          );
+          if (room.localParticipant.lastCameraError === mediaError) {
+            setCameraDeviceError(
+              "Bakbak could not use that camera. Check camera permission and whether another app is using it.",
+            );
+          } else {
+            setInputDeviceError(
+              "Bakbak could not use that microphone. Check macOS Privacy settings.",
+            );
+          }
         })
         .on(RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
           if (!isCurrentRoom() || topic !== "bakbak-soundboard") return;
@@ -198,6 +292,8 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
       }
       setError(null);
       setInputDeviceError(null);
+      setOutputDeviceError(null);
+      setCameraDeviceError(null);
       if (room) await room.disconnect();
     },
     [resetVoiceMedia],
@@ -220,6 +316,8 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
       setStatus("connecting");
       setError(null);
       setInputDeviceError(null);
+      setOutputDeviceError(null);
+      setCameraDeviceError(null);
       setAudioPlaybackBlocked(false);
 
       await disconnectCurrentRoom(true);
@@ -236,6 +334,9 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
             isSpeaking: false,
             isMuted: false,
             volume: 1,
+            joinedAt: new Date().toISOString(),
+            cameraEnabled: false,
+            cameraTrack: null,
           },
           {
             id: "user-mira",
@@ -244,6 +345,9 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
             isSpeaking: true,
             isMuted: false,
             volume: 0.82,
+            joinedAt: new Date(Date.now() - 95_000).toISOString(),
+            cameraEnabled: false,
+            cameraTrack: null,
           },
           {
             id: "user-jo",
@@ -252,6 +356,9 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
             isSpeaking: false,
             isMuted: true,
             volume: 0.72,
+            joinedAt: new Date(Date.now() - 42_000).toISOString(),
+            cameraEnabled: false,
+            cameraTrack: null,
           },
         ]);
         setStatus("connected");
@@ -318,6 +425,20 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
           void room.disconnect();
           return;
         }
+        if (outputSelectionSupported) {
+          try {
+            await audioOutput.setDevice(selectedOutputId);
+            const outputResult = await switchAudioOutput(
+              room,
+              selectedOutputId,
+            );
+            if (!outputResult.ok) throw new Error(outputResult.message);
+          } catch {
+            setOutputDeviceError(
+              "Bakbak joined using system output because the selected speaker was unavailable.",
+            );
+          }
+        }
         refreshParticipants(room);
         setStatus("connected");
         setAudioPlaybackBlocked(!room.canPlaybackAudio);
@@ -338,12 +459,15 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
     },
     [
       bindRoomEvents,
+      audioOutput,
       disconnectCurrentRoom,
       mode,
       refreshDevices,
       refreshParticipants,
       resetVoiceMedia,
+      outputSelectionSupported,
       selectedInputId,
+      selectedOutputId,
       user.displayName,
       user.id,
     ],
@@ -471,6 +595,115 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
     [status],
   );
 
+  const setOutputDevice = useCallback(
+    async (deviceId: string) => {
+      if (status === "connecting" || status === "reconnecting") return;
+      if (!outputSelectionSupported) {
+        setOutputDeviceError(
+          "This runtime supports only the system output device.",
+        );
+        return;
+      }
+
+      const room = roomRef.current;
+      const previousId = selectedOutputId;
+      try {
+        await audioOutput.setDevice(deviceId);
+        if (room) {
+          const result = await switchAudioOutput(room, deviceId);
+          if (!result.ok) throw new Error(result.message);
+        }
+      } catch {
+        await audioOutput.setDevice(previousId).catch(() => undefined);
+        if (room) void switchAudioOutput(room, previousId);
+        setOutputDeviceError(
+          "Bakbak couldn't switch speakers. The previous output is still active.",
+        );
+        return;
+      }
+
+      setSelectedOutputId(deviceId);
+      setOutputDeviceError(null);
+    },
+    [audioOutput, outputSelectionSupported, selectedOutputId, status],
+  );
+
+  const setCameraDevice = useCallback(
+    async (deviceId: string) => {
+      if (status === "connecting" || status === "reconnecting") return;
+      const room = roomRef.current;
+      if (room && cameraEnabled) {
+        const result = await switchCameraInput(room, deviceId);
+        if (roomRef.current !== room) return;
+        if (!result.ok) {
+          setCameraDeviceError(result.message);
+          return;
+        }
+        refreshParticipants(room);
+      }
+      setSelectedCameraId(deviceId);
+      setCameraDeviceError(null);
+    },
+    [cameraEnabled, refreshParticipants, status],
+  );
+
+  const toggleCamera = useCallback(async () => {
+    if (status !== "connected" || cameraPending) return;
+    const room = roomRef.current;
+    if (!room) {
+      setCameraEnabled((current) => !current);
+      return;
+    }
+
+    const operationId = cameraOperationRef.current + 1;
+    cameraOperationRef.current = operationId;
+    const nextEnabled = !cameraEnabled;
+    setCameraPending(true);
+    setCameraDeviceError(null);
+    try {
+      const publication = await room.localParticipant.setCameraEnabled(
+        nextEnabled,
+        nextEnabled
+          ? selectedCameraId === "default"
+            ? { resolution: VideoPresets.h720.resolution }
+            : {
+                deviceId: selectedCameraId,
+                resolution: VideoPresets.h720.resolution,
+              }
+          : undefined,
+      );
+      if (
+        cameraOperationRef.current !== operationId ||
+        roomRef.current !== room
+      )
+        return;
+      if (nextEnabled && !publication) {
+        throw new Error("Camera did not publish.");
+      }
+      setCameraEnabled(nextEnabled);
+      refreshParticipants(room);
+      void refreshDevices();
+    } catch {
+      if (
+        cameraOperationRef.current === operationId &&
+        roomRef.current === room
+      ) {
+        setCameraDeviceError(
+          "Bakbak couldn't start the camera. Check permission, device availability, and whether another app is using it.",
+        );
+      }
+    } finally {
+      if (cameraOperationRef.current === operationId) setCameraPending(false);
+    }
+  }, [
+    cameraEnabled,
+    cameraPending,
+    refreshDevices,
+    refreshParticipants,
+    selectedCameraId,
+    status,
+  ]);
+
   const dispatchSound = useCallback(
     async (soundId: string) => {
       if (status !== "connected")
@@ -483,6 +716,7 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
         volume: 0.72,
       });
       seenSoundEvents.current.add(event.eventId);
+      await audioOutput.start().catch(() => undefined);
       soundPlayback.play(soundId, event.volume);
       if (roomRef.current) {
         await roomRef.current.localParticipant.publishData(
@@ -494,20 +728,22 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
         );
       }
     },
-    [soundPlayback, status, user.id],
+    [audioOutput, soundPlayback, status, user.id],
   );
 
   useEffect(
     () => () => {
       joinOperationRef.current += 1;
       playbackOperationRef.current += 1;
+      cameraOperationRef.current += 1;
       const room = roomRef.current;
       roomRef.current = null;
       remoteAudio.cleanup();
       soundPlayback.stopAll();
+      audioOutput.cleanup();
       void room?.disconnect();
     },
-    [remoteAudio, soundPlayback],
+    [audioOutput, remoteAudio, soundPlayback],
   );
 
   return {
@@ -519,8 +755,17 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
     audioPlaybackBlocked,
     error,
     inputDeviceError,
+    outputDeviceError,
+    cameraDeviceError,
     inputDevices,
+    outputDevices,
+    cameraDevices,
     selectedInputId,
+    selectedOutputId,
+    selectedCameraId,
+    outputSelectionSupported,
+    cameraEnabled,
+    cameraPending,
     join,
     leave,
     toggleMute,
@@ -528,6 +773,9 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
     resumeAudio,
     setParticipantVolume,
     setInputDevice,
+    setOutputDevice,
+    setCameraDevice,
+    toggleCamera,
     dispatchSound,
   };
 }
@@ -565,6 +813,9 @@ function participantToView(
   participant: Participant,
   isLocal: boolean,
 ): VoiceParticipant {
+  const cameraPublication = participant.getTrackPublication(
+    Track.Source.Camera,
+  );
   return {
     id: participant.identity,
     displayName: participant.name || participant.identity || "Friend",
@@ -572,5 +823,9 @@ function participantToView(
     isSpeaking: participant.isSpeaking,
     isMuted: !participant.isMicrophoneEnabled,
     volume: isLocal ? 1 : ((participant as RemoteParticipant).getVolume() ?? 1),
+    joinedAt: participant.joinedAt?.toISOString() ?? null,
+    cameraEnabled: participant.isCameraEnabled,
+    cameraTrack:
+      (cameraPublication?.track as VideoTrackLike | undefined) ?? null,
   };
 }

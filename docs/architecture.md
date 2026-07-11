@@ -3,20 +3,23 @@
 This document is the mutable, current source of truth for Bakbak's structure,
 runtime boundaries, service contracts, data flow, and environment variables.
 Historical work and verification belong in `docs/progress.md`; accepted scope
-and phase completion belong in `docs/plans/0001-bakbak-desktop-v1.md`.
+and phase completion belong in the numbered files under `docs/plans`.
 
 ## Current implementation state
 
 As of 2026-07-11, Bakbak has a complete local/mock product path and
-production-oriented Supabase and LiveKit adapters. The renderer provides the
+production Supabase and LiveKit adapters. The renderer provides the
 invite-only welcome flow, server rail, channel sidebar, realtime-capable text
 chat, incoming-message sounds, per-channel unread emphasis, member list, voice
-rooms, device selection, mute/deafen, per-participant volume, remote-track audio
-rendering, autoplay recovery, reconnect/error states, persistent voice controls,
-and a synchronized bundled soundboard. Deafen stops remote speech plus active
-and future incoming or local soundboard playback while still allowing outbound
-sound events. Mock mode exercises the product interactions without credentials
-or a backend.
+rooms, locally persisted microphone/speaker/camera selection, opt-in 720p
+camera calls, pre-join room occupancy with elapsed timers, mute/deafen,
+per-participant volume, remote-track audio/video rendering, autoplay recovery,
+reconnect/error states, persistent voice controls, and a synchronized bundled
+soundboard. Deafen stops remote speech plus active and future incoming or local
+soundboard playback while still allowing outbound sound events. The selected
+speaker routes calls and soundboard audio; message alerts intentionally remain
+on system output. Mock mode exercises the product interactions without
+credentials or a backend.
 
 The Supabase schema, least-privilege grants, Row Level Security policies,
 atomic hashed invite flow, deterministic default rooms, and Realtime
@@ -24,20 +27,24 @@ publication are deployed to the hosted Bakbak project. The protected
 `livekit-token` Edge Function is deployed with the three managed LiveKit
 credentials and its unauthenticated JWT-gate probe returns the required 401.
 The hosted profile trigger created both initial test profiles, and the default
-server has one admin plus one member. Database-backed server presence is
-deployed through a membership-checked heartbeat RPC, an RLS-filtered heartbeat
-table, and Postgres Realtime change events; stale clients expire locally after
-55 seconds. The expanded local schema, invite, RLS, and presence suite passes 59
-assertions against a clean Supabase reset. Voice connections retry one time with
-relay-only ICE after a normal peer-connection failure and report a specific
-TURN/TLS diagnostic if that also fails. Authenticated voice, soundboard, invite
-redemption, and the remaining native-plus-browser friend-test matrix remain
-open.
+server has one admin plus one member. Database-backed server and voice-room
+presence is deployed through backward-compatible membership-checked heartbeat
+RPCs, an RLS-filtered heartbeat table, and Postgres Realtime change events.
+Voice join time comes from Postgres, remains stable across heartbeats, clears on
+graceful leave, and expires locally after 55 seconds if a client crashes. The
+clean local schema, invite, RLS, and presence suite passes 71 assertions. Voice
+connections retry once with relay-only ICE after a normal peer-connection
+failure and report a specific TURN/TLS diagnostic if that also fails. The
+deployed token function permits microphone, camera, and LiveKit data
+publication while continuing to forbid screen share. The final Arc-plus-native
+voice, video, device, soundboard, reconnect, and crash-expiry rehearsal remains
+open for human observation.
 
 The Tauri metadata, window sizing, Content Security Policy, minimal capability
-set, Bakbak icons, microphone purpose string, and audio-input entitlement are
-configured. A hardened-runtime macOS application and DMG can be ad-hoc signed
-locally; Developer ID signing and notarization remain deferred as approved.
+set, Bakbak icons, microphone and camera purpose strings, and audio-input plus
+camera entitlements are configured. A hardened-runtime macOS application can
+be ad-hoc signed locally; Developer ID signing and notarization remain deferred
+as approved.
 
 ## Technology stack
 
@@ -65,7 +72,8 @@ bakbak/
 │   ├── architecture.md
 │   ├── progress.md
 │   └── plans/
-│       └── 0001-bakbak-desktop-v1.md
+│       ├── 0001-bakbak-desktop-v1.md
+│       └── 0002-voice-video-and-presence.md
 ├── public/
 │   └── bakbak.svg                 # renderer favicon/source logo
 ├── src/
@@ -102,8 +110,8 @@ The renderer uses a four-part desktop layout:
    that can support more later.
 2. A channel sidebar containing text and voice rooms.
 3. A main content area for chat, room state, empty states, and errors.
-4. Persistent voice controls for connection status, microphone, mute, deafen,
-   and leave.
+4. Persistent voice controls for connection status, microphone, camera, mute,
+   deafen, and leave.
 
 The visual language is dark, calm, and polished. Accessibility, clear focus
 states, readable contrast, and reduced-motion behavior are requirements rather
@@ -133,23 +141,25 @@ Realtime distributes committed message changes to authorized subscribers.
 
 ### LiveKit
 
-LiveKit transports voice, participant/speaking state, and small soundboard data
-messages. A protected Supabase Edge Function is the only component allowed to
-sign LiveKit participant tokens.
+LiveKit transports voice, opt-in camera tracks, participant/speaking state, and
+small soundboard data messages. A protected Supabase Edge Function is the only
+component allowed to sign LiveKit participant tokens. Renderer tokens allow
+microphone, camera, and data publication only; screen sharing remains denied.
 
-## Planned data model
+## Data model
 
 All identifiers are UUIDs unless noted otherwise. Exact migrations become
 authoritative once Phase 2 starts.
 
-| Entity         | Key fields and constraints                                         | Access intent                                                                  |
-| -------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
-| `profiles`     | `id` references `auth.users`; display name and timestamps          | User can manage their profile; server members can read member-facing fields    |
-| `servers`      | owner/admin reference, name, timestamps                            | Members of the server can read it                                              |
-| `memberships`  | unique `(server_id, user_id)`; v1 admin/member role                | A user can read memberships for servers they belong to                         |
-| `channels`     | `server_id`, name, ordered position, `text` or `voice` type        | Server members can read channels                                               |
-| `messages`     | text-channel ID, author ID, body, timestamps                       | Members can read; members can insert into text channels as themselves          |
-| `invite_codes` | server ID, one-way code digest, creator, expiry, redemption fields | No broad client read policy; redeemed atomically through a controlled function |
+| Entity                | Key fields and constraints                                          | Access intent                                                                  |
+| --------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `profiles`            | `id` references `auth.users`; display name and timestamps           | User can manage their profile; server members can read member-facing fields    |
+| `servers`             | owner/admin reference, name, timestamps                             | Members of the server can read it                                              |
+| `memberships`         | unique `(server_id, user_id)`; v1 admin/member role                 | A user can read memberships for servers they belong to                         |
+| `channels`            | `server_id`, name, ordered position, `text` or `voice` type         | Server members can read channels                                               |
+| `messages`            | text-channel ID, author ID, body, timestamps                        | Members can read; members can insert into text channels as themselves          |
+| `invite_codes`        | server ID, one-way code digest, creator, expiry, redemption fields  | No broad client read policy; redeemed atomically through a controlled function |
+| `presence_heartbeats` | unique server/user row, last seen, nullable voice channel/join time | Members can read server rows; only security-definer heartbeat RPCs can write   |
 
 Initial admin membership and initial invite codes are managed with reviewed SQL.
 An invite-management UI is deferred until post-v1.
@@ -196,17 +206,23 @@ An invite-management UI is deferred until post-v1.
 
 ### Application presence
 
-1. After loading a server, each authenticated client calls the
-   `heartbeat_presence(server_id)` RPC immediately and every 20 seconds.
+1. After loading a server, each authenticated client calls
+   `heartbeat_presence_v2(server_id, voice_channel_id)` immediately and every
+   20 seconds. The older `heartbeat_presence(server_id)` RPC remains available
+   for installed older builds and clears voice state.
 2. The security-definer RPC derives the user from `auth.uid()`, verifies current
    server membership, and upserts the server/user row using database time. The
    renderer cannot insert or update heartbeat rows directly.
-3. Server members can select heartbeat rows only for servers they belong to.
-   Postgres Realtime change events refresh the cached rows on every client.
-4. Clients derive the online member set from rows seen in the last 55 seconds
-   and re-evaluate the cache every five seconds, so a crashed or closed client
-   becomes offline without needing a graceful disconnect.
-5. Online state is a UI hint only. Database RLS and Edge Function checks remain
+3. A non-null voice channel must belong to the requested server and have kind
+   `voice`. Postgres assigns the join timestamp and preserves it while the user
+   remains in the same room.
+4. Voice state is published only after LiveKit connects and cleared on leave or
+   connection error. Server members can read the resulting online and
+   voice-session snapshot, including occupants of rooms they have not joined.
+5. Postgres Realtime refreshes the cached rows on every client. Clients expire
+   rows older than 55 seconds and re-evaluate every five seconds, so a crashed
+   client disappears without a graceful leave.
+6. Presence is a UI hint only. Database RLS and Edge Function checks remain
    authoritative for access.
 
 ### Voice room
@@ -216,18 +232,22 @@ An invite-management UI is deferred until post-v1.
 2. The function authenticates the user and verifies membership plus voice
    channel type.
 3. The function creates a narrowly scoped, short-lived LiveKit participant
-   token and returns it with the public LiveKit URL.
+   token permitting microphone, camera, and data publication, then returns it
+   with the public LiveKit URL.
 4. The renderer generation-gates connection attempts so a newer join, leave,
    sign-out, or unmount invalidates pending token, connection, and microphone
    work. A stale attempt can disconnect only the LiveKit room it created.
-5. The current connection attaches subscribed remote audio tracks to hidden
-   media elements and manages autoplay recovery, device, mute, deafen,
-   participant, speaking, reconnect, and error state. Device changes are paused
-   while connecting or reconnecting so the displayed and published microphone
-   cannot diverge.
-6. Unsubscription, leaving, disconnecting, and unmounting detach remote media,
-   stop active local sounds, disconnect the room, and release local tracks.
-7. If signaling succeeds but the initial WebRTC peer connection fails, the
+5. Camera remains off through join. An explicit camera action publishes an
+   adaptive 720p track. Local video is mirrored; subscribed remote tracks attach
+   to participant tiles, and avatar fallbacks remain visible while video is off.
+6. The current connection manages microphone, speaker, and camera switches,
+   autoplay recovery, mute, deafen, participant, speaking, reconnect, and error
+   state. Output switching is capability-checked; unsupported runtimes show
+   system output only. A missing remembered device falls back to default.
+7. Unsubscription, leaving, disconnecting, and unmounting detach remote audio
+   and video, invalidate pending camera/join work, stop active local sounds,
+   disconnect the room, and release local tracks.
+8. If signaling succeeds but the initial WebRTC peer connection fails, the
    renderer retries once with `iceTransportPolicy: relay`. A second failure is
    reported as a TURN/TLS or local network-policy problem rather than a token or
    authentication error.
@@ -243,12 +263,20 @@ An invite-management UI is deferred until post-v1.
 
 3. Every connected client validates the version, message type, and bundled
    sound ID.
-4. Each non-deafened client plays its own matching bundled clip. A deafened
-   sender still publishes the event for friends but renders no local copy, and
-   suppressed sounds are never queued for replay. No audio file is uploaded or
-   streamed through Supabase.
+4. Each non-deafened client plays its own matching bundled clip through the
+   shared selected-output router. A deafened sender still publishes the event
+   for friends but renders no local copy, and suppressed sounds are never
+   queued for replay. No audio file is uploaded or streamed through Supabase.
 
 Unknown message types or sound IDs are ignored safely.
+
+### Local media preferences
+
+The renderer validates and stores only `{ inputDeviceId, outputDeviceId,
+cameraDeviceId }` under the versioned local-storage key
+`bakbak.devicePreferences.v1`. These identifiers never sync to Supabase. If a
+remembered device is absent, the selector returns to the runtime's default
+device. Chat notification audio deliberately bypasses the selected call output.
 
 ## Backend contracts
 
@@ -274,6 +302,18 @@ These contracts match the current implementation.
   single use
 - **Errors:** a normalized invalid-or-unavailable response that does not reveal
   whether a guessed code once existed
+
+### `POST /rest/v1/rpc/heartbeat_presence_v2`
+
+- **Authentication:** valid Supabase user session
+- **Request:** `{ "p_server_id": "<server-uuid>", "p_voice_channel_id": "<voice-channel-uuid-or-null>" }`
+- **Success:** database heartbeat timestamp
+- **Validation:** `auth.uid()` identity, current server membership, and voice
+  channel ownership/kind
+- **Behavior:** database-owned stable join time for an unchanged room; null
+  clears voice state; direct table writes remain denied
+- **Compatibility:** `heartbeat_presence(server_id)` remains executable by
+  older builds and records online-only presence
 
 Text messages otherwise use the Supabase table API and Realtime under RLS; v1
 does not require a custom message service endpoint.
@@ -330,21 +370,18 @@ that it has passed.
 
 ## Current limitations and deferred work
 
-- No hosted Supabase or LiveKit project is configured in the repository. Live
-  auth, invite redemption, Realtime, and two-person voice still require
-  deployment and friend testing with real public client values.
-- The local schema, invite, and admin/member/non-member policy suites pass all
-  48 pgTAP assertions. Hosted migration history and hosted RLS behavior still
-  require deployment and rehearsal against the selected Supabase project.
+- Hosted migration `006` and the camera-capable token function are deployed,
+  but the Arc-plus-installed-app voice/video/device acceptance matrix still
+  requires two signed-in users and human audio/video observation.
 - The synthesized v1 sound pack is bundled as deterministic Web Audio recipes
   rather than third-party audio files, avoiding uploads and licensing risk.
 - The current production renderer is roughly 283 kB compressed; LiveKit and
   Supabase can be lazy-loaded in a later performance pass if startup profiling
   shows a meaningful benefit.
-- The macOS app and DMG use an ad-hoc hardened-runtime signature with the audio
-  input entitlement, but have no Developer ID signature or notarization, so
+- The macOS app uses an ad-hoc hardened-runtime signature with audio-input and
+  camera entitlements, but has no Developer ID signature or notarization, so
   Gatekeeper warnings are expected outside the development machine.
-- Screen sharing, webcam video, uploads, cloud sounds, advanced roles, global
-  push-to-talk, notifications, tray behavior, Windows/Linux distribution, and
-  signing/notarization are outside the first usable release.
+- Screen sharing, recording, camera effects, uploads, cloud sounds, advanced
+  roles, global push-to-talk, notifications, tray behavior, Windows/Linux
+  distribution, and signing/notarization are outside the first usable release.
 - System-audio sharing requires a separate per-operating-system investigation.

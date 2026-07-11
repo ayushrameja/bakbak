@@ -43,3 +43,11 @@ export interface WorkspaceSnapshot {
   channels: Channel[];
   members: ServerMember[];
 }
+
+export interface VoiceRoomOccupant {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  channelId: string;
+  joinedAt: string;
+}

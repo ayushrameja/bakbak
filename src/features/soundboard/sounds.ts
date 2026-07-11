@@ -12,6 +12,11 @@ export interface BundledSoundPlayback {
   stop: () => void;
 }
 
+export interface SoundAudioTarget {
+  context: AudioContext;
+  destination: AudioNode;
+}
+
 export function isBundledSoundId(value: string): value is BundledSoundId {
   return bundledSounds.some((sound) => sound.id === value);
 }
@@ -23,15 +28,18 @@ export function isBundledSoundId(value: string): value is BundledSoundId {
 export function playBundledSound(
   soundId: string,
   volume = 0.72,
+  target: SoundAudioTarget | null = null,
 ): BundledSoundPlayback | null {
   if (!isBundledSoundId(soundId) || typeof window === "undefined") return null;
   const AudioContextClass = window.AudioContext;
-  if (!AudioContextClass) return null;
+  if (!target && !AudioContextClass) return null;
 
-  const context = new AudioContextClass();
+  const context = target?.context ?? new AudioContextClass();
+  const ownsContext = target === null;
   const gain = context.createGain();
   gain.gain.value = Math.max(0, Math.min(1, volume));
-  gain.connect(context.destination);
+  gain.connect(target?.destination ?? context.destination);
+  const sources: AudioScheduledSourceNode[] = [];
 
   let resolveFinished: () => void = () => {};
   const finished = new Promise<void>((resolve) => {
@@ -43,29 +51,43 @@ export function playBundledSound(
     if (stopped) return;
     stopped = true;
     if (closeTimer !== null) window.clearTimeout(closeTimer);
-    void context
-      .close()
-      .catch(() => undefined)
-      .then(() => resolveFinished());
+    sources.forEach((source) => {
+      try {
+        source.stop();
+      } catch {
+        // A scheduled source may already have stopped naturally.
+      }
+    });
+    gain.disconnect();
+    if (ownsContext) {
+      void context
+        .close()
+        .catch(() => undefined)
+        .then(() => resolveFinished());
+    } else {
+      resolveFinished();
+    }
   };
 
   let lifetime = 650;
 
   if (soundId === "soft-pop") {
-    tone(context, gain, "sine", 520, 840, 0.12, 0);
+    sources.push(tone(context, gain, "sine", 520, 840, 0.12, 0));
     lifetime = 300;
   } else if (soundId === "airhorn") {
-    tone(context, gain, "sawtooth", 220, 185, 0.48, 0);
-    tone(context, gain, "square", 277, 235, 0.48, 0.01, 0.36);
+    sources.push(tone(context, gain, "sawtooth", 220, 185, 0.48, 0));
+    sources.push(tone(context, gain, "square", 277, 235, 0.48, 0.01, 0.36));
     lifetime = 700;
   } else if (soundId === "rimshot") {
-    noise(context, gain, 0.08, 0);
-    tone(context, gain, "triangle", 180, 82, 0.16, 0.035);
+    sources.push(noise(context, gain, 0.08, 0));
+    sources.push(tone(context, gain, "triangle", 180, 82, 0.16, 0.035));
     lifetime = 350;
   } else {
     [0, 0.09, 0.18, 0.27].forEach((offset, index) => {
-      noise(context, gain, 0.055, offset, 0.28);
-      tone(context, gain, "sine", 460 + index * 55, 520, 0.06, offset, 0.22);
+      sources.push(noise(context, gain, 0.055, offset, 0.28));
+      sources.push(
+        tone(context, gain, "sine", 460 + index * 55, 520, 0.06, offset, 0.22),
+      );
     });
   }
 
@@ -82,7 +104,7 @@ function tone(
   duration: number,
   offset: number,
   level = 0.5,
-) {
+): OscillatorNode {
   const oscillator = context.createOscillator();
   const envelope = context.createGain();
   const start = context.currentTime + offset;
@@ -97,6 +119,7 @@ function tone(
   oscillator.connect(envelope).connect(output);
   oscillator.start(start);
   oscillator.stop(start + duration);
+  return oscillator;
 }
 
 function noise(
@@ -105,7 +128,7 @@ function noise(
   duration: number,
   offset: number,
   level = 0.4,
-) {
+): AudioBufferSourceNode {
   const frames = Math.max(1, Math.floor(context.sampleRate * duration));
   const buffer = context.createBuffer(1, frames, context.sampleRate);
   const channel = buffer.getChannelData(0);
@@ -120,4 +143,5 @@ function noise(
   envelope.gain.exponentialRampToValueAtTime(0.001, start + duration);
   source.connect(envelope).connect(output);
   source.start(start);
+  return source;
 }

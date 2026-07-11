@@ -434,3 +434,73 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
   and verify both members appear online within one heartbeat cycle. Then send a
   message to `#random` while viewing `#general` and confirm the tone plus bold
   unread channel, followed by read clearing when `#random` opens.
+
+## 2026-07-11 — Add voice video, routed output, and room occupancy
+
+- **Completed:** Added locally remembered microphone, speaker, and camera
+  selectors; capability-aware speaker routing for incoming LiveKit audio and
+  the bundled soundboard; explicit 720p camera publication; local and remote
+  participant video tiles; camera controls in the room and persistent voice
+  dock; pre-join and sidebar voice-room occupants with elapsed timers; and
+  database-backed voice sessions layered onto the existing online heartbeat.
+  Added macOS camera purpose text and entitlement. Deployed hosted migration
+  `006`, deployed the updated LiveKit token function, built and installed the
+  signed application, restarted the Arc development client, and opened both
+  clients for testing.
+- **Decisions:** Camera remains off until the user explicitly enables it. The
+  selected speaker applies to call audio and soundboard playback, while chat
+  alerts stay on system output. Device IDs use the validated local-only key
+  `bakbak.devicePreferences.v1` and never sync to Supabase. The new
+  `heartbeat_presence_v2` RPC derives identity and join time from Postgres,
+  validates membership and voice-channel ownership, and preserves join time
+  across heartbeats. The original RPC remains compatible with older installed
+  clients and clears voice state. Tokens permit only microphone, camera, and
+  data publication; screen sharing remains forbidden.
+- **Validation:**
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 17 Vitest files
+    with 91 tests, the production renderer build, and the compiled-artifact
+    secret scan. The existing non-blocking large-chunk warning remains.
+  - `pnpm dlx supabase@latest db reset` — passed all six migrations from a
+    clean local database.
+  - `pnpm dlx supabase@latest db lint --local --schema public,private` — passed
+    with no Bakbak schema errors. Restricting the schemas avoids linting pgTAP's
+    own extension functions after the test extension is installed.
+  - `pnpm dlx supabase@latest test db` — passed all 71 schema, invite, RLS,
+    online-presence, and voice-presence assertions.
+  - `deno task --config supabase/deno.json check` — passed.
+  - `deno task --config supabase/deno.json test` — passed all 8 Edge Function
+    tests, including microphone/camera/data grants and screen-share denial.
+  - Hosted migration dry run — listed only
+    `202607110006_voice_presence.sql`.
+  - Hosted database push and migration-list verification — passed; local and
+    remote versions `001` through `006` match.
+  - Default `functions deploy livekit-token` — failed twice because Supabase
+    CLI 2.109.1 lost its temporary `output.eszip`; the code had already passed
+    Deno validation. `functions deploy livekit-token --use-api` — passed using
+    Supabase's server-side bundler.
+  - Unauthenticated hosted `livekit-token` POST — returned HTTP 401, preserving
+    the JWT gate after deployment.
+  - `pnpm tauri build --bundles app` — passed and produced the ad-hoc-signed
+    macOS application.
+  - Source bundle signature, camera/microphone usage strings, camera/audio
+    entitlements, and post-bundle secret scan — passed.
+  - Installed `/Applications/Bakbak.app` signature and version checks — passed;
+    version is `0.1.0`.
+  - Built and installed executable SHA-256 comparison — passed; both hashes are
+    `07e8569ffb6b197a6fa22972a9d26c20afdd9cdb1437593a880eb2cf1e20d2e4`.
+  - Fresh `pnpm dev` — passed; Arc's live client returns HTTP 200 on
+    `http://localhost:1420`, and both Arc and the installed app were launched.
+- **Documentation updated:** `docs/architecture.md`,
+  `docs/plans/0001-bakbak-desktop-v1.md`,
+  `docs/plans/0002-voice-video-and-presence.md`, `supabase/README.md`, and
+  `docs/progress.md`.
+- **Known limitations:** The final two-account Arc-plus-macOS test requires
+  human observation and is not marked complete. It must confirm cross-client
+  occupancy/timers, microphone/output/camera switching, both video feeds,
+  mute/deafen, soundboard routing, reconnect, graceful leave, and 55-second
+  crash expiry. Speaker selection correctly falls back to “System output only”
+  in runtimes without `setSinkId`. The app remains ad-hoc signed and unnotarized.
+- **Next:** Use the admin account in one client and friend account in the other,
+  join Lounge from one side first to confirm pre-join occupancy, then join from
+  the second side and run the media/device/reconnect/expiry checklist. Record
+  the observed results before closing plan `0002`.

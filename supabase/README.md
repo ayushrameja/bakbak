@@ -27,8 +27,8 @@ Auth, and Edge Function validation do not depend on that analytics container.
 
 For an end-to-end function check, create two local auth users, add only one as a
 member, and invoke `livekit-token` with each session. The member must receive a
-five-minute, microphone-only room token; the non-member must receive the same
-404 used for a missing or text channel.
+five-minute room token limited to microphone, camera, and data publication; the
+non-member must receive the same 404 used for a missing or text channel.
 
 ## Security invariants
 
@@ -41,11 +41,13 @@ five-minute, microphone-only room token; the non-member must receive the same
 - `LIVEKIT_API_SECRET` and `LIVEKIT_API_KEY` exist only in function secrets.
 - The desktop chooses only a channel UUID. The function derives identity, room,
   TTL, and grants after rechecking authentication and membership.
-- Online status uses the membership-checked `heartbeat_presence` RPC and an
-  RLS-filtered `presence_heartbeats` table. Clients cannot forge heartbeat rows
-  directly, and Postgres Realtime distributes row changes to server members.
-- Tokens permit microphone audio plus LiveKit data messages for the bundled
-  soundboard. Camera and screen-share sources are not granted in v1.
+- Online and voice-room status use the membership-checked
+  `heartbeat_presence_v2` RPC and an RLS-filtered `presence_heartbeats` table.
+  The original `heartbeat_presence` RPC remains for older installed builds.
+  Clients cannot forge heartbeat rows or join timestamps directly, and
+  Postgres Realtime distributes row changes to server members.
+- Tokens permit microphone, camera, and LiveKit data messages for the bundled
+  soundboard. Screen-share sources remain forbidden.
 
 ## Hosted deployment
 
@@ -58,13 +60,16 @@ pnpm dlx supabase@latest link --project-ref <PROJECT_REF>
 pnpm dlx supabase@latest db push --dry-run
 pnpm dlx supabase@latest db push
 pnpm dlx supabase@latest migration list
-pnpm dlx supabase@latest functions deploy livekit-token
+pnpm dlx supabase@latest functions deploy livekit-token --use-api
 ```
 
 Keep `verify_jwt = true` from `supabase/config.toml`. Set `LIVEKIT_URL`,
 `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` through the hosted Edge Function
 Secrets dashboard before invoking the function. Do not pass secret values on a
 shell command line or place them in renderer environment files.
+
+`--use-api` uses Supabase's server-side bundler and avoids a macOS CLI
+`output.eszip` temporary-file race observed with the default local bundler.
 
 ## Important integration assumption
 

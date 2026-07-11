@@ -10,17 +10,22 @@ import {
   Radio,
   RefreshCw,
   Settings2,
+  Video,
+  VideoOff,
   Volume2,
 } from "lucide-react";
 import { Avatar } from "../../components/Avatar";
-import type { AppUser, Channel } from "../../lib/types";
+import type { AppUser, Channel, VoiceRoomOccupant } from "../../lib/types";
 import { Soundboard } from "../soundboard/Soundboard";
+import { ParticipantVideo } from "./ParticipantVideo";
+import { VoiceElapsedTime } from "./VoiceElapsedTime";
 import type { useVoiceRoom } from "./useVoiceRoom";
 
 interface VoiceRoomProps {
   channel: Channel;
   user: AppUser;
   voice: ReturnType<typeof useVoiceRoom>;
+  occupants: VoiceRoomOccupant[];
   onOpenSettings: () => void;
 }
 
@@ -28,6 +33,7 @@ export function VoiceRoom({
   channel,
   user,
   voice,
+  occupants,
   onOpenSettings,
 }: VoiceRoomProps) {
   const isThisRoom = voice.channel?.id === channel.id;
@@ -50,9 +56,34 @@ export function VoiceRoom({
           <i />{" "}
           {isConnected
             ? `${voice.participants.length} in the room`
-            : "Room is open"}
+            : occupants.length > 0
+              ? `${occupants.length} talking now`
+              : "Room is open"}
         </div>
       </div>
+
+      {!isConnected && occupants.length > 0 ? (
+        <div className="voice-occupancy-preview">
+          <span>Already in {channel.name}</span>
+          <div>
+            {occupants.map((occupant) => (
+              <div key={occupant.userId}>
+                <Avatar
+                  user={{
+                    displayName: occupant.displayName,
+                    avatarUrl: occupant.avatarUrl,
+                    status: "online",
+                  }}
+                  size="small"
+                  showStatus
+                />
+                <strong>{occupant.displayName}</strong>
+                <VoiceElapsedTime joinedAt={occupant.joinedAt} />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {!isThisRoom || voice.status === "disconnected" ? (
         <div className="join-voice-card">
@@ -144,6 +175,24 @@ export function VoiceRoom({
               </button>
             </div>
           ) : null}
+          {voice.cameraDeviceError ? (
+            <div className="voice-device-error" role="alert">
+              <CircleAlert size={16} />
+              <span>{voice.cameraDeviceError}</span>
+              <button type="button" onClick={onOpenSettings}>
+                Review camera
+              </button>
+            </div>
+          ) : null}
+          {voice.outputDeviceError ? (
+            <div className="voice-device-error" role="alert">
+              <CircleAlert size={16} />
+              <span>{voice.outputDeviceError}</span>
+              <button type="button" onClick={onOpenSettings}>
+                Review output
+              </button>
+            </div>
+          ) : null}
           <div className="participant-grid">
             {voice.participants.map((participant) => {
               const avatarUser = participant.isLocal
@@ -158,9 +207,19 @@ export function VoiceRoom({
                   className={`participant-card ${participant.isSpeaking ? "is-speaking" : ""}`}
                   key={participant.id}
                 >
-                  <div className="participant-card__avatar">
-                    <Avatar user={avatarUser} size="large" />
-                    <span className="speaker-rings" />
+                  <div className="participant-card__media">
+                    {participant.cameraEnabled && participant.cameraTrack ? (
+                      <ParticipantVideo
+                        track={participant.cameraTrack}
+                        local={participant.isLocal}
+                        label={participant.displayName}
+                      />
+                    ) : (
+                      <div className="participant-card__avatar">
+                        <Avatar user={avatarUser} size="large" />
+                        <span className="speaker-rings" />
+                      </div>
+                    )}
                   </div>
                   <div className="participant-card__identity">
                     <strong>
@@ -174,6 +233,9 @@ export function VoiceRoom({
                           ? "Muted"
                           : "Listening"}
                     </span>
+                    {participant.joinedAt ? (
+                      <VoiceElapsedTime joinedAt={participant.joinedAt} />
+                    ) : null}
                   </div>
                   <span
                     className={`participant-card__mic ${participant.isMuted ? "muted" : ""}`}
@@ -229,6 +291,25 @@ export function VoiceRoom({
                 <Headphones size={20} />
               )}
               <span>{voice.deafened ? "Undeafen" : "Deafen"}</span>
+            </button>
+            <button
+              className={voice.cameraEnabled ? "is-active" : ""}
+              type="button"
+              disabled={voice.cameraPending}
+              onClick={() => void voice.toggleCamera()}
+            >
+              {voice.cameraEnabled ? (
+                <Video size={20} />
+              ) : (
+                <VideoOff size={20} />
+              )}
+              <span>
+                {voice.cameraPending
+                  ? "Camera…"
+                  : voice.cameraEnabled
+                    ? "Stop video"
+                    : "Start video"}
+              </span>
             </button>
             <button type="button" onClick={onOpenSettings}>
               <Settings2 size={20} />

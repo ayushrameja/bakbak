@@ -34,8 +34,17 @@ function createVoice(
     audioPlaybackBlocked: false,
     error: null,
     inputDeviceError: null,
+    outputDeviceError: null,
+    cameraDeviceError: null,
     inputDevices: [],
+    outputDevices: [],
+    cameraDevices: [],
     selectedInputId: "default",
+    selectedOutputId: "default",
+    selectedCameraId: "default",
+    outputSelectionSupported: false,
+    cameraEnabled: false,
+    cameraPending: false,
     join: vi.fn().mockResolvedValue(undefined),
     leave: vi.fn().mockResolvedValue(undefined),
     toggleMute: vi.fn().mockResolvedValue(undefined),
@@ -43,12 +52,53 @@ function createVoice(
     resumeAudio: vi.fn().mockResolvedValue(undefined),
     setParticipantVolume: vi.fn(),
     setInputDevice: vi.fn().mockResolvedValue(undefined),
+    setOutputDevice: vi.fn().mockResolvedValue(undefined),
+    setCameraDevice: vi.fn().mockResolvedValue(undefined),
+    toggleCamera: vi.fn().mockResolvedValue(undefined),
     dispatchSound: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
 
 describe("VoiceRoom audio recovery", () => {
+  it("shows active occupants before joining", () => {
+    render(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={createVoice({ status: "disconnected", channel: null })}
+        occupants={[
+          {
+            userId: "friend-1",
+            displayName: "Mira",
+            avatarUrl: null,
+            channelId: channel.id,
+            joinedAt: new Date().toISOString(),
+          },
+        ]}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Already in Lounge")).toBeVisible();
+    expect(screen.getByText("Mira")).toBeVisible();
+  });
+
+  it("turns camera on from the connected call controls", async () => {
+    const toggleCamera = vi.fn().mockResolvedValue(undefined);
+    render(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={createVoice({ toggleCamera })}
+        occupants={[]}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Start video/i }));
+    expect(toggleCamera).toHaveBeenCalledOnce();
+  });
+
   it("offers an Enable audio action when autoplay is blocked", async () => {
     const resumeAudio = vi.fn().mockResolvedValue(undefined);
     const voice = createVoice({ audioPlaybackBlocked: true, resumeAudio });
@@ -58,6 +108,7 @@ describe("VoiceRoom audio recovery", () => {
         channel={channel}
         user={user}
         voice={voice}
+        occupants={[]}
         onOpenSettings={vi.fn()}
       />,
     );
@@ -76,6 +127,7 @@ describe("VoiceRoom audio recovery", () => {
         channel={channel}
         user={user}
         voice={voice}
+        occupants={[]}
         onOpenSettings={vi.fn()}
       />,
     );
@@ -100,6 +152,7 @@ describe("VoiceRoom audio recovery", () => {
         channel={channel}
         user={user}
         voice={voice}
+        occupants={[]}
         onOpenSettings={vi.fn()}
       />,
     );

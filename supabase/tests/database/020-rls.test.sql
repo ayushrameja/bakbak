@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(21);
+select plan(30);
 
 insert into auth.users (id, email, raw_user_meta_data)
 values
@@ -99,6 +99,16 @@ select lives_ok(
   $$select public.heartbeat_presence('00000000-0000-4000-8000-000000000001')$$,
   'member can publish a heartbeat for its server'
 );
+select lives_ok(
+  $$select public.heartbeat_presence_v2('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000201')$$,
+  'member can publish voice occupancy for an accessible voice channel'
+);
+select throws_ok(
+  $$select public.heartbeat_presence_v2('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101')$$,
+  '22023',
+  'Voice channel is invalid.',
+  'member cannot publish a text channel as voice occupancy'
+);
 
 reset role;
 select is(
@@ -118,6 +128,64 @@ select is(
   ),
   '20000000-0000-4000-8000-000000000002'::uuid,
   'presence heartbeat user is derived from auth.uid()'
+);
+select is(
+  (
+    select voice_channel_id
+    from public.presence_heartbeats
+    where server_id = '00000000-0000-4000-8000-000000000001'
+  ),
+  '00000000-0000-4000-8000-000000000201'::uuid,
+  'voice occupancy records the validated voice channel'
+);
+select ok(
+  (
+    select voice_joined_at is not null
+    from public.presence_heartbeats
+    where server_id = '00000000-0000-4000-8000-000000000001'
+  ),
+  'voice occupancy uses a server-assigned join timestamp'
+);
+
+update public.presence_heartbeats
+set voice_joined_at = '2026-07-11 12:00:00+00'
+where server_id = '00000000-0000-4000-8000-000000000001';
+
+set local role authenticated;
+set local "request.jwt.claim.sub" = '20000000-0000-4000-8000-000000000002';
+set local "request.jwt.claims" = '{"sub":"20000000-0000-4000-8000-000000000002","role":"authenticated"}';
+select lives_ok(
+  $$select public.heartbeat_presence_v2('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000201')$$,
+  'repeated heartbeat for the same voice channel succeeds'
+);
+
+reset role;
+select is(
+  (
+    select voice_joined_at
+    from public.presence_heartbeats
+    where server_id = '00000000-0000-4000-8000-000000000001'
+  ),
+  '2026-07-11 12:00:00+00'::timestamptz,
+  'same-channel heartbeats preserve the original join timestamp'
+);
+
+set local role authenticated;
+set local "request.jwt.claim.sub" = '20000000-0000-4000-8000-000000000002';
+set local "request.jwt.claims" = '{"sub":"20000000-0000-4000-8000-000000000002","role":"authenticated"}';
+select lives_ok(
+  $$select public.heartbeat_presence_v2('00000000-0000-4000-8000-000000000001', null)$$,
+  'member can clear voice occupancy while remaining online'
+);
+
+reset role;
+select ok(
+  (
+    select voice_channel_id is null and voice_joined_at is null
+    from public.presence_heartbeats
+    where server_id = '00000000-0000-4000-8000-000000000001'
+  ),
+  'clearing voice occupancy clears both voice fields'
 );
 
 set local role authenticated;
@@ -144,6 +212,12 @@ select throws_ok(
   '42501',
   'Server membership required.',
   'outsider cannot publish a heartbeat for the Bakbak server'
+);
+select throws_ok(
+  $$select public.heartbeat_presence_v2('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000201')$$,
+  '42501',
+  'Server membership required.',
+  'outsider cannot publish voice occupancy for the Bakbak server'
 );
 select lives_ok(
   $$select public.heartbeat_presence('20000000-0000-4000-8000-000000000100')$$,

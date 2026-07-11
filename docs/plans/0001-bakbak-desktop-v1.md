@@ -119,15 +119,17 @@ plan.
 - [ ] Manually validate synchronized soundboard playback.
 - [ ] Update architecture, plan status, and the append-only progress log.
 
-The first friend-test build explicitly excludes screen sharing, webcam video,
-user uploads, cloud sound storage, global push-to-talk, and advanced roles.
+The first friend-test build explicitly excludes screen sharing, recording,
+camera effects, user uploads, cloud sound storage, global push-to-talk, and
+advanced roles. Opt-in webcam video and local device preferences were added by
+the approved follow-up plan `0002-voice-video-and-presence.md`.
 
 ### Phase 5 — Post-v1 improvements
 
 - [ ] Add screen sharing without system audio.
 - [ ] Add invite management UI.
 - [ ] Add desktop notifications and tray controls.
-- [ ] Add persisted device preferences.
+- [x] Add locally persisted microphone, speaker, and camera preferences.
 - [ ] Evaluate optional global push-to-talk.
 - [ ] Investigate system-audio sharing separately for each operating system.
 - [ ] Update architecture, plan status, and the append-only progress log.
@@ -185,7 +187,7 @@ After every phase:
 ## Deferred and out of scope for v1
 
 - Screen sharing, including system audio.
-- Webcam video.
+- Camera recording, effects, and virtual backgrounds.
 - User-uploaded sounds and cloud sound storage.
 - Global push-to-talk.
 - Advanced roles and permission management.

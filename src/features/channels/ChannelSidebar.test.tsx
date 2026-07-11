@@ -36,6 +36,7 @@ describe("ChannelSidebar voice controls", () => {
         selectedChannelId={channel.id}
         user={user}
         voice={createVoice()}
+        voiceOccupants={[]}
         unreadChannelIds={new Set()}
         onSelect={vi.fn()}
         onOpenSettings={vi.fn()}
@@ -64,6 +65,7 @@ describe("ChannelSidebar voice controls", () => {
         selectedChannelId="different-channel"
         user={user}
         voice={createVoice()}
+        voiceOccupants={[]}
         unreadChannelIds={new Set([textChannel.id])}
         onSelect={vi.fn()}
         onOpenSettings={vi.fn()}
@@ -74,6 +76,32 @@ describe("ChannelSidebar voice controls", () => {
     expect(screen.getByRole("button", { name: /random/i })).toHaveClass(
       "channel-row--unread",
     );
+  });
+
+  it("shows voice occupants without joining the room", () => {
+    render(
+      <ChannelSidebar
+        server={server}
+        channels={[channel]}
+        selectedChannelId="text-1"
+        user={user}
+        voice={createVoice()}
+        voiceOccupants={[
+          {
+            userId: "friend-1",
+            displayName: "Mira",
+            avatarUrl: null,
+            channelId: channel.id,
+            joinedAt: new Date().toISOString(),
+          },
+        ]}
+        unreadChannelIds={new Set()}
+        onSelect={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onSignOut={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Mira")).toBeVisible();
   });
 });
 
@@ -87,8 +115,17 @@ function createVoice(): ReturnType<typeof useVoiceRoom> {
     audioPlaybackBlocked: false,
     error: null,
     inputDeviceError: null,
+    outputDeviceError: null,
+    cameraDeviceError: null,
     inputDevices: [],
+    outputDevices: [],
+    cameraDevices: [],
     selectedInputId: "default",
+    selectedOutputId: "default",
+    selectedCameraId: "default",
+    outputSelectionSupported: false,
+    cameraEnabled: false,
+    cameraPending: false,
     join: vi.fn().mockResolvedValue(undefined),
     leave: vi.fn().mockResolvedValue(undefined),
     toggleMute: vi.fn().mockResolvedValue(undefined),
@@ -96,6 +133,9 @@ function createVoice(): ReturnType<typeof useVoiceRoom> {
     resumeAudio: vi.fn().mockResolvedValue(undefined),
     setParticipantVolume: vi.fn(),
     setInputDevice: vi.fn().mockResolvedValue(undefined),
+    setOutputDevice: vi.fn().mockResolvedValue(undefined),
+    setCameraDevice: vi.fn().mockResolvedValue(undefined),
+    toggleCamera: vi.fn().mockResolvedValue(undefined),
     dispatchSound: vi.fn().mockResolvedValue(undefined),
   };
 }

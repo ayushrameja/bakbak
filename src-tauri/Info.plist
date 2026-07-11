@@ -4,5 +4,7 @@
 <dict>
   <key>NSMicrophoneUsageDescription</key>
   <string>Bakbak uses your microphone so you can talk with friends in voice rooms.</string>
+  <key>NSCameraUsageDescription</key>
+  <string>Bakbak uses your camera only when you turn video on in a voice room.</string>
 </dict>
 </plist>

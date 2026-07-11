@@ -28,7 +28,7 @@ export async function signLiveKitToken(
     roomJoin: true,
     room: input.roomName,
     canPublish: true,
-    canPublishSources: [TrackSource.MICROPHONE],
+    canPublishSources: [TrackSource.MICROPHONE, TrackSource.CAMERA],
     canSubscribe: true,
     canPublishData: true,
     canUpdateOwnMetadata: false,

@@ -28,12 +28,17 @@ import { sessionToAppUser, signOut } from "../lib/auth-service";
 import { appConfig } from "../lib/env";
 import { mockCurrentUser, mockMessages, mockWorkspace } from "../lib/mock-data";
 import { getSupabaseClient } from "../lib/supabase";
-import { subscribeToServerPresence } from "../lib/presence-service";
+import {
+  subscribeToServerPresence,
+  type ServerPresenceSubscription,
+  type VoicePresenceSession,
+} from "../lib/presence-service";
 import type {
   AppUser,
   Channel,
   ChatMessage,
   WorkspaceSnapshot,
+  VoiceRoomOccupant,
 } from "../lib/types";
 import {
   loadLiveMessages,
@@ -57,7 +62,13 @@ export default function App() {
   const [unreadChannelIds, setUnreadChannelIds] = useState<ReadonlySet<string>>(
     new Set(),
   );
+  const [voiceSessions, setVoiceSessions] = useState<VoicePresenceSession[]>(
+    [],
+  );
   const selectedChannelIdRef = useRef(selectedChannelId);
+  const presenceSubscriptionRef = useRef<ServerPresenceSubscription | null>(
+    null,
+  );
   const voice = useVoiceRoom(user ?? mockCurrentUser, appConfig.dataMode);
   const workspaceServerId = workspace?.server.id;
 
@@ -95,6 +106,7 @@ export default function App() {
       setSelectedChannelId("");
       setMessages([]);
       setUnreadChannelIds(new Set());
+      setVoiceSessions([]);
       return;
     }
     let cancelled = false;
@@ -137,10 +149,11 @@ export default function App() {
       return;
     }
 
-    return subscribeToServerPresence({
+    const subscription = subscribeToServerPresence({
       serverId: workspaceServerId,
       userId: user.id,
-      onSync: (onlineUserIds) => {
+      onSync: ({ onlineUserIds, voiceSessions: nextVoiceSessions }) => {
+        setVoiceSessions([...nextVoiceSessions]);
         setWorkspace((current) => {
           if (!current || current.server.id !== workspaceServerId)
             return current;
@@ -156,7 +169,24 @@ export default function App() {
       },
       onError: setAppError,
     });
+    presenceSubscriptionRef.current = subscription;
+    return () => {
+      if (presenceSubscriptionRef.current === subscription) {
+        presenceSubscriptionRef.current = null;
+      }
+      subscription.stop();
+    };
   }, [user, workspaceServerId]);
+
+  const activeVoiceChannelId =
+    voice.channel &&
+    (voice.status === "connected" || voice.status === "reconnecting")
+      ? voice.channel.id
+      : null;
+
+  useEffect(() => {
+    void presenceSubscriptionRef.current?.setVoiceChannel(activeVoiceChannelId);
+  }, [activeVoiceChannelId]);
 
   const selectedChannel = useMemo(
     () =>
@@ -172,6 +202,27 @@ export default function App() {
         .map((channel) => channel.id) ?? [],
     [workspace?.channels],
   );
+
+  const voiceOccupants = useMemo<VoiceRoomOccupant[]>(() => {
+    if (!workspace) return [];
+    const membersById = new Map(
+      workspace.members.map((member) => [member.id, member]),
+    );
+    return voiceSessions.flatMap((session) => {
+      const member = membersById.get(session.userId);
+      return member
+        ? [
+            {
+              userId: member.id,
+              displayName: member.displayName,
+              avatarUrl: member.avatarUrl,
+              channelId: session.channelId,
+              joinedAt: session.joinedAt,
+            },
+          ]
+        : [];
+    });
+  }, [voiceSessions, workspace]);
 
   useEffect(() => {
     selectedChannelIdRef.current = selectedChannelId;
@@ -296,6 +347,7 @@ export default function App() {
 
   async function handleSignOut() {
     await voice.leave();
+    await presenceSubscriptionRef.current?.setVoiceChannel(null);
     if (appConfig.dataMode === "live") {
       try {
         await signOut();
@@ -384,6 +436,7 @@ export default function App() {
         selectedChannelId={selectedChannel.id}
         user={user}
         voice={voice}
+        voiceOccupants={voiceOccupants}
         unreadChannelIds={unreadChannelIds}
         onSelect={handleSelectChannel}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -422,6 +475,9 @@ export default function App() {
               channel={selectedChannel}
               user={user}
               voice={voice}
+              occupants={voiceOccupants.filter(
+                (occupant) => occupant.channelId === selectedChannel.id,
+              )}
               onOpenSettings={() => setSettingsOpen(true)}
             />
           )}
@@ -430,12 +486,21 @@ export default function App() {
       {settingsOpen ? (
         <SettingsModal
           inputDevices={voice.inputDevices}
+          outputDevices={voice.outputDevices}
+          cameraDevices={voice.cameraDevices}
           selectedInputId={voice.selectedInputId}
+          selectedOutputId={voice.selectedOutputId}
+          selectedCameraId={voice.selectedCameraId}
           inputError={voice.inputDeviceError}
+          outputError={voice.outputDeviceError}
+          cameraError={voice.cameraDeviceError}
+          outputSelectionSupported={voice.outputSelectionSupported}
           inputDisabled={
             voice.status === "connecting" || voice.status === "reconnecting"
           }
           onInputChange={(deviceId) => void voice.setInputDevice(deviceId)}
+          onOutputChange={(deviceId) => void voice.setOutputDevice(deviceId)}
+          onCameraChange={(deviceId) => void voice.setCameraDevice(deviceId)}
           onClose={() => setSettingsOpen(false)}
         />
       ) : null}

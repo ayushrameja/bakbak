@@ -5,7 +5,7 @@ const TEST_API_KEY = "bakbak-test-key";
 const TEST_API_SECRET = "local-test-value-with-no-production-access";
 
 Deno.test(
-  "LiveKit signer grants microphone and data without video or screen share",
+  "LiveKit signer grants microphone, camera, and data without screen share",
   async () => {
     const token = await signLiveKitToken(
       { apiKey: TEST_API_KEY, apiSecret: TEST_API_SECRET },
@@ -42,7 +42,7 @@ Deno.test(
     assertEquals(claims.video?.canPublishData, true);
     assertEquals(
       JSON.stringify(claims.video?.canPublishSources),
-      JSON.stringify(["microphone"]),
+      JSON.stringify(["microphone", "camera"]),
     );
     assertEquals(claims.video?.canUpdateOwnMetadata, false);
     assert(

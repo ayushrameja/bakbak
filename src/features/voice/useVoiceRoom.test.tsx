@@ -13,6 +13,7 @@ interface RoomDouble {
   disconnect: ReturnType<typeof vi.fn>;
   localParticipant: {
     setMicrophoneEnabled: ReturnType<typeof vi.fn>;
+    setCameraEnabled: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -41,7 +42,12 @@ vi.mock("livekit-client", () => {
       name: "Ayu",
       isSpeaking: false,
       isMicrophoneEnabled: true,
+      isCameraEnabled: false,
+      joinedAt: new Date("2026-07-11T12:00:00.000Z"),
+      lastCameraError: undefined,
+      getTrackPublication: vi.fn(),
       setMicrophoneEnabled: vi.fn().mockResolvedValue(undefined),
+      setCameraEnabled: vi.fn().mockResolvedValue(undefined),
       publishData: vi.fn().mockResolvedValue(undefined),
     };
     readonly connect: ReturnType<typeof vi.fn>;
@@ -79,11 +85,18 @@ vi.mock("livekit-client", () => {
       ParticipantDisconnected: "participantDisconnected",
       Reconnected: "reconnected",
       Reconnecting: "reconnecting",
+      LocalTrackPublished: "localTrackPublished",
+      LocalTrackUnpublished: "localTrackUnpublished",
       TrackMuted: "trackMuted",
+      TrackPublished: "trackPublished",
       TrackSubscribed: "trackSubscribed",
       TrackUnmuted: "trackUnmuted",
+      TrackUnpublished: "trackUnpublished",
       TrackUnsubscribed: "trackUnsubscribed",
     },
+    Track: { Source: { Camera: "camera" } },
+    VideoPresets: { h720: { resolution: { width: 1280, height: 720 } } },
+    supportsAudioOutputSelection: () => false,
   };
 });
 
@@ -317,6 +330,25 @@ describe("useVoiceRoom join lifecycle", () => {
       liveKitState.rooms[1]?.localParticipant.setMicrophoneEnabled,
     ).toHaveBeenCalledWith(true, undefined);
     expect(result.current.status).toBe("connected");
+  });
+
+  it("publishes 720p camera video only after an explicit toggle", async () => {
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    const room = liveKitState.rooms[0];
+    expect(room).toBeDefined();
+    room?.localParticipant.setCameraEnabled.mockResolvedValueOnce({});
+
+    await act(async () => {
+      await result.current.toggleCamera();
+    });
+
+    expect(room?.localParticipant.setCameraEnabled).toHaveBeenCalledWith(true, {
+      resolution: { width: 1280, height: 720 },
+    });
   });
 });
 

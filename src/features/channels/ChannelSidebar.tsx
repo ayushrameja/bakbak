@@ -6,10 +6,18 @@ import {
   Mic,
   MicOff,
   Settings,
+  Video,
+  VideoOff,
   Volume2,
 } from "lucide-react";
 import { Avatar } from "../../components/Avatar";
-import type { AppUser, Channel, Server } from "../../lib/types";
+import type {
+  AppUser,
+  Channel,
+  Server,
+  VoiceRoomOccupant,
+} from "../../lib/types";
+import { VoiceElapsedTime } from "../voice/VoiceElapsedTime";
 import type { useVoiceRoom } from "../voice/useVoiceRoom";
 
 interface ChannelSidebarProps {
@@ -18,6 +26,7 @@ interface ChannelSidebarProps {
   selectedChannelId: string;
   user: AppUser;
   voice: ReturnType<typeof useVoiceRoom>;
+  voiceOccupants: VoiceRoomOccupant[];
   unreadChannelIds: ReadonlySet<string>;
   onSelect: (channel: Channel) => void;
   onOpenSettings: () => void;
@@ -30,6 +39,7 @@ export function ChannelSidebar({
   selectedChannelId,
   user,
   voice,
+  voiceOccupants,
   unreadChannelIds,
   onSelect,
   onOpenSettings,
@@ -63,29 +73,38 @@ export function ChannelSidebar({
         <ChannelGroup label="Voice rooms">
           {voiceChannels.map((channel) => (
             <div key={channel.id}>
-              <button
-                className={`channel-row ${selectedChannelId === channel.id ? "active" : ""}`}
-                type="button"
-                onClick={() => onSelect(channel)}
-              >
-                <Volume2 size={17} />
-                <span>{channel.name}</span>
-                {voice.channel?.id === channel.id &&
-                voice.status === "connected" ? (
-                  <i className="live-dot" />
-                ) : null}
-              </button>
-              {voice.channel?.id === channel.id &&
-              voice.status === "connected" ? (
-                <div className="channel-voice-people">
-                  {voice.participants.map((participant) => (
-                    <span key={participant.id}>
-                      <i className={participant.isSpeaking ? "speaking" : ""} />
-                      {participant.displayName}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
+              {(() => {
+                const occupants = voiceOccupants.filter(
+                  (occupant) => occupant.channelId === channel.id,
+                );
+                return (
+                  <>
+                    <button
+                      className={`channel-row ${selectedChannelId === channel.id ? "active" : ""}`}
+                      type="button"
+                      onClick={() => onSelect(channel)}
+                    >
+                      <Volume2 size={17} />
+                      <span>{channel.name}</span>
+                      {occupants.length > 0 ? <i className="live-dot" /> : null}
+                    </button>
+                    {occupants.length > 0 ? (
+                      <div className="channel-voice-people">
+                        {occupants.map((occupant) => (
+                          <span key={occupant.userId}>
+                            <i />
+                            <b>
+                              {occupant.displayName}
+                              {occupant.userId === user.id ? " (you)" : ""}
+                            </b>
+                            <VoiceElapsedTime joinedAt={occupant.joinedAt} />
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </>
+                );
+              })()}
             </div>
           ))}
         </ChannelGroup>
@@ -107,6 +126,20 @@ export function ChannelSidebar({
             </div>
           </div>
           <div className="voice-dock__controls">
+            <button
+              type="button"
+              disabled={voice.status !== "connected" || voice.cameraPending}
+              onClick={() => void voice.toggleCamera()}
+              aria-label={
+                voice.cameraEnabled ? "Turn camera off" : "Turn camera on"
+              }
+            >
+              {voice.cameraEnabled ? (
+                <Video size={17} />
+              ) : (
+                <VideoOff size={17} />
+              )}
+            </button>
             <button
               type="button"
               disabled={voice.status !== "connected"}
