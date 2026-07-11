@@ -635,3 +635,29 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
 - **Next:** Commit and push this fix to the open PR, confirm CI advances past
   pnpm setup, and address only any newly surfaced downstream failure before
   merging.
+
+## 2026-07-11 — Install Tauri Linux prerequisites in CI
+
+- **Completed:** Fixed the Ubuntu Cargo validation failure by installing the
+  official Tauri Debian/Ubuntu development dependencies before Rust checks in
+  both the pull-request CI job and the release validation job.
+- **Decisions:** Kept the Linux prerequisite list identical across CI and
+  release validation and aligned it with Tauri's documented WebKitGTK 4.1,
+  AppIndicator, SVG, X11, OpenSSL, and compiler requirements rather than adding
+  only the first missing GLib package from the error.
+- **Validation:**
+  - User-supplied GitHub Actions log — confirmed `cargo check --locked` reached
+    native compilation and failed because `pkg-config` could not find
+    `glib-2.0`, `gobject-2.0`, or `gio-2.0` on the Ubuntu runner.
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 19 Vitest files
+    with 95 tests, four release-script tests, version synchronization, the
+    production renderer build, and compiled-artifact secret scanning. The
+    existing non-blocking large-chunk warning remains.
+  - Workflow YAML parse for `ci.yml` and `release.yml` — passed.
+  - `git diff --check` — passed.
+- **Documentation updated:** `docs/architecture.md` and `docs/progress.md`.
+- **Known limitations:** The Ubuntu package installation and subsequent Cargo
+  check require a new GitHub-hosted run; macOS and Windows release jobs remain
+  unvalidated.
+- **Next:** Commit and push this workflow fix, confirm pull-request CI passes,
+  then merge only after the green result so the first desktop release can run.

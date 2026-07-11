@@ -417,7 +417,9 @@ GitHub release validation additionally requires successful native builds on
 both macOS architectures and Windows x64, updater signatures for every target,
 two DMG assets, one NSIS executable, and a complete version-matched
 `latest.json`. A release remains a draft when any platform or manifest check
-fails.
+fails. Ubuntu validation runners install Tauri's WebKitGTK, GLib-transitive,
+AppIndicator, SVG, X11 automation, OpenSSL, and compiler development packages
+before invoking Cargo.
 
 Security validation must scan built renderer and desktop artifacts for forbidden
 service-role or LiveKit secret values. Record commands, results, and skipped
