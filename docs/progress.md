@@ -1086,3 +1086,259 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
   already published `0.3.0` without producing an empty patch release, then
   verify that the next product release automatically merges its version-sync
   PR.
+
+## 2026-07-12 — Add native macOS screen sharing and secure companions
+
+- **Completed:** Added the approved screen-sharing plan and implemented
+  backward-compatible `voice`/`screen_share` token purposes. Voice tokens keep
+  microphone, camera, and data grants plus video-only screen fallback;
+  generated screen companions can publish only screen video/audio into the
+  exact voice room and cannot subscribe, send data, or update metadata. Added
+  renderer confirmation with audio unchecked, call and persistent-dock
+  controls, companion ownership/filtering, one featured stage, multi-presenter
+  selection, selected-share-only subscriptions, browser hiding/unsubscription,
+  owner volume and output routing for share audio, deafen handling, warnings,
+  and voice-leave cleanup. Added main-window-only Tauri commands and a native
+  macOS ScreenCaptureKit picker/capture service with a separate LiveKit room,
+  1080p/15 fps H.264 video, optional 48 kHz stereo audio, Bakbak-process audio
+  exclusion, video-only audio failure fallback, source/connection termination,
+  and window-close teardown. Deployed only `livekit-token`; no database
+  migration was needed. Target-gated Rust LiveKit, WebRTC, ScreenCaptureKit,
+  and Tokio dependencies to macOS so the current Windows video-only fallback
+  does not compile or ship an unused native media stack.
+- **Decisions:** Native code receives only the public LiveKit URL and a
+  five-minute member-authorized token. Captured labels and credentials are not
+  logged. Browser clients remain ordinary voice/chat members and cannot view
+  shares. Windows currently exposes only WebView video fallback with matched
+  audio disabled; publishing unrelated system audio would be a privacy bug, not
+  a fallback. Directly linking ScreenCaptureKit establishes macOS 12.3 as the
+  bundle minimum; macOS 12.3–13 retain video-only WebView fallback and macOS 14+
+  use the native picker/audio path.
+- **Validation:**
+  - `deno task --config supabase/deno.json test` — passed 12 Edge Function
+    tests, including default-purpose compatibility, exact voice/screen grants,
+    malformed purpose, unauthorized/non-member channel handling, generated
+    companion identity, JWT verification, and normalized signer failure.
+  - `pnpm exec vitest run src/features/voice src/features/channels/ChannelSidebar.test.tsx`
+    — passed 13 files with 65 focused renderer tests.
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 25 Vitest files
+    with 108 tests, six release-script tests, version synchronization,
+    production build, and compiled-artifact secret scanning. The existing
+    non-blocking large-chunk warning remains.
+  - `cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check` — passed.
+  - `cargo test --locked --offline --manifest-path src-tauri/Cargo.toml --lib`
+    — passed three macOS/native boundary tests.
+  - `cargo check --locked --offline --manifest-path src-tauri/Cargo.toml` —
+    passed.
+  - Target-specific `cargo tree --locked --offline` inspection — Windows x64
+    contained no LiveKit, WebRTC, or ScreenCaptureKit dependency; the macOS
+    tree retained the native LiveKit/WebRTC path.
+  - First `pnpm tauri:build:local` — failed because the sandbox could not
+    resolve LiveKit's pinned GitHub WebRTC archive; the approved network retry
+    downloaded it and built successfully. Bundle inspection then found Tauri's
+    stale macOS 10.13 declaration and unresolved `@rpath` Swift concurrency
+    dependency, so the minimum was corrected to 12.3 and the final rebuild
+    passed in release mode with ad-hoc signing. Notarization was skipped because
+    distribution credentials are intentionally absent.
+  - `codesign --verify --deep --strict --verbose=4 <Bakbak.app>` — passed.
+    `otool -L` confirmed `/usr/lib/swift/libswift_Concurrency.dylib` rather than
+    an unresolved `@rpath`; bundled `Info.plist` reports macOS 12.3 and the
+    screen-capture purpose string.
+  - Bundle size — previous app 12,216 KB / executable 12,446,736 bytes; native
+    screen-share app 35,724 KB / executable 36,518,848 bytes, an app increase of
+    23,508 KB from native LiveKit/WebRTC.
+  - `pnpm security:scan` and `git diff --check` — passed after the final bundle.
+  - `pnpm dlx supabase@latest functions deploy livekit-token --use-api` —
+    passed for the linked hosted project. A no-authorization POST to the
+    deployed endpoint returned HTTP 401.
+- **Documentation updated:** `README.md`, `supabase/README.md`,
+  `docs/architecture.md`, `docs/plans/0001-bakbak-desktop-v1.md`,
+  `docs/plans/0002-voice-video-and-presence.md`, new approved
+  `docs/plans/0003-screen-sharing.md`, and this canonical progress entry.
+- **Known limitations:** Windows native `Windows.Graphics.Capture`, matched
+  window-process/display audio, Windows CI validation, and macOS-to-Windows plus
+  Windows-to-macOS acceptance are not implemented or run. The macOS native
+  picker, permission denial, source-audio behavior, OS-level stop, simultaneous
+  presenters, reconnect, camera coexistence, deafen/output/volume behavior, and
+  protected-content limitations still require real two-account observation.
+  Native coordinator coverage currently validates request, frame sizing, audio
+  conversion, build/link, and renderer teardown but does not yet provide the
+  full mocked picker/capture/publisher fault matrix from plan 0003.
+- **Next:** Implement the Windows native picker plus safe matched process/display
+  audio, add its mocked coordinator and CI coverage, then install both platform
+  builds and complete the bidirectional two-account matrix before marking the
+  Phase 5 criterion complete.
+
+## 2026-07-12 — Fix native WebRTC Objective-C category crash
+
+- **Completed:** Diagnosed the supplied macOS crash report and reproduced its
+  native initialization boundary. WebRTC's VP9 encoder called
+  `+[NSString stringForAbslStringView:]`, but the app terminated with an
+  unrecognized-selector exception. Confirmed that the pinned `libwebrtc.a`
+  contains `NSString+StdString.o` and the required category method while the
+  crashing Bakbak executable contained only the selector call. Updated the
+  macOS build to extract and link that exact upstream archive member explicitly,
+  added a native video-factory regression test, rebuilt the application, and
+  replaced `/Applications/Bakbak.app` with the repaired build.
+- **Decisions:** Link only WebRTC's category object instead of using Apple's
+  broad `-ObjC` linker flag. `-ObjC` fixes category discovery but also
+  force-loads the ScreenCaptureKit and `apple-cf` Swift archives that previously
+  produced duplicate CoreMedia bridge symbols. Using the pinned upstream object
+  preserves WebRTC's exact C++ ABI and limits the workaround to the missing
+  code.
+- **Validation:**
+  - Supplied `.ips` report plus terminal stack — both identify
+    `RTCVideoEncoderVP9.scalabilityModes` calling the missing
+    `stringForAbslStringView:` selector on the native signaling thread.
+  - Pre-fix `ar -t`/`nm` comparison — `libwebrtc.a` contained
+    `NSString+StdString.o` and the method implementation; the Bakbak executable
+    did not.
+  - First focused factory test — failed because the synchronous test had no
+    Tokio reactor; converted it to `#[tokio::test]` before evaluating WebRTC.
+  - `cargo test --locked --offline --manifest-path src-tauri/Cargo.toml --lib`
+    — passed four tests, including native WebRTC video-factory initialization.
+  - `cargo check --locked --offline --manifest-path src-tauri/Cargo.toml` and
+    Rust formatting check — passed.
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 25 Vitest files
+    with 108 tests, six release-script tests, version synchronization,
+    production build, and secret scanning. The existing non-blocking large
+    chunk warning remains.
+  - `pnpm tauri dev` — built and remained alive after launch until deliberately
+    stopped; port 1420 was released afterward.
+  - `pnpm tauri:build:local` — passed and produced the ad-hoc-signed macOS app;
+    notarization was skipped because credentials remain intentionally absent.
+  - Release-binary `nm` inspection — confirmed
+    `+[NSString(AbslStringView) stringForAbslStringView:]` and the upstream
+    `NSString` category are present.
+  - Release and installed `codesign --verify --deep --strict --verbose=4` —
+    passed. `pnpm security:scan` and `git diff --check` also passed.
+  - `ditto <built Bakbak.app> /Applications/Bakbak.app` — passed. Built and
+    installed executables share SHA-256
+    `d8ef587fcb2b8694c050248a707e6db42e67e18997b4fcad1986023279941707`.
+  - `open /Applications/Bakbak.app` plus `lsof` — passed; the repaired installed
+    process remained active after launch.
+- **Documentation updated:** `docs/architecture.md` and `docs/progress.md`.
+- **Known limitations:** Automated native initialization now covers the exact
+  crashing factory path, but the user still needs to repeat the real picker and
+  screen/audio publication action in the installed app. The broader two-account
+  screen-sharing acceptance matrix remains open.
+- **Next:** In the already launched repaired app, join voice and retry Share
+  screen with audio unchecked first, then checked. Confirm the picker opens and
+  publication starts without an Objective-C exception before continuing the
+  macOS acceptance matrix.
+
+## 2026-07-12 — Complete native WebRTC category linking
+
+- **Completed:** Diagnosed the second supplied macOS crash,
+  `-[RTCVideoCodecInfo initWithNativeSdpVideoFormat:]: unrecognized selector`,
+  as another runtime-only Objective-C category omitted from LiveKit's pinned
+  static WebRTC archive. Replaced the earlier one-object workaround with a
+  reviewed set of all eight category-only WebRTC bridge objects used by the
+  macOS SDK, including the NSString, encoded-image, peer-connection,
+  peer-connection-factory, video-codec, and encoder-settings bridges. Rebuilt,
+  reinstalled, and launched `/Applications/Bakbak.app`. Each build recreates a
+  dedicated extraction directory so stale objects cannot conceal an upstream
+  archive mismatch.
+- **Decisions:** Link the complete reviewed category set from the single pinned
+  WebRTC archive. This closes the selector family proactively while preserving
+  the narrow workaround needed to avoid the duplicate Swift bridge symbols
+  caused by the global `-ObjC` linker flag. The fixed object names also make an
+  upstream WebRTC archive change fail at build time instead of becoming a
+  friend-test crash.
+- **Validation:**
+  - Supplied crash report and terminal stack — both identify
+    `RTCVideoEncoderFactorySimulcast.supportedCodecs` calling the missing
+    `RTCVideoCodecInfo(Private)` initializer on WebRTC's signaling thread.
+  - `ar -t` plus `nm -A` archive inventory — confirmed the eight runtime-only
+    category members and located `initWithNativeSdpVideoFormat:` in
+    `RTCVideoCodecInfo+Private.o`.
+  - `cargo test --locked --offline --manifest-path src-tauri/Cargo.toml --lib`
+    — passed all four focused Rust tests.
+  - `cargo check --locked --offline --manifest-path src-tauri/Cargo.toml`,
+    `cargo build --locked --offline --manifest-path src-tauri/Cargo.toml`, and
+    Rust formatting check — passed.
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 25 Vitest files
+    with 108 tests, six release-script tests, version synchronization,
+    production build, and secret scanning. The existing non-blocking large
+    chunk warning remains.
+  - `pnpm tauri:build:local` — passed and produced the ad-hoc-signed macOS app;
+    notarization was skipped because credentials remain intentionally absent.
+  - Release-binary `nm` plus `otool -ov` inspection — confirmed
+    `stringForAbslStringView:`, `initWithNativeSdpVideoFormat:`,
+    `nativeSdpVideoFormat`, and `initWithNativeVideoCodec:` are present, and
+    that the missing initializer is registered on `RTCVideoCodecInfo`'s runtime
+    method table.
+  - Built and installed `codesign --verify --deep --strict --verbose=4` —
+    passed. Their executable SHA-256 values match at
+    `117a4e68fce60daa99deed6c8fd47d8fa5fe88f1c93315c998360deaaea58ef9`.
+  - `open /Applications/Bakbak.app` plus `lsof` — passed; the installed process
+    remained active after launch.
+  - `git diff --check` — passed before the progress entry was appended.
+- **Documentation updated:** `docs/architecture.md` and `docs/progress.md`.
+- **Known limitations:** Startup, linking, and selector registration are
+  verified, but Apple's native content picker and a real video/audio
+  publication still require human interaction. The broader two-account screen
+  sharing matrix remains open.
+- **Next:** In the launched installed app, join voice and retry Share screen
+  with audio unchecked first, then checked. If both publish successfully,
+  continue the macOS-to-Windows acceptance cases from plan 0003.
+
+## 2026-07-12 — Contain macOS first-frame failures and fix buffer ownership
+
+- **Completed:** Diagnosed the third supplied macOS crash as a native
+  `CVPixelBuffer` ownership violation rather than another linker failure. The
+  ScreenCaptureKit wrapper supplied an owned +1 pixel-buffer retain, LiveKit's
+  macOS bridge consumed and released that retain, and the Rust wrapper then
+  released it a second time. CoreMedia later finalized the parent sample buffer
+  and terminated in `CFRelease` with a pointer-authentication trap. Transferred
+  the retain exactly once by preventing the consumed Rust wrapper from
+  dropping. Added output-registration checks and a five-second first-frame
+  gate; capture now stops safely and returns an error if macOS rejects an output,
+  ends early, or never supplies usable video. Native lifecycle states and
+  errors now print to the Tauri terminal, and the renderer prints sanitized
+  failures to DevTools without logging tokens or source labels. Tauri string
+  errors are preserved in the call alert, leave voice connected, and keep the
+  screen-share state retryable.
+- **Decisions:** Fix the proven retain imbalance at the zero-copy boundary
+  instead of attempting to catch `SIGTRAP`; a CoreFoundation pointer-auth trap
+  occurs below Rust/JavaScript and cannot be converted into a renderer error
+  after memory has already been corrupted. Treat delivery of the first usable
+  frame—not merely `SCStream.startCapture` returning—as successful startup.
+  Keep diagnostic logs limited to state and safe error text.
+- **Validation:**
+  - Supplied macOS report — installed PID 70416 terminated with
+    `EXC_BREAKPOINT (SIGTRAP)` on `com.screencapturekit.output.0`; the crashing
+    stack is `CFRelease` -> `sBufFinalize` -> CoreMedia capture cleanup, while
+    Bakbak was waiting in `SCStream.start_capture`.
+  - Local dependency-source inspection — confirmed ScreenCaptureKit creates an
+    owned pixel-buffer wrapper and LiveKit's Apple bridge calls
+    `CVPixelBufferRelease` after constructing its native video buffer.
+  - `cargo test --locked --offline --manifest-path src-tauri/Cargo.toml --lib`
+    — passed six tests, including first-frame delivery and timeout behavior.
+  - `cargo check --locked --offline --manifest-path src-tauri/Cargo.toml` and
+    Rust formatting — passed. `cargo clippy --locked --offline
+--manifest-path src-tauri/Cargo.toml --lib -- -D warnings` also passed.
+  - Focused screen-share service and voice-hook Vitest run — passed 13 tests,
+    including sanitized DevTools logging and retryable native failure while
+    voice remains connected.
+  - `pnpm check` — passed after correcting one test-mock lint error; formatting,
+    lint, strict TypeScript, 25 Vitest files with 111 tests, six release-script
+    tests, version synchronization, production build, and secret scanning all
+    passed. The existing non-blocking large-chunk warning remains.
+  - `pnpm tauri:build:local` — passed and produced the ad-hoc-signed macOS app;
+    notarization was skipped because distribution credentials remain absent.
+  - Release-binary inspection — confirmed the first-frame failure and sanitized
+    terminal diagnostic strings are present. Built and installed
+    `codesign --verify --deep --strict --verbose=4` passed, and their executable
+    SHA-256 values match at
+    `cdc1b268e074ce435f74d92ab20ffc5d217c4e3194d1741e75d258f91dbd9a64`.
+- **Documentation updated:** `docs/architecture.md` and `docs/progress.md`.
+- **Known limitations:** The ownership correction is evidence-backed and all
+  automated boundaries pass, but a real Apple picker/frame/publication remains
+  a human test. A process-level hardware/framework trap cannot be made
+  recoverable after it occurs; the fix prevents the known double release and
+  converts ordinary capture startup failures before publication.
+- **Next:** Run `pnpm tauri dev`, retry video-only screen sharing, and confirm
+  either frames publish or the app remains alive with the exact failure in the
+  call alert, DevTools console, and Tauri terminal. Then repeat with source
+  audio enabled.

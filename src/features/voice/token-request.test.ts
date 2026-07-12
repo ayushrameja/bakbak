@@ -20,6 +20,13 @@ describe("buildLiveKitTokenRequest", () => {
     });
   });
 
+  it("includes an explicit screen-share purpose", () => {
+    expect(buildLiveKitTokenRequest("channel_123", "screen_share")).toEqual({
+      channelId: "channel_123",
+      purpose: "screen_share",
+    });
+  });
+
   it.each(["", "room with spaces", "../admin", "x".repeat(129)])(
     "rejects unsafe channel ID %j",
     (channelId) => {

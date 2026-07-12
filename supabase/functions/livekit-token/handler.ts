@@ -1,6 +1,6 @@
 import { corsHeaders, isRequestOriginAllowed } from "../_shared/cors.ts";
 import { emptyResponse, jsonResponse } from "../_shared/http.ts";
-import { parseTokenRequest } from "./request.ts";
+import { parseTokenRequest, type LiveKitTokenPurpose } from "./request.ts";
 
 export const LIVEKIT_TOKEN_TTL_SECONDS = 300;
 
@@ -16,6 +16,8 @@ export interface VoiceChannelAccess {
 
 export interface TokenSigningInput extends VoiceChannelAccess {
   identity: string;
+  ownerUserId: string;
+  purpose: LiveKitTokenPurpose;
   roomName: string;
   ttlSeconds: number;
 }
@@ -129,7 +131,12 @@ export async function handleLiveKitTokenRequest(
   try {
     const token = await dependencies.signToken({
       ...access,
-      identity: user.id,
+      identity:
+        parsedRequest.purpose === "screen_share"
+          ? `screen:${user.id}:${crypto.randomUUID()}`
+          : user.id,
+      ownerUserId: user.id,
+      purpose: parsedRequest.purpose,
       roomName,
       ttlSeconds: LIVEKIT_TOKEN_TTL_SECONDS,
     });

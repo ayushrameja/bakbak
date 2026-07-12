@@ -1,7 +1,7 @@
 # Bakbak
 
 Bakbak is a private desktop room for 5–10 friends: persistent text chat,
-drop-in voice, and a synchronized bundled soundboard. It uses React, strict
+drop-in voice, desktop screen sharing, and a synchronized hosted soundboard. It uses React, strict
 TypeScript, Vite, Tauri 2, Supabase, and LiveKit.
 
 The default local experience is fully interactive and needs no account or
@@ -57,6 +57,20 @@ or LiveKit.
 
 Every `VITE_*` value is public in the compiled desktop renderer. Never place a
 LiveKit secret or Supabase service-role key there.
+
+## Screen-share compatibility
+
+- macOS 14 or later uses the native system picker and can include matched source
+  audio when the checkbox is explicitly enabled. Grant Bakbak access under
+  **System Settings → Privacy & Security → Screen & System Audio Recording** and
+  relaunch after changing permission.
+- macOS 12.3–13 and the current Windows build use a
+  video-only WebView picker when available. Matched Windows process/display
+  audio remains disabled until its native implementation and Windows CI matrix
+  are complete.
+- Browser and Linux clients do not publish or view shares in this phase.
+- Protected or DRM-controlled content can be black or silent by operating
+  system policy.
 
 For the internal rehearsal, email/password authentication remains enabled while
 email confirmation may be disabled temporarily. Before external friend testing,

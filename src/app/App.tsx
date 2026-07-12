@@ -18,6 +18,7 @@ import { ConnectionStatus } from "../features/server/ConnectionStatus";
 import { SettingsModal } from "../features/settings/SettingsModal";
 import { useSoundboardCatalog } from "../features/soundboard/useSoundboardCatalog";
 import { VoiceRoom } from "../features/voice/VoiceRoom";
+import { ScreenShareDialog } from "../features/voice/ScreenShareDialog";
 import { useVoiceRoom } from "../features/voice/useVoiceRoom";
 import { sessionToAppUser, signOut } from "../lib/auth-service";
 import { appConfig } from "../lib/env";
@@ -52,6 +53,7 @@ export default function App() {
   const [sending, setSending] = useState(false);
   const [appError, setAppError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [screenShareDialogOpen, setScreenShareDialogOpen] = useState(false);
   const [needsInvite, setNeedsInvite] = useState(false);
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
   const [unreadChannelIds, setUnreadChannelIds] = useState<ReadonlySet<string>>(
@@ -442,6 +444,7 @@ export default function App() {
         unreadChannelIds={unreadChannelIds}
         onSelect={handleSelectChannel}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenScreenShare={() => setScreenShareDialogOpen(true)}
         onSignOut={() => void handleSignOut()}
       />
       <main className="content-shell">
@@ -483,6 +486,7 @@ export default function App() {
                   (occupant) => occupant.channelId === selectedChannel.id,
                 )}
                 onOpenSettings={() => setSettingsOpen(true)}
+                onOpenScreenShare={() => setScreenShareDialogOpen(true)}
               />
             )}
           </div>
@@ -509,6 +513,14 @@ export default function App() {
           onCameraChange={(deviceId) => void voice.setCameraDevice(deviceId)}
           onSoundboardVolumeChange={voice.setSoundboardVolume}
           onClose={() => setSettingsOpen(false)}
+        />
+      ) : null}
+      {screenShareDialogOpen ? (
+        <ScreenShareDialog
+          audioAvailable={voice.screenShareAudioAvailable}
+          audioUnavailableReason={voice.screenShareUnavailableReason}
+          onStart={(includeAudio) => void voice.startScreenShare(includeAudio)}
+          onClose={() => setScreenShareDialogOpen(false)}
         />
       ) : null}
     </div>

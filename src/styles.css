@@ -593,7 +593,7 @@ button:disabled {
 }
 .voice-dock__controls {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 5px;
   margin-top: 10px;
 }
@@ -617,6 +617,10 @@ button:disabled {
   color: var(--muted);
   background: rgba(255, 255, 255, 0.035);
   cursor: not-allowed;
+}
+.voice-dock__controls button.is-active {
+  color: #9fe1bd;
+  background: rgba(82, 206, 145, 0.1);
 }
 .user-dock {
   min-height: 62px;
@@ -1390,6 +1394,99 @@ button:disabled {
   gap: 12px;
   margin: 26px 0 18px;
 }
+.screen-share-stage {
+  margin: 24px 0 18px;
+  overflow: hidden;
+  border: 1px solid rgba(124, 114, 238, 0.25);
+  border-radius: 16px;
+  background: #101016;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+}
+.screen-share-stage > header {
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.02);
+}
+.screen-share-stage > header > div,
+.screen-share-stage > header > div > span {
+  display: flex;
+  align-items: center;
+}
+.screen-share-stage > header > div {
+  gap: 10px;
+  color: var(--accent-bright);
+}
+.screen-share-stage > header > div > span {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 2px;
+}
+.screen-share-stage > header strong {
+  color: var(--text);
+  font-size: 11px;
+}
+.screen-share-stage > header small {
+  color: var(--muted);
+  font-size: 9px;
+}
+.screen-share-stage__audio {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--faint);
+  font-size: 9px;
+}
+.screen-share-stage__audio.is-live {
+  color: var(--green);
+}
+.screen-share-stage__media {
+  min-height: 300px;
+  display: grid;
+  place-items: center;
+  background: #09090d;
+}
+.screen-share-stage__media .participant-video {
+  max-height: 66vh;
+  border-radius: 0;
+  object-fit: contain;
+}
+.screen-share-stage__waiting {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--faint);
+  font-size: 10px;
+}
+.screen-share-stage > nav {
+  display: flex;
+  gap: 7px;
+  padding: 9px 12px;
+  overflow-x: auto;
+  border-top: 1px solid var(--line);
+}
+.screen-share-stage > nav button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: var(--panel);
+  font-size: 9px;
+  cursor: pointer;
+}
+.screen-share-stage > nav button.is-active {
+  color: var(--accent-bright);
+  border-color: rgba(124, 114, 238, 0.35);
+  background: rgba(124, 114, 238, 0.1);
+}
 .participant-card {
   position: relative;
   min-height: 190px;
@@ -1855,6 +1952,50 @@ button:disabled {
   margin: 0;
   color: var(--muted);
   font-size: 11px;
+}
+.screen-share-dialog {
+  padding: 22px 24px 24px;
+}
+.screen-share-dialog__preview {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--accent-bright);
+  background: rgba(124, 114, 238, 0.055);
+}
+.screen-share-dialog__preview > div,
+.screen-share-dialog > label span {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.screen-share-dialog__preview strong,
+.screen-share-dialog > label strong {
+  color: var(--text);
+  font-size: 11px;
+}
+.screen-share-dialog__preview span,
+.screen-share-dialog > label small {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+.screen-share-dialog > label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 14px 0 22px;
+  padding: 13px 4px;
+}
+.screen-share-dialog > label input {
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+.screen-share-dialog > label.is-disabled {
+  opacity: 0.58;
 }
 .settings-grid {
   display: grid;

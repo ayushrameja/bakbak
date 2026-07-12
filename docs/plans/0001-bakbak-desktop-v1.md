@@ -124,24 +124,28 @@ plan.
 - [ ] Manually validate synchronized soundboard playback.
 - [ ] Update architecture, plan status, and the append-only progress log.
 
-The first friend-test build explicitly excludes screen sharing, recording,
+The first friend-test build explicitly excluded screen sharing, recording,
 camera effects, user sound uploads, global push-to-talk, and advanced roles.
 An operator-managed private cloud sound pack was approved separately. Members
 may edit label, emoji, and category metadata, but cannot upload, replace, or
 delete audio or manage categories. Opt-in webcam video and local device
 preferences were added by the approved follow-up plan
 `0002-voice-video-and-presence.md`.
+Desktop screen sharing is now an approved Phase 5 follow-up under
+`0003-screen-sharing.md`.
 
 ### Phase 5 — Post-v1 improvements
 
-- [ ] Add screen sharing without system audio.
+- [ ] Complete desktop screen sharing with matched system audio on macOS and
+      Windows under `0003-screen-sharing.md`.
 - [ ] Add invite management UI.
 - [ ] Add desktop notifications and tray controls.
 - [x] Add locally persisted microphone, speaker, and camera preferences.
 - [x] Add a private operator-managed sound bucket with server-member reads.
 - [x] Fetch, revision-cache, and play the hosted sound pack in the renderer.
 - [ ] Evaluate optional global push-to-talk.
-- [ ] Investigate system-audio sharing separately for each operating system.
+- [ ] Finish Windows process/display-matched audio and the cross-platform
+      acceptance matrix.
 - [ ] Update architecture, plan status, and the append-only progress log.
 
 ### Phase 6 — Distribution

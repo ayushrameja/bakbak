@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { AppUser, Channel, Server } from "../../lib/types";
 import { mockSoundboardController } from "../soundboard/mock-catalog";
@@ -41,6 +42,7 @@ describe("ChannelSidebar voice controls", () => {
         unreadChannelIds={new Set()}
         onSelect={vi.fn()}
         onOpenSettings={vi.fn()}
+        onOpenScreenShare={vi.fn()}
         onSignOut={vi.fn()}
       />,
     );
@@ -70,6 +72,7 @@ describe("ChannelSidebar voice controls", () => {
         unreadChannelIds={new Set([textChannel.id])}
         onSelect={vi.fn()}
         onOpenSettings={vi.fn()}
+        onOpenScreenShare={vi.fn()}
         onSignOut={vi.fn()}
       />,
     );
@@ -99,14 +102,42 @@ describe("ChannelSidebar voice controls", () => {
         unreadChannelIds={new Set()}
         onSelect={vi.fn()}
         onOpenSettings={vi.fn()}
+        onOpenScreenShare={vi.fn()}
         onSignOut={vi.fn()}
       />,
     );
     expect(screen.getByText("Mira")).toBeVisible();
   });
+
+  it("keeps screen sharing available in the persistent voice dock", async () => {
+    const onOpenScreenShare = vi.fn();
+    render(
+      <ChannelSidebar
+        server={server}
+        channels={[channel]}
+        selectedChannelId={channel.id}
+        user={user}
+        voice={createVoice({
+          status: "connected",
+          screenShareAvailable: true,
+        })}
+        voiceOccupants={[]}
+        unreadChannelIds={new Set()}
+        onSelect={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onOpenScreenShare={onOpenScreenShare}
+        onSignOut={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Share screen" }));
+    expect(onOpenScreenShare).toHaveBeenCalledOnce();
+  });
 });
 
-function createVoice(): ReturnType<typeof useVoiceRoom> {
+function createVoice(
+  overrides: Partial<ReturnType<typeof useVoiceRoom>> = {},
+): ReturnType<typeof useVoiceRoom> {
   return {
     status: "connecting",
     channel,
@@ -127,6 +158,17 @@ function createVoice(): ReturnType<typeof useVoiceRoom> {
     outputSelectionSupported: false,
     cameraEnabled: false,
     cameraPending: false,
+    screenShares: [],
+    selectedScreenShareId: null,
+    screenShareAvailable: false,
+    screenShareAudioAvailable: false,
+    screenShareUnavailableReason: null,
+    screenShareState: "idle",
+    screenShareEnabled: false,
+    screenSharePending: false,
+    screenShareAudioPublished: false,
+    screenShareSourceLabel: null,
+    screenShareError: null,
     soundboard: mockSoundboardController,
     soundboardVolume: 0.7,
     activeLocalSoundCount: 0,
@@ -140,9 +182,13 @@ function createVoice(): ReturnType<typeof useVoiceRoom> {
     setOutputDevice: vi.fn().mockResolvedValue(undefined),
     setCameraDevice: vi.fn().mockResolvedValue(undefined),
     toggleCamera: vi.fn().mockResolvedValue(undefined),
+    startScreenShare: vi.fn().mockResolvedValue(undefined),
+    stopScreenShare: vi.fn().mockResolvedValue(undefined),
+    selectScreenShare: vi.fn(),
     dispatchSound: vi.fn().mockResolvedValue(undefined),
     stopLocalSounds: vi.fn().mockResolvedValue(undefined),
     setSoundboardVolume: vi.fn(),
     updateSoundMetadata: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
   };
 }

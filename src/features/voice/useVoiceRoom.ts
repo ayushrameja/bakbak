@@ -52,6 +52,16 @@ import {
   buildLiveKitTokenRequest,
   parseLiveKitTokenResponse,
 } from "./token-request";
+import {
+  getScreenShareCapabilities,
+  isDesktopApp,
+  listenForScreenShareLifecycle,
+  startScreenShare as startNativeScreenShare,
+  stopScreenShare as stopNativeScreenShare,
+  type ScreenShareCapabilities,
+  type ScreenShareLifecycleState,
+} from "./screen-share-service";
+import { chooseFeaturedScreenShare } from "./screen-share-selection";
 
 export type VoiceConnectionStatus =
   "disconnected" | "connecting" | "connected" | "reconnecting" | "error";
@@ -67,6 +77,16 @@ export interface VoiceParticipant {
   cameraEnabled: boolean;
   cameraTrack: VideoTrackLike | null;
   activeSounds: SoundboardActivity[];
+}
+
+export interface VoiceScreenShare {
+  id: string;
+  ownerId: string;
+  displayName: string;
+  isLocal: boolean;
+  joinedAt: string | null;
+  track: VideoTrackLike | null;
+  audioPublished: boolean;
 }
 
 export interface VideoTrackLike {
@@ -94,6 +114,17 @@ interface VoiceRoomState {
   outputSelectionSupported: boolean;
   cameraEnabled: boolean;
   cameraPending: boolean;
+  screenShares: VoiceScreenShare[];
+  selectedScreenShareId: string | null;
+  screenShareAvailable: boolean;
+  screenShareAudioAvailable: boolean;
+  screenShareUnavailableReason: string | null;
+  screenShareState: ScreenShareLifecycleState;
+  screenShareEnabled: boolean;
+  screenSharePending: boolean;
+  screenShareAudioPublished: boolean;
+  screenShareSourceLabel: string | null;
+  screenShareError: string | null;
   soundboard: SoundboardCatalogController;
   soundboardVolume: number;
   activeLocalSoundCount: number;
@@ -107,6 +138,9 @@ interface VoiceRoomState {
   setOutputDevice: (deviceId: string) => Promise<void>;
   setCameraDevice: (deviceId: string) => Promise<void>;
   toggleCamera: () => Promise<void>;
+  startScreenShare: (includeAudio: boolean) => Promise<void>;
+  stopScreenShare: () => Promise<void>;
+  selectScreenShare: (shareId: string) => void;
   dispatchSound: (soundId: string) => Promise<void>;
   stopLocalSounds: () => Promise<void>;
   setSoundboardVolume: (volume: number) => void;
@@ -150,6 +184,25 @@ export function useVoiceRoom(
   );
   const [cameraEnabled, setCameraEnabled] = useState(false);
   const [cameraPending, setCameraPending] = useState(false);
+  const [screenShares, setScreenShares] = useState<VoiceScreenShare[]>([]);
+  const [selectedScreenShareId, setSelectedScreenShareId] = useState<
+    string | null
+  >(null);
+  const [screenShareCapabilities, setScreenShareCapabilities] =
+    useState<ScreenShareCapabilities>({
+      available: false,
+      nativeCapture: false,
+      systemAudio: false,
+      reason: "Screen sharing is available in the installed desktop app.",
+    });
+  const [screenShareState, setScreenShareState] =
+    useState<ScreenShareLifecycleState>("idle");
+  const [screenShareAudioPublished, setScreenShareAudioPublished] =
+    useState(false);
+  const [screenShareSourceLabel, setScreenShareSourceLabel] = useState<
+    string | null
+  >(null);
+  const [screenShareError, setScreenShareError] = useState<string | null>(null);
   const [soundboardVolume, setSoundboardVolumeState] = useState(
     initialPreferences.soundboardVolume,
   );
@@ -170,36 +223,72 @@ export function useVoiceRoom(
   const joinOperationRef = useRef(0);
   const playbackOperationRef = useRef(0);
   const cameraOperationRef = useRef(0);
+  const screenShareOperationRef = useRef(0);
+  const screenShareSessionRef = useRef<string | null>(null);
   const seenSoundEvents = useRef(new Set<string>());
   const soundActivities = useRef(new Map<string, SoundboardActivity[]>());
   const soundActivityTimers = useRef(new Map<string, number>());
   const soundboardTracks = useRef(new Map<string, RemoteAudioTrack>());
+  const screenShareTracks = useRef(new Map<string, RemoteAudioTrack>());
   const participantVolumes = useRef(new Map<string, number>());
   const soundboardVolumeRef = useRef(soundboardVolume);
   const soundboardRef = useRef(soundboard);
 
-  const refreshParticipants = useCallback((room: Room) => {
-    const next: VoiceParticipant[] = [
-      participantToView(
-        room.localParticipant,
-        true,
-        soundActivities.current.get(room.localParticipant.identity) ?? [],
-      ),
-    ];
-    room.remoteParticipants.forEach((participant) => {
-      const volume = participantVolumes.current.get(participant.identity);
-      if (volume !== undefined) participant.setVolume(volume);
-      next.push(
-        participantToView(
-          participant,
-          false,
-          soundActivities.current.get(participant.identity) ?? [],
-        ),
-      );
-    });
-    setParticipants(next);
-    setCameraEnabled(room.localParticipant.isCameraEnabled);
-  }, []);
+  const desktopApp = isDesktopApp();
+
+  const refreshParticipants = useCallback(
+    (room: Room) => {
+      const next: VoiceParticipant[] = [];
+      const nextScreenShares: VoiceScreenShare[] = [];
+      const addParticipant = (participant: Participant, local: boolean) => {
+        const companion = readScreenShareCompanion(participant);
+        if (companion) {
+          if (desktopApp) {
+            nextScreenShares.push(
+              screenShareParticipantToView(participant, companion, user.id),
+            );
+          }
+          return;
+        }
+        next.push(
+          participantToView(
+            participant,
+            local,
+            soundActivities.current.get(participant.identity) ?? [],
+          ),
+        );
+        if (desktopApp) {
+          const fallbackShare = regularParticipantScreenShareToView(
+            participant,
+            local,
+          );
+          if (fallbackShare) nextScreenShares.push(fallbackShare);
+        }
+      };
+
+      addParticipant(room.localParticipant, true);
+      room.remoteParticipants.forEach((participant) => {
+        if (!desktopApp) {
+          participant
+            .getTrackPublication(Track.Source.ScreenShare)
+            ?.setSubscribed(false);
+          participant
+            .getTrackPublication(Track.Source.ScreenShareAudio)
+            ?.setSubscribed(false);
+        }
+        const companion = readScreenShareCompanion(participant);
+        const volume = participantVolumes.current.get(
+          companion?.ownerUserId ?? participant.identity,
+        );
+        if (volume !== undefined) participant.setVolume(volume);
+        addParticipant(participant, false);
+      });
+      setParticipants(next);
+      setScreenShares(nextScreenShares);
+      setCameraEnabled(room.localParticipant.isCameraEnabled);
+    },
+    [desktopApp, user.id],
+  );
 
   const refreshDevices = useCallback(async () => {
     if (!navigator.mediaDevices) return;
@@ -260,9 +349,114 @@ export function useVoiceRoom(
       );
   }, [refreshDevices]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!desktopApp) return;
+    void getScreenShareCapabilities()
+      .then((capabilities) => {
+        if (cancelled) return;
+        if (
+          !capabilities.nativeCapture &&
+          typeof navigator.mediaDevices?.getDisplayMedia !== "function"
+        ) {
+          setScreenShareCapabilities({
+            ...capabilities,
+            available: false,
+            reason:
+              "This desktop runtime does not provide a compatible screen picker.",
+          });
+          return;
+        }
+        setScreenShareCapabilities(capabilities);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setScreenShareCapabilities({
+            available:
+              typeof navigator.mediaDevices?.getDisplayMedia === "function",
+            nativeCapture: false,
+            systemAudio: false,
+            reason:
+              "Matched system audio is unavailable. Video-only sharing may still work.",
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [desktopApp]);
+
+  useEffect(() => {
+    setSelectedScreenShareId((current) =>
+      chooseFeaturedScreenShare(current, screenShares),
+    );
+  }, [screenShares]);
+
+  useEffect(() => {
+    const room = roomRef.current;
+    if (!room || !desktopApp) return;
+    room.remoteParticipants.forEach((participant) => {
+      const shareId = readScreenShareCompanion(participant)
+        ? participant.identity
+        : `${participant.identity}:screen`;
+      const selected = shareId === selectedScreenShareId;
+      participant
+        .getTrackPublication(Track.Source.ScreenShare)
+        ?.setSubscribed(selected);
+      participant
+        .getTrackPublication(Track.Source.ScreenShareAudio)
+        ?.setSubscribed(selected);
+    });
+  }, [desktopApp, screenShares, selectedScreenShareId]);
+
+  useEffect(() => {
+    if (!desktopApp) return;
+    let disposed = false;
+    let unlisten: () => void = () => undefined;
+    void listenForScreenShareLifecycle((event) => {
+      if (disposed) return;
+      if (
+        event.sessionId &&
+        screenShareSessionRef.current &&
+        event.sessionId !== screenShareSessionRef.current
+      ) {
+        return;
+      }
+      setScreenShareState(event.state);
+      setScreenShareAudioPublished(event.audioPublished);
+      setScreenShareSourceLabel(event.sourceLabel);
+      if (event.state === "error") {
+        screenShareSessionRef.current = null;
+        setScreenShareAudioPublished(false);
+        setScreenShareSourceLabel(null);
+        setScreenShareError(
+          event.message ?? "Bakbak could not continue the screen share.",
+        );
+      }
+      if (event.state === "idle") {
+        screenShareSessionRef.current = null;
+        setScreenShareAudioPublished(false);
+        setScreenShareSourceLabel(null);
+      }
+    }).then((dispose) => {
+      if (disposed) dispose();
+      else unlisten = dispose;
+    });
+    return () => {
+      disposed = true;
+      unlisten();
+    };
+  }, [desktopApp]);
+
   const resetVoiceMedia = useCallback(() => {
     playbackOperationRef.current += 1;
     cameraOperationRef.current += 1;
+    screenShareOperationRef.current += 1;
+    const screenSessionId = screenShareSessionRef.current;
+    screenShareSessionRef.current = null;
+    const screenStop = screenSessionId
+      ? stopNativeScreenShare(screenSessionId).catch(() => undefined)
+      : Promise.resolve();
     remoteAudio.cleanup();
     soundboardAudio.cleanup();
     audioOutput.cleanup();
@@ -270,6 +464,7 @@ export function useVoiceRoom(
     soundActivityTimers.current.forEach((timer) => window.clearTimeout(timer));
     soundActivityTimers.current.clear();
     soundboardTracks.current.clear();
+    screenShareTracks.current.clear();
     setActiveLocalSoundCount(0);
     deafenedRef.current = false;
     seenSoundEvents.current.clear();
@@ -279,6 +474,13 @@ export function useVoiceRoom(
     setAudioPlaybackBlocked(false);
     setCameraEnabled(false);
     setCameraPending(false);
+    setScreenShares([]);
+    setSelectedScreenShareId(null);
+    setScreenShareState("idle");
+    setScreenShareAudioPublished(false);
+    setScreenShareSourceLabel(null);
+    setScreenShareError(null);
+    return screenStop;
   }, [audioOutput, remoteAudio, soundboardAudio]);
 
   const clearParticipantSounds = useCallback(
@@ -365,7 +567,12 @@ export function useVoiceRoom(
         .on(RoomEvent.ActiveSpeakersChanged, sync)
         .on(RoomEvent.TrackMuted, sync)
         .on(RoomEvent.TrackUnmuted, sync)
-        .on(RoomEvent.TrackPublished, sync)
+        .on(RoomEvent.TrackPublished, (publication: RemoteTrackPublication) => {
+          if (!desktopApp && isScreenShareSource(publication.source)) {
+            publication.setSubscribed(false);
+          }
+          sync();
+        })
         .on(RoomEvent.TrackUnpublished, sync)
         .on(RoomEvent.LocalTrackPublished, sync)
         .on(RoomEvent.LocalTrackUnpublished, sync)
@@ -377,16 +584,39 @@ export function useVoiceRoom(
             participant: RemoteParticipant,
           ) => {
             if (!isCurrentRoom()) return;
+            if (!desktopApp && isScreenShareSource(publication.source)) {
+              publication.setSubscribed(false);
+              return;
+            }
             const isSoundboardTrack =
               publication.trackName === SOUNDBOARD_TRACK_NAME;
+            const companion = readScreenShareCompanion(participant);
+            const screenOwnerId = companion?.ownerUserId;
+            const isScreenShareAudio =
+              publication.source === Track.Source.ScreenShareAudio;
+            const participantVolume =
+              participantVolumes.current.get(
+                screenOwnerId ?? participant.identity,
+              ) ?? 1;
             const volume = isSoundboardTrack
-              ? soundboardVolumeRef.current *
-                (participantVolumes.current.get(participant.identity) ?? 1)
-              : undefined;
+              ? soundboardVolumeRef.current * participantVolume
+              : isScreenShareAudio
+                ? participantVolume
+                : undefined;
             remoteAudio.attach(track, volume);
             if (isSoundboardTrack && track.kind === Track.Kind.Audio) {
               soundboardTracks.current.set(
                 participant.identity,
+                track as RemoteAudioTrack,
+              );
+            }
+            if (
+              isScreenShareAudio &&
+              screenOwnerId &&
+              track.kind === Track.Kind.Audio
+            ) {
+              screenShareTracks.current.set(
+                screenOwnerId,
                 track as RemoteAudioTrack,
               );
             }
@@ -399,6 +629,10 @@ export function useVoiceRoom(
           soundboardTracks.current.forEach((candidate, participantId) => {
             if (candidate === track)
               soundboardTracks.current.delete(participantId);
+          });
+          screenShareTracks.current.forEach((candidate, participantId) => {
+            if (candidate === track)
+              screenShareTracks.current.delete(participantId);
           });
           sync();
         })
@@ -450,7 +684,7 @@ export function useVoiceRoom(
         .on(RoomEvent.Disconnected, () => {
           if (roomRef.current !== room) return;
           roomRef.current = null;
-          resetVoiceMedia();
+          void resetVoiceMedia();
           setStatus("disconnected");
           setChannel(null);
         });
@@ -462,6 +696,7 @@ export function useVoiceRoom(
       resetVoiceMedia,
       addParticipantSound,
       clearParticipantSounds,
+      desktopApp,
     ],
   );
 
@@ -469,7 +704,7 @@ export function useVoiceRoom(
     async (preserveJoinState = false) => {
       const room = roomRef.current;
       roomRef.current = null;
-      resetVoiceMedia();
+      const screenStop = resetVoiceMedia();
       if (!preserveJoinState) {
         setStatus("disconnected");
         setChannel(null);
@@ -478,6 +713,7 @@ export function useVoiceRoom(
       setInputDeviceError(null);
       setOutputDeviceError(null);
       setCameraDeviceError(null);
+      await screenStop;
       if (room) await room.disconnect();
     },
     [resetVoiceMedia],
@@ -555,20 +791,8 @@ export function useVoiceRoom(
       let joiningRoom: Room | null = null;
       let attemptedRelay = false;
       try {
-        const supabase = getSupabaseClient();
-        const invocation = await supabase.functions.invoke("livekit-token", {
-          body: buildLiveKitTokenRequest(nextChannel.id),
-        });
+        const response = await requestLiveKitToken(nextChannel.id, "voice");
         if (!isCurrentJoin()) return;
-        if (invocation.error) throw invocation.error;
-        const data: unknown = invocation.data;
-        const response = parseLiveKitTokenResponse(
-          typeof data === "object" && data !== null && !("url" in data)
-            ? { ...data, url: appConfig.livekitUrl }
-            : data,
-          Date.now(),
-        );
-        if (!response.ok) throw new Error(response.message);
 
         const createJoiningRoom = () => {
           const room = new Room({ adaptiveStream: true, dynacast: true });
@@ -580,7 +804,7 @@ export function useVoiceRoom(
         let room = createJoiningRoom();
         joiningRoom = room;
         try {
-          await room.connect(response.value.serverUrl, response.value.token);
+          await room.connect(response.serverUrl, response.token);
         } catch (initialError) {
           if (!isPeerConnectionFailure(initialError) || !isCurrentJoin()) {
             throw initialError;
@@ -593,7 +817,7 @@ export function useVoiceRoom(
 
           room = createJoiningRoom();
           joiningRoom = room;
-          await room.connect(response.value.serverUrl, response.value.token, {
+          await room.connect(response.serverUrl, response.token, {
             rtcConfig: { iceTransportPolicy: "relay" },
             maxRetries: 0,
           });
@@ -640,7 +864,7 @@ export function useVoiceRoom(
 
         const room = joiningRoom;
         if (roomRef.current === room) roomRef.current = null;
-        resetVoiceMedia();
+        void resetVoiceMedia();
         void room?.disconnect();
         setStatus("error");
         setError(describeVoiceConnectionError(caught, attemptedRelay));
@@ -757,6 +981,10 @@ export function useVoiceRoom(
           soundboardTrack,
           soundboardVolumeRef.current * safeVolume,
         );
+      }
+      const screenShareTrack = screenShareTracks.current.get(participantId);
+      if (screenShareTrack) {
+        remoteAudio.setVolume(screenShareTrack, safeVolume);
       }
       setParticipants((current) =>
         current.map((participant) =>
@@ -910,6 +1138,129 @@ export function useVoiceRoom(
     status,
   ]);
 
+  const startScreenShare = useCallback(
+    async (includeAudio: boolean) => {
+      if (
+        status !== "connected" ||
+        !desktopApp ||
+        !screenShareCapabilities.available ||
+        (screenShareState !== "idle" && screenShareState !== "error")
+      ) {
+        return;
+      }
+
+      const room = roomRef.current;
+      if (!room || !channel) return;
+      const operationId = screenShareOperationRef.current + 1;
+      screenShareOperationRef.current = operationId;
+      setScreenShareState("selecting");
+      setScreenShareError(null);
+      setScreenShareAudioPublished(false);
+      setScreenShareSourceLabel(null);
+
+      try {
+        if (screenShareCapabilities.nativeCapture) {
+          const token = await requestLiveKitToken(channel.id, "screen_share");
+          if (
+            screenShareOperationRef.current !== operationId ||
+            roomRef.current !== room
+          ) {
+            return;
+          }
+          setScreenShareState("starting");
+          const session = await startNativeScreenShare({
+            serverUrl: token.serverUrl,
+            token: token.token,
+            includeAudio: includeAudio && screenShareCapabilities.systemAudio,
+          });
+          if (
+            screenShareOperationRef.current !== operationId ||
+            roomRef.current !== room
+          ) {
+            await stopNativeScreenShare(session.sessionId).catch(
+              () => undefined,
+            );
+            return;
+          }
+          screenShareSessionRef.current = session.sessionId;
+          setScreenShareSourceLabel(session.sourceLabel);
+          setScreenShareAudioPublished(session.audioPublished);
+          setScreenShareState("sharing");
+          if (includeAudio && !session.audioPublished) {
+            setScreenShareError(
+              "The screen is live without audio because the selected source or system did not provide it.",
+            );
+          }
+          return;
+        }
+
+        const publication = await room.localParticipant.setScreenShareEnabled(
+          true,
+          { audio: false, contentHint: "detail" },
+        );
+        if (
+          screenShareOperationRef.current !== operationId ||
+          roomRef.current !== room
+        ) {
+          await room.localParticipant
+            .setScreenShareEnabled(false)
+            .catch(() => undefined);
+          return;
+        }
+        if (!publication) throw new Error("Screen video did not publish.");
+        setScreenShareState("sharing");
+        setScreenShareSourceLabel("Shared screen");
+        refreshParticipants(room);
+      } catch (caught) {
+        if (
+          screenShareOperationRef.current !== operationId ||
+          roomRef.current !== room
+        ) {
+          return;
+        }
+        setScreenShareState("error");
+        setScreenShareError(describeScreenShareError(caught));
+      }
+    },
+    [
+      channel,
+      desktopApp,
+      refreshParticipants,
+      screenShareCapabilities,
+      screenShareState,
+      status,
+    ],
+  );
+
+  const stopScreenShare = useCallback(async () => {
+    if (screenShareState === "idle" || screenShareState === "stopping") return;
+    const operationId = screenShareOperationRef.current + 1;
+    screenShareOperationRef.current = operationId;
+    setScreenShareState("stopping");
+    setScreenShareError(null);
+    const sessionId = screenShareSessionRef.current;
+    screenShareSessionRef.current = null;
+    try {
+      if (sessionId) {
+        await stopNativeScreenShare(sessionId);
+      } else {
+        const room = roomRef.current;
+        await room?.localParticipant.setScreenShareEnabled(false);
+        if (room) refreshParticipants(room);
+      }
+    } catch {
+      setScreenShareError(
+        "Bakbak could not confirm the share stopped, so it closed the local session.",
+      );
+    } finally {
+      if (screenShareOperationRef.current === operationId) {
+        setScreenShareState("idle");
+        setScreenShareAudioPublished(false);
+        setScreenShareSourceLabel(null);
+      }
+    }
+  }, [refreshParticipants, screenShareState]);
+
   const dispatchSound = useCallback(
     async (soundId: string) => {
       if (status !== "connected")
@@ -1004,16 +1355,24 @@ export function useVoiceRoom(
     setSoundboardVolumeState(Math.max(0, Math.min(1, volume)));
   }, []);
 
+  const selectScreenShare = useCallback((shareId: string) => {
+    setSelectedScreenShareId(shareId);
+  }, []);
+
   useEffect(
     () => () => {
       joinOperationRef.current += 1;
       playbackOperationRef.current += 1;
       cameraOperationRef.current += 1;
+      screenShareOperationRef.current += 1;
+      const screenSessionId = screenShareSessionRef.current;
+      screenShareSessionRef.current = null;
       const room = roomRef.current;
       roomRef.current = null;
       remoteAudio.cleanup();
       soundboardAudio.cleanup();
       audioOutput.cleanup();
+      if (screenSessionId) void stopNativeScreenShare(screenSessionId);
       void room?.disconnect();
     },
     [audioOutput, remoteAudio, soundboardAudio],
@@ -1039,6 +1398,21 @@ export function useVoiceRoom(
     outputSelectionSupported,
     cameraEnabled,
     cameraPending,
+    screenShares,
+    selectedScreenShareId,
+    screenShareAvailable: desktopApp && screenShareCapabilities.available,
+    screenShareAudioAvailable:
+      desktopApp && screenShareCapabilities.systemAudio,
+    screenShareUnavailableReason: screenShareCapabilities.reason,
+    screenShareState,
+    screenShareEnabled: screenShareState === "sharing",
+    screenSharePending:
+      screenShareState === "selecting" ||
+      screenShareState === "starting" ||
+      screenShareState === "stopping",
+    screenShareAudioPublished,
+    screenShareSourceLabel,
+    screenShareError,
     soundboard,
     soundboardVolume,
     activeLocalSoundCount,
@@ -1052,6 +1426,9 @@ export function useVoiceRoom(
     setOutputDevice,
     setCameraDevice,
     toggleCamera,
+    startScreenShare,
+    stopScreenShare,
+    selectScreenShare,
     dispatchSound,
     stopLocalSounds,
     setSoundboardVolume,
@@ -1095,6 +1472,111 @@ export function describeVoiceConnectionError(
   }
 
   return error instanceof Error ? error.message : "Voice connection failed.";
+}
+
+async function requestLiveKitToken(
+  channelId: string,
+  purpose: "voice" | "screen_share",
+) {
+  const supabase = getSupabaseClient();
+  const invocation = await supabase.functions.invoke("livekit-token", {
+    body: buildLiveKitTokenRequest(channelId, purpose),
+  });
+  if (invocation.error) throw invocation.error;
+  const data: unknown = invocation.data;
+  const response = parseLiveKitTokenResponse(
+    typeof data === "object" && data !== null && !("url" in data)
+      ? { ...data, url: appConfig.livekitUrl }
+      : data,
+    Date.now(),
+  );
+  if (!response.ok) throw new Error(response.message);
+  return response.value;
+}
+
+function describeScreenShareError(error: unknown): string {
+  if (
+    error instanceof DOMException &&
+    (error.name === "NotAllowedError" || error.name === "AbortError")
+  ) {
+    return "Screen sharing was not started. Choose a source and allow Screen & System Audio Recording in system settings.";
+  }
+  if (typeof error === "string" && error.trim()) return error;
+  return error instanceof Error
+    ? error.message
+    : "Bakbak could not start screen sharing.";
+}
+
+interface ScreenShareCompanionMetadata {
+  ownerUserId: string;
+}
+
+function readScreenShareCompanion(
+  participant: Participant,
+): ScreenShareCompanionMetadata | null {
+  if (!participant.metadata) return null;
+  try {
+    const value: unknown = JSON.parse(participant.metadata);
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      "participantKind" in value &&
+      value.participantKind === "screen_share" &&
+      "ownerUserId" in value &&
+      typeof value.ownerUserId === "string" &&
+      value.ownerUserId.length > 0
+    ) {
+      return { ownerUserId: value.ownerUserId };
+    }
+  } catch {
+    // Participant metadata is untrusted room input. Invalid JSON is ordinary.
+  }
+  return null;
+}
+
+function screenShareParticipantToView(
+  participant: Participant,
+  metadata: ScreenShareCompanionMetadata,
+  localUserId: string,
+): VoiceScreenShare {
+  const publication = participant.getTrackPublication(Track.Source.ScreenShare);
+  return {
+    id: participant.identity,
+    ownerId: metadata.ownerUserId,
+    displayName: participant.name || "Friend",
+    isLocal: metadata.ownerUserId === localUserId,
+    joinedAt: participant.joinedAt?.toISOString() ?? null,
+    track: (publication?.track as VideoTrackLike | undefined) ?? null,
+    audioPublished: Boolean(
+      participant.getTrackPublication(Track.Source.ScreenShareAudio),
+    ),
+  };
+}
+
+function regularParticipantScreenShareToView(
+  participant: Participant,
+  local: boolean,
+): VoiceScreenShare | null {
+  const publication = participant.getTrackPublication(Track.Source.ScreenShare);
+  if (!publication) return null;
+  return {
+    id: `${participant.identity}:screen`,
+    ownerId: participant.identity,
+    displayName: participant.name || participant.identity || "Friend",
+    isLocal: local,
+    joinedAt: participant.joinedAt?.toISOString() ?? null,
+    track: (publication.track as VideoTrackLike | undefined) ?? null,
+    audioPublished: Boolean(
+      participant.getTrackPublication(Track.Source.ScreenShareAudio),
+    ),
+  };
+}
+
+function isScreenShareSource(source: Track.Source): boolean {
+  return (
+    source === Track.Source.ScreenShare ||
+    source === Track.Source.ScreenShareAudio
+  );
 }
 
 function participantToView(

@@ -1,5 +1,6 @@
 export interface LiveKitTokenRequest {
   channelId: string;
+  purpose?: "voice" | "screen_share";
 }
 
 export interface LiveKitToken {
@@ -24,6 +25,7 @@ export type TokenResponseResult =
 
 export function buildLiveKitTokenRequest(
   channelId: string,
+  purpose: "voice" | "screen_share" = "voice",
 ): LiveKitTokenRequest {
   const normalized = channelId.trim();
 
@@ -35,7 +37,9 @@ export function buildLiveKitTokenRequest(
     throw new TypeError("channelId must be a valid channel identifier");
   }
 
-  return { channelId: normalized };
+  return purpose === "voice"
+    ? { channelId: normalized }
+    : { channelId: normalized, purpose };
 }
 
 /**

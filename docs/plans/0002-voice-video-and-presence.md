@@ -20,8 +20,10 @@ occupancy with per-member elapsed time before a user joins.
 - Every server member can see active voice-room occupants and their elapsed
   join duration. Graceful leave clears immediately; crashed clients expire with
   the existing heartbeat timeout.
-- LiveKit tokens permit microphone, camera, and data only. Screen share,
-  recording, camera effects, and cloud device preferences remain excluded.
+- Voice participant tokens permit microphone, camera, data, and video-only
+  screen publication for the compatibility fallback. Native screen companions
+  and their stricter grants are owned by `0003-screen-sharing.md`; recording,
+  camera effects, and cloud device preferences remain excluded.
 
 ## Completion criteria
 

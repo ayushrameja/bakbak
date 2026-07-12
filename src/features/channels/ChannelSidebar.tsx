@@ -5,6 +5,7 @@ import {
   LogOut,
   Mic,
   MicOff,
+  MonitorUp,
   Settings,
   Video,
   VideoOff,
@@ -30,6 +31,7 @@ interface ChannelSidebarProps {
   unreadChannelIds: ReadonlySet<string>;
   onSelect: (channel: Channel) => void;
   onOpenSettings: () => void;
+  onOpenScreenShare: () => void;
   onSignOut: () => void;
 }
 
@@ -43,6 +45,7 @@ export function ChannelSidebar({
   unreadChannelIds,
   onSelect,
   onOpenSettings,
+  onOpenScreenShare,
   onSignOut,
 }: ChannelSidebarProps) {
   const textChannels = channels.filter((channel) => channel.kind === "text");
@@ -126,6 +129,27 @@ export function ChannelSidebar({
             </div>
           </div>
           <div className="voice-dock__controls">
+            {voice.screenShareAvailable || voice.screenShareEnabled ? (
+              <button
+                type="button"
+                className={voice.screenShareEnabled ? "is-active" : ""}
+                disabled={
+                  voice.status !== "connected" || voice.screenSharePending
+                }
+                onClick={() =>
+                  voice.screenShareEnabled
+                    ? void voice.stopScreenShare()
+                    : onOpenScreenShare()
+                }
+                aria-label={
+                  voice.screenShareEnabled
+                    ? "Stop screen sharing"
+                    : "Share screen"
+                }
+              >
+                <MonitorUp size={17} />
+              </button>
+            ) : null}
             <button
               type="button"
               disabled={voice.status !== "connected" || voice.cameraPending}
