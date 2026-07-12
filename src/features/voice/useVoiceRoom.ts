@@ -157,7 +157,11 @@ export function useVoiceRoom(
   const [remoteAudio] = useState(() => new RemoteAudioRenderer());
   const [audioOutput] = useState(() => new AudioOutputRouter());
   const [soundboardAudio] = useState(
-    () => new SoundboardAudioPublisher(() => audioOutput.soundTarget),
+    () =>
+      new SoundboardAudioPublisher(
+        () => audioOutput.soundTarget,
+        () => audioOutput.resetMonitor(),
+      ),
   );
   const outputSelectionSupported =
     audioOutput.supported && supportsAudioOutputSelection();
@@ -261,6 +265,7 @@ export function useVoiceRoom(
     cameraOperationRef.current += 1;
     remoteAudio.cleanup();
     soundboardAudio.cleanup();
+    audioOutput.cleanup();
     soundActivities.current.clear();
     soundActivityTimers.current.forEach((timer) => window.clearTimeout(timer));
     soundActivityTimers.current.clear();
@@ -274,7 +279,7 @@ export function useVoiceRoom(
     setAudioPlaybackBlocked(false);
     setCameraEnabled(false);
     setCameraPending(false);
-  }, [remoteAudio, soundboardAudio]);
+  }, [audioOutput, remoteAudio, soundboardAudio]);
 
   const clearParticipantSounds = useCallback(
     (participantId: string, eventId?: string) => {
@@ -971,7 +976,8 @@ export function useVoiceRoom(
   );
 
   const stopLocalSounds = useCallback(async () => {
-    soundboardAudio.stopAll();
+    soundboardAudio.cleanup();
+    audioOutput.cleanup();
     clearParticipantSounds(user.id);
     if (mode === "mock") return;
     const room = roomRef.current;
@@ -985,7 +991,14 @@ export function useVoiceRoom(
       reliable: true,
       topic: "bakbak-soundboard",
     });
-  }, [clearParticipantSounds, mode, soundboardAudio, status, user.id]);
+  }, [
+    audioOutput,
+    clearParticipantSounds,
+    mode,
+    soundboardAudio,
+    status,
+    user.id,
+  ]);
 
   const setSoundboardVolume = useCallback((volume: number) => {
     setSoundboardVolumeState(Math.max(0, Math.min(1, volume)));

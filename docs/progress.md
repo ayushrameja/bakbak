@@ -877,3 +877,155 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
   the normal updater-enabled build for GitHub Actions. After the current
   soundboard work is ready, publish through the release workflow and retain an
   offline backup of any future signing-key rotation before replacing secrets.
+
+## 2026-07-12 — Mute idle soundboard publication
+
+- **Completed:** Inspected the supplied macOS screen recording and traced the
+  persistent system-audio suppression to the dedicated LiveKit soundboard
+  publication remaining enabled after its clips ended. The persistent named
+  track is now published muted, unmutes only for active playback, stays enabled
+  across overlapping clips, and mutes again after the final clip, stop-all, or
+  cleanup. Added regression coverage for idle, overlapping, resumed, and
+  stop-all track states.
+- **Decisions:** Kept one pre-published named track so short sounds do not lose
+  their opening while a new WebRTC publication negotiates. Muting the existing
+  publication bounds its microphone-source behavior to real playback while
+  preserving overlap and the established receiver contract.
+- **Validation:**
+  - `pnpm exec vitest run src/features/soundboard/soundboard-audio.test.ts` —
+    passed; one focused test.
+  - `pnpm typecheck` — passed both renderer and Node TypeScript projects.
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 21 Vitest files
+    with 91 tests, five release-script tests, version synchronization, the
+    production renderer build, and compiled-artifact secret scanning. The
+    existing non-blocking large-chunk warning remains.
+  - `pnpm tauri:build:local` — passed; built and ad-hoc signed the macOS app
+    bundle. Notarization was skipped because local Apple notarization
+    credentials are intentionally absent.
+  - `codesign --verify --deep --strict --verbose=4 .../Bakbak.app` — passed;
+    the bundle is valid on disk and satisfies its designated requirement.
+  - `pnpm security:scan` — passed against the final renderer and desktop
+    bundle.
+  - `pnpm format:check` and `git diff --check` — passed after the documentation
+    update.
+  - `pnpm test -- src/features/soundboard/soundboard-audio.test.ts` — the Vitest
+    suite passed all 91 tests, but the overall command failed because the extra
+    TypeScript path was also forwarded to the Node release-script runner. The
+    focused Vitest command above is the valid per-file invocation.
+- **Documentation updated:** `docs/architecture.md` and `docs/progress.md`.
+- **Known limitations:** The supplied recording confirms the pre-fix symptom,
+  but speaker suppression is hardware- and runtime-observable behavior. The new
+  bundle still needs a human macOS check with unrelated system audio playing
+  before, during, and after a clip, plus the planned two-client soundboard
+  matrix. The app remains ad-hoc signed and unnotarized.
+- **Next:** Install the new local bundle, confirm system audio recovers as soon
+  as the last sound ends and after stop-all, then complete the Arc-plus-native
+  synchronized soundboard acceptance run.
+
+## 2026-07-12 — Destroy retained audio after an interrupted sound
+
+- **Completed:** Inspected the second supplied macOS recording and confirmed a
+  short non-silent waveform fragment repeated from roughly 5.9 seconds until
+  the app closed near 14.9 seconds, including after the user left voice. Traced
+  the retained fragment to the hidden selected-speaker `<audio>` element and
+  its `MediaStreamDestination` surviving soundboard and room cleanup. Explicit
+  stop-all and all voice reset paths now clean up the soundboard publisher,
+  pause and detach the monitor element, stop every routing-stream track, and
+  close the owning `AudioContext`. A later sound recreates the graph and
+  reapplies the remembered speaker.
+- **Decisions:** Retained idle publication muting and overlapping playback for
+  normal completion. An explicit interrupted stop now performs the stronger
+  graph reset because disconnecting only the `AudioBufferSourceNode` is not
+  sufficient to flush WebKit's retained output frame. Soundboard publication
+  cleanup runs before output-context cleanup so no publisher keeps nodes from a
+  closed context.
+- **Validation:**
+  - `ffmpeg ... silencedetect ... 2026-07-12\ 12-59-58.mov` — confirmed the
+    pre-fix repeated audio continues after the on-screen voice leave and ends
+    only with app shutdown.
+  - `pnpm exec vitest run <three focused audio lifecycle files>` — passed three
+    files with 11 focused lifecycle tests after correcting the initial test
+    constructor.
+  - `pnpm typecheck` — passed both renderer and Node TypeScript projects.
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 21 Vitest files
+    with 93 tests, five release-script tests, version synchronization, the
+    production renderer build, and compiled-artifact secret scanning. The
+    existing non-blocking large-chunk warning remains.
+  - `pnpm tauri:build:local` — passed; rebuilt and ad-hoc signed the macOS app
+    bundle. Local notarization remained skipped because credentials are
+    intentionally absent.
+  - `codesign --verify --deep --strict --verbose=4 .../Bakbak.app` — passed;
+    the final bundle is valid on disk and satisfies its designated requirement.
+  - `pnpm security:scan` and `git diff --check` — passed against the final
+    renderer, desktop bundle, and working diff.
+  - `ditto .../Bakbak.app /Applications/Bakbak.app` — passed; installed the
+    rebuilt local bundle for retesting.
+  - `shasum -a 256 .../bakbak /Applications/Bakbak.app/.../bakbak` — passed;
+    the built and installed executables both have SHA-256
+    `65e323571267675a2e776c5e55148a1e84dc25f9d28f7caebc2eaef23a4d8315`.
+  - `codesign --verify --deep --strict --verbose=4 /Applications/Bakbak.app` —
+    passed; the installed app is valid on disk and satisfies its designated
+    requirement.
+  - `open /Applications/Bakbak.app` — passed; launched the installed rebuild for
+    the human reproduction check.
+- **Documentation updated:** `docs/architecture.md` and `docs/progress.md`.
+- **Known limitations:** The first idle-mute correction did not flush the
+  WebKit-selected-speaker graph and was insufficient on the user's machine.
+  The new teardown behavior is covered at the service and hook boundaries, but
+  the rebuilt native app still needs the same human hard-stop test because the
+  retained-frame defect is runtime and hardware observable. Two intermediate
+  `pnpm check` runs failed on formatting and then test-only lint issues; both
+  were corrected before the final passing run.
+- **Next:** In the launched installed rebuild, interrupt a
+  sustained/high-frequency sound with Stop my sounds, verify immediate silence,
+  then repeat while leaving the voice room before completing the two-client
+  soundboard acceptance matrix.
+
+## 2026-07-12 — Flush the monitor after natural sound completion
+
+- **Completed:** The user confirmed that the stronger Stop my sounds teardown
+  fixes interrupted playback, then identified the remaining natural-completion
+  variant: a clip ending on a non-silent frequency could still leave WebKit
+  cycling its final rendered frame. Added a final-idle callback to the
+  soundboard publisher, guarded by both active and pending playback counts. When
+  the last overlapping clip fires `onended`, the selected-speaker monitor now
+  pauses, detaches, stops its MediaStream tracks, and is discarded. The next
+  clip creates a fresh monitor and reapplies the selected speaker.
+- **Decisions:** Natural completion resets only the local monitor stream. It
+  deliberately keeps the shared `AudioContext` and named LiveKit publication
+  alive, avoiding track renegotiation and clipped openings on short sounds.
+  Explicit Stop my sounds and voice leave retain the stronger full-context and
+  publication cleanup. Pending-playback accounting prevents a rapid next click
+  from racing the final-idle monitor reset.
+- **Validation:**
+  - `pnpm exec vitest run <three focused audio lifecycle files>` — passed three
+    files with 12 focused tests covering natural final-idle reset, overlap,
+    selected-speaker restoration, explicit stop, and voice leave.
+  - `pnpm typecheck` — passed both renderer and Node TypeScript projects.
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 21 Vitest files
+    with 94 tests, five release-script tests, version synchronization, the
+    production renderer build, and compiled-artifact secret scanning. The
+    existing non-blocking large-chunk warning remains.
+  - `pnpm tauri:build:local` — passed; rebuilt and ad-hoc signed the macOS app
+    bundle. Local notarization remained skipped because credentials are
+    intentionally absent.
+  - `pnpm security:scan` — passed against the final renderer and desktop bundle.
+  - `ditto .../Bakbak.app /Applications/Bakbak.app` — passed after quitting the
+    running app; installed the natural-completion fix.
+  - `shasum -a 256 .../bakbak /Applications/Bakbak.app/.../bakbak` — passed;
+    built and installed executables both have SHA-256
+    `de81004b51dc6b4d28601ece8bc43ddf49b6dd9266992ed962381ca01b12db5f`.
+  - `codesign --verify --deep --strict --verbose=4 /Applications/Bakbak.app` —
+    passed; the installed app is valid on disk and satisfies its designated
+    requirement.
+  - `open /Applications/Bakbak.app` — passed; launched the installed rebuild for
+    the natural-completion check.
+- **Documentation updated:** `docs/architecture.md` and `docs/progress.md`.
+- **Known limitations:** The automated tests prove ownership and teardown order,
+  but WebKit's retained-frame behavior remains observable only in the native
+  audio runtime. Two intermediate `pnpm check` runs failed on formatting and a
+  test-only unbound-method lint reference; both were corrected before the final
+  passing run.
+- **Next:** Let a sound with a non-silent/high-frequency ending complete without
+  pressing Stop my sounds and confirm immediate silence. Then repeat with
+  overlapping clips before completing the Arc-plus-native soundboard matrix.

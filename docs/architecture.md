@@ -51,11 +51,20 @@ assertions. Voice
 connections retry once with relay-only ICE after a normal peer-connection
 failure and report a specific TURN/TLS diagnostic if that also fails. The
 deployed token function permits microphone, camera, and LiveKit data
-publication while continuing to forbid screen share. A persistent second audio
-track named `bakbak-soundboard` uses the permitted microphone source because
+publication while continuing to forbid screen share. A second audio track named
+`bakbak-soundboard` uses the permitted microphone source because
 the current LiveKit server SDK cannot encode `Track.Source.Unknown` into token
-publish permissions. Track name, rather than source, distinguishes soundboard
-audio from speech. The final Arc-plus-native
+publish permissions. The track stays muted while no sound is active, unmutes
+for playback, and returns to muted after the final overlapping sound ends or
+stop-all runs. This prevents an idle synthetic microphone stream from keeping
+system audio in a suppressed communications state. Track name, rather than
+source, distinguishes soundboard audio from speech. Explicit stop-all and voice
+teardown also pause and detach the local monitor element, stop its routing
+stream, close its `AudioContext`, and recreate that graph with the remembered
+speaker on the next sound. Natural completion of the final overlapping clip
+performs the same monitor-stream flush but keeps the shared `AudioContext` and
+LiveKit publication alive, avoiding renegotiation before the next sound. The
+final Arc-plus-native
 voice, video, device, soundboard, reconnect, and crash-expiry rehearsal remains
 open for human observation.
 
@@ -185,7 +194,7 @@ authority.
 
 ### LiveKit
 
-LiveKit transports voice, opt-in camera tracks, a persistent named soundboard
+LiveKit transports voice, opt-in camera tracks, at most one named soundboard
 audio track, participant/speaking state, and small soundboard control messages.
 A protected Supabase Edge Function is the only component allowed to sign
 LiveKit participant tokens. Renderer tokens allow microphone, camera, and data
@@ -303,7 +312,8 @@ An invite-management UI is deferred until post-v1.
    system output only. A missing remembered device falls back to default.
 7. Unsubscription, leaving, disconnecting, and unmounting detach remote audio
    and video, invalidate pending camera/join work, stop active local sounds,
-   disconnect the room, and release local tracks.
+   pause and detach the selected-speaker monitor, stop its MediaStream tracks,
+   close its Web Audio context, disconnect the room, and release local tracks.
 8. If signaling succeeds but the initial WebRTC peer connection fails, the
    renderer retries once with `iceTransportPolicy: relay`. A second failure is
    reported as a TURN/TLS or local network-policy problem rather than a token or
@@ -316,10 +326,18 @@ An invite-management UI is deferred until post-v1.
    reuses IndexedDB blobs matching `{ soundId, audioRevision }`, and decodes
    ready clips into memory. Download or decode failure marks only that card as
    failed and can be retried.
-2. Voice join publishes exactly one persistent audio track named
-   `bakbak-soundboard`. Each trigger connects its decoded buffer once to the
-   outbound track at unity gain and once to the selected-speaker monitor path at
-   the local soundboard volume. Clips play to completion and may overlap.
+2. Voice join publishes at most one room-scoped audio track named
+   `bakbak-soundboard`, initially muted. The first active trigger unmutes it;
+   each trigger connects its decoded buffer once to the outbound track at unity
+   gain and once to the selected-speaker monitor path at the local soundboard
+   volume. Clips may overlap, and the track is muted again after the last clip
+   ends or stop-all runs so idle playback cannot continue suppressing system
+   audio. When the last overlapping clip completes naturally, Bakbak replaces
+   only the hidden selected-speaker monitor stream so a non-silent final frame
+   cannot cycle in WebKit; the outbound publication and shared context remain
+   ready. Explicit stop-all fully releases both the publication and local
+   selected-speaker routing graph. The next trigger rebuilds the required graph
+   and reapplies the remembered speaker before playback.
 3. The client also publishes a reliable UI-control message such as:
 
    ```json

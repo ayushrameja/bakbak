@@ -1,6 +1,8 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppUser, Channel } from "../../lib/types";
+import { SoundboardAudioPublisher } from "../soundboard/soundboard-audio";
+import { AudioOutputRouter } from "./audio-output-router";
 import { useVoiceRoom } from "./useVoiceRoom";
 
 interface Deferred<T> {
@@ -144,6 +146,39 @@ describe("useVoiceRoom join lifecycle", () => {
     liveKitState.rooms.splice(0);
     liveKitState.roomOptions.splice(0);
     supabaseState.invoke.mockReset();
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("destroys local sound routing on stop-all and voice leave", async () => {
+    const soundCleanup = vi.spyOn(
+      SoundboardAudioPublisher.prototype,
+      "cleanup",
+    );
+    const outputCleanup = vi.spyOn(AudioOutputRouter.prototype, "cleanup");
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    const soundCallsAfterJoin = soundCleanup.mock.calls.length;
+    const outputCallsAfterJoin = outputCleanup.mock.calls.length;
+
+    await act(async () => {
+      await result.current.stopLocalSounds();
+    });
+    expect(soundCleanup).toHaveBeenCalledTimes(soundCallsAfterJoin + 1);
+    expect(outputCleanup).toHaveBeenCalledTimes(outputCallsAfterJoin + 1);
+    expect(soundCleanup.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      outputCleanup.mock.invocationCallOrder.at(-1)!,
+    );
+
+    await act(async () => {
+      await result.current.leave();
+    });
+    expect(soundCleanup).toHaveBeenCalledTimes(soundCallsAfterJoin + 2);
+    expect(outputCleanup).toHaveBeenCalledTimes(outputCallsAfterJoin + 2);
   });
 
   it("does not connect or publish a microphone after leaving during a pending token request", async () => {

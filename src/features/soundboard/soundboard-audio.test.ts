@@ -6,10 +6,14 @@ import {
 } from "./soundboard-audio";
 
 describe("SoundboardAudioPublisher", () => {
-  it("publishes one outbound track while overlapping each trigger once locally and remotely", async () => {
+  it("mutes the persistent track while idle and keeps overlaps audible", async () => {
     sourceDoubles.length = 0;
     gainDoubles.length = 0;
     const track = { stop: vi.fn() } as unknown as MediaStreamTrack;
+    const publication = {
+      mute: vi.fn().mockResolvedValue(undefined),
+      unmute: vi.fn().mockResolvedValue(undefined),
+    };
     const outbound = {
       stream: { getAudioTracks: () => [track] },
     } as unknown as MediaStreamAudioDestinationNode;
@@ -28,14 +32,22 @@ describe("SoundboardAudioPublisher", () => {
     } as unknown as AudioContext;
     const destination = {} as AudioNode;
     const participant = {
-      publishTrack: vi.fn().mockResolvedValue({}),
+      publishTrack: vi.fn().mockResolvedValue(publication),
       unpublishTrack: vi.fn().mockResolvedValue(undefined),
     };
-    const publisher = new SoundboardAudioPublisher(() => ({
-      context,
-      destination,
-    }));
+    const onIdle = vi.fn();
+    const publisher = new SoundboardAudioPublisher(
+      () => ({
+        context,
+        destination,
+      }),
+      onIdle,
+    );
     const blob = new Blob(["mp3"], { type: "audio/mpeg" });
+
+    await publisher.ensurePublished(participant);
+    expect(track.enabled).toBe(false);
+    expect(publication.mute).toHaveBeenCalledOnce();
 
     const first = await publisher.play(
       participant,
@@ -55,6 +67,9 @@ describe("SoundboardAudioPublisher", () => {
       name: SOUNDBOARD_TRACK_NAME,
       source: "microphone",
     });
+    expect(publication.mute).toHaveBeenCalledOnce();
+    expect(publication.unmute).toHaveBeenCalledTimes(2);
+    expect(track.enabled).toBe(true);
     expect(createBufferSource).toHaveBeenCalledTimes(2);
     expect(sourceDoubles[0]?.connect).toHaveBeenNthCalledWith(1, outbound);
     expect(sourceDoubles[0]?.connect).toHaveBeenNthCalledWith(
@@ -71,10 +86,31 @@ describe("SoundboardAudioPublisher", () => {
     publisher.setVolume(0.5);
     expect(gainDoubles[0]?.node.gain.value).toBe(0);
 
-    first.stop();
-    expect(sourceDoubles[0]?.stop).toHaveBeenCalledOnce();
+    sourceDoubles[0]?.node.onended?.(new Event("ended"));
+    await first.finished;
+    expect(publication.mute).toHaveBeenCalledOnce();
+    expect(track.enabled).toBe(true);
+    expect(onIdle).not.toHaveBeenCalled();
+
+    sourceDoubles[1]?.node.onended?.(new Event("ended"));
+    expect(publication.mute).toHaveBeenCalledTimes(2);
+    expect(track.enabled).toBe(false);
+    expect(onIdle).toHaveBeenCalledOnce();
+
+    const third = await publisher.play(
+      participant,
+      "event-3",
+      mockSoundboardSounds[2]!,
+      blob,
+    );
+    expect(participant.publishTrack).toHaveBeenCalledOnce();
+    expect(publication.unmute).toHaveBeenCalledTimes(3);
+    expect(track.enabled).toBe(true);
+
+    third.stop();
+    expect(sourceDoubles[2]?.stop).toHaveBeenCalledOnce();
     publisher.stopAll();
-    expect(sourceDoubles[1]?.stop).toHaveBeenCalledOnce();
+    expect(track.enabled).toBe(false);
     publisher.cleanup();
     expect(participant.unpublishTrack).toHaveBeenCalledWith(track);
   });
