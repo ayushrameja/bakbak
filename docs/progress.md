@@ -1342,3 +1342,53 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
   either frames publish or the app remains alive with the exact failure in the
   call alert, DevTools console, and Tauri terminal. Then repeat with source
   audio enabled.
+
+## 2026-07-12 — Repair cross-platform desktop release builds
+
+- **Completed:** Diagnosed GitHub Actions run `29197115599` and fixed its three
+  failed build jobs. Extracted Cargo lockfile version handling into a tested
+  helper that accepts both LF and Windows CRLF line endings, then wired the
+  release version updater through it. Added LF/CRLF regression coverage. Moved
+  the Apple Silicon release job from the drifting `macos-latest` label to
+  `macos-26` and the Intel job to `macos-26-intel`, whose Xcode SDK provides the
+  macOS 26 Metal symbols required by the transitive `apple-metal 0.8.8` Swift
+  bridge.
+- **Decisions:** Keep the application deployment minimum at macOS 12.3 while
+  using macOS 26 only as the release build host. Make the version script
+  line-ending agnostic instead of relying on checkout normalization, so it is
+  safe under Windows Git defaults and when invoked outside Actions. Lock the
+  two host labels and both installer targets in release-script tests.
+- **Validation:**
+  - `gh run view 29197115599 --json ...` — confirmed `prepare` and `validate`
+    passed, Windows failed in `set-version.mjs 0.4.0`, and both macOS jobs
+    failed in `tauri-action` while compiling `apple-metal 0.8.8` against an
+    older SDK.
+  - `node --test scripts/set-version.test.mjs scripts/release-version.test.mjs`
+    — passed eight focused tests, including LF, CRLF, Apple Silicon host, Intel
+    host, and both macOS bundle targets.
+  - First `pnpm check` — failed only because Prettier requested formatting in
+    `scripts/release-version.test.mjs`; the touched files were formatted and
+    the complete command was rerun.
+  - Final `pnpm check` — passed formatting, lint, strict TypeScript, 25 Vitest
+    files with 111 tests, eight release-script tests, version synchronization,
+    production build, and compiled-artifact secret scanning. The existing
+    non-blocking 500 kB chunk warning remains.
+  - `cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check` — passed.
+  - `cargo test --locked --offline --manifest-path src-tauri/Cargo.toml --lib`
+    — passed all six native tests.
+  - `cargo check --locked --offline --manifest-path src-tauri/Cargo.toml` —
+    passed.
+  - `pnpm tauri:build:local` — passed against the local macOS 26.5 SDK and
+    produced an ad-hoc-signed `Bakbak.app`; notarization was skipped because
+    distribution credentials are intentionally absent.
+  - `codesign --verify --deep --strict --verbose=4
+src-tauri/target/release/bundle/macos/Bakbak.app` — passed. The post-build
+    `pnpm security:scan` also passed for `dist` and the release bundle.
+- **Documentation updated:** `docs/architecture.md` and `docs/progress.md`.
+- **Known limitations:** Local checks cannot execute the GitHub-hosted Windows
+  or macOS matrix. The release remains blocked until a hosted run confirms all
+  three jobs and publishes the updater manifest. The JavaScript chunk-size
+  warning is unrelated to these failures and remains a later performance task.
+- **Next:** Commit and push this correction, then inspect the resulting Desktop
+  release run until Apple Silicon, Intel, Windows, publish, manifest
+  verification, and version synchronization all complete successfully.
