@@ -5,12 +5,14 @@ const TEST_API_KEY = "bakbak-test-key";
 const TEST_API_SECRET = "local-test-value-with-no-production-access";
 
 Deno.test(
-  "LiveKit signer grants microphone, camera, and data without screen share",
+  "LiveKit voice signer grants microphone, camera, video-only screen share, and data",
   async () => {
     const token = await signLiveKitToken(
       { apiKey: TEST_API_KEY, apiSecret: TEST_API_SECRET },
       {
         identity: "10000000-0000-4000-8000-000000000001",
+        ownerUserId: "10000000-0000-4000-8000-000000000001",
+        purpose: "voice",
         displayName: "Test friend",
         serverId: "00000000-0000-4000-8000-000000000001",
         channelId: "00000000-0000-4000-8000-000000000201",
@@ -42,7 +44,7 @@ Deno.test(
     assertEquals(claims.video?.canPublishData, true);
     assertEquals(
       JSON.stringify(claims.video?.canPublishSources),
-      JSON.stringify(["microphone", "camera"]),
+      JSON.stringify(["microphone", "camera", "screen_share"]),
     );
     assertEquals(claims.video?.canUpdateOwnMetadata, false);
     assert(
@@ -50,6 +52,47 @@ Deno.test(
       "Expected numeric LiveKit token expiry and not-before claims.",
     );
     assertEquals(claims.exp - claims.nbf, 300);
+  },
+);
+
+Deno.test(
+  "LiveKit screen signer grants only screen video and audio publication",
+  async () => {
+    const token = await signLiveKitToken(
+      { apiKey: TEST_API_KEY, apiSecret: TEST_API_SECRET },
+      {
+        identity: "screen:10000000-0000-4000-8000-000000000001:session-123",
+        ownerUserId: "10000000-0000-4000-8000-000000000001",
+        purpose: "screen_share",
+        displayName: "Test friend",
+        serverId: "00000000-0000-4000-8000-000000000001",
+        channelId: "00000000-0000-4000-8000-000000000201",
+        roomName: "bakbak-voice-00000000-0000-4000-8000-000000000201",
+        ttlSeconds: 300,
+      },
+    );
+    const claims = await new TokenVerifier(
+      TEST_API_KEY,
+      TEST_API_SECRET,
+    ).verify(token);
+
+    assertEquals(
+      claims.metadata,
+      JSON.stringify({
+        serverId: "00000000-0000-4000-8000-000000000001",
+        channelId: "00000000-0000-4000-8000-000000000201",
+        participantKind: "screen_share",
+        ownerUserId: "10000000-0000-4000-8000-000000000001",
+      }),
+    );
+    assertEquals(claims.video?.canPublish, true);
+    assertEquals(claims.video?.canSubscribe, false);
+    assertEquals(claims.video?.canPublishData, false);
+    assertEquals(
+      JSON.stringify(claims.video?.canPublishSources),
+      JSON.stringify(["screen_share", "screen_share_audio"]),
+    );
+    assertEquals(claims.video?.canUpdateOwnMetadata, false);
   },
 );
 

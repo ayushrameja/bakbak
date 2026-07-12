@@ -5,10 +5,12 @@ export function ParticipantVideo({
   track,
   local,
   label,
+  kind = "camera",
 }: {
   track: VideoTrackLike;
   local: boolean;
   label: string;
+  kind?: "camera" | "screen";
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   useEffect(() => {
@@ -23,11 +25,11 @@ export function ParticipantVideo({
     <video
       ref={videoRef}
       className={
-        local
+        local && kind === "camera"
           ? "participant-video participant-video--local"
           : "participant-video"
       }
-      aria-label={`${label} camera`}
+      aria-label={`${label} ${kind}`}
       autoPlay
       playsInline
       muted={local}

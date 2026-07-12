@@ -14,7 +14,8 @@ chat, incoming-message sounds, per-channel unread emphasis, member list, voice
 rooms, locally persisted microphone/speaker/camera selection, opt-in 720p
 camera calls, pre-join room occupancy with elapsed timers, mute/deafen,
 per-participant volume, remote-track audio/video rendering, autoplay recovery,
-reconnect/error states, persistent voice controls, and a hosted synchronized
+reconnect/error states, persistent voice controls, a desktop-only featured
+screen-share stage, and a hosted synchronized
 soundboard. The soundboard has category filtering, member-editable labels,
 emoji, and categories, a persisted global volume, per-participant volume,
 overlapping activity badges, and a stop-all action. Deafen stops remote speech
@@ -50,8 +51,12 @@ clean local schema, invite, RLS, presence, Storage, and catalog suite passes 96
 assertions. Voice
 connections retry once with relay-only ICE after a normal peer-connection
 failure and report a specific TURN/TLS diagnostic if that also fails. The
-deployed token function permits microphone, camera, and LiveKit data
-publication while continuing to forbid screen share. A second audio track named
+tracked token function now accepts an optional backward-compatible purpose.
+Ordinary voice tokens permit microphone, camera, LiveKit data, and video-only
+screen publication for the compatibility fallback. Native screen companions
+receive generated identities and may publish only screen video/audio into the
+same room, with no subscriptions, data, or metadata updates. The backward-
+compatible function is deployed, and its unauthenticated probe still returns 401. A second audio track named
 `bakbak-soundboard` uses the permitted microphone source because
 the current LiveKit server SDK cannot encode `Track.Source.Unknown` into token
 publish permissions. The track stays muted while no sound is active, unmutes
@@ -68,9 +73,22 @@ final Arc-plus-native
 voice, video, device, soundboard, reconnect, and crash-expiry rehearsal remains
 open for human observation.
 
+Installed macOS 14+ clients can now start a Tauri-owned ScreenCaptureKit
+session through Apple's system content picker. A separate native LiveKit room
+publishes at most 1080p/15 fps H.264 screen video and optional 48 kHz stereo
+source audio while excluding Bakbak's own process audio. Capture retries as
+video-only if optional audio cannot start. Source termination, terminal
+LiveKit disconnect, voice leave, explicit stop, and main-window close all tear
+down capture and the companion. Older macOS and current Windows builds use the
+renderer video-only picker when available. The Windows native
+`Windows.Graphics.Capture` plus matched application/display audio path remains
+open and therefore keeps source audio disabled rather than leaking unrelated
+system sound. Linking ScreenCaptureKit directly makes macOS 12.3 the desktop
+bundle minimum; macOS 12.3–13 retain the video-only WebView fallback.
+
 The Tauri metadata, window sizing, Content Security Policy, minimal capability
-set, Bakbak icons, microphone and camera purpose strings, audio-input plus
-camera entitlements, and signed updater are configured. GitHub Actions validate
+set, Bakbak icons, microphone/camera/screen-capture purpose strings, audio-input
+plus camera entitlements, and signed updater are configured. GitHub Actions validate
 pull requests and prepare versioned macOS Apple Silicon, macOS Intel, and
 Windows x64 releases. A hardened-runtime macOS application can be ad-hoc signed
 locally; Developer ID signing/notarization and Windows code signing remain
@@ -108,7 +126,8 @@ bakbak/
 │   ├── progress.md
 │   └── plans/
 │       ├── 0001-bakbak-desktop-v1.md
-│       └── 0002-voice-video-and-presence.md
+│       ├── 0002-voice-video-and-presence.md
+│       └── 0003-screen-sharing.md
 ├── public/
 │   └── bakbak.svg                 # renderer favicon/source logo
 ├── scripts/                       # Secret scan, SemVer, and release verification
@@ -148,8 +167,10 @@ The renderer uses a three-part desktop layout:
    bottom-pinned composer and independently scrollable messages.
 3. A desktop member panel that shares the main content area's full height.
    Narrow windows hide it without changing the chat layout.
-4. Persistent voice controls for connection status, microphone, camera, mute,
-   deafen, and leave.
+4. Persistent voice controls for connection status, microphone, camera, screen
+   sharing, mute, deafen, and leave.
+5. A single featured share stage above participant video tiles, with presenter
+   switching when multiple friends share simultaneously.
 
 The top bar includes an accessible hover/focus connection detail. In live mode
 it measures a Supabase Auth health round trip every 30 seconds and labels the
@@ -180,6 +201,29 @@ private key must exist only in release infrastructure and an operator backup.
 The main Tauri configuration always creates signed updater artifacts, while
 `tauri.local.conf.json` disables only those artifacts for local app-only builds
 that do not have access to the protected release key.
+Screen-capture commands are restricted to the main Bakbak window. Native code
+receives only the public LiveKit URL and a five-minute member-authorized token,
+never an API signing secret. On macOS it owns the system picker,
+ScreenCaptureKit stream, frame/audio conversion, native LiveKit companion, and
+deterministic teardown; captured source names are not logged.
+The ScreenCaptureKit-to-LiveKit zero-copy boundary transfers its owned
+`CVPixelBuffer` retain into LiveKit's macOS native frame wrapper exactly once;
+Rust must not release that transferred retain again. A share is reported as
+active only after capture registration succeeds and the first usable video
+frame arrives. If no frame arrives within five seconds, native capture is
+stopped and the renderer receives a retryable error while voice remains
+connected. Sanitized lifecycle states and failures are printed to the Tauri
+terminal and DevTools without tokens or captured-source labels.
+The native Rust LiveKit/WebRTC and ScreenCaptureKit dependencies are macOS
+target dependencies. Current Windows builds keep the renderer fallback without
+shipping an unused native companion runtime.
+The pinned macOS WebRTC archive stores several runtime-only bridges in
+Objective-C category objects, which the static linker would normally omit.
+The Bakbak build extracts and explicitly links the reviewed category members
+from that archive, including the `NSString` conversion and private video-codec
+bridges. It does not use the broad `-ObjC` flag because that also force-loads
+unrelated ScreenCaptureKit Swift archives and produces duplicate bridge
+symbols.
 
 ### Supabase
 
@@ -195,10 +239,13 @@ authority.
 ### LiveKit
 
 LiveKit transports voice, opt-in camera tracks, at most one named soundboard
-audio track, participant/speaking state, and small soundboard control messages.
+audio track, desktop screen companions, participant/speaking state, and small
+soundboard control messages.
 A protected Supabase Edge Function is the only component allowed to sign
-LiveKit participant tokens. Renderer tokens allow microphone, camera, and data
-publication only; screen sharing remains denied. Each client identifies the
+LiveKit participant tokens. Voice tokens allow microphone, camera, data, and
+video-only screen publication. Screen-companion tokens use generated identities
+plus owner metadata and allow only screen video/audio publication into the exact
+voice room, without subscriptions or data. Each client identifies the
 soundboard track by its exact `bakbak-soundboard` name and applies global
 soundboard volume multiplied by the existing participant volume.
 
@@ -298,8 +345,8 @@ An invite-management UI is deferred until post-v1.
 2. The function authenticates the user and verifies membership plus voice
    channel type.
 3. The function creates a narrowly scoped, short-lived LiveKit participant
-   token permitting microphone, camera, and data publication, then returns it
-   with the public LiveKit URL.
+   token permitting microphone, camera, data, and video-only screen fallback
+   publication, then returns it with the public LiveKit URL.
 4. The renderer generation-gates connection attempts so a newer join, leave,
    sign-out, or unmount invalidates pending token, connection, and microphone
    work. A stale attempt can disconnect only the LiveKit room it created.
@@ -318,6 +365,30 @@ An invite-management UI is deferred until post-v1.
    renderer retries once with `iceTransportPolicy: relay`. A second failure is
    reported as a TURN/TLS or local network-policy problem rather than a token or
    authentication error.
+
+### Desktop screen share
+
+1. A connected installed client opens a renderer confirmation; source audio is
+   unchecked on every start. Browser clients have no share UI and force every
+   screen publication unsubscribed.
+2. For native capture, the renderer requests `{ channelId, purpose:
+"screen_share" }`. The function repeats authentication, membership, and
+   voice-channel checks, then signs a five-minute companion identity tied to
+   the same room and owner.
+3. Tauri validates that the caller is the main window, opens the OS picker, and
+   connects a second LiveKit room using only the returned public URL and token.
+   It never receives a signing key.
+4. macOS publishes H.264 screen video from ScreenCaptureKit at no more than
+   1080p/15 fps. Optional 48 kHz stereo source audio excludes Bakbak; if audio
+   setup fails, capture retries video-only and the renderer shows a warning.
+5. Companion participants are merged into their owner's UI state and omitted
+   from ordinary participant cards. Only the featured companion's screen video
+   and audio are subscribed. Switching presenter switches both publications;
+   owner volume, selected output, and deafen apply to the audio track.
+6. Explicit stop, voice leave, source termination, terminal native-room
+   disconnect, or main-window close releases capture immediately and closes the
+   companion. Multiple app instances may present concurrently, but each app
+   instance owns at most one share.
 
 ### Soundboard
 
@@ -416,10 +487,12 @@ These contracts match the current implementation.
 ### `POST /functions/v1/livekit-token`
 
 - **Authentication:** `Authorization: Bearer <Supabase access token>`
-- **Request:** `{ "channelId": "<voice-channel-uuid>" }`
+- **Request:** `{ "channelId": "<voice-channel-uuid>", "purpose": "voice|screen_share" }`; `purpose` is optional and defaults to `voice` for installed-client compatibility
 - **Success:** `{ "token": "<short-lived-token>", "serverUrl": "wss://...", "roomName": "bakbak-voice-<channel-id>", "expiresAt": "<ISO timestamp>" }`
 - **Validation:** authenticated user, current server membership, existing voice
-  channel, and an allowed participant identity/room name.
+  channel, server-derived participant identity/room name, and an allowed
+  purpose. Screen companions receive exact source grants and no subscribe/data
+  permissions.
 - **Errors:** normalized unauthorized, origin/method/payload,
   not-found/invalid-channel, request-failed, and service-unavailable responses
   without secret details.
@@ -501,6 +574,10 @@ pnpm build
 Run `pnpm tauri build` when validating platform integration or a distributable
 bundle. Database phases add Supabase migration/RLS tests. The first friend-test
 release also requires the manual macOS matrix in the active plan.
+Screen-sharing work additionally runs the Deno token suite, focused Rust tests,
+`cargo check --locked`, macOS and Windows native builds, compiled secret scans,
+and the bidirectional installed-client matrix in plan 0003. Artifact sizes are
+recorded before and after the native LiveKit dependency is shipped.
 
 GitHub release validation additionally requires successful native builds on
 both macOS architectures and Windows x64, updater signatures for every target,
@@ -529,7 +606,12 @@ that it has passed.
 - LiveKit's current server SDK throws while encoding `Track.Source.Unknown` in
   a token source allowlist. Bakbak therefore publishes the dedicated named
   soundboard track as a second microphone-source track and distinguishes it by
-  `bakbak-soundboard`; screen-share publication remains denied.
+  `bakbak-soundboard`.
+- macOS 14+ native video and matched source audio are implemented. Older macOS
+  and current Windows builds expose only WebView video sharing when
+  `getDisplayMedia` exists. The Windows native picker, process/display-matched
+  audio implementation, Windows CI build, cross-platform two-account matrix,
+  and before/after installer-size measurements remain required by plan 0003.
 - The current production renderer is roughly 283 kB compressed; LiveKit and
   Supabase can be lazy-loaded in a later performance pass if startup profiling
   shows a meaningful benefit.
@@ -544,8 +626,9 @@ that it has passed.
   release remains a draft because the macOS jobs initially omitted the
   updater-enabled `app` bundle and therefore contributed no Darwin entries to
   `latest.json`. The corrected matrix still needs a hosted run.
-- Screen sharing, recording, camera effects, uploads, cloud sounds, advanced
-  roles, global push-to-talk, notifications, tray behavior, Linux distribution,
-  and operating-system signing/notarization are outside the first usable
-  release.
-- System-audio sharing requires a separate per-operating-system investigation.
+- Browser/Linux screen sharing, recording, camera effects, uploads, cloud
+  sounds, advanced roles, global push-to-talk, notifications, tray behavior,
+  Linux distribution, and operating-system signing/notarization remain outside
+  the approved screen-share phase.
+- Protected or DRM-controlled sources may be black or silent; Bakbak does not
+  bypass operating-system capture policy.

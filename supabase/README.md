@@ -31,9 +31,11 @@ Docker socket, start with
 Auth, and Edge Function validation do not depend on that analytics container.
 
 For an end-to-end function check, create two local auth users, add only one as a
-member, and invoke `livekit-token` with each session. The member must receive a
-five-minute room token limited to microphone, camera, and data publication; the
-non-member must receive the same 404 used for a missing or text channel.
+member, and invoke `livekit-token` with each session. An omitted `purpose` must
+return the backward-compatible five-minute voice token; `purpose:
+"screen_share"` must return a companion token limited to screen video/audio
+publication with no subscriptions or data. The non-member must receive the
+same 404 used for a missing or text channel.
 
 ## Security invariants
 
@@ -51,11 +53,14 @@ non-member must receive the same 404 used for a missing or text channel.
   The original `heartbeat_presence` RPC remains for older installed builds.
   Clients cannot forge heartbeat rows or join timestamps directly, and
   Postgres Realtime distributes row changes to server members.
-- Tokens permit microphone, camera, and LiveKit data messages. The renderer
+- Voice tokens permit microphone, camera, LiveKit data messages, and a
+  video-only screen source for installed-client fallback. The renderer
   publishes its persistent `bakbak-soundboard` audio track as a second named
   microphone-source track because the current LiveKit server SDK cannot encode
-  `Track.Source.Unknown` in source-restricted grants. Screen-share sources
-  remain forbidden.
+  `Track.Source.Unknown` in source-restricted grants. Screen-companion tokens
+  use a server-generated identity plus owner metadata and permit only
+  `screen_share` and `screen_share_audio`, with subscriptions, data publishing,
+  and metadata updates disabled.
 - Sound catalog RLS requires server membership. Column grants allow only label,
   emoji, and category metadata updates, while a composite foreign key rejects
   categories from another server. Clients cannot insert or delete sounds or
@@ -74,6 +79,11 @@ pnpm dlx supabase@latest db push
 pnpm dlx supabase@latest migration list
 pnpm dlx supabase@latest functions deploy livekit-token --use-api
 ```
+
+Screen sharing changes only this Edge Function; no database migration is
+required. Deploy the backward-compatible function before distributing a native
+screen-sharing build, then repeat an unauthenticated invocation and confirm it
+still returns HTTP 401.
 
 The bucket is private, accepts only `audio/mpeg`, and rejects objects larger
 than 1 MiB. Migration `202607120002_soundboard_catalog.sql` seeds the four

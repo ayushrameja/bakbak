@@ -29,6 +29,14 @@ const supabaseState = vi.hoisted(() => ({
   invoke: vi.fn(),
 }));
 
+const screenShareState = vi.hoisted(() => ({
+  desktop: false,
+  getCapabilities: vi.fn(),
+  start: vi.fn(),
+  stop: vi.fn(),
+  listen: vi.fn(),
+}));
+
 vi.mock("livekit-client", () => {
   class ConnectionError extends Error {
     readonly reason = 2;
@@ -96,7 +104,13 @@ vi.mock("livekit-client", () => {
       TrackUnpublished: "trackUnpublished",
       TrackUnsubscribed: "trackUnsubscribed",
     },
-    Track: { Source: { Camera: "camera" } },
+    Track: {
+      Source: {
+        Camera: "camera",
+        ScreenShare: "screen_share",
+        ScreenShareAudio: "screen_share_audio",
+      },
+    },
     VideoPresets: { h720: { resolution: { width: 1280, height: 720 } } },
     supportsAudioOutputSelection: () => false,
   };
@@ -106,6 +120,14 @@ vi.mock("../../lib/supabase", () => ({
   getSupabaseClient: () => ({
     functions: { invoke: supabaseState.invoke },
   }),
+}));
+
+vi.mock("./screen-share-service", () => ({
+  isDesktopApp: () => screenShareState.desktop,
+  getScreenShareCapabilities: screenShareState.getCapabilities,
+  startScreenShare: screenShareState.start,
+  stopScreenShare: screenShareState.stop,
+  listenForScreenShareLifecycle: screenShareState.listen,
 }));
 
 const user: AppUser = {
@@ -146,6 +168,19 @@ describe("useVoiceRoom join lifecycle", () => {
     liveKitState.rooms.splice(0);
     liveKitState.roomOptions.splice(0);
     supabaseState.invoke.mockReset();
+    screenShareState.desktop = false;
+    screenShareState.getCapabilities.mockReset();
+    screenShareState.getCapabilities.mockResolvedValue({
+      available: false,
+      nativeCapture: false,
+      systemAudio: false,
+      reason: null,
+    });
+    screenShareState.start.mockReset();
+    screenShareState.stop.mockReset();
+    screenShareState.stop.mockResolvedValue(undefined);
+    screenShareState.listen.mockReset();
+    screenShareState.listen.mockResolvedValue(() => undefined);
   });
 
   afterEach(() => vi.restoreAllMocks());
@@ -179,6 +214,84 @@ describe("useVoiceRoom join lifecycle", () => {
     });
     expect(soundCleanup).toHaveBeenCalledTimes(soundCallsAfterJoin + 2);
     expect(outputCleanup).toHaveBeenCalledTimes(outputCallsAfterJoin + 2);
+  });
+
+  it("requests a companion token and stops the native share on voice leave", async () => {
+    screenShareState.desktop = true;
+    screenShareState.getCapabilities.mockResolvedValue({
+      available: true,
+      nativeCapture: true,
+      systemAudio: true,
+      reason: null,
+    });
+    screenShareState.start.mockResolvedValue({
+      sessionId: "native-share-1",
+      sourceLabel: "Demo window",
+      audioPublished: true,
+    });
+    supabaseState.invoke
+      .mockResolvedValueOnce(tokenResponse)
+      .mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    await waitFor(() => expect(result.current.screenShareAvailable).toBe(true));
+
+    await act(async () => {
+      await result.current.startScreenShare(true);
+    });
+
+    expect(supabaseState.invoke).toHaveBeenNthCalledWith(2, "livekit-token", {
+      body: { channelId: lounge.id, purpose: "screen_share" },
+    });
+    expect(screenShareState.start).toHaveBeenCalledWith({
+      serverUrl: "wss://bakbak.livekit.cloud",
+      token: "signed.jwt.token",
+      includeAudio: true,
+    });
+    expect(result.current.screenShareEnabled).toBe(true);
+
+    await act(async () => {
+      await result.current.leave();
+    });
+    expect(screenShareState.stop).toHaveBeenCalledWith("native-share-1");
+    expect(screenShareState.stop.mock.invocationCallOrder[0]).toBeLessThan(
+      liveKitState.rooms[0]!.disconnect.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("keeps voice alive and exposes a retryable native screen-share failure", async () => {
+    screenShareState.desktop = true;
+    screenShareState.getCapabilities.mockResolvedValue({
+      available: true,
+      nativeCapture: true,
+      systemAudio: true,
+      reason: null,
+    });
+    screenShareState.start.mockRejectedValue(
+      "macOS started capture but did not deliver a video frame.",
+    );
+    supabaseState.invoke
+      .mockResolvedValueOnce(tokenResponse)
+      .mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    await waitFor(() => expect(result.current.screenShareAvailable).toBe(true));
+
+    await act(async () => {
+      await result.current.startScreenShare(false);
+    });
+
+    expect(result.current.status).toBe("connected");
+    expect(result.current.screenShareState).toBe("error");
+    expect(result.current.screenShareError).toBe(
+      "macOS started capture but did not deliver a video frame.",
+    );
   });
 
   it("does not connect or publish a microphone after leaving during a pending token request", async () => {

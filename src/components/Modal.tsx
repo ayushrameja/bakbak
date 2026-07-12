@@ -2,13 +2,20 @@ import { X } from "lucide-react";
 import type { ReactNode } from "react";
 
 interface ModalProps {
+  eyebrow?: string;
   title: string;
   description?: string;
   children: ReactNode;
   onClose: () => void;
 }
 
-export function Modal({ title, description, children, onClose }: ModalProps) {
+export function Modal({
+  eyebrow = "Preferences",
+  title,
+  description,
+  children,
+  onClose,
+}: ModalProps) {
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section
@@ -20,7 +27,7 @@ export function Modal({ title, description, children, onClose }: ModalProps) {
       >
         <header className="modal-card__header">
           <div>
-            <span className="eyebrow">Preferences</span>
+            <span className="eyebrow">{eyebrow}</span>
             <h2 id="modal-title">{title}</h2>
             {description ? <p>{description}</p> : null}
           </div>

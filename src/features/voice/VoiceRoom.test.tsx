@@ -46,6 +46,17 @@ function createVoice(
     outputSelectionSupported: false,
     cameraEnabled: false,
     cameraPending: false,
+    screenShares: [],
+    selectedScreenShareId: null,
+    screenShareAvailable: false,
+    screenShareAudioAvailable: false,
+    screenShareUnavailableReason: null,
+    screenShareState: "idle",
+    screenShareEnabled: false,
+    screenSharePending: false,
+    screenShareAudioPublished: false,
+    screenShareSourceLabel: null,
+    screenShareError: null,
     soundboard: mockSoundboardController,
     soundboardVolume: 0.7,
     activeLocalSoundCount: 0,
@@ -59,6 +70,9 @@ function createVoice(
     setOutputDevice: vi.fn().mockResolvedValue(undefined),
     setCameraDevice: vi.fn().mockResolvedValue(undefined),
     toggleCamera: vi.fn().mockResolvedValue(undefined),
+    startScreenShare: vi.fn().mockResolvedValue(undefined),
+    stopScreenShare: vi.fn().mockResolvedValue(undefined),
+    selectScreenShare: vi.fn(),
     dispatchSound: vi.fn().mockResolvedValue(undefined),
     stopLocalSounds: vi.fn().mockResolvedValue(undefined),
     setSoundboardVolume: vi.fn(),
@@ -84,6 +98,7 @@ describe("VoiceRoom audio recovery", () => {
           },
         ]}
         onOpenSettings={vi.fn()}
+        onOpenScreenShare={vi.fn()}
       />,
     );
 
@@ -100,10 +115,52 @@ describe("VoiceRoom audio recovery", () => {
         voice={createVoice({ toggleCamera })}
         occupants={[]}
         onOpenSettings={vi.fn()}
+        onOpenScreenShare={vi.fn()}
       />,
     );
     await userEvent.click(screen.getByRole("button", { name: /Start video/i }));
     expect(toggleCamera).toHaveBeenCalledOnce();
+  });
+
+  it("opens the native-share confirmation from call controls", async () => {
+    const onOpenScreenShare = vi.fn();
+    render(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={createVoice({ screenShareAvailable: true })}
+        occupants={[]}
+        onOpenSettings={vi.fn()}
+        onOpenScreenShare={onOpenScreenShare}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Share screen" }));
+    expect(onOpenScreenShare).toHaveBeenCalledOnce();
+  });
+
+  it("stops an active share without coupling it to camera state", async () => {
+    const stopScreenShare = vi.fn().mockResolvedValue(undefined);
+    render(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={createVoice({
+          cameraEnabled: true,
+          screenShareAvailable: true,
+          screenShareEnabled: true,
+          screenShareState: "sharing",
+          stopScreenShare,
+        })}
+        occupants={[]}
+        onOpenSettings={vi.fn()}
+        onOpenScreenShare={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Stop share" }));
+    expect(stopScreenShare).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: /Stop video/i })).toBeEnabled();
   });
 
   it("offers an Enable audio action when autoplay is blocked", async () => {
@@ -117,6 +174,7 @@ describe("VoiceRoom audio recovery", () => {
         voice={voice}
         occupants={[]}
         onOpenSettings={vi.fn()}
+        onOpenScreenShare={vi.fn()}
       />,
     );
 
@@ -136,6 +194,7 @@ describe("VoiceRoom audio recovery", () => {
         voice={voice}
         occupants={[]}
         onOpenSettings={vi.fn()}
+        onOpenScreenShare={vi.fn()}
       />,
     );
 
@@ -163,6 +222,7 @@ describe("VoiceRoom audio recovery", () => {
         voice={voice}
         occupants={[]}
         onOpenSettings={vi.fn()}
+        onOpenScreenShare={vi.fn()}
       />,
     );
 

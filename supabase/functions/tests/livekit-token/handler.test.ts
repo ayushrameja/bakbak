@@ -52,6 +52,16 @@ Deno.test("livekit-token rejects malformed channel identifiers", async () => {
   assertEquals(await readError(response), "invalid_payload");
 });
 
+Deno.test("livekit-token rejects malformed token purposes", async () => {
+  const response = await handleLiveKitTokenRequest(
+    makeRequest(CHANNEL_ID, {}, "admin"),
+    createDependencies(),
+  );
+
+  assertEquals(response.status, 400);
+  assertEquals(await readError(response), "invalid_payload");
+});
+
 Deno.test("livekit-token requires an authenticated Supabase user", async () => {
   const response = await handleLiveKitTokenRequest(
     makeRequest(CHANNEL_ID),
@@ -116,11 +126,52 @@ Deno.test(
       "Expected the signing dependency to be called.",
     );
     assertEquals(signingInput.identity, USER_ID);
+    assertEquals(signingInput.ownerUserId, USER_ID);
+    assertEquals(signingInput.purpose, "voice");
     assertEquals(signingInput.serverId, SERVER_ID);
     assertEquals(signingInput.channelId, CHANNEL_ID);
     assertEquals(signingInput.ttlSeconds, 300);
   },
 );
+
+Deno.test(
+  "livekit-token creates an isolated companion identity for screen sharing",
+  async () => {
+    const signingInputs: TokenSigningInput[] = [];
+    const response = await handleLiveKitTokenRequest(
+      makeRequest(CHANNEL_ID, {}, "screen_share"),
+      createDependencies({
+        signToken: (input) => {
+          signingInputs.push(input);
+          return Promise.resolve("screen-token");
+        },
+      }),
+    );
+
+    assertEquals(response.status, 200);
+    const signingInput = signingInputs[0];
+    assert(signingInput !== undefined, "Expected a signing input.");
+    assert(
+      signingInput.identity.startsWith(`screen:${USER_ID}:`),
+      "Expected a server-generated screen companion identity.",
+    );
+    assertEquals(signingInput.ownerUserId, USER_ID);
+    assertEquals(signingInput.purpose, "screen_share");
+  },
+);
+
+Deno.test("livekit-token hides token signer failures", async () => {
+  const response = await handleLiveKitTokenRequest(
+    makeRequest(CHANNEL_ID, {}, "screen_share"),
+    createDependencies({
+      signToken: () =>
+        Promise.reject(new Error("secret-bearing signer diagnostic")),
+    }),
+  );
+
+  assertEquals(response.status, 500);
+  assertEquals(await readError(response), "token_request_failed");
+});
 
 function createDependencies(
   overrides: Partial<LiveKitTokenDependencies> = {},
@@ -147,6 +198,7 @@ function createDependencies(
 function makeRequest(
   channelId: string,
   additionalHeaders: Record<string, string> = {},
+  purpose?: string,
 ): Request {
   return new Request("https://example.test/functions/v1/livekit-token", {
     method: "POST",
@@ -156,7 +208,7 @@ function makeRequest(
       origin: "tauri://localhost",
       ...additionalHeaders,
     },
-    body: JSON.stringify({ channelId }),
+    body: JSON.stringify({ channelId, ...(purpose ? { purpose } : {}) }),
   });
 }
 

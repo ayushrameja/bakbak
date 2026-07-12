@@ -1,0 +1,5 @@
+[env]
+# Swift Concurrency is part of macOS from 12 onward. Declaring that minimum
+# keeps native ScreenCaptureKit dependencies linked to the system runtime
+# instead of embedding a second back-deployment runtime in the app.
+MACOSX_DEPLOYMENT_TARGET = "12.3"

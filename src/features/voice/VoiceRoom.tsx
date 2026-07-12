@@ -5,6 +5,7 @@ import {
   Headphones,
   Mic,
   MicOff,
+  MonitorUp,
   Phone,
   PhoneOff,
   Radio,
@@ -18,6 +19,7 @@ import { Avatar } from "../../components/Avatar";
 import type { AppUser, Channel, VoiceRoomOccupant } from "../../lib/types";
 import { Soundboard } from "../soundboard/Soundboard";
 import { ParticipantVideo } from "./ParticipantVideo";
+import { ScreenShareStage } from "./ScreenShareStage";
 import { VoiceElapsedTime } from "./VoiceElapsedTime";
 import type { useVoiceRoom } from "./useVoiceRoom";
 
@@ -27,6 +29,7 @@ interface VoiceRoomProps {
   voice: ReturnType<typeof useVoiceRoom>;
   occupants: VoiceRoomOccupant[];
   onOpenSettings: () => void;
+  onOpenScreenShare: () => void;
 }
 
 export function VoiceRoom({
@@ -35,6 +38,7 @@ export function VoiceRoom({
   voice,
   occupants,
   onOpenSettings,
+  onOpenScreenShare,
 }: VoiceRoomProps) {
   const isThisRoom = voice.channel?.id === channel.id;
   const isConnected = isThisRoom && voice.status === "connected";
@@ -193,6 +197,18 @@ export function VoiceRoom({
               </button>
             </div>
           ) : null}
+          {voice.screenShareError ? (
+            <div className="voice-device-error" role="alert">
+              <CircleAlert size={16} />
+              <span>{voice.screenShareError}</span>
+            </div>
+          ) : null}
+          <ScreenShareStage
+            shares={voice.screenShares}
+            selectedId={voice.selectedScreenShareId}
+            localSourceLabel={voice.screenShareSourceLabel}
+            onSelect={voice.selectScreenShare}
+          />
           <div className="participant-grid">
             {voice.participants.map((participant) => {
               const latestSound = participant.activeSounds.at(-1);
@@ -328,6 +344,27 @@ export function VoiceRoom({
                     : "Start video"}
               </span>
             </button>
+            {voice.screenShareAvailable || voice.screenShareEnabled ? (
+              <button
+                className={voice.screenShareEnabled ? "is-active" : ""}
+                type="button"
+                disabled={voice.screenSharePending}
+                onClick={() =>
+                  voice.screenShareEnabled
+                    ? void voice.stopScreenShare()
+                    : onOpenScreenShare()
+                }
+              >
+                <MonitorUp size={20} />
+                <span>
+                  {voice.screenSharePending
+                    ? "Screen…"
+                    : voice.screenShareEnabled
+                      ? "Stop share"
+                      : "Share screen"}
+                </span>
+              </button>
+            ) : null}
             <button type="button" onClick={onOpenSettings}>
               <Settings2 size={20} />
               <span>Devices</span>
