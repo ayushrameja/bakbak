@@ -7,7 +7,9 @@ import {
   VideoPresets,
   supportsAudioOutputSelection,
   type Participant,
+  type RemoteAudioTrack,
   type RemoteParticipant,
+  type RemoteTrackPublication,
 } from "livekit-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { appConfig } from "../../lib/env";
@@ -19,12 +21,24 @@ import {
   saveDevicePreferences,
 } from "../settings/device-preferences";
 import {
-  createSoundEvent,
+  SOUND_PLAY_EVENT_TYPE,
+  SOUND_STOP_EVENT_TYPE,
+  createSoundPlayEvent,
+  createSoundStopEvent,
   encodeSoundEvent,
   hasSeenSoundEvent,
   parseSoundEvent,
 } from "../soundboard/sound-events";
-import { SoundPlaybackController } from "../soundboard/sound-playback";
+import { mockSoundboardController } from "../soundboard/mock-catalog";
+import {
+  SOUNDBOARD_TRACK_NAME,
+  SoundboardAudioPublisher,
+} from "../soundboard/soundboard-audio";
+import type {
+  SoundboardActivity,
+  SoundboardCatalogController,
+  SoundboardMetadataInput,
+} from "../soundboard/types";
 import {
   resumeAudioPlayback,
   setAudioDeafened,
@@ -52,6 +66,7 @@ export interface VoiceParticipant {
   joinedAt: string | null;
   cameraEnabled: boolean;
   cameraTrack: VideoTrackLike | null;
+  activeSounds: SoundboardActivity[];
 }
 
 export interface VideoTrackLike {
@@ -79,6 +94,9 @@ interface VoiceRoomState {
   outputSelectionSupported: boolean;
   cameraEnabled: boolean;
   cameraPending: boolean;
+  soundboard: SoundboardCatalogController;
+  soundboardVolume: number;
+  activeLocalSoundCount: number;
   join: (channel: Channel) => Promise<void>;
   leave: () => Promise<void>;
   toggleMute: () => Promise<void>;
@@ -90,9 +108,19 @@ interface VoiceRoomState {
   setCameraDevice: (deviceId: string) => Promise<void>;
   toggleCamera: () => Promise<void>;
   dispatchSound: (soundId: string) => Promise<void>;
+  stopLocalSounds: () => Promise<void>;
+  setSoundboardVolume: (volume: number) => void;
+  updateSoundMetadata: (
+    soundId: string,
+    input: SoundboardMetadataInput,
+  ) => Promise<void>;
 }
 
-export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
+export function useVoiceRoom(
+  user: AppUser,
+  mode: DataMode,
+  soundboard: SoundboardCatalogController = mockSoundboardController,
+): VoiceRoomState {
   const [initialPreferences] = useState(loadDevicePreferences);
   const [status, setStatus] = useState<VoiceConnectionStatus>("disconnected");
   const [channel, setChannel] = useState<Channel | null>(null);
@@ -122,10 +150,18 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
   );
   const [cameraEnabled, setCameraEnabled] = useState(false);
   const [cameraPending, setCameraPending] = useState(false);
+  const [soundboardVolume, setSoundboardVolumeState] = useState(
+    initialPreferences.soundboardVolume,
+  );
+  const [activeLocalSoundCount, setActiveLocalSoundCount] = useState(0);
   const [remoteAudio] = useState(() => new RemoteAudioRenderer());
   const [audioOutput] = useState(() => new AudioOutputRouter());
-  const [soundPlayback] = useState(
-    () => new SoundPlaybackController(undefined, () => audioOutput.soundTarget),
+  const [soundboardAudio] = useState(
+    () =>
+      new SoundboardAudioPublisher(
+        () => audioOutput.soundTarget,
+        () => audioOutput.resetMonitor(),
+      ),
   );
   const outputSelectionSupported =
     audioOutput.supported && supportsAudioOutputSelection();
@@ -135,13 +171,31 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
   const playbackOperationRef = useRef(0);
   const cameraOperationRef = useRef(0);
   const seenSoundEvents = useRef(new Set<string>());
+  const soundActivities = useRef(new Map<string, SoundboardActivity[]>());
+  const soundActivityTimers = useRef(new Map<string, number>());
+  const soundboardTracks = useRef(new Map<string, RemoteAudioTrack>());
+  const participantVolumes = useRef(new Map<string, number>());
+  const soundboardVolumeRef = useRef(soundboardVolume);
+  const soundboardRef = useRef(soundboard);
 
   const refreshParticipants = useCallback((room: Room) => {
     const next: VoiceParticipant[] = [
-      participantToView(room.localParticipant, true),
+      participantToView(
+        room.localParticipant,
+        true,
+        soundActivities.current.get(room.localParticipant.identity) ?? [],
+      ),
     ];
     room.remoteParticipants.forEach((participant) => {
-      next.push(participantToView(participant, false));
+      const volume = participantVolumes.current.get(participant.identity);
+      if (volume !== undefined) participant.setVolume(volume);
+      next.push(
+        participantToView(
+          participant,
+          false,
+          soundActivities.current.get(participant.identity) ?? [],
+        ),
+      );
     });
     setParticipants(next);
     setCameraEnabled(room.localParticipant.isCameraEnabled);
@@ -173,8 +227,24 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
       inputDeviceId: selectedInputId,
       outputDeviceId: selectedOutputId,
       cameraDeviceId: selectedCameraId,
+      soundboardVolume,
     });
-  }, [selectedCameraId, selectedInputId, selectedOutputId]);
+  }, [selectedCameraId, selectedInputId, selectedOutputId, soundboardVolume]);
+
+  useEffect(() => {
+    soundboardRef.current = soundboard;
+  }, [soundboard]);
+
+  useEffect(() => {
+    soundboardVolumeRef.current = soundboardVolume;
+    soundboardAudio.setVolume(soundboardVolume);
+    soundboardTracks.current.forEach((track, participantId) => {
+      remoteAudio.setVolume(
+        track,
+        soundboardVolume * (participantVolumes.current.get(participantId) ?? 1),
+      );
+    });
+  }, [remoteAudio, soundboardAudio, soundboardVolume]);
 
   useEffect(() => {
     void refreshDevices();
@@ -194,8 +264,13 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
     playbackOperationRef.current += 1;
     cameraOperationRef.current += 1;
     remoteAudio.cleanup();
-    soundPlayback.stopAll();
-    soundPlayback.setDeafened(false);
+    soundboardAudio.cleanup();
+    audioOutput.cleanup();
+    soundActivities.current.clear();
+    soundActivityTimers.current.forEach((timer) => window.clearTimeout(timer));
+    soundActivityTimers.current.clear();
+    soundboardTracks.current.clear();
+    setActiveLocalSoundCount(0);
     deafenedRef.current = false;
     seenSoundEvents.current.clear();
     setParticipants([]);
@@ -204,7 +279,79 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
     setAudioPlaybackBlocked(false);
     setCameraEnabled(false);
     setCameraPending(false);
-  }, [remoteAudio, soundPlayback]);
+  }, [audioOutput, remoteAudio, soundboardAudio]);
+
+  const clearParticipantSounds = useCallback(
+    (participantId: string, eventId?: string) => {
+      const current = soundActivities.current.get(participantId) ?? [];
+      const removed = eventId
+        ? current.filter((activity) => activity.eventId === eventId)
+        : current;
+      removed.forEach((activity) => {
+        const timer = soundActivityTimers.current.get(activity.eventId);
+        if (timer !== undefined) window.clearTimeout(timer);
+        soundActivityTimers.current.delete(activity.eventId);
+      });
+      const next = eventId
+        ? current.filter((activity) => activity.eventId !== eventId)
+        : [];
+      if (next.length > 0) soundActivities.current.set(participantId, next);
+      else soundActivities.current.delete(participantId);
+      if (participantId === user.id) setActiveLocalSoundCount(next.length);
+      const room = roomRef.current;
+      if (room) refreshParticipants(room);
+      else {
+        setParticipants((participants) =>
+          participants.map((participant) =>
+            participant.id === participantId
+              ? { ...participant, activeSounds: next }
+              : participant,
+          ),
+        );
+      }
+    },
+    [refreshParticipants, user.id],
+  );
+
+  const addParticipantSound = useCallback(
+    (
+      participantId: string,
+      eventId: string,
+      sound: SoundboardCatalogController["sounds"][number],
+    ) => {
+      const activity: SoundboardActivity = {
+        eventId,
+        soundId: sound.id,
+        label: sound.label,
+        emoji: sound.emoji,
+        startedAt: Date.now(),
+      };
+      const current = soundActivities.current.get(participantId) ?? [];
+      soundActivities.current.set(participantId, [...current, activity]);
+      if (participantId === user.id)
+        setActiveLocalSoundCount(current.length + 1);
+      const timer = window.setTimeout(
+        () => clearParticipantSounds(participantId, eventId),
+        sound.durationMs + 250,
+      );
+      soundActivityTimers.current.set(eventId, timer);
+      const room = roomRef.current;
+      if (room) refreshParticipants(room);
+      else {
+        setParticipants((participants) =>
+          participants.map((participant) =>
+            participant.id === participantId
+              ? {
+                  ...participant,
+                  activeSounds: [...participant.activeSounds, activity],
+                }
+              : participant,
+          ),
+        );
+      }
+    },
+    [clearParticipantSounds, refreshParticipants, user.id],
+  );
 
   const bindRoomEvents = useCallback(
     (room: Room) => {
@@ -222,14 +369,37 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
         .on(RoomEvent.TrackUnpublished, sync)
         .on(RoomEvent.LocalTrackPublished, sync)
         .on(RoomEvent.LocalTrackUnpublished, sync)
-        .on(RoomEvent.TrackSubscribed, (track) => {
-          if (!isCurrentRoom()) return;
-          remoteAudio.attach(track);
-          sync();
-        })
+        .on(
+          RoomEvent.TrackSubscribed,
+          (
+            track,
+            publication: RemoteTrackPublication,
+            participant: RemoteParticipant,
+          ) => {
+            if (!isCurrentRoom()) return;
+            const isSoundboardTrack =
+              publication.trackName === SOUNDBOARD_TRACK_NAME;
+            const volume = isSoundboardTrack
+              ? soundboardVolumeRef.current *
+                (participantVolumes.current.get(participant.identity) ?? 1)
+              : undefined;
+            remoteAudio.attach(track, volume);
+            if (isSoundboardTrack && track.kind === Track.Kind.Audio) {
+              soundboardTracks.current.set(
+                participant.identity,
+                track as RemoteAudioTrack,
+              );
+            }
+            sync();
+          },
+        )
         .on(RoomEvent.TrackUnsubscribed, (track) => {
           if (!isCurrentRoom()) return;
           remoteAudio.detach(track);
+          soundboardTracks.current.forEach((candidate, participantId) => {
+            if (candidate === track)
+              soundboardTracks.current.delete(participantId);
+          });
           sync();
         })
         .on(RoomEvent.Reconnecting, () => {
@@ -256,13 +426,26 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
             );
           }
         })
-        .on(RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
+        .on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
           if (!isCurrentRoom() || topic !== "bakbak-soundboard") return;
           const event = parseSoundEvent(payload);
-          if (!event || hasSeenSoundEvent(event, seenSoundEvents.current))
+          if (
+            !event ||
+            !participant ||
+            hasSeenSoundEvent(event, seenSoundEvents.current)
+          )
             return;
           seenSoundEvents.current.add(event.eventId);
-          soundPlayback.play(event.soundId, event.volume);
+          if (event.type === SOUND_STOP_EVENT_TYPE) {
+            clearParticipantSounds(participant.identity);
+            return;
+          }
+          if (event.type !== SOUND_PLAY_EVENT_TYPE) return;
+          const sound = soundboardRef.current.sounds.find(
+            (item) => item.id === event.soundId,
+          );
+          if (sound)
+            addParticipantSound(participant.identity, event.eventId, sound);
         })
         .on(RoomEvent.Disconnected, () => {
           if (roomRef.current !== room) return;
@@ -277,7 +460,8 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
       refreshParticipants,
       remoteAudio,
       resetVoiceMedia,
-      soundPlayback,
+      addParticipantSound,
+      clearParticipantSounds,
     ],
   );
 
@@ -337,6 +521,7 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
             joinedAt: new Date().toISOString(),
             cameraEnabled: false,
             cameraTrack: null,
+            activeSounds: [],
           },
           {
             id: "user-mira",
@@ -348,6 +533,7 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
             joinedAt: new Date(Date.now() - 95_000).toISOString(),
             cameraEnabled: false,
             cameraTrack: null,
+            activeSounds: [],
           },
           {
             id: "user-jo",
@@ -359,6 +545,7 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
             joinedAt: new Date(Date.now() - 42_000).toISOString(),
             cameraEnabled: false,
             cameraTrack: null,
+            activeSounds: [],
           },
         ]);
         setStatus("connected");
@@ -417,9 +604,7 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
         }
         await room.localParticipant.setMicrophoneEnabled(
           true,
-          selectedInputId === "default"
-            ? undefined
-            : { deviceId: selectedInputId },
+          microphoneCaptureOptions(selectedInputId),
         );
         if (!isCurrentJoin() || roomRef.current !== room) {
           void room.disconnect();
@@ -439,6 +624,10 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
             );
           }
         }
+        await audioOutput.start().catch(() => undefined);
+        await soundboardAudio
+          .ensurePublished(room.localParticipant)
+          .catch(() => undefined);
         refreshParticipants(room);
         setStatus("connected");
         setAudioPlaybackBlocked(!room.canPlaybackAudio);
@@ -468,6 +657,7 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
       outputSelectionSupported,
       selectedInputId,
       selectedOutputId,
+      soundboardAudio,
       user.displayName,
       user.id,
     ],
@@ -511,7 +701,7 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
           playbackOperationRef.current === operationId &&
           roomRef.current === room,
         remoteAudio,
-        soundPlayback,
+        soundPlayback: soundboardAudio,
       },
     );
     if (
@@ -529,7 +719,7 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
 
     setAudioPlaybackBlocked(true);
     setError(result.message);
-  }, [audioPlaybackBlocked, remoteAudio, soundPlayback, status]);
+  }, [audioPlaybackBlocked, remoteAudio, soundboardAudio, status]);
 
   const resumeAudio = useCallback(async () => {
     const room = roomRef.current;
@@ -557,9 +747,17 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
   const setParticipantVolume = useCallback(
     (participantId: string, volume: number) => {
       const safeVolume = Math.max(0, Math.min(1, volume));
+      participantVolumes.current.set(participantId, safeVolume);
       roomRef.current?.remoteParticipants
         .get(participantId)
         ?.setVolume(safeVolume);
+      const soundboardTrack = soundboardTracks.current.get(participantId);
+      if (soundboardTrack) {
+        remoteAudio.setVolume(
+          soundboardTrack,
+          soundboardVolumeRef.current * safeVolume,
+        );
+      }
       setParticipants((current) =>
         current.map((participant) =>
           participant.id === participantId
@@ -568,7 +766,7 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
         ),
       );
     },
-    [],
+    [remoteAudio],
   );
 
   const setInputDevice = useCallback(
@@ -589,10 +787,18 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
         return;
       }
 
+      if (!muted) {
+        await room.localParticipant.setMicrophoneEnabled(
+          true,
+          microphoneCaptureOptions(deviceId),
+        );
+        if (roomRef.current !== room) return;
+      }
+
       setSelectedInputId(deviceId);
       setInputDeviceError(null);
     },
-    [status],
+    [muted, status],
   );
 
   const setOutputDevice = useCallback(
@@ -708,28 +914,95 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
     async (soundId: string) => {
       if (status !== "connected")
         throw new Error("Join a voice room before sharing a sound.");
-      const event = createSoundEvent({
+      const sound = soundboardRef.current.sounds.find(
+        (item) => item.id === soundId,
+      );
+      if (!sound) throw new Error("That sound is no longer available.");
+      if (sound.assetStatus === "error") {
+        throw new Error("That sound failed to download. Retry it first.");
+      }
+      const event = createSoundPlayEvent({
         eventId: crypto.randomUUID(),
         soundId,
-        senderId: user.id,
         sentAt: Date.now(),
-        volume: 0.72,
       });
       seenSoundEvents.current.add(event.eventId);
+      addParticipantSound(user.id, event.eventId, sound);
+      if (mode === "mock") return;
+
+      const room = roomRef.current;
+      if (!room) throw new Error("Voice room disconnected before playback.");
+      const blob = await soundboardRef.current.getBlob(soundId);
+      if (!blob) {
+        clearParticipantSounds(user.id, event.eventId);
+        throw new Error("Bakbak could not download that sound.");
+      }
       await audioOutput.start().catch(() => undefined);
-      soundPlayback.play(soundId, event.volume);
-      if (roomRef.current) {
-        await roomRef.current.localParticipant.publishData(
-          encodeSoundEvent(event),
-          {
-            reliable: true,
-            topic: "bakbak-soundboard",
-          },
+      let playback;
+      try {
+        playback = await soundboardAudio.play(
+          room.localParticipant,
+          event.eventId,
+          sound,
+          blob,
         );
+      } catch (caught) {
+        clearParticipantSounds(user.id, event.eventId);
+        throw caught;
+      }
+      void playback.finished.then(() =>
+        clearParticipantSounds(user.id, event.eventId),
+      );
+      try {
+        await room.localParticipant.publishData(encodeSoundEvent(event), {
+          reliable: true,
+          topic: "bakbak-soundboard",
+        });
+      } catch (caught) {
+        playback.stop();
+        clearParticipantSounds(user.id, event.eventId);
+        throw caught;
       }
     },
-    [audioOutput, soundPlayback, status, user.id],
+    [
+      addParticipantSound,
+      audioOutput,
+      clearParticipantSounds,
+      mode,
+      soundboardAudio,
+      status,
+      user.id,
+    ],
   );
+
+  const stopLocalSounds = useCallback(async () => {
+    soundboardAudio.cleanup();
+    audioOutput.cleanup();
+    clearParticipantSounds(user.id);
+    if (mode === "mock") return;
+    const room = roomRef.current;
+    if (!room || status !== "connected") return;
+    const event = createSoundStopEvent({
+      eventId: crypto.randomUUID(),
+      sentAt: Date.now(),
+    });
+    seenSoundEvents.current.add(event.eventId);
+    await room.localParticipant.publishData(encodeSoundEvent(event), {
+      reliable: true,
+      topic: "bakbak-soundboard",
+    });
+  }, [
+    audioOutput,
+    clearParticipantSounds,
+    mode,
+    soundboardAudio,
+    status,
+    user.id,
+  ]);
+
+  const setSoundboardVolume = useCallback((volume: number) => {
+    setSoundboardVolumeState(Math.max(0, Math.min(1, volume)));
+  }, []);
 
   useEffect(
     () => () => {
@@ -739,11 +1012,11 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
       const room = roomRef.current;
       roomRef.current = null;
       remoteAudio.cleanup();
-      soundPlayback.stopAll();
+      soundboardAudio.cleanup();
       audioOutput.cleanup();
       void room?.disconnect();
     },
-    [audioOutput, remoteAudio, soundPlayback],
+    [audioOutput, remoteAudio, soundboardAudio],
   );
 
   return {
@@ -766,6 +1039,9 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
     outputSelectionSupported,
     cameraEnabled,
     cameraPending,
+    soundboard,
+    soundboardVolume,
+    activeLocalSoundCount,
     join,
     leave,
     toggleMute,
@@ -777,6 +1053,18 @@ export function useVoiceRoom(user: AppUser, mode: DataMode): VoiceRoomState {
     setCameraDevice,
     toggleCamera,
     dispatchSound,
+    stopLocalSounds,
+    setSoundboardVolume,
+    updateSoundMetadata: soundboard.updateSound,
+  };
+}
+
+export function microphoneCaptureOptions(deviceId: string) {
+  return {
+    ...(deviceId === "default" ? {} : { deviceId }),
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
   };
 }
 
@@ -812,6 +1100,7 @@ export function describeVoiceConnectionError(
 function participantToView(
   participant: Participant,
   isLocal: boolean,
+  activeSounds: SoundboardActivity[],
 ): VoiceParticipant {
   const cameraPublication = participant.getTrackPublication(
     Track.Source.Camera,
@@ -827,5 +1116,6 @@ function participantToView(
     cameraEnabled: participant.isCameraEnabled,
     cameraTrack:
       (cameraPublication?.track as VideoTrackLike | undefined) ?? null,
+    activeSounds,
   };
 }

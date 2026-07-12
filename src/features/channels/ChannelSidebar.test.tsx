@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { AppUser, Channel, Server } from "../../lib/types";
+import { mockSoundboardController } from "../soundboard/mock-catalog";
 import type { useVoiceRoom } from "../voice/useVoiceRoom";
 import { ChannelSidebar } from "./ChannelSidebar";
 
@@ -126,6 +127,9 @@ function createVoice(): ReturnType<typeof useVoiceRoom> {
     outputSelectionSupported: false,
     cameraEnabled: false,
     cameraPending: false,
+    soundboard: mockSoundboardController,
+    soundboardVolume: 0.7,
+    activeLocalSoundCount: 0,
     join: vi.fn().mockResolvedValue(undefined),
     leave: vi.fn().mockResolvedValue(undefined),
     toggleMute: vi.fn().mockResolvedValue(undefined),
@@ -137,5 +141,8 @@ function createVoice(): ReturnType<typeof useVoiceRoom> {
     setCameraDevice: vi.fn().mockResolvedValue(undefined),
     toggleCamera: vi.fn().mockResolvedValue(undefined),
     dispatchSound: vi.fn().mockResolvedValue(undefined),
+    stopLocalSounds: vi.fn().mockResolvedValue(undefined),
+    setSoundboardVolume: vi.fn(),
+    updateSoundMetadata: vi.fn().mockResolvedValue(undefined),
   };
 }

@@ -54,7 +54,8 @@ starts with context instead of archaeological guessing.
 - Email/password authentication plus a single-use invite code.
 - One seeded admin; all invited users become members.
 - macOS and Windows installers; Linux afterward.
-- The first usable release includes voice, text, and a bundled soundboard.
+- The first usable release includes voice, text, and a private hosted
+  soundboard whose audio files stay outside the desktop bundle.
 
 ## Phased implementation
 
@@ -109,11 +110,13 @@ plan.
 ### Phase 4 — First friend-test build
 
 - [x] Add persistent text chat with realtime updates.
-- [x] Add a bundled sound pack.
-- [x] Send a LiveKit data message containing a sound ID when a soundboard action
-      occurs.
-- [x] Play the bundled matching clip on every connected client.
-- [x] Unit-test sound dispatch.
+- [x] Add a private hosted sound pack and typed member-visible catalog.
+- [x] Send versioned LiveKit activity messages and a dedicated named audio track
+      when a soundboard action occurs.
+- [x] Play hosted clips once through the outbound track and local monitor path,
+      with overlapping triggers, stop-all, and listener volume controls.
+- [x] Unit-test catalog caching, sound dispatch, audio routing, activity state,
+      and UI behavior.
 - [ ] Manually validate login and invite redemption on macOS.
 - [x] Manually validate persistent two-client text chat.
 - [ ] Manually validate two-person voice, mute/deafen, device changes, and
@@ -122,9 +125,12 @@ plan.
 - [ ] Update architecture, plan status, and the append-only progress log.
 
 The first friend-test build explicitly excludes screen sharing, recording,
-camera effects, user uploads, cloud sound storage, global push-to-talk, and
-advanced roles. Opt-in webcam video and local device preferences were added by
-the approved follow-up plan `0002-voice-video-and-presence.md`.
+camera effects, user sound uploads, global push-to-talk, and advanced roles.
+An operator-managed private cloud sound pack was approved separately. Members
+may edit label, emoji, and category metadata, but cannot upload, replace, or
+delete audio or manage categories. Opt-in webcam video and local device
+preferences were added by the approved follow-up plan
+`0002-voice-video-and-presence.md`.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -132,6 +138,8 @@ the approved follow-up plan `0002-voice-video-and-presence.md`.
 - [ ] Add invite management UI.
 - [ ] Add desktop notifications and tray controls.
 - [x] Add locally persisted microphone, speaker, and camera preferences.
+- [x] Add a private operator-managed sound bucket with server-member reads.
+- [x] Fetch, revision-cache, and play the hosted sound pack in the renderer.
 - [ ] Evaluate optional global push-to-talk.
 - [ ] Investigate system-audio sharing separately for each operating system.
 - [ ] Update architecture, plan status, and the append-only progress log.
@@ -200,7 +208,7 @@ After every phase:
 
 - Screen sharing, including system audio.
 - Camera recording, effects, and virtual backgrounds.
-- User-uploaded sounds and cloud sound storage.
+- User-uploaded sounds and sound-management UI.
 - Global push-to-talk.
 - Advanced roles and permission management.
 - Invite-management UI.

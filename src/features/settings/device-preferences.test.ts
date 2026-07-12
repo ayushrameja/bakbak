@@ -14,6 +14,7 @@ describe("device preferences", () => {
           inputDeviceId: "mic-1",
           outputDeviceId: "speaker-1",
           cameraDeviceId: "camera-1",
+          soundboardVolume: 0.45,
         }),
       ),
     };
@@ -21,6 +22,7 @@ describe("device preferences", () => {
       inputDeviceId: "mic-1",
       outputDeviceId: "speaker-1",
       cameraDeviceId: "camera-1",
+      soundboardVolume: 0.45,
     });
   });
 
@@ -33,13 +35,14 @@ describe("device preferences", () => {
     );
   });
 
-  it("stores only the three device ids", () => {
+  it("stores device ids and local soundboard volume", () => {
     const setItem = vi.fn();
     saveDevicePreferences(
       {
         inputDeviceId: "mic-1",
         outputDeviceId: "speaker-1",
         cameraDeviceId: "camera-1",
+        soundboardVolume: 0.6,
       },
       { setItem },
     );
@@ -47,6 +50,7 @@ describe("device preferences", () => {
       inputDeviceId: "mic-1",
       outputDeviceId: "speaker-1",
       cameraDeviceId: "camera-1",
+      soundboardVolume: 0.6,
     });
   });
 });

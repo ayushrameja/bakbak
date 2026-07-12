@@ -80,4 +80,18 @@ describe("RemoteAudioRenderer", () => {
     expect(renderer.attach(track)).toBeNull();
     expect(attach).not.toHaveBeenCalled();
   });
+
+  it("applies listener-owned volume to a soundboard track", () => {
+    const host = document.createElement("div");
+    const setVolume = vi.fn();
+    const { track } = createTrack();
+    const volumeTrack = { ...track, setVolume };
+    const renderer = new RemoteAudioRenderer(() => host);
+
+    renderer.attach(volumeTrack, 0.35);
+    renderer.setVolume(volumeTrack, 0.2);
+
+    expect(setVolume).toHaveBeenNthCalledWith(1, 0.35);
+    expect(setVolume).toHaveBeenNthCalledWith(2, 0.2);
+  });
 });

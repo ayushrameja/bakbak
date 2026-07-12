@@ -2,7 +2,12 @@
 
 This directory contains Bakbak's server-authoritative data model, access rules,
 single-use invite workflow, text-chat realtime publication, and protected
-LiveKit token function.
+LiveKit token function. It also provisions the private, operator-managed
+`soundboard` Storage bucket and the Realtime-published sound catalog. Objects
+live under a server UUID prefix; only a signed-in member of that server can list
+or download them, and renderer clients cannot upload, replace, or delete
+sounds. Members may edit a catalog sound's label, emoji, and same-server
+category; all audio fields and category administration remain operator-only.
 
 ## Local validation
 
@@ -46,8 +51,15 @@ non-member must receive the same 404 used for a missing or text channel.
   The original `heartbeat_presence` RPC remains for older installed builds.
   Clients cannot forge heartbeat rows or join timestamps directly, and
   Postgres Realtime distributes row changes to server members.
-- Tokens permit microphone, camera, and LiveKit data messages for the bundled
-  soundboard. Screen-share sources remain forbidden.
+- Tokens permit microphone, camera, and LiveKit data messages. The renderer
+  publishes its persistent `bakbak-soundboard` audio track as a second named
+  microphone-source track because the current LiveKit server SDK cannot encode
+  `Track.Source.Unknown` in source-restricted grants. Screen-share sources
+  remain forbidden.
+- Sound catalog RLS requires server membership. Column grants allow only label,
+  emoji, and category metadata updates, while a composite foreign key rejects
+  categories from another server. Clients cannot insert or delete sounds or
+  categories.
 
 ## Hosted deployment
 
@@ -62,6 +74,16 @@ pnpm dlx supabase@latest db push
 pnpm dlx supabase@latest migration list
 pnpm dlx supabase@latest functions deploy livekit-token --use-api
 ```
+
+The bucket is private, accepts only `audio/mpeg`, and rejects objects larger
+than 1 MiB. Migration `202607120002_soundboard_catalog.sql` seeds the four
+ordered categories and 23 sound rows whose `storage_path` values match these
+objects. The repository intentionally does not retain a second local copy of
+the MP3s; the hosted bucket is the source of truth. Keep an operator-controlled
+backup outside Git if the files need to be restored or copied to another
+project. File writes and audio-field changes remain operator deployment steps;
+do not add client upload policies or put a service-role credential in the
+renderer.
 
 Keep `verify_jwt = true` from `supabase/config.toml`. Set `LIVEKIT_URL`,
 `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` through the hosted Edge Function

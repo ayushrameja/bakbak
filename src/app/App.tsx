@@ -16,6 +16,7 @@ import {
 import { MemberList } from "../features/server/MemberList";
 import { ConnectionStatus } from "../features/server/ConnectionStatus";
 import { SettingsModal } from "../features/settings/SettingsModal";
+import { useSoundboardCatalog } from "../features/soundboard/useSoundboardCatalog";
 import { VoiceRoom } from "../features/voice/VoiceRoom";
 import { useVoiceRoom } from "../features/voice/useVoiceRoom";
 import { sessionToAppUser, signOut } from "../lib/auth-service";
@@ -63,8 +64,16 @@ export default function App() {
   const presenceSubscriptionRef = useRef<ServerPresenceSubscription | null>(
     null,
   );
-  const voice = useVoiceRoom(user ?? mockCurrentUser, appConfig.dataMode);
   const workspaceServerId = workspace?.server.id;
+  const soundboard = useSoundboardCatalog(
+    workspaceServerId,
+    appConfig.dataMode,
+  );
+  const voice = useVoiceRoom(
+    user ?? mockCurrentUser,
+    appConfig.dataMode,
+    soundboard,
+  );
 
   useEffect(() => {
     const enable = () => void enableIncomingMessageSound();
@@ -487,6 +496,7 @@ export default function App() {
           selectedInputId={voice.selectedInputId}
           selectedOutputId={voice.selectedOutputId}
           selectedCameraId={voice.selectedCameraId}
+          soundboardVolume={voice.soundboardVolume}
           inputError={voice.inputDeviceError}
           outputError={voice.outputDeviceError}
           cameraError={voice.cameraDeviceError}
@@ -497,6 +507,7 @@ export default function App() {
           onInputChange={(deviceId) => void voice.setInputDevice(deviceId)}
           onOutputChange={(deviceId) => void voice.setOutputDevice(deviceId)}
           onCameraChange={(deviceId) => void voice.setCameraDevice(deviceId)}
+          onSoundboardVolumeChange={voice.setSoundboardVolume}
           onClose={() => setSettingsOpen(false)}
         />
       ) : null}

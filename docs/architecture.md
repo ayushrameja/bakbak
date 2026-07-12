@@ -7,19 +7,33 @@ and phase completion belong in the numbered files under `docs/plans`.
 
 ## Current implementation state
 
-As of 2026-07-11, Bakbak has a complete local/mock product path and
+As of 2026-07-12, Bakbak has a complete local/mock product path and
 production Supabase and LiveKit adapters. The renderer provides the
 invite-only welcome flow, channel sidebar, realtime-capable text
 chat, incoming-message sounds, per-channel unread emphasis, member list, voice
 rooms, locally persisted microphone/speaker/camera selection, opt-in 720p
 camera calls, pre-join room occupancy with elapsed timers, mute/deafen,
 per-participant volume, remote-track audio/video rendering, autoplay recovery,
-reconnect/error states, persistent voice controls, and a synchronized bundled
-soundboard. Deafen stops remote speech plus active and future incoming or local
-soundboard playback while still allowing outbound sound events. The selected
-speaker routes calls and soundboard audio; message alerts intentionally remain
-on system output. Mock mode exercises the product interactions without
-credentials or a backend.
+reconnect/error states, persistent voice controls, and a hosted synchronized
+soundboard. The soundboard has category filtering, member-editable labels,
+emoji, and categories, a persisted global volume, per-participant volume,
+overlapping activity badges, and a stop-all action. Deafen stops remote speech
+plus active and future incoming or local soundboard monitoring while still
+allowing outbound soundboard audio. The selected speaker routes calls and
+soundboard audio; message alerts intentionally remain on system output. Mock
+mode exercises the catalog and activity interactions without credentials, a
+backend, or protected MP3 files.
+
+The hosted project has a private, operator-managed `soundboard` Storage bucket
+and a typed Postgres catalog for MP3 assets. Objects are partitioned by server
+UUID, limited to MPEG audio under 1 MiB, and readable only by authenticated
+members of the matching server. Client file writes are intentionally
+unsupported. The renderer downloads authenticated objects after workspace
+load, caches blobs in IndexedDB by sound ID and audio revision, and decodes
+ready clips into in-memory `AudioBuffer`s. Server members may update only a
+sound's label, emoji, and same-server category; file paths, duration, ordering,
+enabled state, and audio revision remain operator controlled. Realtime catalog
+publication refreshes those edits across connected clients.
 
 The Supabase schema, least-privilege grants, Row Level Security policies,
 atomic hashed invite flow, deterministic default rooms, and Realtime
@@ -32,11 +46,25 @@ presence is deployed through backward-compatible membership-checked heartbeat
 RPCs, an RLS-filtered heartbeat table, and Postgres Realtime change events.
 Voice join time comes from Postgres, remains stable across heartbeats, clears on
 graceful leave, and expires locally after 55 seconds if a client crashes. The
-clean local schema, invite, RLS, and presence suite passes 71 assertions. Voice
+clean local schema, invite, RLS, presence, Storage, and catalog suite passes 96
+assertions. Voice
 connections retry once with relay-only ICE after a normal peer-connection
 failure and report a specific TURN/TLS diagnostic if that also fails. The
 deployed token function permits microphone, camera, and LiveKit data
-publication while continuing to forbid screen share. The final Arc-plus-native
+publication while continuing to forbid screen share. A second audio track named
+`bakbak-soundboard` uses the permitted microphone source because
+the current LiveKit server SDK cannot encode `Track.Source.Unknown` into token
+publish permissions. The track stays muted while no sound is active, unmutes
+for playback, and returns to muted after the final overlapping sound ends or
+stop-all runs. This prevents an idle synthetic microphone stream from keeping
+system audio in a suppressed communications state. Track name, rather than
+source, distinguishes soundboard audio from speech. Explicit stop-all and voice
+teardown also pause and detach the local monitor element, stop its routing
+stream, close its `AudioContext`, and recreate that graph with the remembered
+speaker on the next sound. Natural completion of the final overlapping clip
+performs the same monitor-stream flush but keeps the shared `AudioContext` and
+LiveKit publication alive, avoiding renegotiation before the next sound. The
+final Arc-plus-native
 voice, video, device, soundboard, reconnect, and crash-expiry rehearsal remains
 open for human observation.
 
@@ -57,7 +85,8 @@ deferred as approved.
 | Desktop shell        | Tauri 2, Rust                     | Native window, packaging, capabilities, and later tray/desktop integrations |
 | Identity/data        | Supabase Auth, Postgres, Realtime | Accounts, membership, channels, messages, invites, and realtime chat        |
 | Trusted backend      | Supabase Edge Functions           | Membership-checked LiveKit token issuance                                   |
-| Voice/data transport | LiveKit                           | Voice rooms, participant state, and soundboard data messages                |
+| Object media         | Supabase Storage                  | Private operator-managed sound packs with membership-filtered reads         |
+| Voice/data transport | LiveKit                           | Voice rooms, participant state, soundboard audio, and control data          |
 | Validation/testing   | Zod, Vitest, Testing Library      | Boundary validation and unit/component tests                                |
 
 There is one pnpm application, not a frontend/backend monorepo. `package.json`
@@ -136,8 +165,8 @@ rather than post-v1 garnish.
 
 The renderer is untrusted for authorization purposes. It may hold a user's
 Supabase session, use the public Supabase credential, request permitted data,
-connect to LiveKit with a short-lived participant token, and play bundled
-sounds. It must never contain a service-role key or LiveKit API secret.
+connect to LiveKit with a short-lived participant token, and download permitted
+sound objects. It must never contain a service-role key or LiveKit API secret.
 
 ### Tauri shell
 
@@ -148,34 +177,48 @@ Function validation. The updater capability may check, download, and install a
 manifest-signed update, while the process capability is narrowed to restart.
 The committed updater public key verifies artifacts; its password-protected
 private key must exist only in release infrastructure and an operator backup.
+The main Tauri configuration always creates signed updater artifacts, while
+`tauri.local.conf.json` disables only those artifacts for local app-only builds
+that do not have access to the protected release key.
 
 ### Supabase
 
 Supabase Auth establishes user identity. Postgres and RLS are authoritative for
 profiles, servers, membership, channels, messages, and invite redemption.
-Realtime distributes committed message changes to authorized subscribers.
+Realtime distributes committed message and sound-catalog changes to authorized
+subscribers.
+Supabase Storage holds operator-managed sound files outside the desktop bundle;
+Storage RLS derives read access from the server UUID path prefix and current
+membership. The renderer never receives object-write or bucket-management
+authority.
 
 ### LiveKit
 
-LiveKit transports voice, opt-in camera tracks, participant/speaking state, and
-small soundboard data messages. A protected Supabase Edge Function is the only
-component allowed to sign LiveKit participant tokens. Renderer tokens allow
-microphone, camera, and data publication only; screen sharing remains denied.
+LiveKit transports voice, opt-in camera tracks, at most one named soundboard
+audio track, participant/speaking state, and small soundboard control messages.
+A protected Supabase Edge Function is the only component allowed to sign
+LiveKit participant tokens. Renderer tokens allow microphone, camera, and data
+publication only; screen sharing remains denied. Each client identifies the
+soundboard track by its exact `bakbak-soundboard` name and applies global
+soundboard volume multiplied by the existing participant volume.
 
 ## Data model
 
 All identifiers are UUIDs unless noted otherwise. Exact migrations become
 authoritative once Phase 2 starts.
 
-| Entity                | Key fields and constraints                                          | Access intent                                                                  |
-| --------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `profiles`            | `id` references `auth.users`; display name and timestamps           | User can manage their profile; server members can read member-facing fields    |
-| `servers`             | owner/admin reference, name, timestamps                             | Members of the server can read it                                              |
-| `memberships`         | unique `(server_id, user_id)`; v1 admin/member role                 | A user can read memberships for servers they belong to                         |
-| `channels`            | `server_id`, name, ordered position, `text` or `voice` type         | Server members can read channels                                               |
-| `messages`            | text-channel ID, author ID, body, timestamps                        | Members can read; members can insert into text channels as themselves          |
-| `invite_codes`        | server ID, one-way code digest, creator, expiry, redemption fields  | No broad client read policy; redeemed atomically through a controlled function |
-| `presence_heartbeats` | unique server/user row, last seen, nullable voice channel/join time | Members can read server rows; only security-definer heartbeat RPCs can write   |
+| Entity                  | Key fields and constraints                                             | Access intent                                                                  |
+| ----------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `profiles`              | `id` references `auth.users`; display name and timestamps              | User can manage their profile; server members can read member-facing fields    |
+| `servers`               | owner/admin reference, name, timestamps                                | Members of the server can read it                                              |
+| `memberships`           | unique `(server_id, user_id)`; v1 admin/member role                    | A user can read memberships for servers they belong to                         |
+| `channels`              | `server_id`, name, ordered position, `text` or `voice` type            | Server members can read channels                                               |
+| `messages`              | text-channel ID, author ID, body, timestamps                           | Members can read; members can insert into text channels as themselves          |
+| `invite_codes`          | server ID, one-way code digest, creator, expiry, redemption fields     | No broad client read policy; redeemed atomically through a controlled function |
+| `presence_heartbeats`   | unique server/user row, last seen, nullable voice channel/join time    | Members can read server rows; only security-definer heartbeat RPCs can write   |
+| `soundboard_categories` | server ID, name, ordered position                                      | Members can read; categories are operator managed                              |
+| `soundboard_sounds`     | server/category, label, emoji, Storage path, duration, order, revision | Members can read and update label, emoji, or same-server category only         |
+| `storage.objects`       | private `soundboard/<server UUID>/<file>` objects                      | Matching server members can read; only operators can mutate                    |
 
 Initial admin membership and initial invite codes are managed with reviewed SQL.
 An invite-management UI is deferred until post-v1.
@@ -193,6 +236,13 @@ An invite-management UI is deferred until post-v1.
 - The client cannot list or inspect valid invite codes.
 - The LiveKit token function verifies the caller's Supabase JWT, current server
   membership, and that the requested channel is a voice channel.
+- Soundboard objects are private and readable only when the first object-path
+  segment matches a server membership for the signed-in user. No authenticated
+  client insert, update, or delete policy exists.
+- Soundboard catalog rows require matching server membership. Column grants
+  limit member updates to `label`, `emoji`, and `category_id`; a composite
+  foreign key rejects cross-server category assignment, and clients cannot
+  insert or delete sounds or categories.
 - RLS tests cover at least seeded admin, member, and non-member identities.
 
 ## Data flows
@@ -262,7 +312,8 @@ An invite-management UI is deferred until post-v1.
    system output only. A missing remembered device falls back to default.
 7. Unsubscription, leaving, disconnecting, and unmounting detach remote audio
    and video, invalidate pending camera/join work, stop active local sounds,
-   disconnect the room, and release local tracks.
+   pause and detach the selected-speaker monitor, stop its MediaStream tracks,
+   close its Web Audio context, disconnect the room, and release local tracks.
 8. If signaling succeeds but the initial WebRTC peer connection fails, the
    renderer retries once with `iceTransportPolicy: relay`. A second failure is
    reported as a TURN/TLS or local network-policy problem rather than a token or
@@ -270,26 +321,58 @@ An invite-management UI is deferred until post-v1.
 
 ### Soundboard
 
-1. A connected member selects a sound from the bundled allowlist.
-2. The client publishes a reliable LiveKit data message such as:
+1. After workspace load, the renderer fetches the member-visible categories and
+   sounds. It downloads private Storage objects with the signed-in session,
+   reuses IndexedDB blobs matching `{ soundId, audioRevision }`, and decodes
+   ready clips into memory. Download or decode failure marks only that card as
+   failed and can be retried.
+2. Voice join publishes at most one room-scoped audio track named
+   `bakbak-soundboard`, initially muted. The first active trigger unmutes it;
+   each trigger connects its decoded buffer once to the outbound track at unity
+   gain and once to the selected-speaker monitor path at the local soundboard
+   volume. Clips may overlap, and the track is muted again after the last clip
+   ends or stop-all runs so idle playback cannot continue suppressing system
+   audio. When the last overlapping clip completes naturally, Bakbak replaces
+   only the hidden selected-speaker monitor stream so a non-silent final frame
+   cannot cycle in WebKit; the outbound publication and shared context remain
+   ready. Explicit stop-all fully releases both the publication and local
+   selected-speaker routing graph. The next trigger rebuilds the required graph
+   and reapplies the remembered speaker before playback.
+3. The client also publishes a reliable UI-control message such as:
 
    ```json
-   { "version": 1, "type": "soundboard:play", "soundId": "airhorn" }
+   {
+     "version": 2,
+     "type": "soundboard:play",
+     "eventId": "019f...",
+     "soundId": "00000000-0000-4000-8000-000000002019",
+     "sentAt": 1783820000000
+   }
    ```
 
-3. Every connected client validates the version, message type, and bundled
-   sound ID.
-4. Each non-deafened client plays its own matching bundled clip through the
-   shared selected-output router. A deafened sender still publishes the event
-   for friends but renders no local copy, and suppressed sounds are never
-   queued for replay. No audio file is uploaded or streamed through Supabase.
+4. Receivers validate version, event ID, sound ID, and timestamp, deduplicate UI
+   events, and derive the sender from the LiveKit participant callback. They
+   never trust a payload sender or volume and never replay control messages
+   locally; remote listeners hear only the participant's LiveKit audio track.
+5. Activity state uses the catalog duration. Participant cards show the newest
+   emoji, an overlap count, Playing status, and the speaking treatment. A
+   reliable `soundboard:stop-all` message clears that participant immediately;
+   disconnect, leave, and track cleanup do the same.
+6. Remote named tracks use `soundboard volume × participant volume`. Normal
+   microphone speech keeps only participant volume. Deafen suppresses remote
+   audio and the sender's local monitor branch without muting outbound
+   soundboard audio.
 
-Unknown message types or sound IDs are ignored safely.
+Unknown message types, stale duplicates, and unknown sound IDs are ignored
+safely. Microphone creation and switching explicitly request echo cancellation,
+noise suppression, and automatic gain control. These constraints reduce
+speaker-to-microphone echo but cannot guarantee acoustic isolation on every
+device, so the laptop-speaker two-client check remains required.
 
 ### Local media preferences
 
 The renderer validates and stores only `{ inputDeviceId, outputDeviceId,
-cameraDeviceId }` under the versioned local-storage key
+cameraDeviceId, soundboardVolume }` under the versioned local-storage key
 `bakbak.devicePreferences.v1`. These identifiers never sync to Supabase. If a
 remembered device is absent, the selector returns to the runtime's default
 device. Chat notification audio deliberately bypasses the selected call output.
@@ -431,8 +514,16 @@ that it has passed.
 - Hosted migration `006` and the camera-capable token function are deployed,
   but the Arc-plus-installed-app voice/video/device acceptance matrix still
   requires two signed-in users and human audio/video observation.
-- The synthesized v1 sound pack is bundled as deterministic Web Audio recipes
-  rather than third-party audio files, avoiding uploads and licensing risk.
+- The hosted soundboard catalog, member metadata editing, authenticated cache,
+  and named LiveKit audio track are deployed, but exact-once playback,
+  laptop-speaker acoustic echo, output switching, volume multiplication,
+  reconnect, and cleanup still require the planned two-client human acceptance
+  run. Distribution rights for all 23 MP3s must be confirmed before friend
+  testing.
+- LiveKit's current server SDK throws while encoding `Track.Source.Unknown` in
+  a token source allowlist. Bakbak therefore publishes the dedicated named
+  soundboard track as a second microphone-source track and distinguishes it by
+  `bakbak-soundboard`; screen-share publication remains denied.
 - The current production renderer is roughly 283 kB compressed; LiveKit and
   Supabase can be lazy-loaded in a later performance pass if startup profiling
   shows a meaningful benefit.

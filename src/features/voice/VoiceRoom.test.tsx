@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { AppUser, Channel } from "../../lib/types";
+import { mockSoundboardController } from "../soundboard/mock-catalog";
 import { VoiceRoom } from "./VoiceRoom";
 import type { useVoiceRoom } from "./useVoiceRoom";
 
@@ -45,6 +46,9 @@ function createVoice(
     outputSelectionSupported: false,
     cameraEnabled: false,
     cameraPending: false,
+    soundboard: mockSoundboardController,
+    soundboardVolume: 0.7,
+    activeLocalSoundCount: 0,
     join: vi.fn().mockResolvedValue(undefined),
     leave: vi.fn().mockResolvedValue(undefined),
     toggleMute: vi.fn().mockResolvedValue(undefined),
@@ -56,6 +60,9 @@ function createVoice(
     setCameraDevice: vi.fn().mockResolvedValue(undefined),
     toggleCamera: vi.fn().mockResolvedValue(undefined),
     dispatchSound: vi.fn().mockResolvedValue(undefined),
+    stopLocalSounds: vi.fn().mockResolvedValue(undefined),
+    setSoundboardVolume: vi.fn(),
+    updateSoundMetadata: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -133,8 +140,10 @@ describe("VoiceRoom audio recovery", () => {
     );
 
     expect(screen.getByText("Sending silently")).toBeVisible();
-    await userEvent.click(screen.getByRole("button", { name: /Airhorn/ }));
-    expect(dispatchSound).toHaveBeenCalledWith("airhorn");
+    await userEvent.click(screen.getByRole("button", { name: "Aye" }));
+    expect(dispatchSound).toHaveBeenCalledWith(
+      "00000000-0000-4000-8000-000000002001",
+    );
   });
 
   it("waits for undeafen before offering blocked-audio recovery", async () => {

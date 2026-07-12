@@ -1478,6 +1478,42 @@ button:disabled {
 .participant-card__mic.muted {
   color: var(--danger);
 }
+.participant-card__mic.active {
+  color: var(--green);
+  background: rgba(82, 206, 145, 0.12);
+  box-shadow: 0 0 0 1px rgba(82, 206, 145, 0.18);
+}
+.participant-card__sound {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  min-width: 35px;
+  height: 35px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(124, 114, 238, 0.28);
+  border-radius: 11px;
+  background: rgba(19, 19, 27, 0.92);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+  font-size: 19px;
+}
+.participant-card__sound i {
+  position: absolute;
+  right: -7px;
+  bottom: -6px;
+  min-width: 18px;
+  padding: 2px 4px;
+  border-radius: 8px;
+  color: white;
+  background: var(--accent);
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 800;
+}
+.participant-card.is-soundboard-active {
+  border-color: rgba(124, 114, 238, 0.24);
+}
 .participant-volume {
   position: absolute;
   right: 14px;
@@ -1562,6 +1598,37 @@ button:disabled {
   gap: 16px;
   margin-bottom: 16px;
 }
+.soundboard-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.soundboard-volume {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--faint);
+  font-size: 9px;
+}
+.soundboard-volume input {
+  width: 82px;
+  accent-color: var(--accent);
+}
+.soundboard-stop {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 1px solid rgba(239, 106, 120, 0.2);
+  border-radius: 7px;
+  color: #ffadb5;
+  background: rgba(239, 106, 120, 0.08);
+  cursor: pointer;
+  font-size: 9px;
+}
 .soundboard-card h3 {
   margin: 4px 0 0;
   font-size: 17px;
@@ -1586,7 +1653,33 @@ button:disabled {
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
 }
+.soundboard-categories {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+  overflow-x: auto;
+}
+.soundboard-categories button {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--faint);
+  background: rgba(255, 255, 255, 0.025);
+  cursor: pointer;
+  font-size: 9px;
+}
+.soundboard-categories button.is-active {
+  color: #d9d5ff;
+  border-color: rgba(124, 114, 238, 0.3);
+  background: rgba(124, 114, 238, 0.12);
+}
+.sound-card {
+  position: relative;
+  min-width: 0;
+}
 .sound-button {
+  width: 100%;
   min-width: 0;
   min-height: 92px;
   display: flex;
@@ -1603,6 +1696,10 @@ button:disabled {
   transition:
     transform 150ms ease,
     border 150ms ease;
+}
+.sound-button:disabled {
+  cursor: wait;
+  opacity: 0.58;
 }
 .sound-button:hover {
   transform: translateY(-2px);
@@ -1628,17 +1725,38 @@ button:disabled {
   font-size: 8px;
   font-style: normal;
 }
-.sound-button--lilac {
-  background: linear-gradient(145deg, rgba(124, 114, 238, 0.13), #1e1e27 65%);
+.sound-edit {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--faint);
+  background: rgba(10, 10, 15, 0.48);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 150ms ease;
 }
-.sound-button--mint {
-  background: linear-gradient(145deg, rgba(82, 206, 145, 0.1), #1e1e27 65%);
+.sound-card:hover .sound-edit,
+.sound-edit:focus-visible {
+  opacity: 1;
 }
-.sound-button--amber {
-  background: linear-gradient(145deg, rgba(232, 183, 101, 0.11), #1e1e27 65%);
+.soundboard-loading {
+  min-height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--faint);
+  font-size: 10px;
 }
-.sound-button--coral {
-  background: linear-gradient(145deg, rgba(239, 106, 120, 0.1), #1e1e27 65%);
+.soundboard-loading svg,
+.sound-button i svg.lucide-loader-circle {
+  animation: spin 900ms linear infinite;
 }
 .soundboard-note,
 .soundboard-error {
@@ -1651,6 +1769,36 @@ button:disabled {
 }
 .soundboard-error {
   color: #ffadb5;
+}
+.sound-edit-form {
+  display: grid;
+  gap: 14px;
+  padding: 24px;
+}
+.sound-edit-form label {
+  display: grid;
+  gap: 6px;
+}
+.sound-edit-form label > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+.sound-edit-form input,
+.sound-edit-form select {
+  width: 100%;
+  height: 40px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--text);
+  background: #111118;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 4px;
 }
 
 .settings-error {
