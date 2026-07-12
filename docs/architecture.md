@@ -393,15 +393,21 @@ device. Chat notification audio deliberately bypasses the selected call output.
 5. The workflow holds the GitHub Release as a draft until it verifies two DMGs,
    one NSIS setup executable, and `latest.json` entries with URLs and signatures
    for all three targets.
-6. Desktop clients check the public GitHub Releases `latest.json` shortly after
+6. After publication, the workflow synchronizes the released version across
+   `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`, then
+   updates the Bakbak package entry in `src-tauri/Cargo.lock`. It then creates
+   and immediately merges a protected-branch-compatible version PR. The bot
+   commit uses GitHub's workflow token plus a skip annotation, so it cannot
+   recursively start another release.
+7. Desktop clients check the public GitHub Releases `latest.json` shortly after
    startup. An available update is shown globally; installation and restart
    require an explicit user action so an active conversation is not interrupted.
    Windows uses Tauri's passive installer mode.
 
 Git tags and published Releases are the release source of truth. The tracked
-`0.2.0` version is the first-release floor and the local-development version;
-CI injects later versions into its isolated checkout without creating version
-bump commits on `main`.
+`0.2.0` version is the first-release floor. Release builds inject the resolved
+version in their isolated checkouts, and successful publication then advances
+the tracked local-development version through an automated PR on `main`.
 
 ## Backend contracts
 

@@ -76,3 +76,18 @@ test("macOS release jobs build installer and updater-enabled app bundles", async
   assert.match(workflow, /--target aarch64-apple-darwin --bundles app,dmg/);
   assert.match(workflow, /--target x86_64-apple-darwin --bundles app,dmg/);
 });
+
+test("published releases synchronize their version through a protected-branch PR", async () => {
+  const workflow = await readFile(
+    new URL("../.github/workflows/release.yml", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(workflow, /sync-version:\n {4}needs: \[prepare, publish\]/);
+  assert.match(workflow, /pull-requests: write/);
+  assert.match(workflow, /node scripts\/set-version\.mjs "\$RELEASE_VERSION"/);
+  assert.match(workflow, /src-tauri\/Cargo\.lock/);
+  assert.match(workflow, /git commit -m ".*\[skip ci\]"/);
+  assert.match(workflow, /gh pr create/);
+  assert.match(workflow, /gh pr merge/);
+});

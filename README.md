@@ -83,7 +83,17 @@ the exact command.
 Bakbak uses SemVer and starts the updater-enabled release line at `0.2.0`.
 Every merge to `main` publishes a patch release after validation unless the
 pull request has `release:skip`; `release:minor` and `release:major` select a
-larger bump. A manual workflow run can also choose the bump explicitly.
+larger bump. A manual workflow run can also choose the bump explicitly. After
+the installers and updater manifest are verified and the release is published,
+the workflow opens and merges a small protected-branch-compatible PR that
+synchronizes the released version in `package.json`, the Tauri configuration,
+and the Rust package manifest and lockfile. That bot commit does not start
+another release.
+
+Because `main` requires pull requests, repository **Settings → Actions →
+General → Workflow permissions** must allow GitHub Actions to create and
+approve pull requests. The release job requests only the `contents: write` and
+`pull-requests: write` permissions needed for its version-sync PR.
 
 The release workflow builds macOS Apple Silicon and Intel DMGs plus a Windows
 x64 NSIS installer. It keeps the GitHub Release in draft state until every

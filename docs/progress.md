@@ -1029,3 +1029,60 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
 - **Next:** Let a sound with a non-silent/high-frequency ending complete without
   pressing Stop my sounds and confirm immediate silence. Then repeat with
   overlapping clips before completing the Arc-plus-native soundboard matrix.
+
+## 2026-07-12 — Synchronize tracked versions after releases
+
+- **Completed:** Confirmed the existing release workflow already resolves
+  patch, minor, major, or skipped releases from the merged pull request labels,
+  but previously changed versions only inside isolated build checkouts. Added a
+  post-publication job that synchronizes `package.json`, Tauri configuration,
+  `Cargo.toml`, and the Bakbak package entry in `Cargo.lock`; commits those
+  changes on a bot branch; then opens and immediately merges a version PR to
+  comply with the protected `main` branch. Added a workflow regression test and
+  advanced all tracked versions from `0.2.0` to the newly published `0.3.0`.
+- **Decisions:** Kept tags and published GitHub Releases authoritative. The
+  version commit runs only after installer and updater-manifest verification
+  plus successful publication, so a failed release cannot advance tracked
+  metadata. Used the repository `GITHUB_TOKEN`, least-privilege job permissions,
+  and a `[skip ci]` commit annotation; GitHub does not recursively trigger a
+  push workflow from that token. Preserved the active pull-request ruleset
+  instead of bypassing it with a direct push.
+- **Validation:**
+  - GitHub Actions run `29192051294` — passed all prepare, validation, macOS
+    Apple Silicon, macOS Intel, Windows x64, and publish jobs. PR #3's
+    `release:minor` label resolved to `0.3.0`.
+  - GitHub Release `v0.3.0` — passed; published as a non-draft, non-prerelease
+    release at 2026-07-12 12:12:41 UTC.
+  - Active repository ruleset inspection — confirmed `main` requires a pull
+    request with zero required approvals and rejects direct updates.
+  - `node --test scripts/release-version.test.mjs` — passed six release tests,
+    including the new protected-branch version-sync workflow guard.
+  - Ruby YAML parse for `.github/workflows/release.yml` — passed. `actionlint`
+    was skipped because it is not installed.
+  - Initial `pnpm check` — failed on the new test's countable-space lint rule;
+    corrected the regex before the final run.
+  - Final `pnpm check` — passed formatting, lint, strict TypeScript, 21 Vitest
+    files with 94 tests, six release-script tests, `0.3.0` version
+    synchronization, production renderer build, and compiled-artifact secret
+    scanning. The existing non-blocking large-chunk warning remains.
+  - `cargo check --locked --manifest-path src-tauri/Cargo.toml` — passed with
+    Bakbak `0.3.0`, confirming the synchronized lockfile remains valid.
+  - `pnpm tauri:build:local` — passed; built and ad-hoc signed the `0.3.0`
+    macOS app bundle. Notarization was skipped because local Apple distribution
+    credentials remain intentionally absent.
+  - Bundle version, `codesign --verify --deep --strict --verbose=4`, and
+    `pnpm security:scan` — passed for the final `0.3.0` bundle.
+  - Final `pnpm format:check`, release-script test, version check, workflow YAML
+    parse, and `git diff --check` — passed after the progress entry.
+- **Documentation updated:** `README.md`, `docs/architecture.md`, and
+  `docs/progress.md`.
+- **Known limitations:** The new post-release job has not yet run on GitHub.
+  The current GitHub CLI identity can inspect releases and rulesets but receives
+  HTTP 403 for the Actions workflow-permissions setting, so the required
+  **Allow GitHub Actions to create and approve pull requests** toggle could not
+  be verified from this shell.
+- **Next:** Enable or confirm that Actions workflow-permissions toggle, open
+  this automation change as a PR with `release:skip` so `main` catches up to the
+  already published `0.3.0` without producing an empty patch release, then
+  verify that the next product release automatically merges its version-sync
+  PR.
