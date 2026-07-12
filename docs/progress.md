@@ -703,3 +703,158 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
 - **Next:** Open and merge a small release-workflow fix PR without
   `release:skip`, allow the new run to publish `v0.2.1`, then delete the failed
   `v0.2.0` draft and test the published installers plus the next in-app update.
+
+## 2026-07-12 — Provision the private hosted soundboard bucket
+
+- **Completed:** Moved the 23 operator-provided MP3 files out of Vite's
+  `public` tree into the Supabase deployment assets, created and deployed the
+  private `soundboard` Storage bucket, and uploaded all files under the default
+  Bakbak server UUID prefix. Added a database migration and policy tests so the
+  hosted configuration is reproducible instead of being dashboard folklore.
+- **Decisions:** Limited the bucket to `audio/mpeg` objects no larger than 1
+  MiB. Object paths begin with a server UUID, and authenticated users can read
+  only paths matching one of their memberships. Renderer clients receive no
+  insert, update, or delete policy; sound-pack changes remain an operator
+  deployment action. Kept the existing synthesized renderer pack unchanged
+  because fetching, caching, and playing hosted sounds is a separate product
+  integration step.
+- **Validation:**
+  - `pnpm dlx supabase@latest db reset` — passed; all migrations, including
+    `202607120001_soundboard_storage.sql`, applied to a clean local database.
+  - `pnpm dlx supabase@latest db lint --local` — passed with no schema errors.
+  - `pnpm dlx supabase@latest test db` — passed all four files and 78
+    assertions, including private-bucket configuration, matching-member reads,
+    cross-server isolation, anonymous denial, and client-upload denial.
+  - `pnpm dlx supabase@latest db push --dry-run` — passed and reported only the
+    new soundboard migration.
+  - `pnpm dlx supabase@latest db push` — passed; migration
+    `202607120001_soundboard_storage.sql` deployed to the linked hosted Bakbak
+    project.
+  - `pnpm dlx supabase@latest storage cp --experimental --recursive --linked ...`
+    — passed; uploaded all 23 MP3 files. The first attempt without
+    `--experimental` made no changes and returned the CLI's required-flag
+    error.
+  - `pnpm dlx supabase@latest storage ls --experimental --linked --recursive ss:///soundboard`
+    — passed; returned exactly the 23 expected server-prefixed object paths.
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 19 Vitest files
+    with 95 tests, five release-script tests, version synchronization,
+    production renderer build, and compiled-artifact secret scanning. The
+    existing non-blocking large-chunk warning remains.
+  - Renderer and built-app MP3 searches — passed with zero matches; moving the
+    assets out of `public` keeps them out of both `dist` and `Bakbak.app`.
+  - `pnpm tauri build --bundles app` — built and ad-hoc signed `Bakbak.app`,
+    then exited non-zero while generating the updater archive because
+    `TAURI_SIGNING_PRIVATE_KEY` was not available in this shell.
+  - `codesign --verify --deep --strict --verbose=4 .../Bakbak.app` — passed.
+  - `pnpm security:scan` — passed for `dist` and the desktop bundle.
+  - `pnpm dlx supabase@latest migration list` — passed; local and remote
+    migrations match through `202607120001`.
+- **Documentation updated:** `supabase/README.md`, `docs/architecture.md`,
+  `docs/plans/0001-bakbak-desktop-v1.md`, and `docs/progress.md`.
+- **Known limitations:** The renderer still displays and plays its four
+  synthesized Web Audio sounds; it does not yet list, download, cache, or play
+  the hosted MP3 pack. The MP3s require a distribution-rights review before
+  friend testing. A fully successful updater-artifact build still requires the
+  protected updater private key in an approved release environment.
+- **Next:** Add a typed hosted sound catalog, authenticated download and local
+  cache service, preload readiness UI, and LiveKit sound-ID mapping, then run a
+  two-client synchronized playback and deafen/output-routing acceptance test.
+
+## 2026-07-12 — Integrate the hosted Discord-style soundboard
+
+- **Completed:** Replaced the four synthesized sounds and client-side replay
+  path with the 23 hosted MP3s. Added four ordered categories, a typed catalog,
+  member metadata editing, Realtime refresh, authenticated preload, IndexedDB
+  revision caching, and per-card readiness/retry state. Voice now publishes one
+  persistent `bakbak-soundboard` audio track per participant, routes each local
+  trigger once to unity-gain outbound audio and once to the selected-speaker
+  monitor, permits overlapping full clips, and exposes Stop my sounds. Added
+  version-2 play/stop control events, sender derivation from the LiveKit
+  participant, event deduplication, duration-based activity cleanup, emoji and
+  overlap participant badges, persisted 70% soundboard volume in both the room
+  and settings, and remote global-by-participant volume multiplication. Mock
+  mode uses catalog fixtures and simulated activity without protected audio.
+- **Decisions:** Member updates are restricted to label, one emoji grapheme,
+  and same-server category; operators retain file, duration, order, enabled,
+  revision, and category control. LiveKit server SDK 2.17.0 exposes
+  `Track.Source.Unknown` but throws `Cannot convert TrackSource 0 to string`
+  while encoding a source-restricted token grant. The dedicated track therefore
+  uses a second permitted microphone source and its exact name for routing;
+  screen sharing remains denied. Control events carry UI state only, so remote
+  clients never replay them and digital double playback is removed.
+- **Validation:**
+  - `pnpm dlx supabase@latest db reset` — passed from a clean local database.
+  - `pnpm dlx supabase@latest db lint --local` — passed with no schema errors.
+  - `pnpm dlx supabase@latest test db` — passed all five files and 96
+    assertions, including catalog membership, metadata grants, immutable audio
+    fields, cross-server category rejection, prohibited writes, and Realtime.
+  - `deno check --config supabase/deno.json ...` and
+    `deno task --config supabase/deno.json test` — passed; eight Edge Function
+    tests passed and microphone/camera-only publish-source grants remain intact.
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 21 Vitest files
+    with 91 tests, five release-script tests, version synchronization,
+    production renderer build, and compiled-artifact secret scanning. The
+    existing non-blocking large-chunk warning remains.
+  - Focused soundboard, voice, audio-routing, settings, and cache suites —
+    passed, including revision invalidation, failures, overlap, stop-all,
+    outbound unity gain, local monitoring, deafen, and volume multiplication.
+  - In-app browser mock rehearsal — passed category filtering, all 23 ready
+    cards, metadata modal, participant emoji activity, fast overlapping `+1`
+    state, and Stop my sounds visibility; desktop visual inspection passed.
+  - `pnpm dlx supabase@latest db push --dry-run` — passed and reported only
+    `202607120002_soundboard_catalog.sql`.
+  - `pnpm dlx supabase@latest db push` — passed; the catalog migration deployed
+    to the linked hosted Bakbak project.
+  - `pnpm dlx supabase@latest migration list` — passed; local and remote
+    histories match through `202607120002`.
+  - Renderer and built-app MP3 searches — passed with zero matches.
+  - `pnpm tauri build --bundles app` — built and ad-hoc signed `Bakbak.app`,
+    then exited non-zero after bundling because this shell does not have the
+    protected `TAURI_SIGNING_PRIVATE_KEY` required to sign updater artifacts.
+  - `codesign --verify --deep --strict .../Bakbak.app` — passed.
+- **Documentation updated:** `supabase/README.md`, `docs/architecture.md`,
+  `docs/plans/0001-bakbak-desktop-v1.md`, and `docs/progress.md`.
+- **Known limitations:** The two-client browser-plus-installed-app audio matrix
+  still needs human ears for exact-once playback, laptop-speaker acoustic echo,
+  independent volume, device switching, reconnect, mute/deafen, leave, and
+  cleanup. Echo cancellation is requested but remains hardware-dependent.
+  Distribution rights for all 23 clips must be confirmed before friend testing.
+  A fully successful updater-artifact build requires the protected signing key
+  in the approved release environment.
+- **Next:** Install the newly built client on both acceptance devices, sign in
+  as separate members, complete the soundboard/audio matrix, then distribute an
+  all-clients-required update only after licensing is confirmed.
+
+## 2026-07-12 — Separate local app builds from signed updater builds
+
+- **Completed:** Added `pnpm tauri:build:local` and a non-secret Tauri override
+  that builds the macOS app bundle with updater artifact generation disabled.
+  Local development builds no longer require the protected updater private key,
+  while the main configuration and GitHub release workflow continue to require
+  signed updater artifacts.
+- **Decisions:** Did not rotate the updater key or replace the committed public
+  key. The original local temporary key files and proposed home-directory backup
+  are absent, and GitHub Actions secrets cannot be read back after creation.
+  Keeping GitHub as the release signer preserves update compatibility; the local
+  override changes only packaging output and does not weaken published releases.
+- **Validation:**
+  - `pnpm tauri:build:local` — passed; built and ad-hoc signed
+    `Bakbak.app` without requesting `TAURI_SIGNING_PRIVATE_KEY`.
+  - `codesign --verify --deep --strict --verbose=4 .../Bakbak.app` — passed.
+  - Built bundle version check — passed; version is `0.2.0`.
+  - `pnpm security:scan` — passed for the renderer and desktop bundle.
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 21 Vitest files
+    with 91 tests, five release-script tests, version synchronization, the
+    production renderer build, and compiled-artifact secret scanning. The
+    existing non-blocking large-chunk warning remains.
+  - `git diff --check` — passed.
+- **Documentation updated:** `README.md`, `docs/architecture.md`, and
+  `docs/progress.md`.
+- **Known limitations:** `pnpm tauri:build:local` intentionally produces no
+  updater archive or updater signature and remains ad-hoc signed/unnotarized.
+  A locally signed updater build is impossible without the matching private key
+  backup; GitHub Actions remains the only configured signer for release builds.
+- **Next:** Use `pnpm tauri:build:local` for local app installation and reserve
+  the normal updater-enabled build for GitHub Actions. After the current
+  soundboard work is ready, publish through the release workflow and retain an
+  offline backup of any future signing-key rotation before replacing secrets.

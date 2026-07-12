@@ -12,6 +12,7 @@ describe("SettingsModal microphone selection", () => {
         selectedInputId="default"
         selectedOutputId="default"
         selectedCameraId="default"
+        soundboardVolume={0.7}
         inputError={null}
         outputError={null}
         cameraError={null}
@@ -20,6 +21,7 @@ describe("SettingsModal microphone selection", () => {
         onInputChange={vi.fn()}
         onOutputChange={vi.fn()}
         onCameraChange={vi.fn()}
+        onSoundboardVolumeChange={vi.fn()}
         onClose={vi.fn()}
       />,
     );

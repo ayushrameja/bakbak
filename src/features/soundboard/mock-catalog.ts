@@ -1,0 +1,273 @@
+import type {
+  SoundboardCatalogController,
+  SoundboardCategory,
+  SoundboardSound,
+} from "./types";
+
+const serverId = "00000000-0000-4000-8000-000000000001";
+
+export const mockSoundboardCategories: SoundboardCategory[] = [
+  {
+    id: "00000000-0000-4000-8000-000000001001",
+    serverId,
+    name: "Reactions",
+    position: 10,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000001002",
+    serverId,
+    name: "Dialogue",
+    position: 20,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000001003",
+    serverId,
+    name: "Effects",
+    position: 30,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000001004",
+    serverId,
+    name: "Chaos",
+    position: 40,
+  },
+];
+
+type MockSound = Pick<
+  SoundboardSound,
+  | "id"
+  | "categoryId"
+  | "label"
+  | "emoji"
+  | "objectPath"
+  | "durationMs"
+  | "position"
+>;
+
+const rows: MockSound[] = [
+  {
+    id: "00000000-0000-4000-8000-000000002001",
+    categoryId: "00000000-0000-4000-8000-000000001001",
+    label: "Aye",
+    emoji: "😎",
+    objectPath: `${serverId}/Aye.mp3`,
+    durationMs: 450,
+    position: 10,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002002",
+    categoryId: "00000000-0000-4000-8000-000000001001",
+    label: "Faah",
+    emoji: "😮",
+    objectPath: `${serverId}/Faah.mp3`,
+    durationMs: 1771,
+    position: 20,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002003",
+    categoryId: "00000000-0000-4000-8000-000000001001",
+    label: "Suuuse",
+    emoji: "🤨",
+    objectPath: `${serverId}/Suuuse.mp3`,
+    durationMs: 1199,
+    position: 30,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002004",
+    categoryId: "00000000-0000-4000-8000-000000001001",
+    label: "Waah Modiji Waah",
+    emoji: "👏",
+    objectPath: `${serverId}/Waah Modiji Waah.mp3`,
+    durationMs: 1717,
+    position: 40,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002005",
+    categoryId: "00000000-0000-4000-8000-000000001002",
+    label: "Ab Tu Gya Beta",
+    emoji: "☠️",
+    objectPath: `${serverId}/Ab Tu Gya Beta.mp3`,
+    durationMs: 1428,
+    position: 10,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002006",
+    categoryId: "00000000-0000-4000-8000-000000001002",
+    label: "CID",
+    emoji: "🕵️",
+    objectPath: `${serverId}/CID.mp3`,
+    durationMs: 5709,
+    position: 20,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002007",
+    categoryId: "00000000-0000-4000-8000-000000001002",
+    label: "Chin Tapak Dam Dam",
+    emoji: "✨",
+    objectPath: `${serverId}/Chin Tapak Dam Dam.mp3`,
+    durationMs: 2342,
+    position: 30,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002008",
+    categoryId: "00000000-0000-4000-8000-000000001002",
+    label: "Ek Jhaat Bhar Ka Aadmi",
+    emoji: "🤏",
+    objectPath: `${serverId}/Ek Jhaat Bhar Ka Aadmi.mp3`,
+    durationMs: 6478,
+    position: 40,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002009",
+    categoryId: "00000000-0000-4000-8000-000000001002",
+    label: "Ki Haal A Theko Naa",
+    emoji: "📞",
+    objectPath: `${serverId}/Ki Haal A Theko Naa.mp3`,
+    durationMs: 49667,
+    position: 50,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002010",
+    categoryId: "00000000-0000-4000-8000-000000001002",
+    label: "Kyu Re Madarchod",
+    emoji: "🤬",
+    objectPath: `${serverId}/Kyu Re Madarchod.mp3`,
+    durationMs: 1813,
+    position: 60,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002011",
+    categoryId: "00000000-0000-4000-8000-000000001002",
+    label: "Makabhosda",
+    emoji: "💀",
+    objectPath: `${serverId}/Makabhosda.mp3`,
+    durationMs: 2160,
+    position: 70,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002012",
+    categoryId: "00000000-0000-4000-8000-000000001002",
+    label: "Modi Ji Wah Sound Effect",
+    emoji: "🙌",
+    objectPath: `${serverId}/Modi Ji Wah Sound Effect.mp3`,
+    durationMs: 6100,
+    position: 80,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002013",
+    categoryId: "00000000-0000-4000-8000-000000001002",
+    label: "Raja Gujjar",
+    emoji: "👑",
+    objectPath: `${serverId}/Raja Gujjar.mp3`,
+    durationMs: 14791,
+    position: 90,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002014",
+    categoryId: "00000000-0000-4000-8000-000000001003",
+    label: "Cartoon Walk",
+    emoji: "🚶",
+    objectPath: `${serverId}/Cartoon Walk.mp3`,
+    durationMs: 993,
+    position: 10,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002015",
+    categoryId: "00000000-0000-4000-8000-000000001003",
+    label: "Old Spice Whistle",
+    emoji: "🎵",
+    objectPath: `${serverId}/Old Spice Whistle.mp3`,
+    durationMs: 2181,
+    position: 20,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002016",
+    categoryId: "00000000-0000-4000-8000-000000001003",
+    label: "Payment Notification",
+    emoji: "💸",
+    objectPath: `${serverId}/Payment Notification.mp3`,
+    durationMs: 4200,
+    position: 30,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002017",
+    categoryId: "00000000-0000-4000-8000-000000001003",
+    label: "Running Sound Effect",
+    emoji: "🏃",
+    objectPath: `${serverId}/Running Sound Effect.mp3`,
+    durationMs: 2116,
+    position: 40,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002018",
+    categoryId: "00000000-0000-4000-8000-000000001003",
+    label: "Tum Dum",
+    emoji: "🥁",
+    objectPath: `${serverId}/Tum Dum.mp3`,
+    durationMs: 5878,
+    position: 50,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002019",
+    categoryId: "00000000-0000-4000-8000-000000001004",
+    label: "AUUGHH",
+    emoji: "😩",
+    objectPath: `${serverId}/AUUGHH.mp3`,
+    durationMs: 2770,
+    position: 10,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002020",
+    categoryId: "00000000-0000-4000-8000-000000001004",
+    label: "Anime Aah",
+    emoji: "😳",
+    objectPath: `${serverId}/Anime Aah.mp3`,
+    durationMs: 1857,
+    position: 20,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002021",
+    categoryId: "00000000-0000-4000-8000-000000001004",
+    label: "Evil 1",
+    emoji: "😈",
+    objectPath: `${serverId}/Evil 1.mp3`,
+    durationMs: 6783,
+    position: 30,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002022",
+    categoryId: "00000000-0000-4000-8000-000000001004",
+    label: "HolloWeene Aughhh",
+    emoji: "👻",
+    objectPath: `${serverId}/HolloWeene Aughhh.mp3`,
+    durationMs: 792,
+    position: 40,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002023",
+    categoryId: "00000000-0000-4000-8000-000000001004",
+    label: "Meow Ghop",
+    emoji: "🐈",
+    objectPath: `${serverId}/Meow Ghop.mp3`,
+    durationMs: 5691,
+    position: 50,
+  },
+];
+
+export const mockSoundboardSounds: SoundboardSound[] = rows.map((sound) => ({
+  ...sound,
+  serverId,
+  audioRevision: 1,
+  enabled: true,
+  assetStatus: "ready",
+}));
+
+export const mockSoundboardController: SoundboardCatalogController = {
+  categories: mockSoundboardCategories,
+  sounds: mockSoundboardSounds,
+  loading: false,
+  error: null,
+  getBlob: () => Promise.resolve(null),
+  retrySound: () => Promise.resolve(),
+  updateSound: () => Promise.resolve(),
+};

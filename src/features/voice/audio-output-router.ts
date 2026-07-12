@@ -1,4 +1,4 @@
-import type { SoundAudioTarget } from "../soundboard/sounds";
+import type { SoundAudioTarget } from "../soundboard/soundboard-audio";
 
 type AudioContextConstructor = new () => AudioContext;
 
@@ -60,8 +60,13 @@ export class AudioOutputRouter {
   }
 
   private ensureRoutingGraph(): void {
-    if (this.target || !this.supported || !this.Context) return;
+    if (this.target || !this.Context) return;
     const context = new this.Context();
+    if (!this.supported) {
+      this.context = context;
+      this.target = { context, destination: context.destination };
+      return;
+    }
     const destination = context.createMediaStreamDestination();
     const element = document.createElement("audio");
     element.autoplay = true;

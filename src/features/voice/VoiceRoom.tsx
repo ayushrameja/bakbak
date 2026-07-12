@@ -195,6 +195,8 @@ export function VoiceRoom({
           ) : null}
           <div className="participant-grid">
             {voice.participants.map((participant) => {
+              const latestSound = participant.activeSounds.at(-1);
+              const soundActive = participant.activeSounds.length > 0;
               const avatarUser = participant.isLocal
                 ? user
                 : {
@@ -204,7 +206,7 @@ export function VoiceRoom({
                   };
               return (
                 <article
-                  className={`participant-card ${participant.isSpeaking ? "is-speaking" : ""}`}
+                  className={`participant-card ${participant.isSpeaking || soundActive ? "is-speaking" : ""} ${soundActive ? "is-soundboard-active" : ""}`}
                   key={participant.id}
                 >
                   <div className="participant-card__media">
@@ -220,6 +222,17 @@ export function VoiceRoom({
                         <span className="speaker-rings" />
                       </div>
                     )}
+                    {latestSound ? (
+                      <span
+                        className="participant-card__sound"
+                        aria-label={`${participant.displayName} is playing ${latestSound.label}`}
+                      >
+                        {latestSound.emoji}
+                        {participant.activeSounds.length > 1 ? (
+                          <i>+{participant.activeSounds.length - 1}</i>
+                        ) : null}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="participant-card__identity">
                     <strong>
@@ -227,18 +240,22 @@ export function VoiceRoom({
                       {participant.isLocal ? " (you)" : ""}
                     </strong>
                     <span>
-                      {participant.isSpeaking
-                        ? "Speaking"
-                        : participant.isMuted
-                          ? "Muted"
-                          : "Listening"}
+                      {soundActive
+                        ? participant.activeSounds.length > 1
+                          ? `${participant.activeSounds.length} sounds playing`
+                          : `Playing ${latestSound?.label ?? "sound"}`
+                        : participant.isSpeaking
+                          ? "Speaking"
+                          : participant.isMuted
+                            ? "Muted"
+                            : "Listening"}
                     </span>
                     {participant.joinedAt ? (
                       <VoiceElapsedTime joinedAt={participant.joinedAt} />
                     ) : null}
                   </div>
                   <span
-                    className={`participant-card__mic ${participant.isMuted ? "muted" : ""}`}
+                    className={`participant-card__mic ${participant.isMuted ? "muted" : ""} ${soundActive && !participant.isMuted ? "active" : ""}`}
                   >
                     {participant.isMuted ? (
                       <MicOff size={14} />
@@ -327,7 +344,17 @@ export function VoiceRoom({
           <Soundboard
             connected
             deafened={voice.deafened}
+            categories={voice.soundboard.categories}
+            sounds={voice.soundboard.sounds}
+            loading={voice.soundboard.loading}
+            error={voice.soundboard.error}
+            volume={voice.soundboardVolume}
+            activeLocalSoundCount={voice.activeLocalSoundCount}
             onPlay={voice.dispatchSound}
+            onStopAll={voice.stopLocalSounds}
+            onVolumeChange={voice.setSoundboardVolume}
+            onRetry={voice.soundboard.retrySound}
+            onUpdate={voice.updateSoundMetadata}
           />
         </>
       ) : null}

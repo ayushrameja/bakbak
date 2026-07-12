@@ -25,6 +25,17 @@ Open the Vite URL and choose **Enter the preview**. For the native window, run:
 pnpm tauri dev
 ```
 
+To create a local macOS application bundle without release updater artifacts or
+the protected updater signing key, run:
+
+```sh
+pnpm tauri:build:local
+```
+
+Signed updater artifacts are created only by the GitHub release workflow. A
+plain `pnpm tauri build` still expects the updater private key because the main
+Tauri configuration intentionally enables release updater artifacts.
+
 Mock mode is selected by `VITE_DATA_MODE=mock`; it never connects to Supabase
 or LiveKit.
 

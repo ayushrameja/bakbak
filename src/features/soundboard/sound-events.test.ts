@@ -1,81 +1,55 @@
 import { describe, expect, it } from "vitest";
-
 import {
-  clampSoundVolume,
-  createSoundEvent,
-  deduplicateSoundEvents,
+  createSoundPlayEvent,
+  createSoundStopEvent,
   encodeSoundEvent,
   hasSeenSoundEvent,
   parseSoundEvent,
 } from "./sound-events";
 
-const event = createSoundEvent({
+const playEvent = createSoundPlayEvent({
   eventId: "event-1",
-  soundId: "Air_Horn",
-  senderId: "user-1",
+  soundId: "00000000-0000-4000-8000-000000002001",
   sentAt: 1_752_192_000_000,
-  volume: 0.75,
 });
 
-describe("sound events", () => {
-  it("creates a canonical event and clamps its volume", () => {
-    expect(event).toMatchObject({
+describe("soundboard control events", () => {
+  it("creates version-two play and stop events without sender volume", () => {
+    expect(playEvent).toEqual({
       type: "soundboard:play",
-      version: 1,
-      soundId: "air_horn",
-      volume: 0.75,
+      version: 2,
+      eventId: "event-1",
+      soundId: "00000000-0000-4000-8000-000000002001",
+      sentAt: 1_752_192_000_000,
     });
     expect(
-      createSoundEvent({ ...event, eventId: "event-2", volume: 9 }).volume,
-    ).toBe(1);
-  });
-
-  it("rejects malformed creation input", () => {
-    expect(() =>
-      createSoundEvent({ ...event, eventId: " ", sentAt: -1 }),
-    ).toThrow(TypeError);
-    expect(() =>
-      createSoundEvent({ ...event, soundId: "not/a/sound" }),
-    ).toThrow(TypeError);
+      createSoundStopEvent({ eventId: "stop-1", sentAt: 1_752_192_000_001 }),
+    ).toEqual({
+      type: "soundboard:stop-all",
+      version: 2,
+      eventId: "stop-1",
+      sentAt: 1_752_192_000_001,
+    });
   });
 
   it("round-trips LiveKit byte payloads", () => {
-    expect(parseSoundEvent(encodeSoundEvent(event))).toEqual(event);
+    expect(parseSoundEvent(encodeSoundEvent(playEvent))).toEqual(playEvent);
   });
 
-  it("parses JSON strings and already-decoded records", () => {
-    expect(parseSoundEvent(JSON.stringify(event))).toEqual(event);
-    expect(parseSoundEvent(event)).toEqual(event);
+  it("rejects legacy, malformed, and sender-controlled payloads", () => {
+    expect(
+      parseSoundEvent(
+        JSON.stringify({ ...playEvent, version: 1, volume: 1, senderId: "x" }),
+      ),
+    ).toBeNull();
+    expect(
+      parseSoundEvent(JSON.stringify({ ...playEvent, soundId: "" })),
+    ).toBeNull();
+    expect(parseSoundEvent("not json")).toBeNull();
   });
 
-  it.each([
-    ["not json"],
-    [JSON.stringify({ ...event, version: 2 })],
-    [JSON.stringify({ ...event, soundId: "../../oops" })],
-    [JSON.stringify({ ...event, volume: 1.1 })],
-  ])("rejects untrusted payload %j", (payload) => {
-    expect(parseSoundEvent(payload)).toBeNull();
-  });
-
-  it("deduplicates by event ID using first-event-wins semantics", () => {
-    const duplicate = { ...event, soundId: "applause" };
-    const second = { ...event, eventId: "event-2", soundId: "bruh" };
-
-    expect(deduplicateSoundEvents([event, duplicate, second])).toEqual([
-      event,
-      second,
-    ]);
-    expect(hasSeenSoundEvent(event, new Set(["event-1"]))).toBe(true);
-  });
-});
-
-describe("clampSoundVolume", () => {
-  it.each([
-    [-1, 0],
-    [0.4, 0.4],
-    [2, 1],
-    [Number.NaN, 1],
-  ])("clamps %s to %s", (value, expected) => {
-    expect(clampSoundVolume(value)).toBe(expected);
+  it("deduplicates control state by event ID", () => {
+    expect(hasSeenSoundEvent(playEvent, new Set(["event-1"]))).toBe(true);
+    expect(hasSeenSoundEvent(playEvent, new Set())).toBe(false);
   });
 });

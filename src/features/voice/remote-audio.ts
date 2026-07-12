@@ -2,6 +2,7 @@ export interface RemoteAudioTrackLike {
   readonly kind: string;
   attach(element: HTMLMediaElement): HTMLMediaElement;
   detach(element: HTMLMediaElement): HTMLMediaElement;
+  setVolume?: (volume: number) => void;
 }
 
 /**
@@ -16,7 +17,10 @@ export class RemoteAudioRenderer {
     private readonly getHost: () => HTMLElement = () => document.body,
   ) {}
 
-  attach(track: RemoteAudioTrackLike): HTMLAudioElement | null {
+  attach(
+    track: RemoteAudioTrackLike,
+    volume?: number,
+  ): HTMLAudioElement | null {
     if (track.kind !== "audio") return null;
 
     const existing = this.elements.get(track);
@@ -29,9 +33,15 @@ export class RemoteAudioRenderer {
     element.dataset.bakbakRemoteAudio = "";
 
     track.attach(element);
+    if (volume !== undefined) track.setVolume?.(volume);
     this.getHost().append(element);
     this.elements.set(track, element);
     return element;
+  }
+
+  setVolume(track: RemoteAudioTrackLike, volume: number): void {
+    if (!this.elements.has(track)) return;
+    track.setVolume?.(Math.max(0, Math.min(1, volume)));
   }
 
   detach(track: RemoteAudioTrackLike): void {

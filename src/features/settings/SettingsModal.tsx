@@ -8,6 +8,7 @@ interface SettingsModalProps {
   selectedInputId: string;
   selectedOutputId: string;
   selectedCameraId: string;
+  soundboardVolume: number;
   inputError: string | null;
   outputError: string | null;
   cameraError: string | null;
@@ -16,6 +17,7 @@ interface SettingsModalProps {
   onInputChange: (deviceId: string) => void;
   onOutputChange: (deviceId: string) => void;
   onCameraChange: (deviceId: string) => void;
+  onSoundboardVolumeChange: (volume: number) => void;
   onClose: () => void;
 }
 
@@ -26,6 +28,7 @@ export function SettingsModal({
   selectedInputId,
   selectedOutputId,
   selectedCameraId,
+  soundboardVolume,
   inputError,
   outputError,
   cameraError,
@@ -34,6 +37,7 @@ export function SettingsModal({
   onInputChange,
   onOutputChange,
   onCameraChange,
+  onSoundboardVolumeChange,
   onClose,
 }: SettingsModalProps) {
   return (
@@ -121,6 +125,22 @@ export function SettingsModal({
               {outputError}
             </p>
           ) : null}
+          <label>
+            <span>
+              Soundboard volume — {Math.round(soundboardVolume * 100)}%
+            </span>
+            <input
+              aria-label="Soundboard volume"
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={soundboardVolume}
+              onChange={(event) =>
+                onSoundboardVolumeChange(Number(event.target.value))
+              }
+            />
+          </label>
           <p className="settings-hint">
             Call audio and soundboard playback use this speaker. Message alerts
             keep using system output.

@@ -196,7 +196,11 @@ describe("useVoiceRoom join lifecycle", () => {
     expect(room).toBeDefined();
     expect(room?.localParticipant.setMicrophoneEnabled).toHaveBeenCalledWith(
       true,
-      undefined,
+      {
+        autoGainControl: true,
+        echoCancellation: true,
+        noiseSuppression: true,
+      },
     );
     expect(result.current.selectedInputId).toBe("default");
     expect(result.current.status).toBe("connected");
@@ -244,7 +248,11 @@ describe("useVoiceRoom join lifecycle", () => {
     expect(secondRoom).toBeDefined();
     expect(
       secondRoom?.localParticipant.setMicrophoneEnabled,
-    ).toHaveBeenCalledWith(true, undefined);
+    ).toHaveBeenCalledWith(true, {
+      autoGainControl: true,
+      echoCancellation: true,
+      noiseSuppression: true,
+    });
     expect(result.current.selectedInputId).toBe("default");
     expect(result.current.status).toBe("connected");
     expect(result.current.channel).toEqual(coffeeTable);
@@ -299,7 +307,11 @@ describe("useVoiceRoom join lifecycle", () => {
     expect(secondRoom?.connect).toHaveBeenCalledOnce();
     expect(
       secondRoom?.localParticipant.setMicrophoneEnabled,
-    ).toHaveBeenCalledWith(true, undefined);
+    ).toHaveBeenCalledWith(true, {
+      autoGainControl: true,
+      echoCancellation: true,
+      noiseSuppression: true,
+    });
     expect(result.current.status).toBe("connected");
     expect(result.current.channel).toEqual(coffeeTable);
   });
@@ -328,7 +340,11 @@ describe("useVoiceRoom join lifecycle", () => {
     );
     expect(
       liveKitState.rooms[1]?.localParticipant.setMicrophoneEnabled,
-    ).toHaveBeenCalledWith(true, undefined);
+    ).toHaveBeenCalledWith(true, {
+      autoGainControl: true,
+      echoCancellation: true,
+      noiseSuppression: true,
+    });
     expect(result.current.status).toBe("connected");
   });
 
