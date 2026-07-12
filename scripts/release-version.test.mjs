@@ -75,6 +75,11 @@ test("macOS release jobs build installer and updater-enabled app bundles", async
 
   assert.match(workflow, /--target aarch64-apple-darwin --bundles app,dmg/);
   assert.match(workflow, /--target x86_64-apple-darwin --bundles app,dmg/);
+  assert.match(
+    workflow,
+    /name: macOS Apple Silicon\n {12}platform: macos-26\n/,
+  );
+  assert.match(workflow, /name: macOS Intel\n {12}platform: macos-26-intel\n/);
 });
 
 test("published releases synchronize their version through a protected-branch PR", async () => {

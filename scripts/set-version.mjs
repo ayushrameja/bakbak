@@ -1,4 +1,8 @@
 import { readFile, writeFile } from "node:fs/promises";
+import {
+  findCargoLockVersion,
+  replaceCargoLockVersion,
+} from "./set-version-lib.mjs";
 
 const checkOnly = process.argv.includes("--check");
 const requestedVersion = process.argv.find((argument) =>
@@ -19,12 +23,11 @@ const tauriConfig = JSON.parse(await readFile(tauriConfigPath, "utf8"));
 const cargoManifest = await readFile(cargoManifestPath, "utf8");
 const cargoLock = await readFile(cargoLockPath, "utf8");
 const cargoVersionMatch = /^version = "([^"]+)"$/m.exec(cargoManifest);
-const cargoLockVersionMatch =
-  /\[\[package\]\]\nname = "bakbak"\nversion = "([^"]+)"/.exec(cargoLock);
+const cargoLockVersion = findCargoLockVersion(cargoLock);
 
 if (!cargoVersionMatch)
   throw new Error("Could not find the Bakbak Cargo package version.");
-if (!cargoLockVersionMatch)
+if (!cargoLockVersion)
   throw new Error("Could not find the Bakbak Cargo lockfile version.");
 
 if (checkOnly) {
@@ -32,7 +35,7 @@ if (checkOnly) {
     packageJson.version,
     tauriConfig.version,
     cargoVersionMatch[1],
-    cargoLockVersionMatch[1],
+    cargoLockVersion,
   ];
   if (!versions.every((version) => version === versions[0])) {
     throw new Error(
@@ -56,10 +59,7 @@ const nextCargoManifest = cargoManifest.replace(
   /^version = "[^"]+"$/m,
   `version = "${requestedVersion}"`,
 );
-const nextCargoLock = cargoLock.replace(
-  /(\[\[package\]\]\nname = "bakbak"\nversion = ")[^"]+("\n)/,
-  `$1${requestedVersion}$2`,
-);
+const nextCargoLock = replaceCargoLockVersion(cargoLock, requestedVersion);
 
 await Promise.all([
   writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`),

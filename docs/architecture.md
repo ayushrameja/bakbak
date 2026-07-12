@@ -88,11 +88,15 @@ bundle minimum; macOS 12.3–13 retain the video-only WebView fallback.
 
 The Tauri metadata, window sizing, Content Security Policy, minimal capability
 set, Bakbak icons, microphone/camera/screen-capture purpose strings, audio-input
-plus camera entitlements, and signed updater are configured. GitHub Actions validate
-pull requests and prepare versioned macOS Apple Silicon, macOS Intel, and
-Windows x64 releases. A hardened-runtime macOS application can be ad-hoc signed
-locally; Developer ID signing/notarization and Windows code signing remain
-deferred as approved.
+plus camera entitlements, and signed updater are configured. GitHub Actions
+validate pull requests and prepare versioned macOS Apple Silicon, macOS Intel,
+and Windows x64 releases. The macOS release jobs use explicit macOS 26 arm64 and
+Intel hosts because the transitive `apple-metal` Swift bridge requires macOS 26
+SDK symbols; the built application's deployment minimum remains macOS 12.3.
+Release version synchronization accepts both LF and Windows CRLF Cargo lockfile
+line endings. A hardened-runtime macOS application can be ad-hoc signed locally;
+Developer ID signing/notarization and Windows code signing remain deferred as
+approved.
 
 ## Technology stack
 
@@ -622,10 +626,10 @@ that it has passed.
   Windows code-signing identity is configured, so SmartScreen warnings are
   expected during the initial friend test.
 - GitHub Actions has the public renderer variables and updater-signing secrets.
-  The first run built both macOS DMGs and the Windows NSIS installer, but its
-  release remains a draft because the macOS jobs initially omitted the
-  updater-enabled `app` bundle and therefore contributed no Darwin entries to
-  `latest.json`. The corrected matrix still needs a hosted run.
+  The release matrix builds updater-enabled app bundles plus DMGs on explicit
+  macOS 26 arm64 and Intel hosts and an NSIS installer on Windows. The latest
+  runner-pinning and CRLF-safe version-synchronization correction still needs a
+  hosted run.
 - Browser/Linux screen sharing, recording, camera effects, uploads, cloud
   sounds, advanced roles, global push-to-talk, notifications, tray behavior,
   Linux distribution, and operating-system signing/notarization remain outside
