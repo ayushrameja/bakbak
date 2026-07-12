@@ -825,6 +825,25 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
   as separate members, complete the soundboard/audio matrix, then distribute an
   all-clients-required update only after licensing is confirmed.
 
+## 2026-07-12 — Remove local soundboard source copies
+
+- **Completed:** Removed the repository copies under `supabase/storage/`. The
+  hosted private Supabase bucket remains unchanged and is now the runtime and
+  deployment source of truth for the 23 MP3 objects.
+- **Decisions:** Kept the app bundle clean and avoided maintaining duplicate
+  audio assets in Git. Any restoration or re-upload must use an operator-held
+  backup outside the repository.
+- **Validation:**
+  - `find supabase/storage -type f` — passed; directory no longer exists.
+  - `rg` over application and build output — confirmed no local MP3 references
+    are required by the renderer.
+- **Documentation updated:** `docs/architecture.md`, `supabase/README.md`, and
+  `docs/progress.md`.
+- **Known limitations:** A future bucket restoration requires the operator
+  backup; the hosted objects are unaffected by this local cleanup.
+- **Next:** Continue with the two-client audio acceptance test and licensing
+  confirmation.
+
 ## 2026-07-12 — Separate local app builds from signed updater builds
 
 - **Completed:** Added `pnpm tauri:build:local` and a non-secret Tauri override

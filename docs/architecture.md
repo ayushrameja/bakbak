@@ -122,7 +122,6 @@ bakbak/
     ├── functions/
     │   └── livekit-token/
     ├── migrations/
-    ├── storage/                    # operator-managed sound pack source assets
     ├── seed.sql
     └── tests/                     # RLS and database behavior tests
 ```

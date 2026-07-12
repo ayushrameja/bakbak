@@ -75,20 +75,13 @@ pnpm dlx supabase@latest migration list
 pnpm dlx supabase@latest functions deploy livekit-token --use-api
 ```
 
-After the Storage migration is deployed, upload the tracked operator sound pack
-to the default server prefix:
-
-```bash
-pnpm dlx supabase@latest storage cp --experimental --recursive --linked \
-  --content-type audio/mpeg --cache-control max-age=3600 --jobs 4 \
-  supabase/storage/soundboard/00000000-0000-4000-8000-000000000001 \
-  ss:///soundboard/00000000-0000-4000-8000-000000000001
-```
-
 The bucket is private, accepts only `audio/mpeg`, and rejects objects larger
 than 1 MiB. Migration `202607120002_soundboard_catalog.sql` seeds the four
 ordered categories and 23 sound rows whose `storage_path` values match these
-objects. File writes and audio-field changes remain operator deployment steps;
+objects. The repository intentionally does not retain a second local copy of
+the MP3s; the hosted bucket is the source of truth. Keep an operator-controlled
+backup outside Git if the files need to be restored or copied to another
+project. File writes and audio-field changes remain operator deployment steps;
 do not add client upload policies or put a service-role credential in the
 renderer.
 
