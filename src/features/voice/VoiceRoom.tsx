@@ -1,23 +1,21 @@
 import {
   AudioLines,
   CircleAlert,
-  HeadphoneOff,
-  Headphones,
   Mic,
   MicOff,
-  MonitorUp,
   Phone,
-  PhoneOff,
   Radio,
   RefreshCw,
   Settings2,
-  Video,
-  VideoOff,
   Volume2,
 } from "lucide-react";
 import { Avatar } from "../../components/Avatar";
-import type { AppUser, Channel, VoiceRoomOccupant } from "../../lib/types";
-import { Soundboard } from "../soundboard/Soundboard";
+import type {
+  AppUser,
+  Channel,
+  ServerMember,
+  VoiceRoomOccupant,
+} from "../../lib/types";
 import { ParticipantVideo } from "./ParticipantVideo";
 import { ScreenShareStage } from "./ScreenShareStage";
 import { VoiceElapsedTime } from "./VoiceElapsedTime";
@@ -26,19 +24,19 @@ import type { useVoiceRoom } from "./useVoiceRoom";
 interface VoiceRoomProps {
   channel: Channel;
   user: AppUser;
+  members?: ServerMember[];
   voice: ReturnType<typeof useVoiceRoom>;
   occupants: VoiceRoomOccupant[];
   onOpenSettings: () => void;
-  onOpenScreenShare: () => void;
 }
 
 export function VoiceRoom({
   channel,
   user,
+  members = [],
   voice,
   occupants,
   onOpenSettings,
-  onOpenScreenShare,
 }: VoiceRoomProps) {
   const isThisRoom = voice.channel?.id === channel.id;
   const isConnected = isThisRoom && voice.status === "connected";
@@ -213,13 +211,20 @@ export function VoiceRoom({
             {voice.participants.map((participant) => {
               const latestSound = participant.activeSounds.at(-1);
               const soundActive = participant.activeSounds.length > 0;
-              const avatarUser = participant.isLocal
-                ? user
-                : {
-                    displayName: participant.displayName,
-                    avatarUrl: null,
-                    status: "online" as const,
-                  };
+              const member = members.find(
+                (candidate) => candidate.id === participant.id,
+              );
+              const displayName =
+                member?.displayName ?? participant.displayName;
+              const avatarUser =
+                member ??
+                (participant.isLocal
+                  ? user
+                  : {
+                      displayName,
+                      avatarUrl: null,
+                      status: "online" as const,
+                    });
               return (
                 <article
                   className={`participant-card ${participant.isSpeaking || soundActive ? "is-speaking" : ""} ${soundActive ? "is-soundboard-active" : ""}`}
@@ -230,7 +235,7 @@ export function VoiceRoom({
                       <ParticipantVideo
                         track={participant.cameraTrack}
                         local={participant.isLocal}
-                        label={participant.displayName}
+                        label={displayName}
                       />
                     ) : (
                       <div className="participant-card__avatar">
@@ -241,7 +246,7 @@ export function VoiceRoom({
                     {latestSound ? (
                       <span
                         className="participant-card__sound"
-                        aria-label={`${participant.displayName} is playing ${latestSound.label}`}
+                        aria-label={`${displayName} is playing ${latestSound.label}`}
                       >
                         {latestSound.emoji}
                         {participant.activeSounds.length > 1 ? (
@@ -252,7 +257,7 @@ export function VoiceRoom({
                   </div>
                   <div className="participant-card__identity">
                     <strong>
-                      {participant.displayName}
+                      {displayName}
                       {participant.isLocal ? " (you)" : ""}
                     </strong>
                     <span>
@@ -282,7 +287,7 @@ export function VoiceRoom({
                   {!participant.isLocal ? (
                     <label
                       className="participant-volume"
-                      aria-label={`${participant.displayName} volume`}
+                      aria-label={`${displayName} volume`}
                     >
                       <Volume2 size={14} />
                       <input
@@ -304,95 +309,6 @@ export function VoiceRoom({
               );
             })}
           </div>
-          <div className="voice-main-controls">
-            <button
-              className={voice.muted ? "is-danger" : ""}
-              type="button"
-              onClick={() => void voice.toggleMute()}
-            >
-              {voice.muted ? <MicOff size={20} /> : <Mic size={20} />}
-              <span>{voice.muted ? "Unmute" : "Mute"}</span>
-            </button>
-            <button
-              className={voice.deafened ? "is-danger" : ""}
-              type="button"
-              onClick={() => void voice.toggleDeafen()}
-            >
-              {voice.deafened ? (
-                <HeadphoneOff size={20} />
-              ) : (
-                <Headphones size={20} />
-              )}
-              <span>{voice.deafened ? "Undeafen" : "Deafen"}</span>
-            </button>
-            <button
-              className={voice.cameraEnabled ? "is-active" : ""}
-              type="button"
-              disabled={voice.cameraPending}
-              onClick={() => void voice.toggleCamera()}
-            >
-              {voice.cameraEnabled ? (
-                <Video size={20} />
-              ) : (
-                <VideoOff size={20} />
-              )}
-              <span>
-                {voice.cameraPending
-                  ? "Camera…"
-                  : voice.cameraEnabled
-                    ? "Stop video"
-                    : "Start video"}
-              </span>
-            </button>
-            {voice.screenShareAvailable || voice.screenShareEnabled ? (
-              <button
-                className={voice.screenShareEnabled ? "is-active" : ""}
-                type="button"
-                disabled={voice.screenSharePending}
-                onClick={() =>
-                  voice.screenShareEnabled
-                    ? void voice.stopScreenShare()
-                    : onOpenScreenShare()
-                }
-              >
-                <MonitorUp size={20} />
-                <span>
-                  {voice.screenSharePending
-                    ? "Screen…"
-                    : voice.screenShareEnabled
-                      ? "Stop share"
-                      : "Share screen"}
-                </span>
-              </button>
-            ) : null}
-            <button type="button" onClick={onOpenSettings}>
-              <Settings2 size={20} />
-              <span>Devices</span>
-            </button>
-            <button
-              className="hangup"
-              type="button"
-              onClick={() => void voice.leave()}
-            >
-              <PhoneOff size={20} />
-              <span>Leave</span>
-            </button>
-          </div>
-          <Soundboard
-            connected
-            deafened={voice.deafened}
-            categories={voice.soundboard.categories}
-            sounds={voice.soundboard.sounds}
-            loading={voice.soundboard.loading}
-            error={voice.soundboard.error}
-            volume={voice.soundboardVolume}
-            activeLocalSoundCount={voice.activeLocalSoundCount}
-            onPlay={voice.dispatchSound}
-            onStopAll={voice.stopLocalSounds}
-            onVolumeChange={voice.setSoundboardVolume}
-            onRetry={voice.soundboard.retrySound}
-            onUpdate={voice.updateSoundMetadata}
-          />
         </>
       ) : null}
     </section>

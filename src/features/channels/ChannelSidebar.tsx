@@ -1,37 +1,26 @@
-import {
-  Hash,
-  HeadphoneOff,
-  Headphones,
-  LogOut,
-  Mic,
-  MicOff,
-  MonitorUp,
-  Settings,
-  Video,
-  VideoOff,
-  Volume2,
-} from "lucide-react";
+import { Hash, LogOut, Pencil, Plus, Settings, Volume2 } from "lucide-react";
 import { Avatar } from "../../components/Avatar";
 import type {
   AppUser,
   Channel,
+  ChannelKind,
   Server,
   VoiceRoomOccupant,
 } from "../../lib/types";
 import { VoiceElapsedTime } from "../voice/VoiceElapsedTime";
-import type { useVoiceRoom } from "../voice/useVoiceRoom";
 
 interface ChannelSidebarProps {
   server: Server;
   channels: Channel[];
   selectedChannelId: string;
   user: AppUser;
-  voice: ReturnType<typeof useVoiceRoom>;
   voiceOccupants: VoiceRoomOccupant[];
   unreadChannelIds: ReadonlySet<string>;
+  canManageChannels: boolean;
   onSelect: (channel: Channel) => void;
+  onCreateChannel: (kind: ChannelKind) => void;
+  onRenameChannel: (channel: Channel) => void;
   onOpenSettings: () => void;
-  onOpenScreenShare: () => void;
   onSignOut: () => void;
 }
 
@@ -40,12 +29,13 @@ export function ChannelSidebar({
   channels,
   selectedChannelId,
   user,
-  voice,
   voiceOccupants,
   unreadChannelIds,
+  canManageChannels,
   onSelect,
+  onCreateChannel,
+  onRenameChannel,
   onOpenSettings,
-  onOpenScreenShare,
   onSignOut,
 }: ChannelSidebarProps) {
   const textChannels = channels.filter((channel) => channel.kind === "text");
@@ -56,32 +46,49 @@ export function ChannelSidebar({
       <header className="server-switcher">
         <div>
           <strong>{server.name}</strong>
-          <span>Private server</span>
+          <span>Friends-only adda</span>
         </div>
       </header>
       <nav className="channel-nav" aria-label="Channels">
-        <ChannelGroup label="Conversations">
+        <ChannelGroup
+          label="Conversations"
+          onAdd={canManageChannels ? () => onCreateChannel("text") : undefined}
+        >
           {textChannels.map((channel) => (
-            <button
-              className={`channel-row ${selectedChannelId === channel.id ? "active" : ""} ${unreadChannelIds.has(channel.id) ? "channel-row--unread" : ""}`}
-              type="button"
-              key={channel.id}
-              onClick={() => onSelect(channel)}
-            >
-              <Hash size={17} />
-              <span>{channel.name}</span>
-            </button>
+            <div className="channel-row-wrap" key={channel.id}>
+              <button
+                className={`channel-row ${selectedChannelId === channel.id ? "active" : ""} ${unreadChannelIds.has(channel.id) ? "channel-row--unread" : ""}`}
+                type="button"
+                onClick={() => onSelect(channel)}
+              >
+                <Hash size={17} />
+                <span>{channel.name}</span>
+              </button>
+              {canManageChannels ? (
+                <button
+                  className="channel-row-edit"
+                  type="button"
+                  aria-label={`Rename ${channel.name}`}
+                  onClick={() => onRenameChannel(channel)}
+                >
+                  <Pencil size={13} />
+                </button>
+              ) : null}
+            </div>
           ))}
         </ChannelGroup>
-        <ChannelGroup label="Voice rooms">
+        <ChannelGroup
+          label="Voice rooms"
+          onAdd={canManageChannels ? () => onCreateChannel("voice") : undefined}
+        >
           {voiceChannels.map((channel) => (
-            <div key={channel.id}>
+            <div className="channel-row-wrap" key={channel.id}>
               {(() => {
                 const occupants = voiceOccupants.filter(
                   (occupant) => occupant.channelId === channel.id,
                 );
                 return (
-                  <>
+                  <div className="channel-row-stack">
                     <button
                       className={`channel-row ${selectedChannelId === channel.id ? "active" : ""}`}
                       type="button"
@@ -91,6 +98,16 @@ export function ChannelSidebar({
                       <span>{channel.name}</span>
                       {occupants.length > 0 ? <i className="live-dot" /> : null}
                     </button>
+                    {canManageChannels ? (
+                      <button
+                        className="channel-row-edit"
+                        type="button"
+                        aria-label={`Rename ${channel.name}`}
+                        onClick={() => onRenameChannel(channel)}
+                      >
+                        <Pencil size={13} />
+                      </button>
+                    ) : null}
                     {occupants.length > 0 ? (
                       <div className="channel-voice-people">
                         {occupants.map((occupant) => (
@@ -105,7 +122,7 @@ export function ChannelSidebar({
                         ))}
                       </div>
                     ) : null}
-                  </>
+                  </div>
                 );
               })()}
             </div>
@@ -114,86 +131,6 @@ export function ChannelSidebar({
       </nav>
 
       <div className="sidebar-spacer" />
-
-      {voice.channel && voice.status !== "disconnected" ? (
-        <div className="voice-dock">
-          <div className="voice-dock__status">
-            <i />
-            <div>
-              <strong>
-                {voice.status === "connected"
-                  ? "Voice connected"
-                  : voice.status}
-              </strong>
-              <span>{voice.channel.name}</span>
-            </div>
-          </div>
-          <div className="voice-dock__controls">
-            {voice.screenShareAvailable || voice.screenShareEnabled ? (
-              <button
-                type="button"
-                className={voice.screenShareEnabled ? "is-active" : ""}
-                disabled={
-                  voice.status !== "connected" || voice.screenSharePending
-                }
-                onClick={() =>
-                  voice.screenShareEnabled
-                    ? void voice.stopScreenShare()
-                    : onOpenScreenShare()
-                }
-                aria-label={
-                  voice.screenShareEnabled
-                    ? "Stop screen sharing"
-                    : "Share screen"
-                }
-              >
-                <MonitorUp size={17} />
-              </button>
-            ) : null}
-            <button
-              type="button"
-              disabled={voice.status !== "connected" || voice.cameraPending}
-              onClick={() => void voice.toggleCamera()}
-              aria-label={
-                voice.cameraEnabled ? "Turn camera off" : "Turn camera on"
-              }
-            >
-              {voice.cameraEnabled ? (
-                <Video size={17} />
-              ) : (
-                <VideoOff size={17} />
-              )}
-            </button>
-            <button
-              type="button"
-              disabled={voice.status !== "connected"}
-              onClick={() => void voice.toggleMute()}
-              aria-label={voice.muted ? "Unmute" : "Mute"}
-            >
-              {voice.muted ? <MicOff size={17} /> : <Mic size={17} />}
-            </button>
-            <button
-              type="button"
-              disabled={voice.status !== "connected"}
-              onClick={() => void voice.toggleDeafen()}
-              aria-label={voice.deafened ? "Undeafen" : "Deafen"}
-            >
-              {voice.deafened ? (
-                <HeadphoneOff size={17} />
-              ) : (
-                <Headphones size={17} />
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={onOpenSettings}
-              aria-label="Voice settings"
-            >
-              <Settings size={17} />
-            </button>
-          </div>
-        </div>
-      ) : null}
 
       <div className="user-dock">
         <Avatar user={user} size="small" showStatus />
@@ -214,15 +151,22 @@ export function ChannelSidebar({
 
 function ChannelGroup({
   label,
+  onAdd,
   children,
 }: {
   label: string;
+  onAdd?: (() => void) | undefined;
   children: React.ReactNode;
 }) {
   return (
     <section className="channel-group">
       <header>
         <span>{label}</span>
+        {onAdd ? (
+          <button type="button" aria-label={`Create ${label}`} onClick={onAdd}>
+            <Plus size={14} />
+          </button>
+        ) : null}
       </header>
       {children}
     </section>

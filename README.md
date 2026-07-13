@@ -1,8 +1,10 @@
 # Bakbak
 
 Bakbak is a private desktop room for 5–10 friends: persistent text chat,
-drop-in voice, desktop screen sharing, and a synchronized hosted soundboard. It uses React, strict
-TypeScript, Vite, Tauri 2, Supabase, and LiveKit.
+drop-in voice, desktop screen sharing, and a synchronized hosted soundboard. Its
+Warm Adda interface includes light/dark theming, in-app profile and media
+settings, private member avatars, and admin-managed text and voice rooms. It
+uses React, strict TypeScript, Vite, Tauri 2, Supabase, and LiveKit.
 
 The default local experience is fully interactive and needs no account or
 credentials. Production integrations are present behind live mode and remain
@@ -12,6 +14,10 @@ protected by Supabase Row Level Security and a token-issuing Edge Function.
 
 Prerequisites: Node.js, pnpm, Rust, and the platform dependencies required by
 Tauri 2.
+
+Distributed builds support Apple Silicon Macs running macOS 12.3 or later and
+Windows x64. Bakbak v0.4.0 is the final Intel Mac release; existing Intel
+installations are not remotely disabled, but they do not receive later builds.
 
 ```sh
 pnpm install
@@ -43,7 +49,9 @@ or LiveKit.
 
 1. Create a Supabase project, link it with the current Supabase CLI, inspect
    `supabase db push --dry-run`, then run `supabase db push`. This applies the
-   three tracked migrations in order and records their migration history.
+   tracked migrations in order and records their migration history. The latest
+   migration creates the private avatar bucket and admin channel RPCs, so apply
+   it before using profile photos or channel management in live mode.
 2. Create a LiveKit Cloud project using its global endpoint. Store
    `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` only in Supabase
    Edge Function Secrets.
@@ -109,13 +117,13 @@ General → Workflow permissions** must allow GitHub Actions to create and
 approve pull requests. The release job requests only the `contents: write` and
 `pull-requests: write` permissions needed for its version-sync PR.
 
-The release workflow builds macOS Apple Silicon and Intel DMGs plus a Windows
-x64 NSIS installer. It keeps the GitHub Release in draft state until every
-installer and the signed `latest.json` updater manifest are present. Installed
-desktop clients check that manifest shortly after launch and offer an explicit
-**Update and restart** action. Existing `0.1.0` installations must install
-the first published updater-enabled release manually once because they do not
-contain the updater.
+The release workflow builds one macOS Apple Silicon DMG plus one Windows x64
+NSIS installer. It rejects Intel macOS assets and updater targets and keeps the
+GitHub Release in draft state until both supported installers and the signed
+`latest.json` updater manifest are present. Installed desktop clients check
+that manifest shortly after launch and offer an explicit **Update and restart**
+action. Existing `0.1.0` installations must install the first published
+updater-enabled release manually once because they do not contain the updater.
 
 Release builds require these GitHub Actions repository variables:
 
@@ -135,6 +143,6 @@ until Developer ID/notarization and Windows code signing are configured.
 
 Read `AGENTS.md` before changing the repository. The current architecture lives
 in `docs/architecture.md`, the approved scope in
-`docs/plans/0001-bakbak-desktop-v1.md`, and every task appends its honest
-handoff to `docs/progress.md`. That progress log is the one mandatory memory
-file future work must update.
+`docs/plans/0001-bakbak-desktop-v1.md` plus its numbered follow-up plans, and
+every task appends its honest handoff to `docs/progress.md`. That progress log
+is the one mandatory memory file future work must update.

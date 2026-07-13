@@ -129,4 +129,5 @@ export const mockWorkspace: WorkspaceSnapshot = {
   server: mockServer,
   channels: mockChannels,
   members: mockMembers,
+  currentUserRole: "admin",
 };

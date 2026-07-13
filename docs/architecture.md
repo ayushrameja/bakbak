@@ -7,23 +7,33 @@ and phase completion belong in the numbered files under `docs/plans`.
 
 ## Current implementation state
 
-As of 2026-07-12, Bakbak has a complete local/mock product path and
-production Supabase and LiveKit adapters. The renderer provides the
-invite-only welcome flow, channel sidebar, realtime-capable text
-chat, incoming-message sounds, per-channel unread emphasis, member list, voice
-rooms, locally persisted microphone/speaker/camera selection, opt-in 720p
-camera calls, pre-join room occupancy with elapsed timers, mute/deafen,
+As of 2026-07-12, Bakbak has a complete local/mock product path and production
+Supabase and LiveKit adapters. The renderer provides the invite-only welcome
+flow and a Warm Adda shell built around a channel shelf,
+conversation/settings canvas, header avatar cluster, accessible People drawer,
+and one persistent voice bar. Text chat supports Realtime, incoming-message
+sounds, per-channel unread emphasis, and per-channel drafts that survive
+settings and room navigation. In-shell settings cover profile, audio/video, and
+System/Light/Dark appearance; the appearance preference is synchronously
+applied before React renders and follows OS changes in System mode. Profiles
+support validated display names plus preview, upload, replace, and removal of
+private avatars. Admin-only controls create or rename text and voice channels,
+while Realtime reconciles changes for every member.
+
+Voice rooms retain locally persisted microphone/speaker/camera selection,
+opt-in 720p camera calls, pre-join occupancy with elapsed timers, mute/deafen,
 per-participant volume, remote-track audio/video rendering, autoplay recovery,
-reconnect/error states, persistent voice controls, a desktop-only featured
-screen-share stage, and a hosted synchronized
-soundboard. The soundboard has category filtering, member-editable labels,
-emoji, and categories, a persisted global volume, per-participant volume,
-overlapping activity badges, and a stop-all action. Deafen stops remote speech
-plus active and future incoming or local soundboard monitoring while still
-allowing outbound soundboard audio. The selected speaker routes calls and
-soundboard audio; message alerts intentionally remain on system output. Mock
-mode exercises the catalog and activity interactions without credentials, a
-backend, or protected MP3 files.
+reconnect/error states, and the desktop featured screen-share stage. The single
+voice bar stays mounted across chat, voice, and settings; mute, deafen,
+soundboard, and leave are direct actions, while camera, screen sharing, and
+device settings use its More menu. The soundboard now opens as a bar-anchored
+drawer while retaining category filtering, member-editable labels, emoji and
+categories, persisted global volume, per-participant volume, overlapping
+activity badges, retry states, and stop-all. Deafen suppresses remote speech
+and local/incoming soundboard monitoring without blocking outbound soundboard
+audio. The selected speaker routes calls and soundboard audio; message alerts
+remain on system output. Mock mode exercises these interactions without
+credentials, a backend, or protected media.
 
 The hosted project has a private, operator-managed `soundboard` Storage bucket
 and a typed Postgres catalog for MP3 assets. Objects are partitioned by server
@@ -35,6 +45,15 @@ ready clips into in-memory `AudioBuffer`s. Server members may update only a
 sound's label, emoji, and same-server category; file paths, duration, ordering,
 enabled state, and audio revision remain operator controlled. Realtime catalog
 publication refreshes those edits across connected clients.
+
+The additive
+`202607120003_profile_avatars_and_channel_management.sql` migration is tracked
+and deployed to the hosted project. It adds `profiles.avatar_path`, a private 2
+MiB PNG/JPEG/WebP `avatars` bucket, owner-write/shared-server-read Storage
+policies, admin-only `create_channel` and `rename_channel` RPCs, and Realtime
+publication for profiles and channels. The renderer, local mock path, and hosted
+database contract are implemented; the live two-account acceptance run remains
+required before distribution.
 
 The Supabase schema, least-privilege grants, Row Level Security policies,
 atomic hashed invite flow, deterministic default rooms, and Realtime
@@ -89,10 +108,13 @@ bundle minimum; macOS 12.3–13 retain the video-only WebView fallback.
 The Tauri metadata, window sizing, Content Security Policy, minimal capability
 set, Bakbak icons, microphone/camera/screen-capture purpose strings, audio-input
 plus camera entitlements, and signed updater are configured. GitHub Actions
-validate pull requests and prepare versioned macOS Apple Silicon, macOS Intel,
-and Windows x64 releases. The macOS release jobs use explicit macOS 26 arm64 and
-Intel hosts because the transitive `apple-metal` Swift bridge requires macOS 26
-SDK symbols; the built application's deployment minimum remains macOS 12.3.
+validate pull requests and prepare versioned macOS Apple Silicon and Windows
+x64 releases. The macOS release job uses an explicit macOS 26 arm64 host
+because the transitive `apple-metal` Swift bridge requires macOS 26 SDK
+symbols; the built application's deployment minimum remains macOS 12.3. Bakbak
+v0.4.0 is the final Intel macOS release, and the release workflow rejects Intel
+DMGs, updater bundles, and manifest targets without remotely disabling older
+clients.
 Release version synchronization accepts both LF and Windows CRLF Cargo lockfile
 line endings. A hardened-runtime macOS application can be ad-hoc signed locally;
 Developer ID signing/notarization and Windows code signing remain deferred as
@@ -107,7 +129,7 @@ approved.
 | Desktop shell        | Tauri 2, Rust                     | Native window, packaging, capabilities, and later tray/desktop integrations |
 | Identity/data        | Supabase Auth, Postgres, Realtime | Accounts, membership, channels, messages, invites, and realtime chat        |
 | Trusted backend      | Supabase Edge Functions           | Membership-checked LiveKit token issuance                                   |
-| Object media         | Supabase Storage                  | Private operator-managed sound packs with membership-filtered reads         |
+| Object media         | Supabase Storage                  | Private sound packs and member avatars with RLS-filtered access             |
 | Voice/data transport | LiveKit                           | Voice rooms, participant state, soundboard audio, and control data          |
 | Validation/testing   | Zod, Vitest, Testing Library      | Boundary validation and unit/component tests                                |
 
@@ -131,9 +153,11 @@ bakbak/
 │   └── plans/
 │       ├── 0001-bakbak-desktop-v1.md
 │       ├── 0002-voice-video-and-presence.md
-│       └── 0003-screen-sharing.md
+│       ├── 0003-screen-sharing.md
+│       └── 0004-warm-adda-ui-settings-channels-arm64.md
 ├── public/
-│   └── bakbak.svg                 # renderer favicon/source logo
+│   ├── bakbak.svg                 # renderer favicon/source logo
+│   └── theme-init.js              # parser-blocking, CSP-safe first-paint theme bootstrap
 ├── scripts/                       # Secret scan, SemVer, and release verification
 ├── src/
 │   ├── app/                       # application shell, routing, providers
@@ -163,26 +187,30 @@ architectural placeholder folders are not used.
 
 ## UI composition
 
-The renderer uses a three-part desktop layout:
+The renderer uses a two-part desktop layout:
 
-1. A channel sidebar containing the current private server's text and voice
-   rooms.
-2. A main content area for chat, room state, empty states, and errors, with a
-   bottom-pinned composer and independently scrollable messages.
-3. A desktop member panel that shares the main content area's full height.
-   Narrow windows hide it without changing the chat layout.
-4. Persistent voice controls for connection status, microphone, camera, screen
-   sharing, mute, deafen, and leave.
-5. A single featured share stage above participant video tiles, with presenter
-   switching when multiple friends share simultaneously.
+1. A channel shelf containing the private server's text and voice rooms, the
+   signed-in user's identity/actions, voice occupancy, and admin-only create and
+   rename controls.
+2. A conversation canvas for chat, voice, settings, empty states, and errors.
+   The header shows an avatar cluster and opens the accessible People drawer;
+   members no longer consume a permanent third column.
+3. A persistent voice bar remains mounted while connecting, connected, or
+   reconnecting across every canvas view. Mute, deafen, soundboard, and leave
+   are direct controls; camera, screen sharing, and devices live under More.
+4. The soundboard opens from that bar as a drawer instead of taking permanent
+   voice-room space. A single featured share stage remains above participant
+   video tiles, with presenter switching when multiple friends share.
 
 The top bar includes an accessible hover/focus connection detail. In live mode
 it measures a Supabase Auth health round trip every 30 seconds and labels the
 publicly configured backend region. Voice is separately labelled India West,
 the observed LiveKit signaling region; it is never presented as the database
-ping. The visual language is dark, calm, and polished. Accessibility, clear
-focus states, readable contrast, and reduced-motion behavior are requirements
-rather than post-v1 garnish.
+ping. The Warm Adda visual language uses oat/stone light surfaces, charcoal
+dark surfaces, coral actions, teal presence, semantic color tokens, and
+restrained ambient motion. System, Light, and Dark all preserve clear focus,
+readable contrast, reduced-motion behavior, and the supported 1024×680 and
+1280×800 desktop layouts.
 
 ## Runtime and trust boundaries
 
@@ -233,12 +261,17 @@ symbols.
 
 Supabase Auth establishes user identity. Postgres and RLS are authoritative for
 profiles, servers, membership, channels, messages, and invite redemption.
-Realtime distributes committed message and sound-catalog changes to authorized
-subscribers.
-Supabase Storage holds operator-managed sound files outside the desktop bundle;
-Storage RLS derives read access from the server UUID path prefix and current
-membership. The renderer never receives object-write or bucket-management
-authority.
+Realtime distributes committed messages, profiles, channels, presence, and
+sound-catalog changes to authorized subscribers. Security-definer channel RPCs
+derive the caller from `auth.uid()` and authorize against the exact server's
+admin membership; direct client channel mutations remain denied.
+
+Supabase Storage holds operator-managed sound files and user-managed private
+avatars outside the desktop bundle. Soundboard RLS derives read access from the
+server UUID path prefix and exposes no client mutation. Avatar paths begin with
+their owner's user UUID; only that owner can insert, replace, or delete an
+object, while the owner and users sharing any server with them can read it.
+Clients never receive bucket-management authority.
 
 ### LiveKit
 
@@ -258,18 +291,18 @@ soundboard volume multiplied by the existing participant volume.
 All identifiers are UUIDs unless noted otherwise. Exact migrations become
 authoritative once Phase 2 starts.
 
-| Entity                  | Key fields and constraints                                             | Access intent                                                                  |
-| ----------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `profiles`              | `id` references `auth.users`; display name and timestamps              | User can manage their profile; server members can read member-facing fields    |
-| `servers`               | owner/admin reference, name, timestamps                                | Members of the server can read it                                              |
-| `memberships`           | unique `(server_id, user_id)`; v1 admin/member role                    | A user can read memberships for servers they belong to                         |
-| `channels`              | `server_id`, name, ordered position, `text` or `voice` type            | Server members can read channels                                               |
-| `messages`              | text-channel ID, author ID, body, timestamps                           | Members can read; members can insert into text channels as themselves          |
-| `invite_codes`          | server ID, one-way code digest, creator, expiry, redemption fields     | No broad client read policy; redeemed atomically through a controlled function |
-| `presence_heartbeats`   | unique server/user row, last seen, nullable voice channel/join time    | Members can read server rows; only security-definer heartbeat RPCs can write   |
-| `soundboard_categories` | server ID, name, ordered position                                      | Members can read; categories are operator managed                              |
-| `soundboard_sounds`     | server/category, label, emoji, Storage path, duration, order, revision | Members can read and update label, emoji, or same-server category only         |
-| `storage.objects`       | private `soundboard/<server UUID>/<file>` objects                      | Matching server members can read; only operators can mutate                    |
+| Entity                  | Key fields and constraints                                                                                               | Access intent                                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| `profiles`              | `id` references `auth.users`; 1–50 character display name; legacy `avatar_url`; owner-prefixed `avatar_path`; timestamps | User updates their row; shared-server members read member-facing fields                     |
+| `servers`               | owner/admin reference, name, timestamps                                                                                  | Members of the server can read it                                                           |
+| `memberships`           | unique `(server_id, user_id)`; v1 admin/member role                                                                      | A user can read memberships for servers they belong to                                      |
+| `channels`              | `server_id`, trimmed 1–80 character name, ordered position, immutable `text` or `voice` type                             | Members read; matching admins create/rename only through RPCs                               |
+| `messages`              | text-channel ID, author ID, body, timestamps                                                                             | Members can read; members can insert into text channels as themselves                       |
+| `invite_codes`          | server ID, one-way code digest, creator, expiry, redemption fields                                                       | No broad client read policy; redeemed atomically through a controlled function              |
+| `presence_heartbeats`   | unique server/user row, last seen, nullable voice channel/join time                                                      | Members can read server rows; only security-definer heartbeat RPCs can write                |
+| `soundboard_categories` | server ID, name, ordered position                                                                                        | Members can read; categories are operator managed                                           |
+| `soundboard_sounds`     | server/category, label, emoji, Storage path, duration, order, revision                                                   | Members can read and update label, emoji, or same-server category only                      |
+| `storage.objects`       | private `soundboard/<server UUID>/<file>` and `avatars/<owner UUID>/<asset UUID>` objects                                | Sound files are operator-managed; avatar owners write/delete and shared-server members read |
 
 Initial admin membership and initial invite codes are managed with reviewed SQL.
 An invite-management UI is deferred until post-v1.
@@ -285,6 +318,13 @@ An invite-management UI is deferred until post-v1.
   unexpired code, create the membership, and consume the code in one
   transaction.
 - The client cannot list or inspect valid invite codes.
+- Profile display names and avatar paths remain canonical in `public.profiles`.
+  Avatar objects must use `<auth.uid()>/<generated UUID>`; only the owner writes
+  or deletes, and reads require ownership or a shared server membership.
+- Direct channel insert, update, and delete privileges stay revoked. The
+  `create_channel` and `rename_channel` RPCs derive the caller from
+  `auth.uid()`, require admin membership in the affected server, validate names,
+  and preserve channel ID and kind during rename.
 - The LiveKit token function verifies the caller's Supabase JWT, current server
   membership, and that the requested channel is a voice channel.
 - Soundboard objects are private and readable only when the first object-path
@@ -307,6 +347,46 @@ An invite-management UI is deferred until post-v1.
    atomically, then creates membership.
 5. The renderer refreshes membership and channel data.
 
+### Profile and appearance settings
+
+1. The renderer applies `bakbak.appearancePreferences.v1` synchronously before
+   mounting React. A local parser-blocking bootstrap sets the first-paint data
+   attributes before the production stylesheet loads; React then installs the
+   System media-query listener. Explicit Light or Dark choices ignore OS
+   changes.
+2. Profile edits validate a trimmed 1–50 character display name and an optional
+   PNG, JPEG, or WebP avatar no larger than 2 MiB.
+3. A new avatar uploads first to `<user UUID>/<generated UUID>`. The renderer
+   then updates `profiles.display_name` and `profiles.avatar_path`, mirrors the
+   name into Auth metadata as a compatibility fallback, and best-effort removes
+   the replaced object. A failed profile update cleans up the new upload.
+4. Private avatars download as authenticated blobs. The application tracks and
+   revokes object URLs on replacement, sign-out, and teardown. Profile Realtime
+   subscribes before a catch-up snapshot, buffers overlapping updates, and
+   sequences avatar downloads so stale responses cannot replace newer names or
+   photos in member, chat, and voice views.
+5. Audio settings retain the existing persisted device selectors and
+   soundboard volume. Opening settings does not request media; microphone and
+   output tests acquire only the temporary resources required by the explicit
+   test action and release them when stopped or unmounted.
+
+### Channel management
+
+1. The workspace snapshot exposes the signed-in member's role. Only admins see
+   create and rename actions in the channel shelf.
+2. The client calls `create_channel` or `rename_channel`; the database derives
+   identity, verifies exact-server admin membership, trims and validates the
+   name, and maps uniqueness failures to a safe user-facing error.
+3. Create locks the server row, finds the maximum position for that server and
+   kind, and appends at the next increment of ten. Rename changes only the name,
+   preserving the UUID, kind, server, messages, active voice identity, and
+   ordering.
+4. Channel Realtime subscribes before its catch-up snapshot and replays buffered
+   events after the snapshot, so an overlapping create or rename cannot be
+   overwritten by stale data. Channels reconcile by stable ID and sort by
+   position then ID; only the creating client selects a new channel, and
+   creating a voice channel never joins it automatically.
+
 ### Text chat
 
 1. A member selects a text channel.
@@ -320,6 +400,8 @@ An invite-management UI is deferred until post-v1.
 6. A committed message from another user plays a short local notification tone.
    Messages received for a background channel mark that channel unread until it
    is opened; the selected channel remains read.
+7. Composer text is controlled by the application shell in a per-channel draft
+   map, so switching rooms or opening settings preserves unfinished messages.
 
 ### Application presence
 
@@ -444,13 +526,16 @@ noise suppression, and automatic gain control. These constraints reduce
 speaker-to-microphone echo but cannot guarantee acoustic isolation on every
 device, so the laptop-speaker two-client check remains required.
 
-### Local media preferences
+### Local preferences
 
 The renderer validates and stores only `{ inputDeviceId, outputDeviceId,
 cameraDeviceId, soundboardVolume }` under the versioned local-storage key
 `bakbak.devicePreferences.v1`. These identifiers never sync to Supabase. If a
 remembered device is absent, the selector returns to the runtime's default
 device. Chat notification audio deliberately bypasses the selected call output.
+The renderer stores `{ theme: "system" | "light" | "dark" }` separately under
+`bakbak.appearancePreferences.v1`; theme choice is device-local and never part
+of the profile or Supabase schema.
 
 ### Desktop release and update
 
@@ -462,12 +547,13 @@ device. Chat notification audio deliberately bypasses the selected call output.
    while `release:skip` suppresses documentation-only releases.
 3. The release checkout synchronizes the calculated version across
    `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`.
-4. Tauri Action builds macOS `aarch64`, macOS `x86_64`, and Windows `x86_64`
-   installers with the production renderer configuration. Update artifacts are
-   signed with the separate Tauri updater key.
-5. The workflow holds the GitHub Release as a draft until it verifies two DMGs,
-   one NSIS setup executable, and `latest.json` entries with URLs and signatures
-   for all three targets.
+4. Tauri Action builds macOS `aarch64` and Windows `x86_64` installers with the
+   production renderer configuration. Update artifacts are signed with the
+   separate Tauri updater key. Intel macOS builds ended at v0.4.0.
+5. The workflow holds the GitHub Release as a draft until it verifies exactly
+   one Apple Silicon DMG, one NSIS setup executable, no Intel macOS artifacts,
+   and one signed `latest.json` entry for each supported target. Unexpected or
+   duplicate targets fail manifest verification.
 6. After publication, the workflow synchronizes the released version across
    `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`, then
    updates the Bakbak package entry in `src-tauri/Cargo.lock`. It then creates
@@ -523,8 +609,29 @@ These contracts match the current implementation.
 - **Compatibility:** `heartbeat_presence(server_id)` remains executable by
   older builds and records online-only presence
 
-Text messages otherwise use the Supabase table API and Realtime under RLS; v1
-does not require a custom message service endpoint.
+### `POST /rest/v1/rpc/create_channel`
+
+- **Authentication:** valid Supabase user session
+- **Request:** `{ "p_server_id": "<server-uuid>", "p_kind": "text|voice", "p_name": "<name>" }`
+- **Success:** the created `channels` row
+- **Validation:** `auth.uid()` identity, matching server admin membership,
+  trimmed 1–80 character name, valid kind, and case-insensitive uniqueness
+- **Behavior:** locks the server row and assigns the next position in increments
+  of ten within the requested kind
+
+### `POST /rest/v1/rpc/rename_channel`
+
+- **Authentication:** valid Supabase user session
+- **Request:** `{ "p_channel_id": "<channel-uuid>", "p_name": "<name>" }`
+- **Success:** the renamed `channels` row
+- **Validation:** `auth.uid()` identity, matching server admin membership,
+  trimmed 1–80 character name, and case-insensitive uniqueness
+- **Behavior:** changes only the name; ID, server, kind, position, history, and
+  active voice identity remain stable
+
+Text messages and profile updates otherwise use the Supabase table API and
+Realtime under RLS. Private profile images use authenticated Storage operations;
+v1 does not require another custom service endpoint.
 
 ## Environment variables
 
@@ -576,18 +683,22 @@ pnpm build
 ```
 
 Run `pnpm tauri build` when validating platform integration or a distributable
-bundle. Database phases add Supabase migration/RLS tests. The first friend-test
-release also requires the manual macOS matrix in the active plan.
+bundle. Database phases add Supabase migration/RLS and Storage-policy tests;
+profile/channel work specifically covers avatar owner, shared-member,
+cross-server and outsider access plus admin/member channel RPC behavior. The
+first friend-test release also requires the manual Apple Silicon macOS matrix
+in the active plans.
 Screen-sharing work additionally runs the Deno token suite, focused Rust tests,
 `cargo check --locked`, macOS and Windows native builds, compiled secret scans,
 and the bidirectional installed-client matrix in plan 0003. Artifact sizes are
 recorded before and after the native LiveKit dependency is shipped.
 
-GitHub release validation additionally requires successful native builds on
-both macOS architectures and Windows x64, updater signatures for every target,
-two DMG assets, one NSIS executable, and a complete version-matched
-`latest.json`. A release remains a draft when any platform or manifest check
-fails. Ubuntu validation runners install Tauri's WebKitGTK, GLib-transitive,
+GitHub release validation additionally requires successful Apple Silicon macOS
+and Windows x64 native builds, updater signatures for both targets, exactly one
+ARM64 DMG, one NSIS executable, no Intel macOS artifact, and a complete
+version-matched `latest.json` containing only the two supported targets. A
+release remains a draft when any platform or manifest check fails. Ubuntu
+validation runners install Tauri's WebKitGTK, GLib-transitive,
 AppIndicator, SVG, X11 automation, OpenSSL, and compiler development packages
 before invoking Cargo.
 
@@ -598,6 +709,11 @@ that it has passed.
 
 ## Current limitations and deferred work
 
+- The Warm Adda renderer, profile/avatar services, channel RPCs, and policies
+  are implemented, and migration
+  `202607120003_profile_avatars_and_channel_management.sql` is deployed to the
+  hosted project. Live Realtime/profile/channel behavior still requires the
+  browser-plus-native two-account acceptance run in plan 0004.
 - Hosted migration `006` and the camera-capable token function are deployed,
   but the Arc-plus-installed-app voice/video/device acceptance matrix still
   requires two signed-in users and human audio/video observation.
@@ -626,13 +742,13 @@ that it has passed.
   Windows code-signing identity is configured, so SmartScreen warnings are
   expected during the initial friend test.
 - GitHub Actions has the public renderer variables and updater-signing secrets.
-  The release matrix builds updater-enabled app bundles plus DMGs on explicit
-  macOS 26 arm64 and Intel hosts and an NSIS installer on Windows. The latest
-  runner-pinning and CRLF-safe version-synchronization correction still needs a
-  hosted run.
-- Browser/Linux screen sharing, recording, camera effects, uploads, cloud
-  sounds, advanced roles, global push-to-talk, notifications, tray behavior,
-  Linux distribution, and operating-system signing/notarization remain outside
-  the approved screen-share phase.
+  The release matrix now builds an updater-enabled app plus one DMG on the
+  explicit macOS 26 arm64 host and an NSIS installer on Windows. The
+  Apple-Silicon-only asset/manifest checks still need a hosted run; v0.4.0 is
+  the preserved final Intel release.
+- Browser/Linux screen sharing, recording, camera effects, user sound uploads,
+  additional roles, global push-to-talk, notifications, tray behavior, Linux
+  distribution, and operating-system signing/notarization remain outside the
+  approved phases.
 - Protected or DRM-controlled sources may be black or silent; Bakbak does not
   bypass operating-system capture policy.

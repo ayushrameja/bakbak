@@ -2,8 +2,6 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { AppUser, Channel, Server } from "../../lib/types";
-import { mockSoundboardController } from "../soundboard/mock-catalog";
-import type { useVoiceRoom } from "../voice/useVoiceRoom";
 import { ChannelSidebar } from "./ChannelSidebar";
 
 const user: AppUser = {
@@ -20,7 +18,7 @@ const server: Server = {
   description: "Friends only",
 };
 
-const channel: Channel = {
+const voiceChannel: Channel = {
   id: "voice-1",
   serverId: server.id,
   name: "Lounge",
@@ -29,53 +27,70 @@ const channel: Channel = {
   topic: "Talk here",
 };
 
-describe("ChannelSidebar voice controls", () => {
-  it("disables mute and deafen while a voice room is connecting", () => {
-    render(
-      <ChannelSidebar
-        server={server}
-        channels={[channel]}
-        selectedChannelId={channel.id}
-        user={user}
-        voice={createVoice()}
-        voiceOccupants={[]}
-        unreadChannelIds={new Set()}
-        onSelect={vi.fn()}
-        onOpenSettings={vi.fn()}
-        onOpenScreenShare={vi.fn()}
-        onSignOut={vi.fn()}
-      />,
-    );
+function renderSidebar(
+  channels: Channel[],
+  overrides: Partial<React.ComponentProps<typeof ChannelSidebar>> = {},
+) {
+  const props: React.ComponentProps<typeof ChannelSidebar> = {
+    server,
+    channels,
+    selectedChannelId: channels[0]?.id ?? "",
+    user,
+    voiceOccupants: [],
+    unreadChannelIds: new Set(),
+    canManageChannels: false,
+    onSelect: vi.fn(),
+    onCreateChannel: vi.fn(),
+    onRenameChannel: vi.fn(),
+    onOpenSettings: vi.fn(),
+    onSignOut: vi.fn(),
+    ...overrides,
+  };
+  render(<ChannelSidebar {...props} />);
+  return props;
+}
 
-    expect(screen.getByRole("button", { name: "Mute" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Deafen" })).toBeDisabled();
+describe("ChannelSidebar room shelf", () => {
+  it("shows create and rename controls only to admins", async () => {
+    const onCreateChannel = vi.fn();
+    const onRenameChannel = vi.fn();
+    renderSidebar([voiceChannel], {
+      canManageChannels: true,
+      onCreateChannel,
+      onRenameChannel,
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Create Voice rooms" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Rename Lounge" }),
+    );
+    expect(onCreateChannel).toHaveBeenCalledWith("voice");
+    expect(onRenameChannel).toHaveBeenCalledWith(voiceChannel);
+  });
+
+  it("hides management controls from ordinary members", () => {
+    renderSidebar([voiceChannel]);
     expect(
-      screen.getByRole("button", { name: "Voice settings" }),
-    ).toBeEnabled();
+      screen.queryByRole("button", { name: "Create Voice rooms" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Rename Lounge" }),
+    ).not.toBeInTheDocument();
   });
 
   it("emphasizes unread text channels", () => {
     const textChannel: Channel = {
-      ...channel,
+      ...voiceChannel,
       id: "text-1",
       name: "random",
       kind: "text",
     };
-    render(
-      <ChannelSidebar
-        server={server}
-        channels={[textChannel]}
-        selectedChannelId="different-channel"
-        user={user}
-        voice={createVoice()}
-        voiceOccupants={[]}
-        unreadChannelIds={new Set([textChannel.id])}
-        onSelect={vi.fn()}
-        onOpenSettings={vi.fn()}
-        onOpenScreenShare={vi.fn()}
-        onSignOut={vi.fn()}
-      />,
-    );
+    renderSidebar([textChannel], {
+      selectedChannelId: "different-channel",
+      unreadChannelIds: new Set([textChannel.id]),
+    });
 
     expect(screen.getByRole("button", { name: /random/i })).toHaveClass(
       "channel-row--unread",
@@ -83,112 +98,18 @@ describe("ChannelSidebar voice controls", () => {
   });
 
   it("shows voice occupants without joining the room", () => {
-    render(
-      <ChannelSidebar
-        server={server}
-        channels={[channel]}
-        selectedChannelId="text-1"
-        user={user}
-        voice={createVoice()}
-        voiceOccupants={[
-          {
-            userId: "friend-1",
-            displayName: "Mira",
-            avatarUrl: null,
-            channelId: channel.id,
-            joinedAt: new Date().toISOString(),
-          },
-        ]}
-        unreadChannelIds={new Set()}
-        onSelect={vi.fn()}
-        onOpenSettings={vi.fn()}
-        onOpenScreenShare={vi.fn()}
-        onSignOut={vi.fn()}
-      />,
-    );
+    renderSidebar([voiceChannel], {
+      selectedChannelId: "text-1",
+      voiceOccupants: [
+        {
+          userId: "friend-1",
+          displayName: "Mira",
+          avatarUrl: null,
+          channelId: voiceChannel.id,
+          joinedAt: new Date().toISOString(),
+        },
+      ],
+    });
     expect(screen.getByText("Mira")).toBeVisible();
   });
-
-  it("keeps screen sharing available in the persistent voice dock", async () => {
-    const onOpenScreenShare = vi.fn();
-    render(
-      <ChannelSidebar
-        server={server}
-        channels={[channel]}
-        selectedChannelId={channel.id}
-        user={user}
-        voice={createVoice({
-          status: "connected",
-          screenShareAvailable: true,
-        })}
-        voiceOccupants={[]}
-        unreadChannelIds={new Set()}
-        onSelect={vi.fn()}
-        onOpenSettings={vi.fn()}
-        onOpenScreenShare={onOpenScreenShare}
-        onSignOut={vi.fn()}
-      />,
-    );
-
-    await userEvent.click(screen.getByRole("button", { name: "Share screen" }));
-    expect(onOpenScreenShare).toHaveBeenCalledOnce();
-  });
 });
-
-function createVoice(
-  overrides: Partial<ReturnType<typeof useVoiceRoom>> = {},
-): ReturnType<typeof useVoiceRoom> {
-  return {
-    status: "connecting",
-    channel,
-    participants: [],
-    muted: false,
-    deafened: false,
-    audioPlaybackBlocked: false,
-    error: null,
-    inputDeviceError: null,
-    outputDeviceError: null,
-    cameraDeviceError: null,
-    inputDevices: [],
-    outputDevices: [],
-    cameraDevices: [],
-    selectedInputId: "default",
-    selectedOutputId: "default",
-    selectedCameraId: "default",
-    outputSelectionSupported: false,
-    cameraEnabled: false,
-    cameraPending: false,
-    screenShares: [],
-    selectedScreenShareId: null,
-    screenShareAvailable: false,
-    screenShareAudioAvailable: false,
-    screenShareUnavailableReason: null,
-    screenShareState: "idle",
-    screenShareEnabled: false,
-    screenSharePending: false,
-    screenShareAudioPublished: false,
-    screenShareSourceLabel: null,
-    screenShareError: null,
-    soundboard: mockSoundboardController,
-    soundboardVolume: 0.7,
-    activeLocalSoundCount: 0,
-    join: vi.fn().mockResolvedValue(undefined),
-    leave: vi.fn().mockResolvedValue(undefined),
-    toggleMute: vi.fn().mockResolvedValue(undefined),
-    toggleDeafen: vi.fn().mockResolvedValue(undefined),
-    resumeAudio: vi.fn().mockResolvedValue(undefined),
-    setParticipantVolume: vi.fn(),
-    setInputDevice: vi.fn().mockResolvedValue(undefined),
-    setOutputDevice: vi.fn().mockResolvedValue(undefined),
-    setCameraDevice: vi.fn().mockResolvedValue(undefined),
-    toggleCamera: vi.fn().mockResolvedValue(undefined),
-    startScreenShare: vi.fn().mockResolvedValue(undefined),
-    stopScreenShare: vi.fn().mockResolvedValue(undefined),
-    selectScreenShare: vi.fn(),
-    dispatchSound: vi.fn().mockResolvedValue(undefined),
-    stopLocalSounds: vi.fn().mockResolvedValue(undefined),
-    setSoundboardVolume: vi.fn(),
-    updateSoundMetadata: vi.fn().mockResolvedValue(undefined),
-    ...overrides,
-  };
-}

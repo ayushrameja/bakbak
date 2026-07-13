@@ -1,5 +1,5 @@
 import { Send, Sparkles } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, type FormEvent } from "react";
 import { Avatar } from "../../components/Avatar";
 import type {
   AppUser,
@@ -14,6 +14,8 @@ interface ChatViewProps {
   members: ServerMember[];
   currentUser: AppUser;
   sending: boolean;
+  draft: string;
+  onDraftChange: (draft: string) => void;
   onSend: (body: string) => Promise<void>;
 }
 
@@ -23,9 +25,10 @@ export function ChatView({
   members,
   currentUser,
   sending,
+  draft,
+  onDraftChange,
   onSend,
 }: ChatViewProps) {
-  const [draft, setDraft] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
   const membersById = useMemo(
     () => new Map(members.map((member) => [member.id, member])),
@@ -33,21 +36,24 @@ export function ChatView({
   );
 
   useEffect(() => {
-    listRef.current?.scrollTo({
-      top: listRef.current.scrollHeight,
-      behavior: "smooth",
-    });
+    const list = listRef.current;
+    if (!list) return;
+    if (typeof list.scrollTo === "function") {
+      list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
+    } else {
+      list.scrollTop = list.scrollHeight;
+    }
   }, [messages, channel.id]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const body = draft.trim();
     if (!body || sending) return;
-    setDraft("");
+    onDraftChange("");
     try {
       await onSend(body);
     } catch {
-      setDraft(body);
+      onDraftChange(body);
     }
   }
 
@@ -109,7 +115,7 @@ export function ChatView({
           <input
             aria-label={`Message #${channel.name}`}
             value={draft}
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => onDraftChange(event.target.value)}
             placeholder={`Message #${channel.name}`}
             maxLength={4000}
           />
