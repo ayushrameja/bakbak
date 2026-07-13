@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   APPEARANCE_PREFERENCES_KEY,
+  LEGACY_APPEARANCE_PREFERENCES_KEY,
+  accentTokens,
   applyThemePreference,
   initializeAppearancePreferences,
   loadAppearancePreferences,
@@ -38,13 +40,34 @@ describe("appearance preferences", () => {
     document.documentElement.removeAttribute("data-theme");
     document.documentElement.removeAttribute("data-theme-preference");
     document.documentElement.style.colorScheme = "";
+    document.documentElement.style.removeProperty("--accent");
+  });
+
+  it("migrates the v1 theme and defaults the new accent fields", () => {
+    window.localStorage.setItem(
+      LEGACY_APPEARANCE_PREFERENCES_KEY,
+      JSON.stringify({ theme: "dark" }),
+    );
+    expect(loadAppearancePreferences()).toEqual({
+      theme: "dark",
+      accent: "coral",
+      intensity: 100,
+    });
   });
 
   it("falls back to System when persisted data is missing or invalid", () => {
-    expect(loadAppearancePreferences()).toEqual({ theme: "system" });
+    expect(loadAppearancePreferences()).toEqual({
+      theme: "system",
+      accent: "coral",
+      intensity: 100,
+    });
 
     window.localStorage.setItem(APPEARANCE_PREFERENCES_KEY, "not-json");
-    expect(loadAppearancePreferences()).toEqual({ theme: "system" });
+    expect(loadAppearancePreferences()).toEqual({
+      theme: "system",
+      accent: "coral",
+      intensity: 100,
+    });
   });
 
   it("persists and applies explicit Light and Dark choices", () => {
@@ -59,7 +82,11 @@ describe("appearance preferences", () => {
     ).toBe("light");
     expect(document.documentElement).toHaveAttribute("data-theme", "light");
     expect(document.documentElement.style.colorScheme).toBe("light");
-    expect(loadAppearancePreferences()).toEqual({ theme: "light" });
+    expect(loadAppearancePreferences()).toEqual({
+      theme: "light",
+      accent: "coral",
+      intensity: 100,
+    });
 
     applyThemePreference("dark", {
       document,
@@ -104,5 +131,15 @@ describe("appearance preferences", () => {
 
     dispose();
     expect(systemTheme.removeEventListener).toHaveBeenCalledOnce();
+  });
+
+  it("creates theme-aware tokens for every accent at intensity bounds", () => {
+    for (const accent of ["coral", "purple", "red", "yellow"] as const) {
+      const subtle = accentTokens(accent, 25, "light");
+      const vivid = accentTokens(accent, 100, "dark");
+      expect(subtle.accent).toMatch(/^hsl\(/);
+      expect(vivid.bright).toMatch(/^hsl\(/);
+      expect(vivid.onAccent).toBe(accent === "yellow" ? "#211e1b" : "#fffaf2");
+    }
   });
 });

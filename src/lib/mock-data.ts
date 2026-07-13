@@ -100,6 +100,7 @@ export const mockMessages: ChatMessage[] = [
     channelId: "channel-lobby",
     authorId: "user-mira",
     body: "I made tea and accidentally opened the laptop. So I guess we are working now.",
+    content: null,
     createdAt: new Date(now - 48 * 60 * 1000).toISOString(),
   },
   {
@@ -107,6 +108,7 @@ export const mockMessages: ChatMessage[] = [
     channelId: "channel-lobby",
     authorId: "user-ayush",
     body: "That is how most startups begin. Tea, an accident, and poor boundary management.",
+    content: null,
     createdAt: new Date(now - 44 * 60 * 1000).toISOString(),
   },
   {
@@ -114,6 +116,7 @@ export const mockMessages: ChatMessage[] = [
     channelId: "channel-lobby",
     authorId: "user-jo",
     body: "Voice room after lunch? I have gossip with a surprisingly strong architecture diagram.",
+    content: null,
     createdAt: new Date(now - 18 * 60 * 1000).toISOString(),
   },
   {
@@ -121,6 +124,7 @@ export const mockMessages: ChatMessage[] = [
     channelId: "channel-builds",
     authorId: "user-ayush",
     body: "Bakbak has a real shell now. Next milestone: making the mute button more reliable than us.",
+    content: null,
     createdAt: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
   },
 ];

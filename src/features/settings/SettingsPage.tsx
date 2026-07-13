@@ -3,6 +3,9 @@ import {
   Check,
   Headphones,
   Laptop,
+  LogOut,
+  Mic,
+  MicOff,
   Mic2,
   Moon,
   Palette,
@@ -10,6 +13,9 @@ import {
   Square,
   Sun,
   UserRound,
+  Volume2,
+  VolumeX,
+  X,
 } from "lucide-react";
 import {
   useEffect,
@@ -24,7 +30,7 @@ import {
   validateAvatarFile,
   validateDisplayName,
 } from "../../lib/profile-service";
-import type { ThemePreference } from "./appearance-preferences";
+import type { AccentColor, ThemePreference } from "./appearance-preferences";
 
 export type SettingsSection = "profile" | "audio" | "appearance";
 
@@ -38,6 +44,8 @@ interface SettingsPageProps {
   user: AppUser;
   section: SettingsSection;
   themePreference: ThemePreference;
+  accent: AccentColor;
+  accentIntensity: number;
   inputDevices: MediaDeviceInfo[];
   outputDevices: MediaDeviceInfo[];
   cameraDevices: MediaDeviceInfo[];
@@ -50,31 +58,111 @@ interface SettingsPageProps {
   cameraError: string | null;
   inputDisabled: boolean;
   outputSelectionSupported: boolean;
+  voiceStatus: string;
+  voiceChannelName: string | null;
+  voiceMuted: boolean;
+  voiceDeafened: boolean;
   onSectionChange: (section: SettingsSection) => void;
   onThemeChange: (preference: ThemePreference) => void;
+  onAccentChange: (accent: AccentColor, intensity: number) => void;
   onSaveProfile: (input: ProfileSaveInput) => Promise<{ warning?: string }>;
   onInputChange: (deviceId: string) => void;
   onOutputChange: (deviceId: string) => void;
   onCameraChange: (deviceId: string) => void;
   onSoundboardVolumeChange: (volume: number) => void;
+  onToggleMute: () => void;
+  onToggleDeafen: () => void;
+  onLeaveVoice: () => void;
+  onSignOut: () => Promise<void>;
   onClose: () => void;
 }
 
 export function SettingsPage(props: SettingsPageProps) {
+  const { onClose } = props;
+  const dialogRef = useRef<HTMLElement>(null);
+  const signOutDialogRef = useRef<HTMLElement>(null);
+  const staySignedInRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
+  const confirmingRef = useRef(confirmingSignOut);
+
+  useEffect(() => {
+    confirmingRef.current = confirmingSignOut;
+    if (confirmingSignOut) staySignedInRef.current?.focus();
+  }, [confirmingSignOut]);
+
+  useEffect(() => {
+    const returnFocusTo =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    closeRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (confirmingRef.current) setConfirmingSignOut(false);
+        else onClose();
+        return;
+      }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusScope = signOutDialogRef.current ?? dialogRef.current;
+      const focusable = focusScope.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      const first = focusable.item(0);
+      const last = focusable.item(focusable.length - 1);
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      returnFocusTo?.focus();
+    };
+  }, [onClose]);
+
+  async function confirmSignOut() {
+    setSigningOut(true);
+    setSignOutError(null);
+    try {
+      await props.onSignOut();
+    } catch (caught) {
+      setSignOutError(
+        caught instanceof Error ? caught.message : "Sign out failed.",
+      );
+      setSigningOut(false);
+    }
+  }
+
   return (
-    <section className="settings-page">
+    <section
+      ref={dialogRef}
+      className="settings-page"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-title"
+    >
       <header className="settings-page__header">
         <div>
           <span className="eyebrow">Your corner</span>
-          <h1>Settings</h1>
+          <h1 id="settings-title">Settings</h1>
           <p>Make Bakbak feel, sound, and look like your place.</p>
         </div>
         <button
-          className="secondary-button"
+          ref={closeRef}
+          className="settings-close"
           type="button"
           onClick={props.onClose}
+          aria-label="Close settings"
         >
-          <Check size={16} /> Done
+          <X size={20} />
         </button>
       </header>
 
@@ -98,6 +186,51 @@ export function SettingsPage(props: SettingsPageProps) {
             label="Appearance"
             onClick={() => props.onSectionChange("appearance")}
           />
+          <div className="settings-nav__spacer" />
+          {props.voiceStatus !== "disconnected" ? (
+            <div className="settings-call-strip">
+              <span>Connected to</span>
+              <strong>{props.voiceChannelName ?? "Voice room"}</strong>
+              <div>
+                <button
+                  type="button"
+                  aria-label={props.voiceMuted ? "Unmute" : "Mute"}
+                  onClick={props.onToggleMute}
+                >
+                  {props.voiceMuted ? <MicOff size={15} /> : <Mic size={15} />}
+                </button>
+                <button
+                  type="button"
+                  aria-label={props.voiceDeafened ? "Undeafen" : "Deafen"}
+                  onClick={props.onToggleDeafen}
+                >
+                  {props.voiceDeafened ? (
+                    <VolumeX size={15} />
+                  ) : (
+                    <Volume2 size={15} />
+                  )}
+                </button>
+                <button
+                  className="is-danger"
+                  type="button"
+                  aria-label="Leave voice"
+                  onClick={props.onLeaveVoice}
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            </div>
+          ) : null}
+          <button
+            className="settings-logout"
+            type="button"
+            onClick={() => {
+              setSignOutError(null);
+              setConfirmingSignOut(true);
+            }}
+          >
+            <LogOut size={17} /> Log out
+          </button>
         </nav>
 
         <div className="settings-canvas">
@@ -108,11 +241,57 @@ export function SettingsPage(props: SettingsPageProps) {
           {props.section === "appearance" ? (
             <AppearanceSettings
               preference={props.themePreference}
+              accent={props.accent}
+              intensity={props.accentIntensity}
               onChange={props.onThemeChange}
+              onAccentChange={props.onAccentChange}
             />
           ) : null}
         </div>
       </div>
+      {confirmingSignOut ? (
+        <div className="settings-confirm-backdrop" role="presentation">
+          <section
+            ref={signOutDialogRef}
+            className="settings-confirm"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="sign-out-title"
+          >
+            <span className="eyebrow">One last click</span>
+            <h2 id="sign-out-title">Log out of Bakbak?</h2>
+            <p>
+              {props.voiceStatus !== "disconnected"
+                ? "This will also leave your active voice room."
+                : "Your local appearance and device choices will stay on this computer."}
+            </p>
+            {signOutError ? (
+              <p className="settings-error" role="alert">
+                {signOutError}
+              </p>
+            ) : null}
+            <div>
+              <button
+                ref={staySignedInRef}
+                className="secondary-button"
+                type="button"
+                disabled={signingOut}
+                onClick={() => setConfirmingSignOut(false)}
+              >
+                Stay signed in
+              </button>
+              <button
+                className="danger-button"
+                type="button"
+                disabled={signingOut}
+                onClick={() => void confirmSignOut()}
+              >
+                <LogOut size={16} /> {signingOut ? "Logging out…" : "Log out"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -599,10 +778,16 @@ function DeviceSelect({
 
 function AppearanceSettings({
   preference,
+  accent,
+  intensity,
   onChange,
+  onAccentChange,
 }: {
   preference: ThemePreference;
+  accent: AccentColor;
+  intensity: number;
   onChange: (preference: ThemePreference) => void;
+  onAccentChange: (accent: AccentColor, intensity: number) => void;
 }) {
   const options: Array<{
     value: ThemePreference;
@@ -653,6 +838,56 @@ function AppearanceSettings({
           </button>
         ))}
       </div>
+      <section className="accent-settings" aria-labelledby="accent-title">
+        <div>
+          <h3 id="accent-title">Accent colour</h3>
+          <p>One accent adapts itself to both Light and Dark.</p>
+        </div>
+        <div
+          className="accent-options"
+          role="radiogroup"
+          aria-label="Accent colour"
+        >
+          {(
+            [
+              "coral",
+              "purple",
+              "red",
+              "yellow",
+            ] as const satisfies readonly AccentColor[]
+          ).map((option) => (
+            <button
+              className={accent === option ? "is-active" : ""}
+              type="button"
+              role="radio"
+              aria-checked={accent === option}
+              data-accent-option={option}
+              key={option}
+              onClick={() => onAccentChange(option, intensity)}
+            >
+              <i />
+              <span>{option}</span>
+              {accent === option ? <Check size={14} /> : null}
+            </button>
+          ))}
+        </div>
+        <label className="accent-intensity">
+          <span>Accent intensity</span>
+          <strong>{intensity}%</strong>
+          <input
+            type="range"
+            min="25"
+            max="100"
+            step="5"
+            value={intensity}
+            onChange={(event) =>
+              onAccentChange(accent, Number(event.target.value))
+            }
+          />
+          <small>Subtle</small>
+          <small>Vivid</small>
+        </label>
+      </section>
       <div className="theme-preview" aria-hidden="true">
         <div className="theme-preview__shelf">
           <i />

@@ -43,7 +43,6 @@ function renderSidebar(
     onCreateChannel: vi.fn(),
     onRenameChannel: vi.fn(),
     onOpenSettings: vi.fn(),
-    onSignOut: vi.fn(),
     ...overrides,
   };
   render(<ChannelSidebar {...props} />);
@@ -93,6 +92,17 @@ describe("ChannelSidebar room shelf", () => {
     });
 
     expect(screen.getByRole("button", { name: /random/i })).toHaveClass(
+      "channel-row--unread",
+    );
+  });
+
+  it("emphasizes unread voice channels", () => {
+    renderSidebar([voiceChannel], {
+      selectedChannelId: "different-channel",
+      unreadChannelIds: new Set([voiceChannel.id]),
+    });
+
+    expect(screen.getByRole("button", { name: /Lounge/i })).toHaveClass(
       "channel-row--unread",
     );
   });

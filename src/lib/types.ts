@@ -30,13 +30,37 @@ export interface ServerMember extends AppUser {
   role: MembershipRole;
 }
 
+export type MessageSegment =
+  | { type: "text"; text: string }
+  | { type: "mention"; userId: string; fallback: string };
+
+export interface DraftMention {
+  userId: string;
+  fallback: string;
+  start: number;
+  end: number;
+}
+
+export interface MessageDraft {
+  text: string;
+  mentions: DraftMention[];
+}
+
 export interface ChatMessage {
   id: string;
   channelId: string;
   authorId: string;
   body: string;
+  content: MessageSegment[] | null;
   createdAt: string;
   pending?: boolean;
+}
+
+export interface ChannelActivity {
+  channelId: string;
+  latestMessageId: string | null;
+  lastReadMessageId: string | null;
+  hasUnread: boolean;
 }
 
 export interface WorkspaceSnapshot {

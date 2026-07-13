@@ -7,15 +7,18 @@ and phase completion belong in the numbered files under `docs/plans`.
 
 ## Current implementation state
 
-As of 2026-07-12, Bakbak has a complete local/mock product path and production
+As of 2026-07-13, Bakbak has a complete local/mock product path and production
 Supabase and LiveKit adapters. The renderer provides the invite-only welcome
 flow and a Warm Adda shell built around a channel shelf,
-conversation/settings canvas, header avatar cluster, accessible People drawer,
-and one persistent voice bar. Text chat supports Realtime, incoming-message
-sounds, per-channel unread emphasis, and per-channel drafts that survive
-settings and room navigation. In-shell settings cover profile, audio/video, and
-System/Light/Dark appearance; the appearance preference is synchronously
-applied before React renders and follows OS changes in System mode. Profiles
+conversation canvas, full-app settings overlay, header avatar cluster,
+accessible People drawer, and one persistent voice bar. Text and voice channels
+share Realtime chat, structured individual mentions, account-synced unread
+emphasis, incoming-message sounds, and per-channel drafts that survive settings
+and room navigation. Voice rooms add a collapsible chat dock without coupling
+reading or sending to joining the call. Settings cover profile, audio/video,
+appearance, active-call controls, and confirmed logout. System/Light/Dark plus
+Coral/Purple/Red/Yellow accent and intensity preferences are synchronously
+applied before React renders and follow OS changes in System mode. Profiles
 support validated display names plus preview, upload, replace, and removal of
 private avatars. Admin-only controls create or rename text and voice channels,
 while Realtime reconciles changes for every member.
@@ -55,6 +58,16 @@ publication for profiles and channels. The renderer, local mock path, and hosted
 database contract are implemented; the live two-account acceptance run remains
 required before distribution.
 
+The additive
+`202607130001_voice_chat_mentions_and_read_state.sql` migration is implemented,
+validated locally, and deployed to the hosted project. It adds structured
+message content, membership-checked message/read RPCs, private monotonic channel
+read states, activity queries, voice-channel message access, Realtime read-state
+publication, and safe existing/new-membership read baselines. Upgraded clients
+render stable-ID mentions against current profile data while retaining the
+generated plain-text body for older clients. The live two-account acceptance
+matrix remains open.
+
 The Supabase schema, least-privilege grants, Row Level Security policies,
 atomic hashed invite flow, deterministic default rooms, and Realtime
 publication are deployed to the hosted Bakbak project. The protected
@@ -66,8 +79,8 @@ presence is deployed through backward-compatible membership-checked heartbeat
 RPCs, an RLS-filtered heartbeat table, and Postgres Realtime change events.
 Voice join time comes from Postgres, remains stable across heartbeats, clears on
 graceful leave, and expires locally after 55 seconds if a client crashes. The
-clean local schema, invite, RLS, presence, Storage, and catalog suite passes 96
-assertions. Voice
+clean local schema, invite, RLS, presence, Storage, catalog, structured-message,
+and read-state suite passes 167 assertions. Voice
 connections retry once with relay-only ICE after a normal peer-connection
 failure and report a specific TURN/TLS diagnostic if that also fails. The
 tracked token function now accepts an optional backward-compatible purpose.
@@ -158,7 +171,8 @@ bakbak/
 │       ├── 0001-bakbak-desktop-v1.md
 │       ├── 0002-voice-video-and-presence.md
 │       ├── 0003-screen-sharing.md
-│       └── 0004-warm-adda-ui-settings-channels-arm64.md
+│       ├── 0004-warm-adda-ui-settings-channels-arm64.md
+│       └── 0005-voice-chat-mentions-settings-accents.md
 ├── public/
 │   ├── bakbak.svg                 # renderer favicon/source logo
 │   └── theme-init.js              # parser-blocking, CSP-safe first-paint theme bootstrap
@@ -191,12 +205,12 @@ architectural placeholder folders are not used.
 
 ## UI composition
 
-The renderer uses a two-part desktop layout:
+The renderer uses a two-part desktop layout plus an overlay layer:
 
 1. A channel shelf containing the private server's text and voice rooms, the
    signed-in user's identity/actions, voice occupancy, and admin-only create and
    rename controls.
-2. A conversation canvas for chat, voice, settings, empty states, and errors.
+2. A conversation canvas for text chat, voice, empty states, and errors.
    The header shows an avatar cluster and opens the accessible People drawer;
    members no longer consume a permanent third column.
 3. A persistent voice bar remains mounted while connecting, connected, or
@@ -205,6 +219,12 @@ The renderer uses a two-part desktop layout:
 4. The soundboard opens from that bar as a drawer instead of taking permanent
    voice-room space. A single featured share stage remains above participant
    video tiles, with presenter switching when multiple friends share.
+5. Settings opens as a full-app modal overlay rather than a route or canvas
+   replacement. Its left navigation, focus trap/restoration, active-call strip,
+   and confirmed logout preserve the selected channel, drafts, and voice room.
+6. A selected voice room shows an open, collapsible 340 px chat dock at the
+   1280 px layout. At 1024 px it becomes a slide-over drawer so the participant
+   surface keeps its usable width.
 
 The top bar includes an accessible hover/focus connection detail. In live mode
 it measures a Supabase Auth health round trip every 30 seconds and labels the
@@ -212,9 +232,10 @@ publicly configured backend region. Voice is separately labelled India West,
 the observed LiveKit signaling region; it is never presented as the database
 ping. The Warm Adda visual language uses oat/stone light surfaces, charcoal
 dark surfaces, coral actions, teal presence, semantic color tokens, and
-restrained ambient motion. System, Light, and Dark all preserve clear focus,
-readable contrast, reduced-motion behavior, and the supported 1024×680 and
-1280×800 desktop layouts.
+restrained ambient motion. Coral remains the default, with Purple, Red, and
+Yellow device-local alternatives and 25–100% intensity. System, Light, and Dark
+all preserve clear focus, readable contrast, reduced-motion behavior, and the
+supported 1024×680 and 1280×800 desktop layouts.
 
 ## Runtime and trust boundaries
 
@@ -301,7 +322,8 @@ authoritative once Phase 2 starts.
 | `servers`               | owner/admin reference, name, timestamps                                                                                  | Members of the server can read it                                                           |
 | `memberships`           | unique `(server_id, user_id)`; v1 admin/member role                                                                      | A user can read memberships for servers they belong to                                      |
 | `channels`              | `server_id`, trimmed 1–80 character name, ordered position, immutable `text` or `voice` type                             | Members read; matching admins create/rename only through RPCs                               |
-| `messages`              | text-channel ID, author ID, body, timestamps                                                                             | Members can read; members can insert into text channels as themselves                       |
+| `messages`              | text/voice channel ID, author ID, plain-text body, nullable structured text/mention content, timestamps                  | Members read accessible channels; validated inserts use the message RPC                     |
+| `channel_read_states`   | private user/channel key, monotonic last-read message pointer and timestamp                                              | The owner reads through RLS; membership-checked RPCs advance/query state                    |
 | `invite_codes`          | server ID, one-way code digest, creator, expiry, redemption fields                                                       | No broad client read policy; redeemed atomically through a controlled function              |
 | `presence_heartbeats`   | unique server/user row, last seen, nullable voice channel/join time                                                      | Members can read server rows; only security-definer heartbeat RPCs can write                |
 | `soundboard_categories` | server ID, name, ordered position                                                                                        | Members can read; categories are operator managed                                           |
@@ -318,6 +340,14 @@ An invite-management UI is deferred until post-v1.
   membership, and message data.
 - Message authorship is derived from the authenticated user, not trusted from a
   client-supplied user ID.
+- `send_message` accepts only exact text/mention segment shapes, validates the
+  channel and every mentioned profile against the caller's server membership,
+  limits the generated fallback to 4,000 characters and 25 mentions, and writes
+  both structured content and an older-client body.
+- Channel read states are private to their owner. Clients cannot write the
+  table directly; `mark_channel_read` requires channel membership and can only
+  advance a pointer, while `get_channel_activity` exposes activity for one of
+  the caller's servers.
 - Invite redemption is an atomic database operation: validate an unused,
   unexpired code, create the membership, and consume the code in one
   transaction.
@@ -351,13 +381,14 @@ An invite-management UI is deferred until post-v1.
    atomically, then creates membership.
 5. The renderer refreshes membership and channel data.
 
-### Profile and appearance settings
+### Profile, appearance, and overlay settings
 
-1. The renderer applies `bakbak.appearancePreferences.v1` synchronously before
-   mounting React. A local parser-blocking bootstrap sets the first-paint data
-   attributes before the production stylesheet loads; React then installs the
-   System media-query listener. Explicit Light or Dark choices ignore OS
-   changes.
+1. The renderer validates and applies `bakbak.appearancePreferences.v2`
+   synchronously before mounting React. A local parser-blocking bootstrap sets
+   theme, accent, intensity, and theme-specific CSS tokens before the production
+   stylesheet loads; React then installs the System media-query listener.
+   Explicit Light or Dark choices ignore OS changes. A valid v1 theme-only value
+   migrates to Coral at 100% intensity.
 2. Profile edits validate a trimmed 1–50 character display name and an optional
    PNG, JPEG, or WebP avatar no larger than 2 MiB.
 3. A new avatar uploads first to `<user UUID>/<generated UUID>`. The renderer
@@ -373,6 +404,9 @@ An invite-management UI is deferred until post-v1.
    soundboard volume. Opening settings does not request media; microphone and
    output tests acquire only the temporary resources required by the explicit
    test action and release them when stopped or unmounted.
+6. Settings is a modal overlay over the current canvas. It traps focus, restores
+   the opener on close, exposes compact active-call controls, and confirms
+   logout. A failed logout leaves the overlay open with an inline error.
 
 ### Channel management
 
@@ -391,20 +425,30 @@ An invite-management UI is deferred until post-v1.
    position then ID; only the creating client selects a new channel, and
    creating a voice channel never joins it automatically.
 
-### Text chat
+### Text and voice-channel chat
 
-1. A member selects a text channel.
+1. A member selects a text or voice channel. Voice selection opens a chat dock
+   by default; joining the room remains a separate action.
 2. The renderer loads messages through the Supabase client; RLS verifies server
-   membership.
-3. A submitted message is validated, stored with the authenticated author, and
-   committed to Postgres.
+   membership for either channel kind.
+3. A submitted structured draft becomes exact text/mention segments and calls
+   `send_message`. Postgres validates membership, segment shape, size, and each
+   mention before deriving the author and plain-text fallback.
 4. Supabase Realtime broadcasts the committed row to authorized clients.
 5. Clients reconcile realtime events with the loaded message list without
    duplicating optimistic messages.
 6. A committed message from another user plays a short local notification tone.
-   Messages received for a background channel mark that channel unread until it
-   is opened; the selected channel remains read.
-7. Composer text is controlled by the application shell in a per-channel draft
+   `get_channel_activity` compares the latest message with the account's private
+   marker so unread emphasis follows the signed-in user across clients.
+7. A visible selected text chat or open selected voice dock advances the marker
+   through `mark_channel_read`. A collapsed voice dock can therefore become
+   unread while its call surface remains selected. Realtime read-state changes
+   refresh the activity snapshot on other signed-in clients.
+8. Mention ranges are atomic draft metadata. Editing through one converts it to
+   plain text; selecting a member from the accessible `@` combobox stores that
+   member ID. Rendering resolves the current Realtime profile name and uses the
+   segment fallback only when the member is no longer visible.
+9. Composer drafts are controlled by the application shell in a per-channel
    map, so switching rooms or opening settings preserves unfinished messages.
 
 ### Application presence
@@ -537,9 +581,10 @@ cameraDeviceId, soundboardVolume }` under the versioned local-storage key
 `bakbak.devicePreferences.v1`. These identifiers never sync to Supabase. If a
 remembered device is absent, the selector returns to the runtime's default
 device. Chat notification audio deliberately bypasses the selected call output.
-The renderer stores `{ theme: "system" | "light" | "dark" }` separately under
-`bakbak.appearancePreferences.v1`; theme choice is device-local and never part
-of the profile or Supabase schema.
+The renderer stores `{ theme, accent, intensity }` separately under
+`bakbak.appearancePreferences.v2`. Theme is System/Light/Dark, accent is
+Coral/Purple/Red/Yellow, and intensity is a validated 25–100% five-point step.
+Appearance is device-local and never part of the profile or Supabase schema.
 
 ### Desktop release and update
 
@@ -633,9 +678,38 @@ These contracts match the current implementation.
 - **Behavior:** changes only the name; ID, server, kind, position, history, and
   active voice identity remain stable
 
-Text messages and profile updates otherwise use the Supabase table API and
-Realtime under RLS. Private profile images use authenticated Storage operations;
-v1 does not require another custom service endpoint.
+### `POST /rest/v1/rpc/send_message`
+
+- **Authentication:** valid Supabase user session
+- **Request:** `{ "p_channel_id": "<channel-uuid>", "p_content": [segments] }`
+- **Success:** the inserted message row with generated plain-text body and
+  structured content
+- **Validation:** matching text/voice channel membership, 1–100 exact text or
+  mention segments, at most 4,000 fallback characters, at most 25 mentions, and
+  every mentioned UUID belonging to the channel's server
+- **Behavior:** derives the author and current mention fallback names inside the
+  database; direct authenticated message inserts remain unsupported for upgraded
+  clients
+
+### `POST /rest/v1/rpc/get_channel_activity`
+
+- **Authentication:** valid Supabase user session
+- **Request:** `{ "p_server_id": "<server-uuid>" }`
+- **Success:** one row per server channel with latest/read pointers and unread
+  status for messages authored by other users
+- **Validation:** current membership in the requested server
+
+### `POST /rest/v1/rpc/mark_channel_read`
+
+- **Authentication:** valid Supabase user session
+- **Request:** `{ "p_channel_id": "<channel-uuid>", "p_message_id": "<message-uuid>" }`
+- **Success:** the caller's current channel read-state row
+- **Validation:** current membership and a message belonging to that channel
+- **Behavior:** advances by message `(created_at, id)` order and never regresses
+
+Messages, profile updates, and private read-state events use Supabase Realtime
+under RLS. Private profile images use authenticated Storage operations; v1 does
+not require another custom service endpoint.
 
 ## Environment variables
 

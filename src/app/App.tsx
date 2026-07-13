@@ -2,6 +2,7 @@ import {
   CircleAlert,
   Hash,
   MessageCircle,
+  MessageSquareText,
   UserRound,
   Volume2,
 } from "lucide-react";
@@ -18,6 +19,11 @@ import {
 } from "../features/chat/channel-activity";
 import { ChatView } from "../features/chat/ChatView";
 import {
+  draftToSegments,
+  EMPTY_MESSAGE_DRAFT,
+  segmentsToFallback,
+} from "../features/chat/message-content";
+import {
   enableIncomingMessageSound,
   playIncomingMessageSound,
 } from "../features/chat/message-sound";
@@ -25,7 +31,9 @@ import { ConnectionStatus } from "../features/server/ConnectionStatus";
 import { PeopleDrawer } from "../features/server/PeopleDrawer";
 import {
   loadAppearancePreferences,
-  setThemePreference as persistThemePreference,
+  setAppearancePreferences as persistAppearancePreferences,
+  type AccentColor,
+  type AppearancePreferences,
   type ThemePreference,
 } from "../features/settings/appearance-preferences";
 import {
@@ -64,15 +72,19 @@ import type {
   Channel,
   ChannelKind,
   ChatMessage,
+  MessageDraft,
   WorkspaceSnapshot,
   VoiceRoomOccupant,
 } from "../lib/types";
 import {
+  loadLiveChannelActivity,
   loadLiveMessages,
   loadLiveWorkspace,
+  markLiveChannelRead,
   MissingMembershipError,
   sendLiveMessage,
   subscribeToLiveMessages,
+  subscribeToLiveReadStates,
 } from "../lib/workspace-service";
 
 type AppView = "channel" | "settings";
@@ -92,23 +104,28 @@ export default function App() {
   const [activeView, setActiveView] = useState<AppView>("channel");
   const [settingsSection, setSettingsSection] =
     useState<SettingsSection>("profile");
-  const [themePreference, setThemePreference] = useState<ThemePreference>(
-    () => loadAppearancePreferences().theme,
-  );
+  const [appearancePreferences, setAppearancePreferences] =
+    useState<AppearancePreferences>(() => loadAppearancePreferences());
   const [peopleOpen, setPeopleOpen] = useState(false);
   const [soundboardOpen, setSoundboardOpen] = useState(false);
   const [channelDialog, setChannelDialog] = useState<ChannelDialogState>(null);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [drafts, setDrafts] = useState<Record<string, MessageDraft>>({});
+  const [voiceChatOpen, setVoiceChatOpen] = useState(true);
   const [screenShareDialogOpen, setScreenShareDialogOpen] = useState(false);
   const [needsInvite, setNeedsInvite] = useState(false);
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
   const [unreadChannelIds, setUnreadChannelIds] = useState<ReadonlySet<string>>(
     new Set(),
   );
+  const [latestMessageIds, setLatestMessageIds] = useState<
+    Record<string, string | null>
+  >({});
   const [voiceSessions, setVoiceSessions] = useState<VoicePresenceSession[]>(
     [],
   );
   const selectedChannelIdRef = useRef(selectedChannelId);
+  const activeViewRef = useRef(activeView);
+  const voiceChatOpenRef = useRef(voiceChatOpen);
   const presenceSubscriptionRef = useRef<ServerPresenceSubscription | null>(
     null,
   );
@@ -195,6 +212,8 @@ export default function App() {
       setMessages([]);
       setDrafts({});
       setUnreadChannelIds(new Set());
+      setLatestMessageIds({});
+      setVoiceChatOpen(true);
       setVoiceSessions([]);
       setActiveView("channel");
       setPeopleOpen(false);
@@ -431,14 +450,18 @@ export default function App() {
     return latestChannel ? { ...voice, channel: latestChannel } : voice;
   }, [voice, workspace]);
 
-  const textChannelIds = useMemo(
-    () =>
-      workspace?.channels
-        .filter((channel) => channel.kind === "text")
-        .map((channel) => channel.id) ?? [],
+  const channelIds = useMemo(
+    () => workspace?.channels.map((channel) => channel.id) ?? [],
     [workspace?.channels],
   );
-  const textChannelKey = textChannelIds.join("|");
+  const channelKey = channelIds.join("|");
+  const channelKinds = useMemo(
+    () =>
+      new Map(
+        workspace?.channels.map((channel) => [channel.id, channel.kind]) ?? [],
+      ),
+    [workspace?.channels],
+  );
 
   const voiceOccupants = useMemo<VoiceRoomOccupant[]>(() => {
     if (!workspace) return [];
@@ -463,45 +486,96 @@ export default function App() {
 
   useEffect(() => {
     selectedChannelIdRef.current = selectedChannelId;
-    if (selectedChannelId) {
-      setUnreadChannelIds((current) =>
-        markChannelRead(current, selectedChannelId),
-      );
-    }
   }, [selectedChannelId]);
 
   useEffect(() => {
+    activeViewRef.current = activeView;
+  }, [activeView]);
+
+  useEffect(() => {
+    voiceChatOpenRef.current = voiceChatOpen;
+  }, [voiceChatOpen]);
+
+  const refreshChannelActivity = useCallback(async () => {
+    if (
+      appConfig.dataMode !== "live" ||
+      !workspaceServerId ||
+      !signedInUserId
+    ) {
+      return;
+    }
+    const activity = await loadLiveChannelActivity(workspaceServerId);
+    setLatestMessageIds(
+      Object.fromEntries(
+        activity.map((item) => [item.channelId, item.latestMessageId]),
+      ),
+    );
+    setUnreadChannelIds(
+      new Set(
+        activity.filter((item) => item.hasUnread).map((item) => item.channelId),
+      ),
+    );
+  }, [signedInUserId, workspaceServerId]);
+
+  useEffect(() => {
+    if (appConfig.dataMode !== "live" || !workspaceServerId) return;
+    void refreshChannelActivity().catch(() => undefined);
+  }, [refreshChannelActivity, workspaceServerId]);
+
+  useEffect(() => {
     if (appConfig.dataMode !== "live" || !signedInUserId) return;
-    const channelIds = textChannelKey ? textChannelKey.split("|") : [];
-    const unsubscribers = channelIds.map((channelId) =>
+    return subscribeToLiveReadStates(signedInUserId, () => {
+      void refreshChannelActivity().catch(() => undefined);
+    });
+  }, [refreshChannelActivity, signedInUserId]);
+
+  useEffect(() => {
+    if (appConfig.dataMode !== "live" || !signedInUserId) return;
+    const subscribedChannelIds = channelKey ? channelKey.split("|") : [];
+    const unsubscribers = subscribedChannelIds.map((channelId) =>
       subscribeToLiveMessages(channelId, (message) => {
-        if (message.channelId === selectedChannelIdRef.current) {
+        const selected = message.channelId === selectedChannelIdRef.current;
+        const visible =
+          selected &&
+          activeViewRef.current === "channel" &&
+          (channelKinds.get(message.channelId) === "text" ||
+            voiceChatOpenRef.current);
+        if (selected) {
           setMessages((current) =>
             current.some((item) => item.id === message.id)
               ? current
               : [...current, message],
           );
         }
-        setUnreadChannelIds((current) =>
-          unreadChannelsAfterMessage(
-            current,
-            message,
-            selectedChannelIdRef.current,
-            signedInUserId,
-          ),
-        );
+        setLatestMessageIds((current) => ({
+          ...current,
+          [message.channelId]: message.id,
+        }));
+        if (visible || message.authorId === signedInUserId) {
+          setUnreadChannelIds((current) =>
+            markChannelRead(current, message.channelId),
+          );
+          if (visible) {
+            void markLiveChannelRead(message.channelId, message.id).catch(
+              () => undefined,
+            );
+          }
+        } else {
+          setUnreadChannelIds((current) =>
+            unreadChannelsAfterMessage(current, message, "", signedInUserId),
+          );
+        }
         if (shouldPlayIncomingMessageSound(message, signedInUserId)) {
           void playIncomingMessageSound();
         }
       }),
     );
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
-  }, [signedInUserId, textChannelKey]);
+  }, [channelKey, channelKinds, signedInUserId]);
 
-  const selectedTextChannelId =
-    selectedChannel?.kind === "text" ? selectedChannel.id : null;
+  const selectedMessageChannelId = selectedChannel?.id ?? null;
   useEffect(() => {
-    if (!signedInUserId || !selectedTextChannelId) return;
+    if (!signedInUserId || !selectedMessageChannelId) return;
     let cancelled = false;
     setAppError(null);
     const load = async () => {
@@ -509,16 +583,18 @@ export default function App() {
         const nextMessages =
           appConfig.dataMode === "mock"
             ? mockMessages.filter(
-                (message) => message.channelId === selectedTextChannelId,
+                (message) => message.channelId === selectedMessageChannelId,
               )
-            : await loadLiveMessages(selectedTextChannelId);
+            : await loadLiveMessages(selectedMessageChannelId);
         if (!cancelled) {
           setMessages((current) => {
             const byId = new Map(
               nextMessages.map((message) => [message.id, message]),
             );
             current
-              .filter((message) => message.channelId === selectedTextChannelId)
+              .filter(
+                (message) => message.channelId === selectedMessageChannelId,
+              )
               .forEach((message) => byId.set(message.id, message));
             return [...byId.values()].sort(
               (left, right) =>
@@ -541,11 +617,28 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [selectedTextChannelId, signedInUserId]);
+  }, [selectedMessageChannelId, signedInUserId]);
+
+  useEffect(() => {
+    if (!selectedChannel || activeView !== "channel") return;
+    if (selectedChannel.kind === "voice" && !voiceChatOpen) return;
+    const latestMessageId = latestMessageIds[selectedChannel.id];
+    setUnreadChannelIds((current) =>
+      markChannelRead(current, selectedChannel.id),
+    );
+    if (appConfig.dataMode === "live" && latestMessageId) {
+      void markLiveChannelRead(selectedChannel.id, latestMessageId).catch(
+        () => undefined,
+      );
+    }
+  }, [activeView, latestMessageIds, selectedChannel, voiceChatOpen]);
 
   const handleSend = useCallback(
-    async (body: string) => {
-      if (!user || !selectedChannel || selectedChannel.kind !== "text") return;
+    async (draft: MessageDraft) => {
+      if (!user || !selectedChannel) return;
+      const content = draftToSegments(draft);
+      const body = segmentsToFallback(content);
+      if (!body) return;
       setSending(true);
       setAppError(null);
       const optimisticId = `pending-${crypto.randomUUID()}`;
@@ -554,6 +647,7 @@ export default function App() {
         channelId: selectedChannel.id,
         authorId: user.id,
         body,
+        content,
         createdAt: new Date().toISOString(),
         pending: true,
       };
@@ -573,7 +667,7 @@ export default function App() {
             ),
           );
         } else {
-          const saved = await sendLiveMessage(selectedChannel.id, body);
+          const saved = await sendLiveMessage(selectedChannel.id, content);
           setMessages((current) => [
             ...current.filter(
               (message) =>
@@ -581,6 +675,13 @@ export default function App() {
             ),
             saved,
           ]);
+          setLatestMessageIds((current) => ({
+            ...current,
+            [selectedChannel.id]: saved.id,
+          }));
+          void markLiveChannelRead(selectedChannel.id, saved.id).catch(
+            () => undefined,
+          );
         }
       } catch (caught) {
         setMessages((current) =>
@@ -659,8 +760,15 @@ export default function App() {
   }
 
   function handleThemeChange(preference: ThemePreference) {
-    setThemePreference(preference);
-    persistThemePreference(preference);
+    const next = { ...appearancePreferences, theme: preference };
+    setAppearancePreferences(next);
+    persistAppearancePreferences(next);
+  }
+
+  function handleAccentChange(accent: AccentColor, intensity: number) {
+    const next = { ...appearancePreferences, accent, intensity };
+    setAppearancePreferences(next);
+    persistAppearancePreferences(next);
   }
 
   async function handleCreateChannel(kind: ChannelKind, name: string) {
@@ -719,10 +827,10 @@ export default function App() {
       try {
         await signOut();
       } catch (caught) {
-        setAppError(
-          caught instanceof Error ? caught.message : "Sign out failed.",
-        );
-        return;
+        const error =
+          caught instanceof Error ? caught : new Error("Sign out failed.");
+        setAppError(error.message);
+        throw error;
       }
     }
     setUser(null);
@@ -730,8 +838,8 @@ export default function App() {
 
   function handleSelectChannel(channel: Channel) {
     selectedChannelIdRef.current = channel.id;
-    setUnreadChannelIds((current) => markChannelRead(current, channel.id));
     setSelectedChannelId(channel.id);
+    if (channel.kind === "voice") setVoiceChatOpen(true);
     setActiveView("channel");
     setPeopleOpen(false);
   }
@@ -767,7 +875,7 @@ export default function App() {
           setNeedsInvite(false);
           setWorkspaceRevision((current) => current + 1);
         }}
-        onSignOut={() => void handleSignOut()}
+        onSignOut={() => void handleSignOut().catch(() => undefined)}
       />
     );
   }
@@ -787,7 +895,7 @@ export default function App() {
           <button
             className="secondary-button"
             type="button"
-            onClick={() => void handleSignOut()}
+            onClick={() => void handleSignOut().catch(() => undefined)}
           >
             Back to sign in
           </button>
@@ -801,7 +909,7 @@ export default function App() {
       <ChannelSidebar
         server={workspace.server}
         channels={workspace.channels}
-        selectedChannelId={activeView === "channel" ? selectedChannel.id : ""}
+        selectedChannelId={selectedChannel.id}
         user={user}
         voiceOccupants={voiceOccupants}
         unreadChannelIds={unreadChannelIds}
@@ -812,14 +920,13 @@ export default function App() {
           setChannelDialog({ mode: "rename", channel })
         }
         onOpenSettings={() => openSettings("profile")}
-        onSignOut={() => void handleSignOut()}
       />
       <main
         className={`content-shell ${visibleVoice.status !== "disconnected" ? "has-voice-bar" : ""}`}
       >
         <TopBar
           channel={selectedChannel}
-          view={activeView}
+          view="channel"
           members={workspace.members}
           mode={appConfig.dataMode}
           voiceConnected={voice.status === "connected"}
@@ -836,42 +943,7 @@ export default function App() {
             </div>
           ) : null}
           <div className="content-grid">
-            {activeView === "settings" ? (
-              <SettingsPage
-                user={user}
-                section={settingsSection}
-                themePreference={themePreference}
-                inputDevices={voice.inputDevices}
-                outputDevices={voice.outputDevices}
-                cameraDevices={voice.cameraDevices}
-                selectedInputId={voice.selectedInputId}
-                selectedOutputId={voice.selectedOutputId}
-                selectedCameraId={voice.selectedCameraId}
-                soundboardVolume={voice.soundboardVolume}
-                inputError={voice.inputDeviceError}
-                outputError={voice.outputDeviceError}
-                cameraError={voice.cameraDeviceError}
-                outputSelectionSupported={voice.outputSelectionSupported}
-                inputDisabled={
-                  voice.status === "connecting" ||
-                  voice.status === "reconnecting"
-                }
-                onSectionChange={setSettingsSection}
-                onThemeChange={handleThemeChange}
-                onSaveProfile={handleSaveProfile}
-                onInputChange={(deviceId) =>
-                  void voice.setInputDevice(deviceId)
-                }
-                onOutputChange={(deviceId) =>
-                  void voice.setOutputDevice(deviceId)
-                }
-                onCameraChange={(deviceId) =>
-                  void voice.setCameraDevice(deviceId)
-                }
-                onSoundboardVolumeChange={voice.setSoundboardVolume}
-                onClose={() => setActiveView("channel")}
-              />
-            ) : selectedChannel.kind === "text" ? (
+            {selectedChannel.kind === "text" ? (
               <ChatView
                 channel={selectedChannel}
                 messages={messages.filter(
@@ -880,7 +952,7 @@ export default function App() {
                 members={workspace.members}
                 currentUser={user}
                 sending={sending}
-                draft={drafts[selectedChannel.id] ?? ""}
+                draft={drafts[selectedChannel.id] ?? EMPTY_MESSAGE_DRAFT}
                 onDraftChange={(draft) =>
                   setDrafts((current) => ({
                     ...current,
@@ -890,16 +962,56 @@ export default function App() {
                 onSend={handleSend}
               />
             ) : (
-              <VoiceRoom
-                channel={selectedChannel}
-                user={user}
-                members={workspace.members}
-                voice={voice}
-                occupants={voiceOccupants.filter(
-                  (occupant) => occupant.channelId === selectedChannel.id,
-                )}
-                onOpenSettings={() => openSettings("audio")}
-              />
+              <div
+                className={`voice-channel-layout ${voiceChatOpen ? "is-chat-open" : ""}`}
+              >
+                <VoiceRoom
+                  channel={selectedChannel}
+                  user={user}
+                  members={workspace.members}
+                  voice={voice}
+                  occupants={voiceOccupants.filter(
+                    (occupant) => occupant.channelId === selectedChannel.id,
+                  )}
+                  onOpenSettings={() => openSettings("audio")}
+                />
+                <button
+                  className={`voice-chat-toggle ${unreadChannelIds.has(selectedChannel.id) ? "has-unread" : ""}`}
+                  type="button"
+                  aria-expanded={voiceChatOpen}
+                  aria-controls="voice-chat-dock"
+                  onClick={() => setVoiceChatOpen((open) => !open)}
+                >
+                  <MessageSquareText size={16} />
+                  {voiceChatOpen ? "Hide chat" : "Show chat"}
+                </button>
+                {voiceChatOpen ? (
+                  <aside
+                    className="voice-chat-dock"
+                    id="voice-chat-dock"
+                    aria-label={`${selectedChannel.name} chat`}
+                  >
+                    <ChatView
+                      compact
+                      channel={selectedChannel}
+                      messages={messages.filter(
+                        (message) => message.channelId === selectedChannel.id,
+                      )}
+                      members={workspace.members}
+                      currentUser={user}
+                      sending={sending}
+                      draft={drafts[selectedChannel.id] ?? EMPTY_MESSAGE_DRAFT}
+                      onDraftChange={(draft) =>
+                        setDrafts((current) => ({
+                          ...current,
+                          [selectedChannel.id]: draft,
+                        }))
+                      }
+                      onSend={handleSend}
+                    />
+                  </aside>
+                ) : null}
+              </div>
             )}
           </div>
         </div>
@@ -963,6 +1075,46 @@ export default function App() {
               : handleRenameChannel(channelDialog.channel, name)
           }
           onClose={() => setChannelDialog(null)}
+        />
+      ) : null}
+      {activeView === "settings" ? (
+        <SettingsPage
+          user={user}
+          section={settingsSection}
+          themePreference={appearancePreferences.theme}
+          accent={appearancePreferences.accent}
+          accentIntensity={appearancePreferences.intensity}
+          inputDevices={voice.inputDevices}
+          outputDevices={voice.outputDevices}
+          cameraDevices={voice.cameraDevices}
+          selectedInputId={voice.selectedInputId}
+          selectedOutputId={voice.selectedOutputId}
+          selectedCameraId={voice.selectedCameraId}
+          soundboardVolume={voice.soundboardVolume}
+          inputError={voice.inputDeviceError}
+          outputError={voice.outputDeviceError}
+          cameraError={voice.cameraDeviceError}
+          outputSelectionSupported={voice.outputSelectionSupported}
+          inputDisabled={
+            voice.status === "connecting" || voice.status === "reconnecting"
+          }
+          voiceStatus={voice.status}
+          voiceChannelName={voice.channel?.name ?? null}
+          voiceMuted={voice.muted}
+          voiceDeafened={voice.deafened}
+          onToggleMute={voice.toggleMute}
+          onToggleDeafen={voice.toggleDeafen}
+          onLeaveVoice={() => void voice.leave()}
+          onSectionChange={setSettingsSection}
+          onThemeChange={handleThemeChange}
+          onAccentChange={handleAccentChange}
+          onSaveProfile={handleSaveProfile}
+          onInputChange={(deviceId) => void voice.setInputDevice(deviceId)}
+          onOutputChange={(deviceId) => void voice.setOutputDevice(deviceId)}
+          onCameraChange={(deviceId) => void voice.setCameraDevice(deviceId)}
+          onSoundboardVolumeChange={voice.setSoundboardVolume}
+          onSignOut={handleSignOut}
+          onClose={() => setActiveView("channel")}
         />
       ) : null}
     </div>
