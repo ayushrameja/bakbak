@@ -1,4 +1,4 @@
-import { Hash, LogOut, Pencil, Plus, Settings, Volume2 } from "lucide-react";
+import { Hash, Pencil, Plus, Settings, Volume2 } from "lucide-react";
 import { Avatar } from "../../components/Avatar";
 import type {
   AppUser,
@@ -21,7 +21,6 @@ interface ChannelSidebarProps {
   onCreateChannel: (kind: ChannelKind) => void;
   onRenameChannel: (channel: Channel) => void;
   onOpenSettings: () => void;
-  onSignOut: () => void;
 }
 
 export function ChannelSidebar({
@@ -36,7 +35,6 @@ export function ChannelSidebar({
   onCreateChannel,
   onRenameChannel,
   onOpenSettings,
-  onSignOut,
 }: ChannelSidebarProps) {
   const textChannels = channels.filter((channel) => channel.kind === "text");
   const voiceChannels = channels.filter((channel) => channel.kind === "voice");
@@ -90,7 +88,7 @@ export function ChannelSidebar({
                 return (
                   <div className="channel-row-stack">
                     <button
-                      className={`channel-row ${selectedChannelId === channel.id ? "active" : ""}`}
+                      className={`channel-row ${selectedChannelId === channel.id ? "active" : ""} ${unreadChannelIds.has(channel.id) ? "channel-row--unread" : ""}`}
                       type="button"
                       onClick={() => onSelect(channel)}
                     >
@@ -140,9 +138,6 @@ export function ChannelSidebar({
         </div>
         <button type="button" onClick={onOpenSettings} aria-label="Settings">
           <Settings size={16} />
-        </button>
-        <button type="button" onClick={onSignOut} aria-label="Sign out">
-          <LogOut size={16} />
         </button>
       </div>
     </aside>

@@ -3,7 +3,9 @@ import { getSupabaseClient } from "./supabase";
 import type {
   AppUser,
   Channel,
+  ChannelActivity,
   ChatMessage,
+  MessageSegment,
   ServerMember,
   WorkspaceSnapshot,
 } from "./types";
@@ -38,7 +40,55 @@ interface MessageRow {
   channel_id: string;
   author_id: string;
   body: string;
+  content: unknown;
   created_at: string;
+}
+
+interface ChannelActivityRow {
+  channel_id: string;
+  latest_message_id: string | null;
+  last_read_message_id: string | null;
+  has_unread: boolean;
+}
+
+interface ChannelReadStateRow {
+  user_id: string;
+  channel_id: string;
+  last_read_message_id: string;
+  updated_at: string;
+}
+
+function parseMessageContent(value: unknown): MessageSegment[] | null {
+  if (!Array.isArray(value)) return null;
+  const rawSegments = value as unknown[];
+  const segments: MessageSegment[] = [];
+  for (const segment of rawSegments) {
+    if (!segment || typeof segment !== "object" || !("type" in segment)) {
+      return null;
+    }
+    if (
+      segment.type === "text" &&
+      "text" in segment &&
+      typeof segment.text === "string"
+    ) {
+      segments.push({ type: "text", text: segment.text });
+    } else if (
+      segment.type === "mention" &&
+      "user_id" in segment &&
+      "fallback" in segment &&
+      typeof segment.user_id === "string" &&
+      typeof segment.fallback === "string"
+    ) {
+      segments.push({
+        type: "mention",
+        userId: segment.user_id,
+        fallback: segment.fallback,
+      });
+    } else {
+      return null;
+    }
+  }
+  return segments;
 }
 
 export class MissingMembershipError extends Error {
@@ -54,6 +104,7 @@ function messageFromRow(row: MessageRow): ChatMessage {
     channelId: row.channel_id,
     authorId: row.author_id,
     body: row.body,
+    content: parseMessageContent(row.content),
     createdAt: row.created_at,
   };
 }
@@ -145,7 +196,7 @@ export async function loadLiveMessages(
 ): Promise<ChatMessage[]> {
   const { data, error } = await getSupabaseClient()
     .from("messages")
-    .select("id,channel_id,author_id,body,created_at")
+    .select("id,channel_id,author_id,body,content,created_at")
     .eq("channel_id", channelId)
     .order("created_at")
     .limit(200)
@@ -156,15 +207,85 @@ export async function loadLiveMessages(
 
 export async function sendLiveMessage(
   channelId: string,
-  body: string,
+  content: MessageSegment[],
 ): Promise<ChatMessage> {
   const { data, error } = await getSupabaseClient()
-    .from("messages")
-    .insert({ channel_id: channelId, body: body.trim() })
-    .select("id,channel_id,author_id,body,created_at")
+    .rpc("send_message", {
+      p_channel_id: channelId,
+      p_content: content.map((segment) =>
+        segment.type === "text"
+          ? segment
+          : {
+              type: "mention",
+              user_id: segment.userId,
+              fallback: segment.fallback,
+            },
+      ),
+    })
+    .select("id,channel_id,author_id,body,content,created_at")
     .single<MessageRow>();
   if (error) throw error;
   return messageFromRow(data);
+}
+
+export async function loadLiveChannelActivity(
+  serverId: string,
+): Promise<ChannelActivity[]> {
+  const response: unknown = await getSupabaseClient().rpc(
+    "get_channel_activity",
+    { p_server_id: serverId },
+  );
+  const { data, error } = response as { data: unknown; error: unknown };
+  if (error) {
+    throw new Error("Could not load channel activity.", { cause: error });
+  }
+  const rows = (data ?? []) as unknown as ChannelActivityRow[];
+  return rows.map((row) => ({
+    channelId: row.channel_id,
+    latestMessageId: row.latest_message_id,
+    lastReadMessageId: row.last_read_message_id,
+    hasUnread: row.has_unread,
+  }));
+}
+
+export async function markLiveChannelRead(
+  channelId: string,
+  messageId: string,
+): Promise<void> {
+  const { error } = await getSupabaseClient().rpc("mark_channel_read", {
+    p_channel_id: channelId,
+    p_message_id: messageId,
+  });
+  if (error) throw error;
+}
+
+export function subscribeToLiveReadStates(
+  userId: string,
+  onReadState: (channelId: string, lastReadMessageId: string) => void,
+): () => void {
+  const supabase = getSupabaseClient();
+  const channel: RealtimeChannel = supabase
+    .channel(`channel-read-states:${userId}`)
+    .on<ChannelReadStateRow>(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "channel_read_states",
+        filter: `user_id=eq.${userId}`,
+      },
+      (payload) => {
+        const row = payload.new;
+        if (row && "channel_id" in row) {
+          onReadState(row.channel_id, row.last_read_message_id);
+        }
+      },
+    )
+    .subscribe();
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
 }
 
 export function subscribeToLiveMessages(

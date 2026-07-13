@@ -1550,3 +1550,120 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
   only post-build JavaScript verification and Action version pinning.
 - **Next:** Commit and push the fix, then confirm the next Desktop release run
   publishes draft `v0.5.0` and completes its protected-branch version-sync PR.
+
+## 2026-07-13 — Add voice chat, stable mentions, overlay settings, and accents
+
+- **Completed:** Added structured text/mention content with older-client body
+  fallbacks, secured message/activity/read RPCs, private monotonic read states,
+  voice-channel message access, Realtime read synchronization, and safe history
+  baselines for existing and newly invited members. Refactored chat into a
+  shared text/voice surface with an accessible member combobox and dynamic
+  stable-ID mention rendering. Added the responsive voice-chat dock and shared
+  text/voice unread styling. Replaced the in-canvas settings surface with a
+  full-app focus-trapped overlay, kept compact call controls available, moved
+  confirmed logout into its navigation, and preserved selected channels,
+  drafts, and calls. Added v2 local appearance preferences with Coral, Purple,
+  Red, and Yellow accents plus 25–100% intensity, including first-paint
+  application and v1 migration. Removed only the radial gradient from the app
+  loading state.
+- **Decisions:** Keep message `body` as the compatibility fallback while the
+  database owns structured-content validation and current mention fallback
+  names. Treat only messages by another user as unread. Advance read state only
+  when the relevant chat is actually visible, so a selected voice room with a
+  collapsed dock can become unread. Keep appearance device-local, use one accent
+  across themes, and calculate separate accessible foreground/surface/focus
+  tokens instead of reducing control contrast with intensity. Keep the new
+  migration local until the browser-plus-native rollout is explicitly started.
+- **Validation:**
+  - `CI=true pnpm dlx supabase@latest db reset` — passed and applied all tracked
+    migrations through
+    `202607130001_voice_chat_mentions_and_read_state.sql` to a clean local
+    database.
+  - `CI=true pnpm dlx supabase@latest db lint --local --schema public,private`
+    — passed with no schema errors.
+  - `CI=true pnpm dlx supabase@latest test db` — passed all seven pgTAP files
+    with 167 assertions, including same-server voice messages, malformed and
+    cross-server mention rejection, private/monotonic markers, size and
+    mention-count bounds, unread activity, and existing/new-member baselines.
+    Supabase and Colima were stopped after validation.
+  - Initial `CI=true pnpm check` — stopped before project checks because pnpm
+    tried to recreate `node_modules` and sandbox DNS blocked the registry. The
+    frozen lockfile was restored with the approved network path. The next run
+    reached lint and identified 12 unsafe structured-content reads plus two
+    warnings; those parsing, hook dependency, and Fast Refresh issues were
+    corrected.
+  - Final `CI=true pnpm check` — passed formatting, zero-warning lint, strict
+    TypeScript, 33 Vitest files with 150 tests, 10 release-script tests, version
+    synchronization, production build, and compiled-artifact secret scanning.
+    The existing non-blocking renderer chunk warning remains.
+  - In-app browser mock QA — passed mention lookup/selection, the full settings
+    overlay, runtime accent tokens, a right-side voice-chat dock at 1280×800,
+    and its slide-over form at 1024×680 with no console errors. This check caught
+    and corrected an inherited voice-room grid rule that initially pushed the
+    dock below the room.
+  - `cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check` — passed.
+  - `cargo test --locked --offline --manifest-path src-tauri/Cargo.toml --lib`
+    — passed all six native tests.
+  - `cargo check --locked --offline --manifest-path src-tauri/Cargo.toml` —
+    passed.
+  - `CI=true pnpm tauri:build:local` — passed and produced the current
+    ad-hoc-signed Apple Silicon `Bakbak.app`; notarization was skipped because
+    distribution credentials are unavailable.
+  - `codesign --verify --deep --strict --verbose=4
+src-tauri/target/release/bundle/macos/Bakbak.app` — passed. `file` reported a
+    Mach-O 64-bit arm64 executable, `lipo -archs` reported `arm64`, and the
+    post-build `pnpm security:scan` passed for `dist` and the release bundle.
+- **Documentation updated:** Added
+  `docs/plans/0005-voice-chat-mentions-settings-accents.md`; updated
+  `docs/architecture.md`, `docs/plans/0001-bakbak-desktop-v1.md`, and this
+  canonical progress log.
+- **Known limitations:** The additive plan 0005 migration is validated locally
+  but not deployed to hosted Supabase. The canonical live browser-plus-native
+  two-account run still needs to verify voice-chat delivery, cross-client read
+  synchronization, historical mention rename propagation, active-call settings
+  continuity, reduced motion, and the full Light/Dark accent-intensity matrix.
+  The local macOS app is ad-hoc signed and not notarized; Windows was not built
+  locally. Mention-only notifications and `@everyone` remain intentionally out
+  of scope.
+- **Next:** Dry-run and deploy migration `202607130001` to the linked hosted
+  Supabase project, restart both upgraded clients, then complete plan 0005's
+  browser-plus-native two-account acceptance matrix before distribution.
+
+## 2026-07-13 — Deploy voice-chat, mention, and read-state migration
+
+- **Completed:** Inspected the native-client failure showing “Messages could not
+  be loaded,” verified the upgraded renderer was ahead of the hosted schema, and
+  confirmed `202607130001_voice_chat_mentions_and_read_state.sql` was the only
+  pending migration. Dry-ran and deployed that migration through the repository's
+  existing linked Supabase project, then verified the hosted migration ledger
+  matches every tracked local migration through `202607130001`.
+- **Decisions:** Applied only the single migration named by both the ledger and
+  dry run. Did not alter Auth users, invite codes, LiveKit, Storage objects, Edge
+  Functions, or existing message history. Kept anonymous table access denied;
+  an anonymous REST probe correctly received `42501` instead of weakening RLS
+  merely to make a diagnostic request pass.
+- **Validation:**
+  - Initial `CI=true pnpm dlx supabase@latest migration list` — passed; local and
+    remote histories matched through `202607120003`, with only `202607130001`
+    pending remotely.
+  - `CI=true pnpm dlx supabase@latest db push --dry-run` — passed and named only
+    `202607130001_voice_chat_mentions_and_read_state.sql`.
+  - `CI=true pnpm dlx supabase@latest db push` — passed and applied the single
+    migration to the linked hosted database.
+  - Final `CI=true pnpm dlx supabase@latest migration list` — passed; local and
+    remote histories match through `202607130001`.
+  - Anonymous hosted REST probe for `messages.id,content` — reached the hosted
+    API and returned the expected `42501 permission denied for table messages`;
+    anonymous access remains closed. The signed-in native client must be
+    refreshed to complete user-session verification.
+- **Documentation updated:** `docs/architecture.md`,
+  `docs/plans/0001-bakbak-desktop-v1.md`,
+  `docs/plans/0005-voice-chat-mentions-settings-accents.md`, and this canonical
+  progress log.
+- **Known limitations:** The hosted transaction and ledger are verified, but the
+  current signed-in native session has not yet been refreshed and observed after
+  deployment. The full browser-plus-native two-account delivery, read-sync, and
+  historical mention-rename acceptance matrix remains open.
+- **Next:** Fully quit and reopen Bakbak, select a text channel, and send one
+  message. Then open a voice-channel chat and complete the plan 0005 two-account
+  read-state and rename-propagation rehearsal.

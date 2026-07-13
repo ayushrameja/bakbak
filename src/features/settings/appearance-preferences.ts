@@ -1,10 +1,15 @@
-export const APPEARANCE_PREFERENCES_KEY = "bakbak.appearancePreferences.v1";
+export const APPEARANCE_PREFERENCES_KEY = "bakbak.appearancePreferences.v2";
+export const LEGACY_APPEARANCE_PREFERENCES_KEY =
+  "bakbak.appearancePreferences.v1";
 
 export type ThemePreference = "system" | "light" | "dark";
 export type ResolvedTheme = Exclude<ThemePreference, "system">;
+export type AccentColor = "coral" | "purple" | "red" | "yellow";
 
 export interface AppearancePreferences {
   theme: ThemePreference;
+  accent: AccentColor;
+  intensity: number;
 }
 
 interface StorageLike {
@@ -18,15 +23,44 @@ interface AppearanceEnvironment {
   matchMedia?: (query: string) => MediaQueryList;
 }
 
-const DEFAULT_PREFERENCES: AppearancePreferences = { theme: "system" };
+export const DEFAULT_APPEARANCE_PREFERENCES: AppearancePreferences = {
+  theme: "system",
+  accent: "coral",
+  intensity: 100,
+};
 const SYSTEM_DARK_QUERY = "(prefers-color-scheme: dark)";
 const THEME_COLORS: Record<ResolvedTheme, string> = {
   light: "#f3ede3",
   dark: "#211e1b",
 };
+const ACCENT_HUES: Record<AccentColor, number> = {
+  coral: 12,
+  purple: 276,
+  red: 355,
+  yellow: 44,
+};
 
 function isThemePreference(value: unknown): value is ThemePreference {
   return value === "system" || value === "light" || value === "dark";
+}
+
+function isAccentColor(value: unknown): value is AccentColor {
+  return (
+    value === "coral" ||
+    value === "purple" ||
+    value === "red" ||
+    value === "yellow"
+  );
+}
+
+function isIntensity(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 25 &&
+    value <= 100 &&
+    value % 5 === 0
+  );
 }
 
 function browserDocument(): Document | undefined {
@@ -34,10 +68,7 @@ function browserDocument(): Document | undefined {
 }
 
 function browserStorage(): StorageLike | undefined {
-  if (typeof window === "undefined") {
-    return undefined;
-  }
-
+  if (typeof window === "undefined") return undefined;
   try {
     return window.localStorage;
   } catch {
@@ -46,10 +77,7 @@ function browserStorage(): StorageLike | undefined {
 }
 
 function browserMatchMedia(): ((query: string) => MediaQueryList) | undefined {
-  if (typeof window === "undefined" || !window.matchMedia) {
-    return undefined;
-  }
-
+  if (typeof window === "undefined" || !window.matchMedia) return undefined;
   return window.matchMedia.bind(window);
 }
 
@@ -64,44 +92,60 @@ function environmentWithDefaults(
     AppearanceEnvironment;
 }
 
+function readStoredPreferences(storage: StorageLike, key: string): unknown {
+  return JSON.parse(storage.getItem(key) ?? "null") as unknown;
+}
+
 export function loadAppearancePreferences(
   storage: StorageLike | undefined = browserStorage(),
 ): AppearancePreferences {
-  if (!storage) {
-    return DEFAULT_PREFERENCES;
-  }
-
+  if (!storage) return DEFAULT_APPEARANCE_PREFERENCES;
   try {
-    const value: unknown = JSON.parse(
-      storage.getItem(APPEARANCE_PREFERENCES_KEY) ?? "null",
-    );
+    const value = readStoredPreferences(storage, APPEARANCE_PREFERENCES_KEY);
     if (
       value &&
       typeof value === "object" &&
       "theme" in value &&
-      isThemePreference(value.theme)
+      "accent" in value &&
+      "intensity" in value &&
+      isThemePreference(value.theme) &&
+      isAccentColor(value.accent) &&
+      isIntensity(value.intensity)
     ) {
-      return { theme: value.theme };
+      return {
+        theme: value.theme,
+        accent: value.accent,
+        intensity: value.intensity,
+      };
+    }
+
+    const legacy = readStoredPreferences(
+      storage,
+      LEGACY_APPEARANCE_PREFERENCES_KEY,
+    );
+    if (
+      legacy &&
+      typeof legacy === "object" &&
+      "theme" in legacy &&
+      isThemePreference(legacy.theme)
+    ) {
+      return { ...DEFAULT_APPEARANCE_PREFERENCES, theme: legacy.theme };
     }
   } catch {
-    // A corrupt or inaccessible preference should never block app startup.
+    // Corrupt or inaccessible preferences must never block startup.
   }
-
-  return DEFAULT_PREFERENCES;
+  return DEFAULT_APPEARANCE_PREFERENCES;
 }
 
 export function saveAppearancePreferences(
   preferences: AppearancePreferences,
   storage: StorageLike | undefined = browserStorage(),
 ): void {
-  if (!storage) {
-    return;
-  }
-
+  if (!storage) return;
   try {
     storage.setItem(APPEARANCE_PREFERENCES_KEY, JSON.stringify(preferences));
   } catch {
-    // Applying a theme still works when persistence is unavailable.
+    // Applying an appearance still works when persistence is unavailable.
   }
 }
 
@@ -109,31 +153,73 @@ export function resolveThemePreference(
   preference: ThemePreference,
   matchMedia: AppearanceEnvironment["matchMedia"] = browserMatchMedia(),
 ): ResolvedTheme {
-  if (preference !== "system") {
-    return preference;
-  }
-
+  if (preference !== "system") return preference;
   return matchMedia?.(SYSTEM_DARK_QUERY).matches ? "dark" : "light";
 }
 
-export function applyThemePreference(
-  preference: ThemePreference,
+export function accentTokens(
+  accent: AccentColor,
+  intensity: number,
+  theme: ResolvedTheme,
+) {
+  const hue = ACCENT_HUES[accent];
+  const strength = Math.max(25, Math.min(100, intensity)) / 100;
+  const saturation = Math.round(35 + strength * 48);
+  const yellow = accent === "yellow";
+  const lightness = yellow
+    ? theme === "light"
+      ? 38
+      : 63
+    : theme === "light"
+      ? 44
+      : 63;
+  const brightLightness = yellow
+    ? theme === "light"
+      ? 33
+      : 70
+    : theme === "light"
+      ? 39
+      : 69;
+  const alpha = (0.07 + strength * 0.09).toFixed(3);
+  const borderAlpha = (0.25 + strength * 0.3).toFixed(3);
+  return {
+    accent: `hsl(${hue} ${saturation}% ${lightness}%)`,
+    bright: `hsl(${hue} ${Math.min(92, saturation + 6)}% ${brightLightness}%)`,
+    soft: `hsl(${hue} ${saturation}% ${lightness}% / ${alpha})`,
+    border: `hsl(${hue} ${saturation}% ${lightness}% / ${borderAlpha})`,
+    glow: `hsl(${hue} ${saturation}% ${lightness}% / ${(0.035 + strength * 0.055).toFixed(3)})`,
+    onAccent: yellow ? "#211e1b" : "#fffaf2",
+  };
+}
+
+export function applyAppearancePreferences(
+  preferences: AppearancePreferences,
   environment: AppearanceEnvironment = {},
 ): ResolvedTheme {
   const resolvedTheme = resolveThemePreference(
-    preference,
+    preferences.theme,
     environment.matchMedia ?? browserMatchMedia(),
   );
   const targetDocument = environment.document ?? browserDocument();
-
-  if (!targetDocument) {
-    return resolvedTheme;
-  }
+  if (!targetDocument) return resolvedTheme;
 
   const root = targetDocument.documentElement;
+  const tokens = accentTokens(
+    preferences.accent,
+    preferences.intensity,
+    resolvedTheme,
+  );
   root.dataset.theme = resolvedTheme;
-  root.dataset.themePreference = preference;
+  root.dataset.themePreference = preferences.theme;
+  root.dataset.accent = preferences.accent;
+  root.dataset.accentIntensity = String(preferences.intensity);
   root.style.colorScheme = resolvedTheme;
+  root.style.setProperty("--accent", tokens.accent);
+  root.style.setProperty("--accent-bright", tokens.bright);
+  root.style.setProperty("--accent-soft", tokens.soft);
+  root.style.setProperty("--accent-border", tokens.border);
+  root.style.setProperty("--canvas-glow", tokens.glow);
+  root.style.setProperty("--on-accent", tokens.onAccent);
 
   let themeColor = targetDocument.querySelector<HTMLMetaElement>(
     'meta[name="theme-color"]',
@@ -144,8 +230,16 @@ export function applyThemePreference(
     targetDocument.head.append(themeColor);
   }
   themeColor.content = THEME_COLORS[resolvedTheme];
-
   return resolvedTheme;
+}
+
+export function setAppearancePreferences(
+  preferences: AppearancePreferences,
+  environment: AppearanceEnvironment = {},
+): ResolvedTheme {
+  const resolvedEnvironment = environmentWithDefaults(environment);
+  saveAppearancePreferences(preferences, resolvedEnvironment.storage);
+  return applyAppearancePreferences(preferences, resolvedEnvironment);
 }
 
 export function setThemePreference(
@@ -153,36 +247,39 @@ export function setThemePreference(
   environment: AppearanceEnvironment = {},
 ): ResolvedTheme {
   const resolvedEnvironment = environmentWithDefaults(environment);
-  saveAppearancePreferences({ theme: preference }, resolvedEnvironment.storage);
-  return applyThemePreference(preference, resolvedEnvironment);
+  const current = loadAppearancePreferences(resolvedEnvironment.storage);
+  return setAppearancePreferences(
+    { ...current, theme: preference },
+    resolvedEnvironment,
+  );
 }
 
-/**
- * Synchronously applies the stored theme before React renders, then keeps a
- * System preference in sync with the operating system. Call the returned
- * cleanup when the application is torn down.
- */
+export function applyThemePreference(
+  preference: ThemePreference,
+  environment: AppearanceEnvironment = {},
+): ResolvedTheme {
+  return applyAppearancePreferences(
+    { ...loadAppearancePreferences(environment.storage), theme: preference },
+    environment,
+  );
+}
+
 export function initializeAppearancePreferences(
   environment: AppearanceEnvironment = {},
 ): () => void {
   const resolvedEnvironment = environmentWithDefaults(environment);
   const preferences = loadAppearancePreferences(resolvedEnvironment.storage);
-  applyThemePreference(preferences.theme, resolvedEnvironment);
-
+  applyAppearancePreferences(preferences, resolvedEnvironment);
   const mediaQuery = resolvedEnvironment.matchMedia?.(SYSTEM_DARK_QUERY);
-  if (!mediaQuery) {
-    return () => undefined;
-  }
+  if (!mediaQuery) return () => undefined;
 
   const handleSystemThemeChange = () => {
     const latest = loadAppearancePreferences(resolvedEnvironment.storage);
     if (latest.theme === "system") {
-      applyThemePreference("system", resolvedEnvironment);
+      applyAppearancePreferences(latest, resolvedEnvironment);
     }
   };
-
   mediaQuery.addEventListener("change", handleSystemThemeChange);
-  return () => {
+  return () =>
     mediaQuery.removeEventListener("change", handleSystemThemeChange);
-  };
 }

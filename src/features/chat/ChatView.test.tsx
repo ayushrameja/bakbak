@@ -1,7 +1,12 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { AppUser, Channel, ServerMember } from "../../lib/types";
+import type {
+  AppUser,
+  Channel,
+  ChatMessage,
+  ServerMember,
+} from "../../lib/types";
 import { ChatView } from "./ChatView";
 
 const user: AppUser = {
@@ -32,15 +37,57 @@ describe("ChatView controlled drafts", () => {
         members={[member]}
         currentUser={user}
         sending={false}
-        draft="still writing this"
+        draft={{ text: "still writing this", mentions: [] }}
         onDraftChange={onDraftChange}
         onSend={onSend}
       />,
     );
 
-    expect(screen.getByRole("textbox")).toHaveValue("still writing this");
+    expect(screen.getByRole("combobox")).toHaveValue("still writing this");
     await userEvent.click(screen.getByRole("button", { name: "Send message" }));
-    expect(onDraftChange).toHaveBeenCalledWith("");
-    expect(onSend).toHaveBeenCalledWith("still writing this");
+    expect(onDraftChange).toHaveBeenCalledWith({ text: "", mentions: [] });
+    expect(onSend).toHaveBeenCalledWith({
+      text: "still writing this",
+      mentions: [],
+    });
+  });
+
+  it("inserts a stable mention and renders its current profile name", async () => {
+    const renamedMember: ServerMember = {
+      ...member,
+      id: "user-2",
+      displayName: "New Mira",
+    };
+    const message: ChatMessage = {
+      id: "message-1",
+      channelId: channel.id,
+      authorId: user.id,
+      body: "Hello @Old Mira",
+      content: [
+        { type: "text", text: "Hello " },
+        { type: "mention", userId: renamedMember.id, fallback: "Old Mira" },
+      ],
+      createdAt: new Date().toISOString(),
+    };
+    render(
+      <ChatView
+        channel={channel}
+        messages={[message]}
+        members={[member, renamedMember]}
+        currentUser={user}
+        sending={false}
+        draft={{ text: "@New", mentions: [] }}
+        onDraftChange={vi.fn()}
+        onSend={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    expect(screen.getByText("@New Mira")).toHaveAttribute(
+      "data-user-id",
+      renamedMember.id,
+    );
+
+    const composer = screen.getByRole("combobox");
+    await userEvent.click(composer);
+    expect(screen.getByRole("option", { name: /New Mira/ })).toBeVisible();
   });
 });

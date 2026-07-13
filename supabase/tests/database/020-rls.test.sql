@@ -77,11 +77,9 @@ select lives_ok(
   $$insert into public.messages (channel_id, body) values ('00000000-0000-4000-8000-000000000101', 'Allowed member message')$$,
   'member can insert into an accessible text channel'
 );
-select throws_ok(
+select lives_ok(
   $$insert into public.messages (channel_id, body) values ('00000000-0000-4000-8000-000000000201', 'Not a voice message')$$,
-  '42501',
-  'new row violates row-level security policy for table "messages"',
-  'member cannot insert a message into a voice channel'
+  'member can insert a message into an accessible voice channel'
 );
 select throws_ok(
   $$insert into public.memberships (server_id, user_id) values ('00000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000003')$$,

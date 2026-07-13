@@ -137,6 +137,9 @@ Desktop screen sharing is now an approved Phase 5 follow-up under
 The Warm Adda redesign, settings/profile work, admin channel management, and
 Apple-Silicon-only release boundary are approved under
 `0004-warm-adda-ui-settings-channels-arm64.md`.
+Voice-channel chat, stable-ID mentions, account-synced unread state, the
+full-app settings overlay, and local accent themes are approved under
+`0005-voice-chat-mentions-settings-accents.md`.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -146,8 +149,16 @@ Apple-Silicon-only release boundary are approved under
 - [ ] Add desktop notifications and tray controls.
 - [x] Add locally persisted microphone, speaker, and camera preferences.
 - [x] Add System, Light, and Dark appearance preferences applied before render.
-- [x] Add in-shell Profile, Audio & Video, and Appearance settings while
+- [x] Add Profile, Audio & Video, and Appearance settings while
       preserving per-channel chat drafts and active voice state.
+- [x] Add a full-app Discord-style settings overlay with active-call controls
+      and move confirmed logout into its navigation.
+- [x] Add Coral, Purple, Red, and Yellow device-local accents with 25–100%
+      intensity and pre-render application.
+- [x] Add text chat to voice channels with account-synced unread markers.
+- [x] Add structured individual mentions backed by stable profile IDs.
+- [x] Deploy the plan 0005 migration to hosted Supabase.
+- [ ] Complete the plan 0005 browser-plus-native two-account acceptance run.
 - [x] Add the People drawer, consolidated voice bar, and soundboard drawer.
 - [x] Add private profile-avatar and admin channel-management code plus focused
       frontend/database tests under plan 0004.

@@ -22,27 +22,29 @@ describe("App navigation state", () => {
       screen.getByRole("button", { name: "Enter the preview" }),
     );
 
-    const lobbyDraft = await screen.findByRole("textbox", {
+    const lobbyDraft = await screen.findByRole("combobox", {
       name: "Message #lobby",
     });
     await userEvent.type(lobbyDraft, "tea-fuelled thought");
     await userEvent.click(screen.getByRole("button", { name: "Settings" }));
     await screen.findByRole("heading", { name: "Settings" });
-    await userEvent.click(screen.getByRole("button", { name: "Done" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Close settings" }),
+    );
     expect(
-      await screen.findByRole("textbox", { name: "Message #lobby" }),
+      await screen.findByRole("combobox", { name: "Message #lobby" }),
     ).toHaveValue("tea-fuelled thought");
 
     await userEvent.click(
       screen.getByRole("button", { name: "what-we-are-building" }),
     );
-    const buildingDraft = await screen.findByRole("textbox", {
+    const buildingDraft = await screen.findByRole("combobox", {
       name: "Message #what-we-are-building",
     });
     await userEvent.type(buildingDraft, "second room, same brain");
     await userEvent.click(screen.getByRole("button", { name: "lobby" }));
     expect(
-      await screen.findByRole("textbox", { name: "Message #lobby" }),
+      await screen.findByRole("combobox", { name: "Message #lobby" }),
     ).toHaveValue("tea-fuelled thought");
   });
 });

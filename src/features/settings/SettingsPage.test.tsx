@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { AppUser } from "../../lib/types";
@@ -21,6 +21,8 @@ function renderSettings(
     user,
     section,
     themePreference: "system",
+    accent: "coral",
+    accentIntensity: 100,
     inputDevices: [],
     outputDevices: [],
     cameraDevices: [],
@@ -33,13 +35,22 @@ function renderSettings(
     cameraError: null,
     inputDisabled: false,
     outputSelectionSupported: false,
+    voiceStatus: "disconnected",
+    voiceChannelName: null,
+    voiceMuted: false,
+    voiceDeafened: false,
     onSectionChange: vi.fn(),
     onThemeChange: vi.fn(),
+    onAccentChange: vi.fn(),
     onSaveProfile: vi.fn().mockResolvedValue({}),
     onInputChange: vi.fn(),
     onOutputChange: vi.fn(),
     onCameraChange: vi.fn(),
     onSoundboardVolumeChange: vi.fn(),
+    onToggleMute: vi.fn(),
+    onToggleDeafen: vi.fn(),
+    onLeaveVoice: vi.fn(),
+    onSignOut: vi.fn().mockResolvedValue(undefined),
     onClose: vi.fn(),
     ...overrides,
   };
@@ -237,5 +248,73 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("radio", { name: /System/ })).toBeChecked();
     await userEvent.click(screen.getByRole("radio", { name: /Light/ }));
     expect(onThemeChange).toHaveBeenCalledWith("light");
+  });
+
+  it("changes accent colour and intensity", async () => {
+    const onAccentChange = vi.fn();
+    renderSettings("appearance", { onAccentChange });
+    await userEvent.click(screen.getByRole("radio", { name: /Purple/i }));
+    expect(onAccentChange).toHaveBeenCalledWith("purple", 100);
+    fireEvent.change(
+      screen.getByRole("slider", { name: /Accent intensity/i }),
+      { target: { value: "60" } },
+    );
+    expect(onAccentChange).toHaveBeenCalledWith("coral", 60);
+  });
+
+  it("traps focus, closes with Escape, and restores the opener", () => {
+    const opener = document.createElement("button");
+    opener.textContent = "Open settings";
+    document.body.append(opener);
+    opener.focus();
+    const onClose = vi.fn();
+    const { unmount } = renderSettings("profile", { onClose });
+    const dialog = screen.getByRole("dialog", { name: "Settings" });
+    const closeButton = screen.getByRole("button", {
+      name: "Close settings",
+    });
+    expect(closeButton).toHaveFocus();
+
+    const focusable = dialog.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    );
+    const last = focusable.item(focusable.length - 1);
+    last.focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(closeButton).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledOnce();
+    unmount();
+    expect(opener).toHaveFocus();
+    opener.remove();
+  });
+
+  it("keeps logout inside settings and confirms an active call exit", async () => {
+    const onSignOut = vi.fn().mockResolvedValue(undefined);
+    renderSettings("profile", {
+      voiceStatus: "connected",
+      voiceChannelName: "Lounge",
+      onSignOut,
+    });
+    expect(screen.getByText("Lounge")).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Log out" }));
+    expect(screen.getByText(/leave your active voice room/i)).toBeVisible();
+    const logoutButtons = screen.getAllByRole("button", { name: /Log out/i });
+    await userEvent.click(logoutButtons.at(-1)!);
+    expect(onSignOut).toHaveBeenCalledOnce();
+  });
+
+  it("keeps settings open and reports a failed logout inline", async () => {
+    const onSignOut = vi.fn().mockRejectedValue(new Error("Session is busy."));
+    renderSettings("profile", { onSignOut });
+    await userEvent.click(screen.getByRole("button", { name: "Log out" }));
+    const logoutButtons = screen.getAllByRole("button", { name: /Log out/i });
+    await userEvent.click(logoutButtons.at(-1)!);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Session is busy.",
+    );
+    expect(screen.getByRole("alertdialog")).toBeVisible();
   });
 });
