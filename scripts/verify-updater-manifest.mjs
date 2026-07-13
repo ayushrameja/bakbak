@@ -1,7 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
-const requiredTargets = ["darwin-aarch64", "windows-x86_64"];
+const requiredTargets = {
+  "darwin-aarch64": ["darwin-aarch64", "darwin-aarch64-app"],
+  "windows-x86_64": ["windows-x86_64", "windows-x86_64-nsis"],
+};
 const forbiddenTargetPrefixes = ["darwin-x86_64"];
 
 function matchesTarget(key, target) {
@@ -29,36 +32,29 @@ export function verifyUpdaterManifest(manifest, expectedVersion) {
     );
   }
 
-  const unsupportedKey = platformKeys.find(
-    (key) => !requiredTargets.some((target) => matchesTarget(key, target)),
-  );
+  const supportedKeys = new Set(Object.values(requiredTargets).flat());
+  const unsupportedKey = platformKeys.find((key) => !supportedKeys.has(key));
   if (unsupportedKey) {
     throw new Error(
       `Updater manifest contains unsupported target ${unsupportedKey}.`,
     );
   }
 
-  for (const target of requiredTargets) {
-    const matchingKeys = platformKeys.filter((key) =>
-      matchesTarget(key, target),
-    );
+  for (const [target, aliases] of Object.entries(requiredTargets)) {
+    const matchingKeys = aliases.filter((key) => platformKeys.includes(key));
     if (matchingKeys.length === 0) {
       throw new Error(
         `Updater manifest is missing ${target}. Found: ${platformKeys.join(", ") || "<none>"}.`,
       );
     }
-    if (matchingKeys.length > 1) {
-      throw new Error(
-        `Updater manifest contains multiple ${target} entries: ${matchingKeys.join(", ")}.`,
-      );
-    }
 
-    const [matchingKey] = matchingKeys;
-    const entry = manifest.platforms[matchingKey];
-    if (!entry?.url || !entry?.signature) {
-      throw new Error(
-        `Updater manifest entry ${matchingKey} lacks a URL or signature.`,
-      );
+    for (const matchingKey of matchingKeys) {
+      const entry = manifest.platforms[matchingKey];
+      if (!entry?.url || !entry?.signature) {
+        throw new Error(
+          `Updater manifest entry ${matchingKey} lacks a URL or signature.`,
+        );
+      }
     }
   }
 }

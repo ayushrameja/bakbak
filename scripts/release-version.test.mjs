@@ -50,7 +50,7 @@ test("manual releases override a skip label", () => {
   });
 });
 
-test("validates only Apple Silicon macOS and Windows updater targets", () => {
+test("validates Tauri's generic and bundle-specific updater targets", () => {
   const entry = { signature: "signed", url: "https://example.com/update" };
   assert.doesNotThrow(() =>
     verifyUpdaterManifest(
@@ -58,11 +58,34 @@ test("validates only Apple Silicon macOS and Windows updater targets", () => {
         version: "0.2.1",
         platforms: {
           "darwin-aarch64": entry,
+          "darwin-aarch64-app": entry,
+          "windows-x86_64": entry,
           "windows-x86_64-nsis": entry,
         },
       },
       "0.2.1",
     ),
+  );
+});
+
+test("validates every supported updater alias", () => {
+  const entry = { signature: "signed", url: "https://example.com/update" };
+
+  assert.throws(
+    () =>
+      verifyUpdaterManifest(
+        {
+          version: "0.2.1",
+          platforms: {
+            "darwin-aarch64": entry,
+            "darwin-aarch64-app": { url: entry.url },
+            "windows-x86_64": entry,
+            "windows-x86_64-nsis": entry,
+          },
+        },
+        "0.2.1",
+      ),
+    /entry darwin-aarch64-app lacks a URL or signature/,
   );
 });
 
@@ -95,6 +118,17 @@ test("rejects Intel macOS and other unsupported updater targets", () => {
       ),
     /unsupported target linux-x86_64/,
   );
+  assert.throws(
+    () =>
+      verifyUpdaterManifest(
+        {
+          version: "0.2.1",
+          platforms: { ...supportedPlatforms, "darwin-aarch64-dmg": entry },
+        },
+        "0.2.1",
+      ),
+    /unsupported target darwin-aarch64-dmg/,
+  );
 });
 
 test("release builds only Apple Silicon macOS and Windows installers", async () => {
@@ -117,6 +151,10 @@ test("release builds only Apple Silicon macOS and Windows installers", async () 
   assert.match(workflow, /test "\$intel_macos_count" -eq 0/);
   assert.match(workflow, /test "\$exe_count" -eq 1/);
   assert.match(workflow, /Intel Mac users remain on Bakbak v0\.4\.0/);
+  assert.match(
+    workflow,
+    /tauri-apps\/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f/,
+  );
 });
 
 test("published releases synchronize their version through a protected-branch PR", async () => {

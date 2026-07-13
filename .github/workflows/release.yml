@@ -141,7 +141,7 @@ jobs:
           workspaces: ./src-tauri -> target
       - run: pnpm install --frozen-lockfile
       - run: node scripts/set-version.mjs ${{ needs.prepare.outputs.version }}
-      - uses: tauri-apps/tauri-action@v1
+      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
         env:
           GITHUB_TOKEN: ${{ github.token }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
