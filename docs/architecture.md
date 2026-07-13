@@ -109,7 +109,11 @@ The Tauri metadata, window sizing, Content Security Policy, minimal capability
 set, Bakbak icons, microphone/camera/screen-capture purpose strings, audio-input
 plus camera entitlements, and signed updater are configured. GitHub Actions
 validate pull requests and prepare versioned macOS Apple Silicon and Windows
-x64 releases. The macOS release job uses an explicit macOS 26 arm64 host
+x64 releases. The release build pins Tauri Action v1.0.0 by immutable commit.
+Updater manifest verification accepts Tauri's generic platform keys together
+with the bundle-specific `darwin-aarch64-app` and `windows-x86_64-nsis`
+aliases, validates every included alias has a URL and signature, and rejects
+all other targets. The macOS release job uses an explicit macOS 26 arm64 host
 because the transitive `apple-metal` Swift bridge requires macOS 26 SDK
 symbols; the built application's deployment minimum remains macOS 12.3. Bakbak
 v0.4.0 is the final Intel macOS release, and the release workflow rejects Intel

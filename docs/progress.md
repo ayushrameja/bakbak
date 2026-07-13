@@ -1501,3 +1501,52 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
   the plan 0004 two-account profile/channel rehearsal. If login still fails,
   capture the exact visible error plus the browser/native console entry before
   changing Auth or invite data.
+
+## 2026-07-13 — Accept Tauri updater manifest aliases
+
+- **Completed:** Diagnosed Desktop release run `29220835128` and confirmed its
+  validation, Apple Silicon, and Windows jobs passed while publish failed only
+  because the repository verifier treated Tauri Action's generic and
+  bundle-specific updater keys as duplicates. Downloaded the draft `v0.5.0`
+  `latest.json`, confirmed it contains `darwin-aarch64`,
+  `darwin-aarch64-app`, `windows-x86_64`, and `windows-x86_64-nsis`, then
+  updated verification to accept only those aliases and validate every included
+  entry. Pinned Tauri Action v1.0.0 to immutable commit
+  `1deb371b0cd8bd54025b384f1cd735e725c4060f`.
+- **Decisions:** Preserve generic keys for updater compatibility while allowing
+  only the observed App and NSIS bundle aliases; do not broadly accept arbitrary
+  target suffixes. Keep Intel macOS rejection ahead of the general unsupported
+  target check, and require a URL and signature on every accepted alias so an
+  invalid duplicate cannot hide behind a valid generic entry.
+- **Validation:**
+  - `gh run view 29220835128 --json ...` and `gh run view 29220835128
+--log-failed` — confirmed `prepare`, `validate`, macOS Apple Silicon, and
+    Windows x64 passed; only publish's manifest verifier failed on the two macOS
+    aliases.
+  - `gh release view v0.5.0 --json ...` and `gh release download v0.5.0
+--pattern latest.json ...` — passed; confirmed the draft has one DMG, one
+    Windows installer, their signed updater artifacts, and the four expected
+    manifest keys.
+  - `node --test scripts/release-version.test.mjs scripts/set-version.test.mjs`
+    — passed all 10 focused release tests, including the four-key manifest,
+    per-alias signature validation, unsupported suffix rejection, and immutable
+    Action pin.
+  - `node scripts/verify-updater-manifest.mjs
+/tmp/bakbak-v0.5.0-manifest/latest.json 0.5.0` — passed against the exact
+    manifest that failed in the hosted publish job.
+  - Initial `pnpm check` — failed only because Prettier requested formatting in
+    `scripts/verify-updater-manifest.mjs`; the touched files were formatted and
+    the complete command was rerun.
+  - Final `pnpm check` — passed formatting, zero-warning lint, strict
+    TypeScript, 32 Vitest files with 138 tests, 10 release-script tests, version
+    synchronization, production build, and compiled-artifact secret scanning.
+    The existing non-blocking renderer chunk warning remains.
+- **Documentation updated:** `docs/architecture.md` and `docs/progress.md`; the
+  accepted scope and phase criteria did not change, so no plan checkbox moved.
+- **Known limitations:** The patched verifier passes the downloaded hosted
+  manifest, but GitHub Actions has not yet rerun the publish and version-sync
+  jobs from a commit containing this fix. Tauri bundle builds were not rerun
+  locally because both hosted build jobs already passed and this change affects
+  only post-build JavaScript verification and Action version pinning.
+- **Next:** Commit and push the fix, then confirm the next Desktop release run
+  publishes draft `v0.5.0` and completes its protected-branch version-sync PR.
