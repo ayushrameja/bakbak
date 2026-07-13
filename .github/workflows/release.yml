@@ -117,11 +117,7 @@ jobs:
           - name: macOS Apple Silicon
             platform: macos-26
             args: --target aarch64-apple-darwin --bundles app,dmg
-            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
-          - name: macOS Intel
-            platform: macos-26-intel
-            args: --target x86_64-apple-darwin --bundles app,dmg
-            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+            rust-targets: aarch64-apple-darwin
           - name: Windows x64
             platform: windows-latest
             args: --bundles nsis
@@ -153,7 +149,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: Bakbak v__VERSION__
-          releaseBody: Install the build for your platform. Existing updater-enabled Bakbak installations will offer this release in-app.
+          releaseBody: Install on an Apple Silicon Mac or Windows x64 PC. Intel Mac users remain on Bakbak v0.4.0. Existing supported updater-enabled installations will offer this release in-app.
           releaseCommitish: ${{ github.sha }}
           releaseDraft: true
           prerelease: false
@@ -191,9 +187,13 @@ jobs:
         run: |
           assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
           dmg_count="$(printf '%s\n' "$assets" | grep -c '\.dmg$' || true)"
+          arm_dmg_count="$(printf '%s\n' "$assets" | grep -Eic '(aarch64|arm64).*\.dmg$' || true)"
+          intel_macos_count="$(printf '%s\n' "$assets" | grep -Eic '(x86_64|x64).*(\.dmg|\.app\.tar\.gz(\.sig)?)$' || true)"
           exe_count="$(printf '%s\n' "$assets" | grep -c '\.exe$' || true)"
-          test "$dmg_count" -ge 2
-          test "$exe_count" -ge 1
+          test "$dmg_count" -eq 1
+          test "$arm_dmg_count" -eq 1
+          test "$intel_macos_count" -eq 0
+          test "$exe_count" -eq 1
       - name: Publish verified release
         env:
           GH_TOKEN: ${{ github.token }}

@@ -98,69 +98,11 @@ describe("VoiceRoom audio recovery", () => {
           },
         ]}
         onOpenSettings={vi.fn()}
-        onOpenScreenShare={vi.fn()}
       />,
     );
 
     expect(screen.getByText("Already in Lounge")).toBeVisible();
     expect(screen.getByText("Mira")).toBeVisible();
-  });
-
-  it("turns camera on from the connected call controls", async () => {
-    const toggleCamera = vi.fn().mockResolvedValue(undefined);
-    render(
-      <VoiceRoom
-        channel={channel}
-        user={user}
-        voice={createVoice({ toggleCamera })}
-        occupants={[]}
-        onOpenSettings={vi.fn()}
-        onOpenScreenShare={vi.fn()}
-      />,
-    );
-    await userEvent.click(screen.getByRole("button", { name: /Start video/i }));
-    expect(toggleCamera).toHaveBeenCalledOnce();
-  });
-
-  it("opens the native-share confirmation from call controls", async () => {
-    const onOpenScreenShare = vi.fn();
-    render(
-      <VoiceRoom
-        channel={channel}
-        user={user}
-        voice={createVoice({ screenShareAvailable: true })}
-        occupants={[]}
-        onOpenSettings={vi.fn()}
-        onOpenScreenShare={onOpenScreenShare}
-      />,
-    );
-
-    await userEvent.click(screen.getByRole("button", { name: "Share screen" }));
-    expect(onOpenScreenShare).toHaveBeenCalledOnce();
-  });
-
-  it("stops an active share without coupling it to camera state", async () => {
-    const stopScreenShare = vi.fn().mockResolvedValue(undefined);
-    render(
-      <VoiceRoom
-        channel={channel}
-        user={user}
-        voice={createVoice({
-          cameraEnabled: true,
-          screenShareAvailable: true,
-          screenShareEnabled: true,
-          screenShareState: "sharing",
-          stopScreenShare,
-        })}
-        occupants={[]}
-        onOpenSettings={vi.fn()}
-        onOpenScreenShare={vi.fn()}
-      />,
-    );
-
-    await userEvent.click(screen.getByRole("button", { name: "Stop share" }));
-    expect(stopScreenShare).toHaveBeenCalledOnce();
-    expect(screen.getByRole("button", { name: /Stop video/i })).toBeEnabled();
   });
 
   it("offers an Enable audio action when autoplay is blocked", async () => {
@@ -174,7 +116,6 @@ describe("VoiceRoom audio recovery", () => {
         voice={voice}
         occupants={[]}
         onOpenSettings={vi.fn()}
-        onOpenScreenShare={vi.fn()}
       />,
     );
 
@@ -183,36 +124,12 @@ describe("VoiceRoom audio recovery", () => {
     expect(resumeAudio).toHaveBeenCalledOnce();
   });
 
-  it("still sends soundboard events while the local listener is deafened", async () => {
-    const dispatchSound = vi.fn().mockResolvedValue(undefined);
-    const voice = createVoice({ deafened: true, dispatchSound });
-
-    render(
-      <VoiceRoom
-        channel={channel}
-        user={user}
-        voice={voice}
-        occupants={[]}
-        onOpenSettings={vi.fn()}
-        onOpenScreenShare={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByText("Sending silently")).toBeVisible();
-    await userEvent.click(screen.getByRole("button", { name: "Aye" }));
-    expect(dispatchSound).toHaveBeenCalledWith(
-      "00000000-0000-4000-8000-000000002001",
-    );
-  });
-
-  it("waits for undeafen before offering blocked-audio recovery", async () => {
-    const toggleDeafen = vi.fn().mockResolvedValue(undefined);
+  it("waits for the persistent control bar to undeafen before audio recovery", () => {
     const resumeAudio = vi.fn().mockResolvedValue(undefined);
     const voice = createVoice({
       audioPlaybackBlocked: true,
       deafened: true,
       resumeAudio,
-      toggleDeafen,
     });
 
     render(
@@ -222,7 +139,6 @@ describe("VoiceRoom audio recovery", () => {
         voice={voice}
         occupants={[]}
         onOpenSettings={vi.fn()}
-        onOpenScreenShare={vi.fn()}
       />,
     );
 
@@ -235,8 +151,6 @@ describe("VoiceRoom audio recovery", () => {
       screen.queryByRole("button", { name: "Enable audio" }),
     ).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Undeafen" }));
-    expect(toggleDeafen).toHaveBeenCalledOnce();
     expect(resumeAudio).not.toHaveBeenCalled();
   });
 });

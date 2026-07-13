@@ -7,6 +7,7 @@ export interface AppUser {
   displayName: string;
   email: string;
   avatarUrl: string | null;
+  avatarPath?: string | null;
   status: "online" | "idle" | "offline";
 }
 
@@ -42,6 +43,7 @@ export interface WorkspaceSnapshot {
   server: Server;
   channels: Channel[];
   members: ServerMember[];
+  currentUserRole: MembershipRole;
 }
 
 export interface VoiceRoomOccupant {

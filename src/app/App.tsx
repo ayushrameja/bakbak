@@ -1,7 +1,15 @@
-import { CircleAlert, Hash, MessageCircle, Users, Volume2 } from "lucide-react";
+import {
+  CircleAlert,
+  Hash,
+  MessageCircle,
+  UserRound,
+  Volume2,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Avatar } from "../components/Avatar";
 import { AuthScreen } from "../features/auth/AuthScreen";
 import { InviteGate } from "../features/auth/InviteGate";
+import { ChannelDialog } from "../features/channels/ChannelDialog";
 import { ChannelSidebar } from "../features/channels/ChannelSidebar";
 import {
   markChannelRead,
@@ -13,17 +21,39 @@ import {
   enableIncomingMessageSound,
   playIncomingMessageSound,
 } from "../features/chat/message-sound";
-import { MemberList } from "../features/server/MemberList";
 import { ConnectionStatus } from "../features/server/ConnectionStatus";
-import { SettingsModal } from "../features/settings/SettingsModal";
+import { PeopleDrawer } from "../features/server/PeopleDrawer";
+import {
+  loadAppearancePreferences,
+  setThemePreference as persistThemePreference,
+  type ThemePreference,
+} from "../features/settings/appearance-preferences";
+import {
+  SettingsPage,
+  type ProfileSaveInput,
+  type SettingsSection,
+} from "../features/settings/SettingsPage";
+import { Soundboard } from "../features/soundboard/Soundboard";
 import { useSoundboardCatalog } from "../features/soundboard/useSoundboardCatalog";
-import { VoiceRoom } from "../features/voice/VoiceRoom";
 import { ScreenShareDialog } from "../features/voice/ScreenShareDialog";
+import { VoiceControlBar } from "../features/voice/VoiceControlBar";
+import { VoiceRoom } from "../features/voice/VoiceRoom";
 import { useVoiceRoom } from "../features/voice/useVoiceRoom";
 import { sessionToAppUser, signOut } from "../lib/auth-service";
+import {
+  createLiveChannel,
+  reconcileChannels,
+  renameLiveChannel,
+  subscribeToLiveChannels,
+} from "../lib/channel-service";
 import { appConfig } from "../lib/env";
 import { mockCurrentUser, mockMessages, mockWorkspace } from "../lib/mock-data";
 import { getSupabaseClient } from "../lib/supabase";
+import {
+  downloadAvatarObjectUrl,
+  saveLiveProfile,
+  subscribeToProfileChanges,
+} from "../lib/profile-service";
 import {
   subscribeToServerPresence,
   type ServerPresenceSubscription,
@@ -32,6 +62,7 @@ import {
 import type {
   AppUser,
   Channel,
+  ChannelKind,
   ChatMessage,
   WorkspaceSnapshot,
   VoiceRoomOccupant,
@@ -44,6 +75,12 @@ import {
   subscribeToLiveMessages,
 } from "../lib/workspace-service";
 
+type AppView = "channel" | "settings";
+type ChannelDialogState =
+  | { mode: "create"; kind: ChannelKind }
+  | { mode: "rename"; channel: Channel }
+  | null;
+
 export default function App() {
   const [user, setUser] = useState<AppUser | null>(null);
   const [authLoading, setAuthLoading] = useState(appConfig.dataMode === "live");
@@ -52,7 +89,16 @@ export default function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
   const [appError, setAppError] = useState<string | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [activeView, setActiveView] = useState<AppView>("channel");
+  const [settingsSection, setSettingsSection] =
+    useState<SettingsSection>("profile");
+  const [themePreference, setThemePreference] = useState<ThemePreference>(
+    () => loadAppearancePreferences().theme,
+  );
+  const [peopleOpen, setPeopleOpen] = useState(false);
+  const [soundboardOpen, setSoundboardOpen] = useState(false);
+  const [channelDialog, setChannelDialog] = useState<ChannelDialogState>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [screenShareDialogOpen, setScreenShareDialogOpen] = useState(false);
   const [needsInvite, setNeedsInvite] = useState(false);
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
@@ -66,6 +112,10 @@ export default function App() {
   const presenceSubscriptionRef = useRef<ServerPresenceSubscription | null>(
     null,
   );
+  const avatarObjectUrlsRef = useRef(new Map<string, string>());
+  const profileUpdateSequenceRef = useRef(new Map<string, number>());
+  const signedInUserId = user?.id;
+  const signedInUserEmail = user?.email ?? "";
   const workspaceServerId = workspace?.server.id;
   const soundboard = useSoundboardCatalog(
     workspaceServerId,
@@ -75,6 +125,26 @@ export default function App() {
     user ?? mockCurrentUser,
     appConfig.dataMode,
     soundboard,
+  );
+
+  const rememberAvatarUrl = useCallback(
+    (userId: string, url: string | null) => {
+      const previous = avatarObjectUrlsRef.current.get(userId);
+      if (previous && previous !== url) URL.revokeObjectURL(previous);
+      if (url?.startsWith("blob:"))
+        avatarObjectUrlsRef.current.set(userId, url);
+      else avatarObjectUrlsRef.current.delete(userId);
+    },
+    [],
+  );
+
+  useEffect(
+    () => () => {
+      avatarObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      avatarObjectUrlsRef.current.clear();
+      profileUpdateSequenceRef.current.clear();
+    },
+    [],
   );
 
   useEffect(() => {
@@ -98,32 +168,97 @@ export default function App() {
       setAuthLoading(false);
     });
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session ? sessionToAppUser(session) : null);
+      setUser((current) => {
+        if (!session) return null;
+        const next = sessionToAppUser(session);
+        return current?.id === next.id
+          ? {
+              ...next,
+              displayName: current.displayName,
+              avatarUrl: current.avatarUrl,
+              avatarPath: current.avatarPath ?? null,
+            }
+          : next;
+      });
       setAuthLoading(false);
     });
     return () => data.subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
-    if (!user) {
+    if (!signedInUserId) {
+      avatarObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      avatarObjectUrlsRef.current.clear();
       setWorkspace(null);
       setNeedsInvite(false);
       setSelectedChannelId("");
       setMessages([]);
+      setDrafts({});
       setUnreadChannelIds(new Set());
       setVoiceSessions([]);
+      setActiveView("channel");
+      setPeopleOpen(false);
+      setSoundboardOpen(false);
       return;
     }
     let cancelled = false;
     setAppError(null);
     const load = async () => {
       try {
-        const snapshot =
+        let snapshot =
           appConfig.dataMode === "mock"
             ? mockWorkspace
-            : await loadLiveWorkspace(user);
+            : await loadLiveWorkspace({
+                id: signedInUserId,
+                email: signedInUserEmail,
+              });
+        if (appConfig.dataMode === "live") {
+          const members = await Promise.all(
+            snapshot.members.map(async (member) => {
+              if (!member.avatarPath) return member;
+              try {
+                const avatarUrl = await downloadAvatarObjectUrl(
+                  member.avatarPath,
+                  member.avatarUrl,
+                );
+                if (cancelled) {
+                  if (avatarUrl?.startsWith("blob:")) {
+                    URL.revokeObjectURL(avatarUrl);
+                  }
+                  return member;
+                }
+                if (avatarUrl) rememberAvatarUrl(member.id, avatarUrl);
+                return { ...member, avatarUrl };
+              } catch {
+                return member;
+              }
+            }),
+          );
+          snapshot = { ...snapshot, members };
+        }
         if (cancelled) return;
         setWorkspace(snapshot);
+        const currentMember = snapshot.members.find(
+          (member) => member.id === signedInUserId,
+        );
+        if (currentMember) {
+          setUser((current) => {
+            if (!current || current.id !== currentMember.id) return current;
+            if (
+              current.displayName === currentMember.displayName &&
+              current.avatarUrl === currentMember.avatarUrl &&
+              current.avatarPath === currentMember.avatarPath
+            ) {
+              return current;
+            }
+            return {
+              ...current,
+              displayName: currentMember.displayName,
+              avatarUrl: currentMember.avatarUrl,
+              avatarPath: currentMember.avatarPath ?? null,
+            };
+          });
+        }
         setNeedsInvite(false);
         setSelectedChannelId(
           (current) =>
@@ -147,16 +282,20 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [user, workspaceRevision]);
+  }, [rememberAvatarUrl, signedInUserEmail, signedInUserId, workspaceRevision]);
 
   useEffect(() => {
-    if (appConfig.dataMode !== "live" || !user || !workspaceServerId) {
+    if (
+      appConfig.dataMode !== "live" ||
+      !signedInUserId ||
+      !workspaceServerId
+    ) {
       return;
     }
 
     const subscription = subscribeToServerPresence({
       serverId: workspaceServerId,
-      userId: user.id,
+      userId: signedInUserId,
       onSync: ({ onlineUserIds, voiceSessions: nextVoiceSessions }) => {
         setVoiceSessions([...nextVoiceSessions]);
         setWorkspace((current) => {
@@ -165,7 +304,7 @@ export default function App() {
           const members = current.members.map((member) => ({
             ...member,
             status:
-              member.id === user.id || onlineUserIds.has(member.id)
+              member.id === signedInUserId || onlineUserIds.has(member.id)
                 ? ("online" as const)
                 : ("offline" as const),
           }));
@@ -181,7 +320,87 @@ export default function App() {
       }
       subscription.stop();
     };
-  }, [user, workspaceServerId]);
+  }, [signedInUserId, workspaceServerId]);
+
+  useEffect(() => {
+    if (appConfig.dataMode !== "live" || !workspaceServerId) return;
+    let cancelled = false;
+    const unsubscribe = subscribeToProfileChanges((profile) => {
+      const sequence =
+        (profileUpdateSequenceRef.current.get(profile.id) ?? 0) + 1;
+      profileUpdateSequenceRef.current.set(profile.id, sequence);
+      void (async () => {
+        let avatarUrl = profile.avatar_url;
+        let avatarResolved = true;
+        try {
+          avatarUrl = await downloadAvatarObjectUrl(
+            profile.avatar_path,
+            profile.avatar_url,
+          );
+        } catch {
+          // Keep the last usable avatar if a transient Storage read fails.
+          avatarResolved = false;
+        }
+        if (
+          cancelled ||
+          profileUpdateSequenceRef.current.get(profile.id) !== sequence
+        ) {
+          if (avatarResolved && avatarUrl?.startsWith("blob:")) {
+            URL.revokeObjectURL(avatarUrl);
+          }
+          return;
+        }
+        if (avatarResolved) rememberAvatarUrl(profile.id, avatarUrl);
+        setWorkspace((current) =>
+          current
+            ? {
+                ...current,
+                members: current.members.map((member) =>
+                  member.id === profile.id
+                    ? {
+                        ...member,
+                        displayName: profile.display_name,
+                        avatarPath: profile.avatar_path,
+                        avatarUrl: avatarResolved
+                          ? avatarUrl
+                          : member.avatarUrl,
+                      }
+                    : member,
+                ),
+              }
+            : current,
+        );
+        setUser((current) =>
+          current?.id === profile.id
+            ? {
+                ...current,
+                displayName: profile.display_name,
+                avatarPath: profile.avatar_path,
+                avatarUrl: avatarResolved ? avatarUrl : current.avatarUrl,
+              }
+            : current,
+        );
+      })();
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [rememberAvatarUrl, workspaceServerId]);
+
+  useEffect(() => {
+    if (appConfig.dataMode !== "live" || !workspaceServerId) return;
+    return subscribeToLiveChannels(workspaceServerId, (channel) => {
+      setWorkspace((current) =>
+        current && current.server.id === workspaceServerId
+          ? {
+              ...current,
+              channels: reconcileChannels(current.channels, channel),
+            }
+          : current,
+      );
+    });
+  }, [workspaceServerId]);
 
   const activeVoiceChannelId =
     voice.channel &&
@@ -193,12 +412,24 @@ export default function App() {
     void presenceSubscriptionRef.current?.setVoiceChannel(activeVoiceChannelId);
   }, [activeVoiceChannelId]);
 
+  useEffect(() => {
+    if (voice.status === "disconnected") setSoundboardOpen(false);
+  }, [voice.status]);
+
   const selectedChannel = useMemo(
     () =>
       workspace?.channels.find((channel) => channel.id === selectedChannelId) ??
       null,
     [selectedChannelId, workspace],
   );
+
+  const visibleVoice = useMemo(() => {
+    if (!voice.channel || !workspace) return voice;
+    const latestChannel = workspace.channels.find(
+      (channel) => channel.id === voice.channel?.id,
+    );
+    return latestChannel ? { ...voice, channel: latestChannel } : voice;
+  }, [voice, workspace]);
 
   const textChannelIds = useMemo(
     () =>
@@ -207,6 +438,7 @@ export default function App() {
         .map((channel) => channel.id) ?? [],
     [workspace?.channels],
   );
+  const textChannelKey = textChannelIds.join("|");
 
   const voiceOccupants = useMemo<VoiceRoomOccupant[]>(() => {
     if (!workspace) return [];
@@ -239,8 +471,9 @@ export default function App() {
   }, [selectedChannelId]);
 
   useEffect(() => {
-    if (appConfig.dataMode !== "live" || !user) return;
-    const unsubscribers = textChannelIds.map((channelId) =>
+    if (appConfig.dataMode !== "live" || !signedInUserId) return;
+    const channelIds = textChannelKey ? textChannelKey.split("|") : [];
+    const unsubscribers = channelIds.map((channelId) =>
       subscribeToLiveMessages(channelId, (message) => {
         if (message.channelId === selectedChannelIdRef.current) {
           setMessages((current) =>
@@ -254,19 +487,21 @@ export default function App() {
             current,
             message,
             selectedChannelIdRef.current,
-            user.id,
+            signedInUserId,
           ),
         );
-        if (shouldPlayIncomingMessageSound(message, user.id)) {
+        if (shouldPlayIncomingMessageSound(message, signedInUserId)) {
           void playIncomingMessageSound();
         }
       }),
     );
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
-  }, [textChannelIds, user]);
+  }, [signedInUserId, textChannelKey]);
 
+  const selectedTextChannelId =
+    selectedChannel?.kind === "text" ? selectedChannel.id : null;
   useEffect(() => {
-    if (!user || !selectedChannel || selectedChannel.kind !== "text") return;
+    if (!signedInUserId || !selectedTextChannelId) return;
     let cancelled = false;
     setAppError(null);
     const load = async () => {
@@ -274,10 +509,24 @@ export default function App() {
         const nextMessages =
           appConfig.dataMode === "mock"
             ? mockMessages.filter(
-                (message) => message.channelId === selectedChannel.id,
+                (message) => message.channelId === selectedTextChannelId,
               )
-            : await loadLiveMessages(selectedChannel.id);
-        if (!cancelled) setMessages(nextMessages);
+            : await loadLiveMessages(selectedTextChannelId);
+        if (!cancelled) {
+          setMessages((current) => {
+            const byId = new Map(
+              nextMessages.map((message) => [message.id, message]),
+            );
+            current
+              .filter((message) => message.channelId === selectedTextChannelId)
+              .forEach((message) => byId.set(message.id, message));
+            return [...byId.values()].sort(
+              (left, right) =>
+                Date.parse(left.createdAt) - Date.parse(right.createdAt) ||
+                left.id.localeCompare(right.id),
+            );
+          });
+        }
       } catch (caught) {
         if (!cancelled) {
           setAppError(
@@ -292,7 +541,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [selectedChannel, user]);
+  }, [selectedTextChannelId, signedInUserId]);
 
   const handleSend = useCallback(
     async (body: string) => {
@@ -350,7 +599,120 @@ export default function App() {
     [selectedChannel, user],
   );
 
+  function openSettings(section: SettingsSection = "profile") {
+    setSettingsSection(section);
+    setActiveView("settings");
+    setPeopleOpen(false);
+  }
+
+  const closePeople = useCallback(() => setPeopleOpen(false), []);
+  const toggleSoundboard = useCallback(
+    () => setSoundboardOpen((open) => !open),
+    [],
+  );
+
+  async function handleSaveProfile(input: ProfileSaveInput) {
+    if (!user) throw new Error("Sign in before editing your profile.");
+    let displayName = input.displayName.trim();
+    let avatarPath = user.avatarPath ?? null;
+    let avatarUrl = user.avatarUrl;
+    let warning: string | undefined;
+
+    if (appConfig.dataMode === "live") {
+      const saved = await saveLiveProfile({
+        userId: user.id,
+        displayName,
+        currentAvatarPath: avatarPath,
+        currentAvatarUrl: avatarUrl,
+        avatarFile: input.avatarFile,
+        removeAvatar: input.removeAvatar,
+      });
+      displayName = saved.displayName;
+      avatarPath = saved.avatarPath;
+      avatarUrl = saved.avatarUrl;
+      warning = saved.metadataWarning ?? undefined;
+    } else if (input.removeAvatar) {
+      avatarPath = null;
+      avatarUrl = null;
+    } else if (input.avatarFile) {
+      avatarPath = `mock/${crypto.randomUUID()}`;
+      avatarUrl = await fileToDataUrl(input.avatarFile);
+    }
+
+    rememberAvatarUrl(user.id, avatarUrl);
+    setUser((current) =>
+      current ? { ...current, displayName, avatarPath, avatarUrl } : current,
+    );
+    setWorkspace((current) =>
+      current
+        ? {
+            ...current,
+            members: current.members.map((member) =>
+              member.id === user.id
+                ? { ...member, displayName, avatarPath, avatarUrl }
+                : member,
+            ),
+          }
+        : current,
+    );
+    return warning ? { warning } : {};
+  }
+
+  function handleThemeChange(preference: ThemePreference) {
+    setThemePreference(preference);
+    persistThemePreference(preference);
+  }
+
+  async function handleCreateChannel(kind: ChannelKind, name: string) {
+    if (!workspace || workspace.currentUserRole !== "admin") {
+      throw new Error("Only a server admin can create channels.");
+    }
+    const channel =
+      appConfig.dataMode === "live"
+        ? await createLiveChannel({ serverId: workspace.server.id, kind, name })
+        : {
+            id: `channel-${crypto.randomUUID()}`,
+            serverId: workspace.server.id,
+            name: name.trim(),
+            kind,
+            position:
+              Math.max(
+                -10,
+                ...workspace.channels
+                  .filter((candidate) => candidate.kind === kind)
+                  .map((candidate) => candidate.position),
+              ) + 10,
+            topic:
+              kind === "voice"
+                ? "Drop in when you feel like talking."
+                : "A private conversation for server members.",
+          };
+    setWorkspace((current) =>
+      current
+        ? { ...current, channels: reconcileChannels(current.channels, channel) }
+        : current,
+    );
+    handleSelectChannel(channel);
+  }
+
+  async function handleRenameChannel(channel: Channel, name: string) {
+    if (!workspace || workspace.currentUserRole !== "admin") {
+      throw new Error("Only a server admin can rename channels.");
+    }
+    const renamed =
+      appConfig.dataMode === "live"
+        ? await renameLiveChannel({ channelId: channel.id, name })
+        : { ...channel, name: name.trim() };
+    setWorkspace((current) =>
+      current
+        ? { ...current, channels: reconcileChannels(current.channels, renamed) }
+        : current,
+    );
+  }
+
   async function handleSignOut() {
+    setSoundboardOpen(false);
+    setPeopleOpen(false);
     await voice.leave();
     await presenceSubscriptionRef.current?.setVoiceChannel(null);
     if (appConfig.dataMode === "live") {
@@ -370,6 +732,8 @@ export default function App() {
     selectedChannelIdRef.current = channel.id;
     setUnreadChannelIds((current) => markChannelRead(current, channel.id));
     setSelectedChannelId(channel.id);
+    setActiveView("channel");
+    setPeopleOpen(false);
   }
 
   if (authLoading) {
@@ -437,22 +801,29 @@ export default function App() {
       <ChannelSidebar
         server={workspace.server}
         channels={workspace.channels}
-        selectedChannelId={selectedChannel.id}
+        selectedChannelId={activeView === "channel" ? selectedChannel.id : ""}
         user={user}
-        voice={voice}
         voiceOccupants={voiceOccupants}
         unreadChannelIds={unreadChannelIds}
+        canManageChannels={workspace.currentUserRole === "admin"}
         onSelect={handleSelectChannel}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onOpenScreenShare={() => setScreenShareDialogOpen(true)}
+        onCreateChannel={(kind) => setChannelDialog({ mode: "create", kind })}
+        onRenameChannel={(channel) =>
+          setChannelDialog({ mode: "rename", channel })
+        }
+        onOpenSettings={() => openSettings("profile")}
         onSignOut={() => void handleSignOut()}
       />
-      <main className="content-shell">
+      <main
+        className={`content-shell ${visibleVoice.status !== "disconnected" ? "has-voice-bar" : ""}`}
+      >
         <TopBar
           channel={selectedChannel}
-          memberCount={workspace.members.length}
+          view={activeView}
+          members={workspace.members}
           mode={appConfig.dataMode}
           voiceConnected={voice.status === "connected"}
+          onOpenPeople={() => setPeopleOpen(true)}
         />
         <div className="content-stage">
           {appError ? (
@@ -465,56 +836,109 @@ export default function App() {
             </div>
           ) : null}
           <div className="content-grid">
-            {selectedChannel.kind === "text" ? (
-              <>
-                <ChatView
-                  channel={selectedChannel}
-                  messages={messages}
-                  members={workspace.members}
-                  currentUser={user}
-                  sending={sending}
-                  onSend={handleSend}
-                />
-                <MemberList members={workspace.members} />
-              </>
+            {activeView === "settings" ? (
+              <SettingsPage
+                user={user}
+                section={settingsSection}
+                themePreference={themePreference}
+                inputDevices={voice.inputDevices}
+                outputDevices={voice.outputDevices}
+                cameraDevices={voice.cameraDevices}
+                selectedInputId={voice.selectedInputId}
+                selectedOutputId={voice.selectedOutputId}
+                selectedCameraId={voice.selectedCameraId}
+                soundboardVolume={voice.soundboardVolume}
+                inputError={voice.inputDeviceError}
+                outputError={voice.outputDeviceError}
+                cameraError={voice.cameraDeviceError}
+                outputSelectionSupported={voice.outputSelectionSupported}
+                inputDisabled={
+                  voice.status === "connecting" ||
+                  voice.status === "reconnecting"
+                }
+                onSectionChange={setSettingsSection}
+                onThemeChange={handleThemeChange}
+                onSaveProfile={handleSaveProfile}
+                onInputChange={(deviceId) =>
+                  void voice.setInputDevice(deviceId)
+                }
+                onOutputChange={(deviceId) =>
+                  void voice.setOutputDevice(deviceId)
+                }
+                onCameraChange={(deviceId) =>
+                  void voice.setCameraDevice(deviceId)
+                }
+                onSoundboardVolumeChange={voice.setSoundboardVolume}
+                onClose={() => setActiveView("channel")}
+              />
+            ) : selectedChannel.kind === "text" ? (
+              <ChatView
+                channel={selectedChannel}
+                messages={messages.filter(
+                  (message) => message.channelId === selectedChannel.id,
+                )}
+                members={workspace.members}
+                currentUser={user}
+                sending={sending}
+                draft={drafts[selectedChannel.id] ?? ""}
+                onDraftChange={(draft) =>
+                  setDrafts((current) => ({
+                    ...current,
+                    [selectedChannel.id]: draft,
+                  }))
+                }
+                onSend={handleSend}
+              />
             ) : (
               <VoiceRoom
                 channel={selectedChannel}
                 user={user}
+                members={workspace.members}
                 voice={voice}
                 occupants={voiceOccupants.filter(
                   (occupant) => occupant.channelId === selectedChannel.id,
                 )}
-                onOpenSettings={() => setSettingsOpen(true)}
-                onOpenScreenShare={() => setScreenShareDialogOpen(true)}
+                onOpenSettings={() => openSettings("audio")}
               />
             )}
           </div>
         </div>
-      </main>
-      {settingsOpen ? (
-        <SettingsModal
-          inputDevices={voice.inputDevices}
-          outputDevices={voice.outputDevices}
-          cameraDevices={voice.cameraDevices}
-          selectedInputId={voice.selectedInputId}
-          selectedOutputId={voice.selectedOutputId}
-          selectedCameraId={voice.selectedCameraId}
-          soundboardVolume={voice.soundboardVolume}
-          inputError={voice.inputDeviceError}
-          outputError={voice.outputDeviceError}
-          cameraError={voice.cameraDeviceError}
-          outputSelectionSupported={voice.outputSelectionSupported}
-          inputDisabled={
-            voice.status === "connecting" || voice.status === "reconnecting"
-          }
-          onInputChange={(deviceId) => void voice.setInputDevice(deviceId)}
-          onOutputChange={(deviceId) => void voice.setOutputDevice(deviceId)}
-          onCameraChange={(deviceId) => void voice.setCameraDevice(deviceId)}
-          onSoundboardVolumeChange={voice.setSoundboardVolume}
-          onClose={() => setSettingsOpen(false)}
+        {soundboardOpen && visibleVoice.status === "connected" ? (
+          <aside
+            className="soundboard-drawer"
+            id="soundboard-drawer"
+            aria-label="Soundboard"
+          >
+            <Soundboard
+              connected
+              deafened={voice.deafened}
+              categories={voice.soundboard.categories}
+              sounds={voice.soundboard.sounds}
+              loading={voice.soundboard.loading}
+              error={voice.soundboard.error}
+              volume={voice.soundboardVolume}
+              activeLocalSoundCount={voice.activeLocalSoundCount}
+              onPlay={voice.dispatchSound}
+              onStopAll={voice.stopLocalSounds}
+              onVolumeChange={voice.setSoundboardVolume}
+              onRetry={voice.soundboard.retrySound}
+              onUpdate={voice.updateSoundMetadata}
+            />
+          </aside>
+        ) : null}
+        <VoiceControlBar
+          voice={visibleVoice}
+          soundboardOpen={soundboardOpen}
+          onToggleSoundboard={toggleSoundboard}
+          onOpenDevices={() => openSettings("audio")}
+          onOpenScreenShare={() => setScreenShareDialogOpen(true)}
         />
-      ) : null}
+      </main>
+      <PeopleDrawer
+        members={workspace.members}
+        open={peopleOpen}
+        onClose={closePeople}
+      />
       {screenShareDialogOpen ? (
         <ScreenShareDialog
           audioAvailable={voice.screenShareAudioAvailable}
@@ -523,28 +947,63 @@ export default function App() {
           onClose={() => setScreenShareDialogOpen(false)}
         />
       ) : null}
+      {channelDialog ? (
+        <ChannelDialog
+          kind={
+            channelDialog.mode === "create"
+              ? channelDialog.kind
+              : channelDialog.channel.kind
+          }
+          channel={
+            channelDialog.mode === "rename" ? channelDialog.channel : null
+          }
+          onSave={(name) =>
+            channelDialog.mode === "create"
+              ? handleCreateChannel(channelDialog.kind, name)
+              : handleRenameChannel(channelDialog.channel, name)
+          }
+          onClose={() => setChannelDialog(null)}
+        />
+      ) : null}
     </div>
   );
 }
 
 function TopBar({
   channel,
-  memberCount,
+  view,
+  members,
   mode,
   voiceConnected,
+  onOpenPeople,
 }: {
   channel: Channel;
-  memberCount: number;
+  view: AppView;
+  members: WorkspaceSnapshot["members"];
   mode: "mock" | "live";
   voiceConnected: boolean;
+  onOpenPeople: () => void;
 }) {
+  const activeMembers = members.filter((member) => member.status !== "offline");
   return (
     <header className="top-bar">
       <div className="top-bar__channel">
-        {channel.kind === "text" ? <Hash size={20} /> : <Volume2 size={20} />}
+        {view === "settings" ? (
+          <UserRound size={20} />
+        ) : channel.kind === "text" ? (
+          <Hash size={20} />
+        ) : (
+          <Volume2 size={20} />
+        )}
         <div>
-          <strong>{channel.name}</strong>
-          <span>{channel.topic}</span>
+          <strong>
+            {view === "settings" ? "Your settings" : channel.name}
+          </strong>
+          <span>
+            {view === "settings"
+              ? "A few choices that stay yours."
+              : channel.topic}
+          </span>
         </div>
       </div>
       <div className="top-bar__actions">
@@ -554,14 +1013,36 @@ function TopBar({
           backendRegion={appConfig.backendRegion}
           voiceConnected={voiceConnected}
         />
-        <span
-          className="top-bar__member-count"
-          aria-label={`${memberCount} members`}
+        <button
+          className="people-trigger"
+          type="button"
+          onClick={onOpenPeople}
+          aria-label={`Open people, ${activeMembers.length} online`}
         >
-          <Users size={18} />
-          <span>{memberCount}</span>
-        </span>
+          <span className="people-trigger__avatars" aria-hidden="true">
+            {activeMembers.slice(0, 3).map((member) => (
+              <Avatar user={member} size="small" key={member.id} />
+            ))}
+          </span>
+          <span>{activeMembers.length} here</span>
+        </button>
       </div>
     </header>
   );
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      if (typeof reader.result === "string") resolve(reader.result);
+      else reject(new Error("The selected image could not be read."));
+    });
+    reader.addEventListener("error", () =>
+      reject(
+        reader.error ?? new Error("The selected image could not be read."),
+      ),
+    );
+    reader.readAsDataURL(file);
+  });
 }

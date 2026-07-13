@@ -3,6 +3,7 @@ import {
   Pencil,
   Radio,
   RotateCcw,
+  Search,
   Square,
   Volume2,
 } from "lucide-react";
@@ -47,16 +48,26 @@ export function Soundboard({
 }: SoundboardProps) {
   const [selectedCategoryId, setSelectedCategoryId] = useState("all");
   const [activeSound, setActiveSound] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const [editingSound, setEditingSound] = useState<SoundboardSound | null>(
     null,
   );
   const [error, setError] = useState<string | null>(null);
   const visibleSounds = useMemo(
     () =>
-      selectedCategoryId === "all"
-        ? sounds
-        : sounds.filter((sound) => sound.categoryId === selectedCategoryId),
-    [selectedCategoryId, sounds],
+      sounds.filter((sound) => {
+        const inCategory =
+          selectedCategoryId === "all" ||
+          sound.categoryId === selectedCategoryId;
+        const normalizedQuery = query.trim().toLocaleLowerCase();
+        return (
+          inCategory &&
+          (!normalizedQuery ||
+            sound.label.toLocaleLowerCase().includes(normalizedQuery) ||
+            sound.emoji.includes(normalizedQuery))
+        );
+      }),
+    [query, selectedCategoryId, sounds],
   );
 
   async function play(sound: SoundboardSound) {
@@ -117,24 +128,35 @@ export function Soundboard({
         </div>
       </header>
 
-      <div className="soundboard-categories" aria-label="Sound categories">
-        <button
-          className={selectedCategoryId === "all" ? "is-active" : ""}
-          type="button"
-          onClick={() => setSelectedCategoryId("all")}
-        >
-          All
-        </button>
-        {categories.map((category) => (
+      <div className="soundboard-tools">
+        <label className="soundboard-search">
+          <Search size={15} />
+          <input
+            aria-label="Search sounds"
+            value={query}
+            placeholder="Find the perfect interruption"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
+        <div className="soundboard-categories" aria-label="Sound categories">
           <button
-            className={selectedCategoryId === category.id ? "is-active" : ""}
-            key={category.id}
+            className={selectedCategoryId === "all" ? "is-active" : ""}
             type="button"
-            onClick={() => setSelectedCategoryId(category.id)}
+            onClick={() => setSelectedCategoryId("all")}
           >
-            {category.name}
+            All
           </button>
-        ))}
+          {categories.map((category) => (
+            <button
+              className={selectedCategoryId === category.id ? "is-active" : ""}
+              key={category.id}
+              type="button"
+              onClick={() => setSelectedCategoryId(category.id)}
+            >
+              {category.name}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading && sounds.length === 0 ? (
@@ -143,6 +165,9 @@ export function Soundboard({
         </div>
       ) : (
         <div className="sound-grid">
+          {visibleSounds.length === 0 ? (
+            <p className="soundboard-empty">No sound matches that search.</p>
+          ) : null}
           {visibleSounds.map((sound) => (
             <div className="sound-card" key={sound.id}>
               <button

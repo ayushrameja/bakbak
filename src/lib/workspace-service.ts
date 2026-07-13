@@ -30,6 +30,7 @@ interface ProfileRow {
   id: string;
   display_name: string;
   avatar_url: string | null;
+  avatar_path: string | null;
 }
 
 interface MessageRow {
@@ -58,7 +59,7 @@ function messageFromRow(row: MessageRow): ChatMessage {
 }
 
 export async function loadLiveWorkspace(
-  currentUser: AppUser,
+  currentUser: Pick<AppUser, "id" | "email">,
 ): Promise<WorkspaceSnapshot> {
   const supabase = getSupabaseClient();
   const { data: servers, error: serverError } = await supabase
@@ -90,7 +91,7 @@ export async function loadLiveWorkspace(
   const userIds = membershipResult.data.map((membership) => membership.user_id);
   const { data: profiles, error: profileError } = await supabase
     .from("profiles")
-    .select("id,display_name,avatar_url")
+    .select("id,display_name,avatar_url,avatar_path")
     .in("id", userIds)
     .returns<ProfileRow[]>();
   if (profileError) throw profileError;
@@ -106,6 +107,7 @@ export async function loadLiveWorkspace(
       displayName: profile?.display_name ?? "Friend",
       email: isCurrent ? currentUser.email : "",
       avatarUrl: profile?.avatar_url ?? null,
+      avatarPath: profile?.avatar_path ?? null,
       status: isCurrent ? "online" : "offline",
       role: membership.role,
     };
@@ -131,6 +133,10 @@ export async function loadLiveWorkspace(
     },
     channels,
     members,
+    currentUserRole:
+      membershipResult.data.find(
+        (membership) => membership.user_id === currentUser.id,
+      )?.role ?? "member",
   };
 }
 

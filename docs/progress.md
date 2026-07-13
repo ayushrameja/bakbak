@@ -1392,3 +1392,112 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed. The post-build
 - **Next:** Commit and push this correction, then inspect the resulting Desktop
   release run until Apple Silicon, Intel, Windows, publish, manifest
   verification, and version synchronization all complete successfully.
+
+## 2026-07-12 — Build the Warm Adda redesign and end Intel releases
+
+- **Completed:** Replaced the permanent three-column/member-panel layout with
+  the Warm Adda channel shelf, conversation/settings canvas, header avatar
+  cluster, accessible People drawer, and one persistent voice bar. Added a
+  parser-blocking System/Light/Dark first-paint bootstrap, semantic oat/stone and
+  charcoal theme tokens, per-channel drafts, in-shell Profile/Audio &
+  Video/Appearance settings, explicit microphone/output tests, private avatar
+  upload/replace/remove behavior, and a bar-anchored searchable soundboard
+  drawer. Added admin-only create/rename controls for text and voice channels,
+  stable-ID Realtime reconciliation, snapshot/event race protection, and
+  profile/avatar sequencing. Added the private avatar Storage migration,
+  `profiles.avatar_path`, profile/channel Realtime publication, and guarded
+  `create_channel`/`rename_channel` RPCs. Removed Intel macOS from future
+  release builds and hardened asset/updater-manifest verification for Apple
+  Silicon macOS plus Windows x64 only.
+- **Decisions:** Keep v0.4.0 as the final Intel release without remotely
+  disabling installed clients. Keep `avatar_url` for older clients while new
+  clients prefer private owner-prefixed `avatar_path` objects. Upload a new
+  avatar before the canonical profile update, clean failed uploads, and delete
+  replaced objects best-effort. Keep direct channel table mutation revoked and
+  authorize exact-server admins inside blank-search-path security-definer RPCs.
+  Subscribe before catch-up snapshots and replay buffered Realtime events so a
+  stale snapshot cannot overwrite a newer profile or channel. Channel delete,
+  reorder, topic editing, and kind conversion remain excluded.
+- **Validation:**
+  - Final `pnpm check` — passed formatting, zero-warning lint, strict
+    TypeScript, 32 Vitest files with 138 tests, nine Node release/version tests,
+    version synchronization, production build, and compiled-artifact secret
+    scanning. Vite still reports the existing non-blocking renderer chunk over
+    500 kB.
+  - `pnpm dlx supabase@latest db reset` — passed and applied all migrations
+    through `202607120003_profile_avatars_and_channel_management.sql` to a clean
+    local database.
+  - `pnpm dlx supabase@latest db lint --local` — passed with no schema errors.
+  - `pnpm dlx supabase@latest test db` — passed all six pgTAP files and 141
+    assertions, including avatar owner/shared-member/cross-server policies,
+    direct channel-write denial, admin/member RPC boundaries, name validation,
+    append ordering, and stable rename IDs. Supabase and Colima were stopped
+    afterward, restoring the original local runtime state.
+  - `cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check` — passed.
+  - `cargo test --locked --offline --manifest-path src-tauri/Cargo.toml --lib`
+    — passed all six native tests.
+  - `cargo check --locked --offline --manifest-path src-tauri/Cargo.toml` —
+    passed.
+  - Final `pnpm tauri:build:local` — passed and produced the current
+    ad-hoc-signed `Bakbak.app`; notarization was skipped because distribution
+    credentials remain absent.
+  - `codesign --verify --deep --strict --verbose=4
+src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
+    `file` reported a Mach-O 64-bit arm64 executable, `lipo -archs` reported
+    only `arm64`, and the post-build `pnpm security:scan` passed for `dist` and
+    the release bundle.
+  - In-app browser mock QA — exercised Light and Dark at 1280×800 and 1024×680,
+    settings navigation, People focus restoration, an active call across text
+    and settings, soundboard search/Escape dismissal, and a clean runtime
+    console. The visual checkpoint preceded the final non-layout
+    Realtime/media cleanup and avatar-upload focus-ring adjustments.
+- **Documentation updated:** Added
+  `docs/plans/0004-warm-adda-ui-settings-channels-arm64.md`; updated
+  `docs/architecture.md`, `docs/plans/0001-bakbak-desktop-v1.md`, `README.md`,
+  and this canonical progress log.
+- **Known limitations:** Migration `202607120003...` is validated locally but
+  not deployed to the hosted Supabase project. The canonical live
+  browser-plus-native two-account rehearsal, profile/channel propagation against
+  hosted Realtime, real microphone/output/camera/share observation, hosted
+  Apple Silicon/Windows release jobs, updater installation, and no-Intel-asset
+  publication proof remain pending. Local macOS output is ad-hoc signed and not
+  notarized; Windows was not built locally. The existing renderer chunk-size
+  warning remains a later performance task.
+- **Next:** Run a hosted migration dry run, deploy the additive migration, then
+  complete the plan 0004 browser-plus-native two-account rehearsal. If it
+  passes, publish the next release with only the Apple Silicon DMG and Windows
+  x64 installer and verify that `latest.json` contains no Intel macOS target.
+
+## 2026-07-13 — Deploy the Warm Adda profile and channel migration
+
+- **Completed:** Connected through the repository's existing Supabase CLI link,
+  confirmed the hosted migration ledger matched local migrations through
+  `202607120002`, dry-ran the single pending migration, and deployed
+  `202607120003_profile_avatars_and_channel_management.sql`. Verified the
+  hosted ledger now matches every tracked migration through `202607120003`.
+- **Decisions:** Used the linked CLI deployment path rather than dashboard login
+  because the existing login role authenticated successfully. Applied only the
+  one tracked migration reported by the dry run; no seed data, user accounts,
+  invite codes, Edge Functions, or unrelated hosted configuration changed.
+- **Validation:**
+  - Initial `pnpm dlx supabase@latest migration list` — passed; local and remote
+    matched through `202607120002`, with only `202607120003` pending remotely.
+  - `pnpm dlx supabase@latest db push --dry-run` — passed and reported exactly
+    `202607120003_profile_avatars_and_channel_management.sql` as pending.
+  - `pnpm dlx supabase@latest db push` — passed and applied the migration to the
+    linked hosted database.
+  - Final `pnpm dlx supabase@latest migration list` — passed; local and remote
+    migration versions match through `202607120003`.
+- **Documentation updated:** `docs/architecture.md`,
+  `docs/plans/0001-bakbak-desktop-v1.md`,
+  `docs/plans/0004-warm-adda-ui-settings-channels-arm64.md`, and
+  `docs/progress.md`.
+- **Known limitations:** Deployment verifies migration history and the database
+  transaction, but the live browser-plus-native two-account acceptance run has
+  not yet exercised login, private avatar reads/writes, profile Realtime, or
+  admin channel creation/rename through the new client. A credential-level Auth
+  failure would be separate from this schema migration.
+- **Next:** Fully quit and restart the live Bakbak client, retry sign-in, and run
+  the plan 0004 two-account profile/channel rehearsal. If login still fails,
+  capture the exact visible error plus the browser/native console entry before
+  changing Auth or invite data.

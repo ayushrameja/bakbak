@@ -3,9 +3,9 @@
 - **Status:** Active
 - **Approved:** 2026-07-11
 - **Target users:** One private group of 5–10 friends
-- **Primary platform:** macOS and Windows desktop releases; Linux after friend
-  testing
-- **First usable release:** Voice, persistent text chat, and a bundled
+- **Primary platform:** Apple Silicon macOS and Windows x64 desktop releases;
+  Linux after friend testing
+- **First usable release:** Voice, persistent text chat, and a private hosted
   synchronized soundboard
 
 ## Summary
@@ -42,9 +42,9 @@ starts with context instead of archaeological guessing.
 - Place shared UI in `src/components`, service clients in `src/lib`, and the
   application shell/providers in `src/app`.
 - Keep native configuration and Rust code isolated in `src-tauri`.
-- Use a dark, calm, polished desktop interface with a channel sidebar, main
-  content area, full-height member panel, and persistent voice controls. The
-  deferred server rail is removed until multi-server navigation is in scope.
+- Use the Warm Adda light/dark desktop interface with a channel shelf, main
+  conversation/settings canvas, People drawer, and one persistent voice bar.
+  The deferred server rail remains out of scope until multi-server navigation.
 - Commit `.env.example` only. Use ignored `.env` files locally and
   platform-managed secrets for backend functions.
 
@@ -53,7 +53,8 @@ starts with context instead of archaeological guessing.
 - One private server with multiple text and voice rooms.
 - Email/password authentication plus a single-use invite code.
 - One seeded admin; all invited users become members.
-- macOS and Windows installers; Linux afterward.
+- Apple Silicon macOS and Windows x64 installers; Linux afterward. Bakbak
+  v0.4.0 remains the final Intel macOS release.
 - The first usable release includes voice, text, and a private hosted
   soundboard whose audio files stay outside the desktop bundle.
 
@@ -133,6 +134,9 @@ preferences were added by the approved follow-up plan
 `0002-voice-video-and-presence.md`.
 Desktop screen sharing is now an approved Phase 5 follow-up under
 `0003-screen-sharing.md`.
+The Warm Adda redesign, settings/profile work, admin channel management, and
+Apple-Silicon-only release boundary are approved under
+`0004-warm-adda-ui-settings-channels-arm64.md`.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -141,6 +145,14 @@ Desktop screen sharing is now an approved Phase 5 follow-up under
 - [ ] Add invite management UI.
 - [ ] Add desktop notifications and tray controls.
 - [x] Add locally persisted microphone, speaker, and camera preferences.
+- [x] Add System, Light, and Dark appearance preferences applied before render.
+- [x] Add in-shell Profile, Audio & Video, and Appearance settings while
+      preserving per-channel chat drafts and active voice state.
+- [x] Add the People drawer, consolidated voice bar, and soundboard drawer.
+- [x] Add private profile-avatar and admin channel-management code plus focused
+      frontend/database tests under plan 0004.
+- [x] Deploy the plan 0004 avatar/channel migration to hosted Supabase.
+- [ ] Complete the plan 0004 browser-plus-native two-client acceptance run.
 - [x] Add a private operator-managed sound bucket with server-member reads.
 - [x] Fetch, revision-cache, and play the hosted sound pack in the renderer.
 - [ ] Evaluate optional global push-to-talk.
@@ -154,13 +166,14 @@ Desktop screen sharing is now an approved Phase 5 follow-up under
 - [x] Add signed Tauri update artifacts, a public GitHub Releases endpoint, and
       an explicit in-app update-and-restart experience.
 - [x] Add gated GitHub Actions validation and draft release workflows for macOS
-      Apple Silicon, macOS Intel, and Windows x64 NSIS installers.
+      Apple Silicon and Windows x64 NSIS installers, rejecting Intel artifacts.
 - [x] Configure the updater signing secrets and live renderer variables in
       GitHub Actions.
 - [ ] Publish and validate the first updater-enabled `0.2.x` release.
 - [ ] Manually validate an update from the first updater-enabled release to a
       later version on macOS and Windows.
-- [x] Build and validate macOS installers in GitHub Actions.
+- [ ] Build and validate the Apple-Silicon-only macOS installer in the updated
+      GitHub Actions matrix.
 - [x] Document initial unsigned and unnotarized installer warnings.
 - [x] Build and validate the Windows x64 installer in GitHub Actions.
 - [ ] Add Linux installer builds after friend testing.
@@ -179,7 +192,7 @@ Desktop screen sharing is now an approved Phase 5 follow-up under
 - Add focused tests with each behavior change rather than postponing all test
   work until distribution.
 
-### Manual macOS acceptance
+### Manual Apple Silicon macOS acceptance
 
 Before the first friend-test release, manually validate:
 
@@ -218,4 +231,5 @@ After every phase:
 - Invite-management UI.
 - Desktop notifications and tray controls.
 - Linux distribution before friend testing.
+- Intel macOS releases after Bakbak v0.4.0.
 - Signing and notarization before the core product is stable.

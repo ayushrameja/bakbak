@@ -50,7 +50,7 @@ test("manual releases override a skip label", () => {
   });
 });
 
-test("validates all updater targets and their signatures", () => {
+test("validates only Apple Silicon macOS and Windows updater targets", () => {
   const entry = { signature: "signed", url: "https://example.com/update" };
   assert.doesNotThrow(() =>
     verifyUpdaterManifest(
@@ -58,7 +58,6 @@ test("validates all updater targets and their signatures", () => {
         version: "0.2.1",
         platforms: {
           "darwin-aarch64": entry,
-          "darwin-x86_64": entry,
           "windows-x86_64-nsis": entry,
         },
       },
@@ -67,19 +66,57 @@ test("validates all updater targets and their signatures", () => {
   );
 });
 
-test("macOS release jobs build installer and updater-enabled app bundles", async () => {
+test("rejects Intel macOS and other unsupported updater targets", () => {
+  const entry = { signature: "signed", url: "https://example.com/update" };
+  const supportedPlatforms = {
+    "darwin-aarch64": entry,
+    "windows-x86_64-nsis": entry,
+  };
+
+  assert.throws(
+    () =>
+      verifyUpdaterManifest(
+        {
+          version: "0.2.1",
+          platforms: { ...supportedPlatforms, "darwin-x86_64": entry },
+        },
+        "0.2.1",
+      ),
+    /unsupported Intel macOS target darwin-x86_64/,
+  );
+  assert.throws(
+    () =>
+      verifyUpdaterManifest(
+        {
+          version: "0.2.1",
+          platforms: { ...supportedPlatforms, "linux-x86_64": entry },
+        },
+        "0.2.1",
+      ),
+    /unsupported target linux-x86_64/,
+  );
+});
+
+test("release builds only Apple Silicon macOS and Windows installers", async () => {
   const workflow = await readFile(
     new URL("../.github/workflows/release.yml", import.meta.url),
     "utf8",
   );
 
   assert.match(workflow, /--target aarch64-apple-darwin --bundles app,dmg/);
-  assert.match(workflow, /--target x86_64-apple-darwin --bundles app,dmg/);
+  assert.doesNotMatch(workflow, /--target x86_64-apple-darwin/);
   assert.match(
     workflow,
     /name: macOS Apple Silicon\n {12}platform: macos-26\n/,
   );
-  assert.match(workflow, /name: macOS Intel\n {12}platform: macos-26-intel\n/);
+  assert.doesNotMatch(workflow, /name: macOS Intel/);
+  assert.match(workflow, /name: Windows x64\n {12}platform: windows-latest\n/);
+  assert.match(workflow, /rust-targets: aarch64-apple-darwin\n/);
+  assert.match(workflow, /test "\$dmg_count" -eq 1/);
+  assert.match(workflow, /test "\$arm_dmg_count" -eq 1/);
+  assert.match(workflow, /test "\$intel_macos_count" -eq 0/);
+  assert.match(workflow, /test "\$exe_count" -eq 1/);
+  assert.match(workflow, /Intel Mac users remain on Bakbak v0\.4\.0/);
 });
 
 test("published releases synchronize their version through a protected-branch PR", async () => {

@@ -1,7 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
-const requiredTargets = ["darwin-aarch64", "darwin-x86_64", "windows-x86_64"];
+const requiredTargets = ["darwin-aarch64", "windows-x86_64"];
+const forbiddenTargetPrefixes = ["darwin-x86_64"];
+
+function matchesTarget(key, target) {
+  return key === target || key.startsWith(`${target}-`);
+}
 
 export function verifyUpdaterManifest(manifest, expectedVersion) {
   if (manifest.version !== expectedVersion) {
@@ -15,16 +20,40 @@ export function verifyUpdaterManifest(manifest, expectedVersion) {
 
   const platformKeys = Object.keys(manifest.platforms);
 
-  for (const target of requiredTargets) {
-    const matchingKey = platformKeys.find(
-      (key) => key === target || key.startsWith(`${target}-`),
+  const forbiddenKey = platformKeys.find((key) =>
+    forbiddenTargetPrefixes.some((target) => matchesTarget(key, target)),
+  );
+  if (forbiddenKey) {
+    throw new Error(
+      `Updater manifest contains unsupported Intel macOS target ${forbiddenKey}.`,
     );
-    if (!matchingKey) {
+  }
+
+  const unsupportedKey = platformKeys.find(
+    (key) => !requiredTargets.some((target) => matchesTarget(key, target)),
+  );
+  if (unsupportedKey) {
+    throw new Error(
+      `Updater manifest contains unsupported target ${unsupportedKey}.`,
+    );
+  }
+
+  for (const target of requiredTargets) {
+    const matchingKeys = platformKeys.filter((key) =>
+      matchesTarget(key, target),
+    );
+    if (matchingKeys.length === 0) {
       throw new Error(
         `Updater manifest is missing ${target}. Found: ${platformKeys.join(", ") || "<none>"}.`,
       );
     }
+    if (matchingKeys.length > 1) {
+      throw new Error(
+        `Updater manifest contains multiple ${target} entries: ${matchingKeys.join(", ")}.`,
+      );
+    }
 
+    const [matchingKey] = matchingKeys;
     const entry = manifest.platforms[matchingKey];
     if (!entry?.url || !entry?.signature) {
       throw new Error(
@@ -49,6 +78,6 @@ if (
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   verifyUpdaterManifest(manifest, expectedVersion);
   process.stdout.write(
-    `Updater manifest ${expectedVersion} contains every desktop target.\n`,
+    `Updater manifest ${expectedVersion} contains Apple Silicon macOS and Windows x64 targets.\n`,
   );
 }

@@ -73,4 +73,18 @@ describe("Soundboard", () => {
       categoryId: mockSoundboardCategories[2]!.id,
     });
   });
+
+  it("searches the drawer catalog without changing playback data", async () => {
+    renderSoundboard();
+    await userEvent.type(
+      screen.getByRole("textbox", { name: "Search sounds" }),
+      "ab tu",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Aye" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Ab Tu Gya Beta" }),
+    ).toBeVisible();
+  });
 });
