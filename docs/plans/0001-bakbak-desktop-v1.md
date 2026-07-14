@@ -146,6 +146,10 @@ voice-chat UI removal, floating call controls, and simplified voice canvas are
 approved under `0006-discord-shaped-bakbak-hearted-ui.md`. Plan 0006 supersedes
 only the conflicting UI decisions in plans 0004 and 0005; their backend and
 compatibility work remains in force.
+Prepared voice joins, verified-claims token authorization, microphone reuse,
+compact participant sizing, animated sound activity, and the five-sound safety
+limit are approved under
+`0007-voice-join-acceleration-and-soundboard-polish.md`.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -169,8 +173,23 @@ compatibility work remains in force.
 - [ ] Complete the plan 0005 browser-plus-native two-account acceptance run.
 - [x] Add independently persisted channel/member panels, a sidebar call block,
       an auto-hiding floating voice dock, and a dock-anchored soundboard drawer.
+- [x] Keep the soundboard drawer compact and internally scrolling rather than
+      allowing it to consume the center canvas.
+- [x] Add native Cmd/Ctrl `+`, `-`, and `0` interface zoom shortcuts.
 - [x] Add Warm/Flat surface styles and apply them before React mounts.
-- [x] Simplify voice pre-join and joined participant/share layouts under plan 0006.
+- [x] Auto-join selected voice channels, remove the pre-join/initial connection
+      surface, and retain the simplified participant/share layout under plan 0006.
+- [x] Add hover/focus voice preparation, concurrent microphone acquisition,
+      direct-switch microphone reuse, relay preference, and accessible join
+      stages while preserving the soundboard-publication connection gate under
+      plan 0007.
+- [x] Add occupancy-aware participant tiles, active-sound emoji treatment, a
+      sender-enforced five-sound limit, and prominent soundboard/dock stop
+      controls under plan 0007.
+- [x] Deploy the plan 0007 voice-context migration and token function with the
+      JWT gate preserved.
+- [ ] Measure hosted warm/cold joins and complete plan 0007's authenticated
+      member/non-member probes plus browser-native two-account acceptance run.
 - [x] Add private profile-avatar and admin channel-management code plus focused
       frontend/database tests under plan 0004.
 - [x] Deploy the plan 0004 avatar/channel migration to hosted Supabase.

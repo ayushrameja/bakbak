@@ -8,6 +8,7 @@ import {
   Music2,
   PhoneOff,
   Settings2,
+  Square,
   Video,
   VideoOff,
 } from "lucide-react";
@@ -46,6 +47,7 @@ export function VoiceControlDock({
   const focusInsideRef = useRef(false);
   const active = Boolean(voice.channel) && voice.status !== "disconnected";
   const connected = voice.status === "connected";
+  const localSoundsActive = voice.activeLocalSoundCount > 0;
 
   const clearHideTimer = useCallback(() => {
     if (hideTimerRef.current !== null) {
@@ -60,14 +62,15 @@ export function VoiceControlDock({
       pointerInsideRef.current ||
       focusInsideRef.current ||
       moreOpen ||
-      soundboardOpen
+      soundboardOpen ||
+      localSoundsActive
     )
       return;
     hideTimerRef.current = window.setTimeout(
       () => setVisible(false),
       VOICE_DOCK_HIDE_DELAY_MS,
     );
-  }, [clearHideTimer, moreOpen, soundboardOpen]);
+  }, [clearHideTimer, localSoundsActive, moreOpen, soundboardOpen]);
 
   const reveal = useCallback(() => {
     if (!active) return;
@@ -117,13 +120,20 @@ export function VoiceControlDock({
   useEffect(() => () => clearHideTimer(), [clearHideTimer]);
 
   useEffect(() => {
-    if (soundboardOpen || moreOpen) {
+    if (soundboardOpen || moreOpen || localSoundsActive) {
       clearHideTimer();
       setVisible(true);
     } else if (active) {
       scheduleHide();
     }
-  }, [active, clearHideTimer, moreOpen, scheduleHide, soundboardOpen]);
+  }, [
+    active,
+    clearHideTimer,
+    localSoundsActive,
+    moreOpen,
+    scheduleHide,
+    soundboardOpen,
+  ]);
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -292,6 +302,17 @@ export function VoiceControlDock({
             </div>
           ) : null}
         </div>
+        {localSoundsActive ? (
+          <button
+            className="voice-control-dock__stop-sounds"
+            type="button"
+            aria-label={`Stop my sounds (${voice.activeLocalSoundCount} playing)`}
+            onClick={() => void voice.stopLocalSounds()}
+          >
+            <Square size={18} />
+            <span>{voice.activeLocalSoundCount}</span>
+          </button>
+        ) : null}
         <button
           className="voice-control-dock__leave"
           type="button"

@@ -855,6 +855,15 @@ export default function App() {
     selectedChannelIdRef.current = channel.id;
     setSelectedChannelId(channel.id);
     setActiveView("channel");
+    if (
+      channel.kind === "voice" &&
+      (voice.channel?.id !== channel.id ||
+        voice.status === "disconnected" ||
+        voice.status === "error")
+    ) {
+      setSoundboardOpen(false);
+      void voice.join(channel);
+    }
   }
 
   if (authLoading) {
@@ -940,6 +949,7 @@ export default function App() {
           soundboardOpen={soundboardOpen}
           canManageChannels={workspace.currentUserRole === "admin"}
           onSelect={handleSelectChannel}
+          onPrepareVoiceChannel={voice.prepareVoiceChannel}
           onCreateChannel={(kind) => setChannelDialog({ mode: "create", kind })}
           onRenameChannel={(channel) =>
             setChannelDialog({ mode: "rename", channel })
@@ -1002,9 +1012,6 @@ export default function App() {
                 user={user}
                 members={workspace.members}
                 voice={voice}
-                occupants={voiceOccupants.filter(
-                  (occupant) => occupant.channelId === selectedChannel.id,
-                )}
                 onOpenSettings={() => openSettings("audio")}
               />
             )}
@@ -1025,6 +1032,7 @@ export default function App() {
               error={voice.soundboard.error}
               volume={voice.soundboardVolume}
               activeLocalSoundCount={voice.activeLocalSoundCount}
+              maxConcurrentSounds={voice.maxConcurrentSounds}
               onPlay={voice.dispatchSound}
               onStopAll={voice.stopLocalSounds}
               onVolumeChange={voice.setSoundboardVolume}

@@ -17,6 +17,7 @@ function renderSoundboard(overrides: Record<string, unknown> = {}) {
       error={null}
       volume={0.7}
       activeLocalSoundCount={2}
+      maxConcurrentSounds={5}
       onPlay={vi.fn().mockResolvedValue(undefined)}
       onStopAll={onStopAll}
       onVolumeChange={onVolumeChange}
@@ -29,6 +30,19 @@ function renderSoundboard(overrides: Record<string, unknown> = {}) {
 }
 
 describe("Soundboard", () => {
+  it("exposes the compact drawer controls without the old hero copy", () => {
+    renderSoundboard();
+
+    expect(
+      screen.getByRole("region", { name: "Soundboard controls" }),
+    ).toBeVisible();
+    expect(screen.getByPlaceholderText("Find the perfect sound")).toBeVisible();
+    expect(screen.getByLabelText("Soundboard connected")).toBeVisible();
+    expect(
+      screen.queryByRole("heading", { name: "Perfectly timed nonsense" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("filters categories and exposes the shared persisted volume", async () => {
     const { onStopAll, onVolumeChange } = renderSoundboard();
     await userEvent.click(screen.getByRole("button", { name: "Dialogue" }));
@@ -86,5 +100,50 @@ describe("Soundboard", () => {
     expect(
       screen.getByRole("button", { name: "Ab Tu Gya Beta" }),
     ).toBeVisible();
+  });
+
+  it("shows the dedicated stop footer and disables ready sounds at five", () => {
+    renderSoundboard({ activeLocalSoundCount: 5 });
+
+    expect(screen.getByText("5/5 playing")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Stop my sounds" }),
+    ).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Aye" })).toBeDisabled();
+    expect(
+      screen.getByText("Stop your stack before adding another sound."),
+    ).toBeVisible();
+  });
+
+  it("keeps retryable downloads available when the play limit is full", () => {
+    renderSoundboard({
+      activeLocalSoundCount: 5,
+      sounds: [
+        {
+          ...mockSoundboardSounds[0]!,
+          assetStatus: "error",
+        },
+      ],
+    });
+
+    expect(
+      screen.getByRole("button", { name: "Aye, retry download" }),
+    ).toBeEnabled();
+  });
+
+  it("treats stop-all cancellation as intentional instead of an error", async () => {
+    renderSoundboard({
+      onPlay: vi
+        .fn()
+        .mockRejectedValue(
+          new DOMException("Sound playback was stopped.", "AbortError"),
+        ),
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Aye" }));
+
+    expect(
+      screen.queryByText("Sound playback was stopped."),
+    ).not.toBeInTheDocument();
   });
 });

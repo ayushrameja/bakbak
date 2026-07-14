@@ -47,7 +47,8 @@ same 404 used for a missing or text channel.
 - Invite plaintext is generated once and stored only as a SHA-256 hash.
 - `LIVEKIT_API_SECRET` and `LIVEKIT_API_KEY` exist only in function secrets.
 - The desktop chooses only a channel UUID. The function derives identity, room,
-  TTL, and grants after rechecking authentication and membership.
+  TTL, and grants after rechecking verified claims and querying the
+  security-invoker `get_voice_join_context` RPC under the caller's RLS session.
 - Online and voice-room status use the membership-checked
   `heartbeat_presence_v2` RPC and an RLS-filtered `presence_heartbeats` table.
   The original `heartbeat_presence` RPC remains for older installed builds.
@@ -84,6 +85,14 @@ Screen sharing changes only this Edge Function; no database migration is
 required. Deploy the backward-compatible function before distributing a native
 screen-sharing build, then repeat an unauthenticated invocation and confirm it
 still returns HTTP 401.
+
+Voice-join acceleration adds migration
+`202607140001_voice_join_context.sql` and an updated function. Push the
+migration before deploying that function. The RPC makes one RLS-protected
+lookup for voice channel, server, membership, and display-name context;
+missing, text, outsider, and cross-server requests return the same absent
+result. After deployment, repeat the unauthenticated 401 probe and authenticated
+member/non-member voice-token probes before distribution.
 
 The bucket is private, accepts only `audio/mpeg`, and rejects objects larger
 than 1 MiB. Migration `202607120002_soundboard_catalog.sql` seeds the four

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -111,11 +111,29 @@ describe("App navigation state", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "Coffee table" }));
 
+    const callRegion = await screen.findByRole("region", {
+      name: "Current voice call",
+    });
+    expect(callRegion).toHaveTextContent("Coffee table");
+    expect(
+      screen.queryByRole("button", { name: "Join voice" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Joining quietly…")).not.toBeInTheDocument();
+    expect(await screen.findByText("Ayush (you)")).toBeVisible();
     expect(
       screen.queryByRole("combobox", { name: "Message #Coffee table" }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /chat/i }),
     ).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Quiet co-work" }),
+    );
+    expect(callRegion).toHaveTextContent("Quiet co-work");
+    expect(callRegion).toHaveTextContent("Connecting");
+    await waitFor(() =>
+      expect(callRegion).toHaveTextContent("Voice connected"),
+    );
   });
 });

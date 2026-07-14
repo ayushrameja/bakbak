@@ -1763,3 +1763,229 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed. `file` identified
   and Light/Dark, covering both control surfaces, panel hiding, text/settings
   navigation, mute/deafen, camera, screen share, soundboard, device changes,
   quality changes, reconnect, and disconnect before distribution.
+
+## 2026-07-14 — Compact soundboard and native interface zoom
+
+- **Completed:** Reworked the dock-owned soundboard into a centered 480×380
+  maximum popover with one compact search/action header, category chips,
+  three-column 44 px sound rows, and an internally scrolling catalog. Preserved
+  filtering, playback, loading/retry, editing, volume, stop-all, deafen status,
+  dock pinning, and text-composer clearance. Enabled Tauri's native Cmd/Ctrl
+  `+`, Cmd/Ctrl `-`, and Cmd/Ctrl `0` interface zoom for the main window.
+- **Decisions:** Used the native Tauri webview zoom implementation instead of
+  renderer-level CSS scaling so keyboard and wheel zoom follow desktop-window
+  behavior. Granted only `core:webview:allow-set-webview-zoom`. Used the CSS
+  individual `translate` property for soundboard centering so the existing
+  entrance animation cannot overwrite horizontal placement.
+- **Validation:**
+  - `pnpm exec vitest run src/features/soundboard/Soundboard.test.tsx
+src/app/native-zoom.test.ts` — passed 2 files and 5 tests.
+  - Initial `pnpm test -- src/features/soundboard/Soundboard.test.tsx
+src/app/native-zoom.test.ts` — unsuitable focused invocation: Vitest passed
+    all 37 files/162 tests, but the package script also forwarded the source
+    arguments to Node's release-script runner. Re-ran the focused tests with
+    `pnpm exec vitest run` and the canonical suite with `pnpm check`.
+  - `pnpm check` — passed formatting, lint, renderer/Node typechecks, 37 Vitest
+    files with 162 tests, 10 release-script tests, version `0.6.0` sync, the
+    production build, and the secret scan. Vite retained the existing
+    non-blocking large-chunk warning; output was 72.01 kB CSS and 1,125.32 kB
+    JavaScript.
+  - In-app browser mock QA at 1024×680 and 1280×800 — passed exact 480×380
+    maximum sizing, three columns, 44 px sound rows, horizontal centering, 10 px
+    soundboard-to-dock clearance, 10 px dock-to-composer clearance, internal
+    clipping/scrolling, and zero console errors.
+  - `pnpm tauri:build:local` — passed and produced the ad-hoc-signed Apple
+    Silicon `Bakbak.app`; notarization was skipped because Apple credentials are
+    unavailable.
+  - `codesign --verify --deep --strict --verbose=4
+src-tauri/target/release/bundle/macos/Bakbak.app` — passed. `file` identified
+    a Mach-O 64-bit arm64 executable and `lipo -archs` returned `arm64`.
+  - Final `pnpm security:scan` — passed for `dist` and the native bundle.
+- **Documentation updated:** Updated plan 0006, the active v1 plan,
+  `docs/architecture.md`, and this canonical progress log.
+- **Known limitations:** Browser automation cannot exercise Tauri-owned zoom
+  hotkeys; the config test and native bundle validate their wiring, while a
+  native-window keystroke remains a manual smoke check. The updater-enabled
+  build remains skipped because the protected `TAURI_SIGNING_PRIVATE_KEY` is
+  unavailable. The canonical browser-plus-native two-account call is still
+  pending.
+- **Next:** Open the generated native app, smoke-test Cmd `+`, Cmd `-`, and Cmd
+  `0`, then include soundboard search/scroll/playback in the pending two-account
+  call rehearsal.
+
+## 2026-07-14 — Voice-channel auto-join
+
+- **Completed:** Made voice-channel selection immediately join that room and
+  made selecting another voice channel switch the active call. Removed the
+  manual pre-join room/occupancy card, Join and microphone-check actions, the
+  initial “Joining quietly” surface, and their unused styles. Kept sidebar
+  occupancy, reconnect feedback, connection-error retry, settings device
+  access, generation-gated switching, and the joined participant/share canvas.
+- **Decisions:** Text-channel selection continues to navigate without changing
+  an active call. Re-selecting the current room does not reconnect unless the
+  call is disconnected or errored. Creating and selecting a new voice channel
+  now follows the same auto-join rule.
+- **Validation:**
+  - `pnpm exec vitest run src/app/App.test.tsx
+src/features/voice/VoiceRoom.test.tsx` — passed 2 files and 7 tests,
+    including auto-join, room switching, and pre-join surface absence.
+  - In-app browser mock QA at 1024×680 — passed Coffee table auto-join, direct
+    participant-canvas rendering, switching to Quiet co-work, absence of Join/
+    “Joining quietly” UI, and zero console errors.
+  - `pnpm check` — passed formatting, lint, renderer/Node typechecks, 37 Vitest
+    files with 162 tests, 10 release-script tests, version `0.6.0` sync, the
+    production build, and the secret scan. Vite retained the existing
+    non-blocking large-chunk warning; output was 71.04 kB CSS and 1,123.88 kB
+    JavaScript.
+  - `pnpm tauri:build:local` — passed and produced the ad-hoc-signed Apple
+    Silicon `Bakbak.app`; notarization was skipped because Apple credentials are
+    unavailable.
+  - `codesign --verify --deep --strict --verbose=4
+src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
+  - Final `pnpm security:scan` — passed for `dist` and the native bundle.
+- **Documentation updated:** Updated plan 0006, the active v1 plan,
+  `docs/architecture.md`, and this canonical progress log.
+- **Known limitations:** Browser/mock validation cannot prove real permission
+  prompts, cross-device LiveKit room switching, or audio continuity. The
+  canonical browser-plus-native two-account call remains pending. The
+  updater-enabled build remains skipped because the protected
+  `TAURI_SIGNING_PRIVATE_KEY` is unavailable.
+- **Next:** In the two-account rehearsal, click directly between both voice
+  rooms and confirm remote presence/audio leave the old room and enter the new
+  room exactly once.
+
+## 2026-07-14 — Voice join acceleration and soundboard polish
+
+- **Completed:** Added LiveKit endpoint prewarming plus 150 ms voice-channel
+  hover/focus preparation, one-channel prepared-room/token reuse with a
+  30-second expiry margin, click-time concurrent microphone acquisition,
+  direct-switch microphone reuse, ten-minute in-memory relay preference, and
+  development-only join-stage timings. Kept soundboard publication settlement
+  as a required connection gate. Replaced the connecting/reconnecting blank
+  canvas with a polite stage loader. Added compact solo/pair/group participant
+  sizing, larger avatars, animated newest-sound emoji replacement/overlay, and
+  reduced-motion behavior. Added a shared five-sound pending/active limit,
+  newest-five remote clamping, failure rollback, pending-start cancellation, a
+  sticky drawer stop footer, and a dock emergency stop that pins itself while
+  sounds are active. Added the
+  security-invoker `get_voice_join_context` migration and changed the token
+  function from remote `getUser` plus serial table requests to verified
+  `getClaims` plus one RLS-protected RPC.
+- **Decisions:** Preparation never requests media, publishes presence, or joins
+  a room. Slow asset fetches retain their sound reservation until playback or
+  failure, so the limit cannot expire underneath pending work. Direct switches
+  unpublish the microphone with `stopOnUnpublish=false` while the old room still
+  tears down every other track. A relay success affects only this process for
+  ten minutes; direct routing is probed again after expiry or immediately when
+  relay-first fails. The sender enforces five sounds, while upgraded receivers
+  defensively render the newest five from older clients. The migration and
+  function are tracked locally but were not deployed as part of this task.
+- **Validation:**
+  - `pnpm exec vitest run src/features/voice/useVoiceRoom.test.tsx
+src/features/voice/VoiceRoom.test.tsx
+src/features/voice/VoiceControlDock.test.tsx
+src/features/soundboard/Soundboard.test.tsx
+src/features/channels/ChannelSidebar.test.tsx` — final run passed 5 files and
+    46 tests. The first run had one test-only assertion expecting two track
+    publications where the unavailable mock audio graph correctly produced
+    one; the assertion now checks the actual invariant that a failed start
+    publishes no sound activity event.
+  - `deno task --config supabase/deno.json test` — passed 15 Edge Function
+    tests, including verified claims and fail-closed malformed/error cases.
+  - `deno task --config supabase/deno.json check` — passed lint for 10 files and
+    typechecking of `livekit-token/index.ts`.
+  - `pnpm dlx supabase@latest test db` — could not run because no local
+    Supabase/Postgres stack was available. `pnpm dlx supabase@latest start
+--exclude vector` also could not start because the Docker daemon was not
+    running. The new 10-assertion pgTAP suite is tracked but remains unexecuted.
+  - Initial `pnpm check` — formatting passed, then lint failed on seven new test
+    double/style findings. They were corrected; no product-code failure was
+    hidden.
+  - Final `pnpm check` — passed formatting, lint, renderer/Node typechecks, 37
+    Vitest files with 182 tests, 10 release-script tests, version `0.6.0` sync,
+    production build, and secret scan. Vite retained the existing non-blocking
+    large-chunk warning; output was 74.87 kB CSS and 1,130.38 kB JavaScript.
+  - In-app mock-browser QA at 1024×680 and 1280×800 — passed the connecting
+    status, responsive three-person grid, 96 px group avatars, representative
+    Warm Light plus Flat Light/Dark styling, 1000×720 maximum settings sizing,
+    all four panel combinations, five-click cap, drawer/dock stop controls,
+    corrected footer clipping, 10 px drawer-to-dock clearance, and zero page
+    overflow. The mock's intentional 420 ms join delay is not a hosted latency
+    measurement.
+  - `pnpm tauri:build:local` — passed and produced the ad-hoc-signed Apple
+    Silicon `Bakbak.app`; notarization was skipped because Apple credentials are
+    unavailable.
+  - `codesign --verify --deep --strict --verbose=4
+src-tauri/target/release/bundle/macos/Bakbak.app` — passed. `file` identified a
+    Mach-O 64-bit arm64 executable and `lipo -archs` returned `arm64`.
+  - Final `pnpm security:scan` — passed for `dist` and the native bundle.
+- **Documentation updated:** Added plan 0007, updated the active v1 plan,
+  documented voice preparation/token/microphone/relay/participant/sound-limit
+  contracts in `docs/architecture.md`, updated `supabase/README.md`, and
+  appended this canonical progress entry.
+- **Known limitations:** Warm/cold hosted join timings were not measured, so the
+  1.5/3-second targets are not yet claimed. The additive migration and updated
+  token function are not deployed. The pgTAP suite is blocked on a running
+  Docker-backed Supabase stack. The canonical browser-plus-native two-account
+  audio/media rehearsal remains pending. The updater-enabled Tauri build was
+  skipped because `TAURI_SIGNING_PRIVATE_KEY` is absent; the local app-only
+  build does not exercise updater signing.
+- **Next:** Start Docker and run the 10 RPC assertions, then push the migration
+  before deploying `livekit-token`. Repeat unauthenticated/member/non-member
+  probes, measure cold and prepared warm joins, and finish the browser-plus-
+  native direct-switch/sound-overlap/reconnect/Leave rehearsal.
+
+## 2026-07-14 — Hosted voice-join authorization rollout
+
+- **Completed:** Deployed additive migration
+  `202607140001_voice_join_context.sql` to the linked hosted Supabase project,
+  then deployed the updated `livekit-token` Edge Function with the new
+  `getClaims` verifier and one-query voice-context lookup. Confirmed local and
+  remote migration history match through `202607140001`. Confirmed the hosted
+  function is ACTIVE at version 5 with `verify_jwt` still enabled.
+- **Decisions:** Kept the rollout migration-first so the new function never ran
+  before its RPC dependency existed. Used the Supabase server-side `--use-api`
+  bundler to avoid the known local `output.eszip` race. Reused the existing
+  platform-managed LiveKit secrets without reading or changing them. Did not
+  create durable Auth users merely to manufacture member/non-member probe
+  credentials; those checks will reuse the existing two-account acceptance
+  sessions.
+- **Validation:**
+  - `pnpm dlx supabase@latest db push --dry-run` — passed; reported exactly one
+    pending migration, `202607140001_voice_join_context.sql`.
+  - `pnpm dlx supabase@latest db push` — passed; applied
+    `202607140001_voice_join_context.sql`.
+  - `pnpm dlx supabase@latest migration list` — passed; all 11 local/remote
+    migration versions match through `202607140001`.
+  - `pnpm dlx supabase@latest functions deploy livekit-token --use-api` —
+    passed and uploaded the new `auth.ts` module with the existing handler,
+    signer, request, CORS, and HTTP modules.
+  - `pnpm dlx supabase@latest functions list` — passed; `livekit-token` is
+    ACTIVE at version 5 with `verify_jwt: true` and an import map.
+  - Unauthenticated hosted `POST /functions/v1/livekit-token` — returned HTTP
+    401 as required.
+  - Hosted `POST /rest/v1/rpc/get_voice_join_context` using only the public
+    anonymous credential — returned HTTP 401 as required.
+  - `deno task --config supabase/deno.json test` — passed all 15 Edge Function
+    tests.
+  - `deno task --config supabase/deno.json check` — passed lint for 10 files and
+    typechecking of the deployed function entrypoint.
+  - `pnpm check` — passed formatting, lint, renderer/Node typechecks, 37 Vitest
+    files with 182 tests, 10 release-script tests, version `0.6.0` sync,
+    production build, and secret scan. Vite retained the existing non-blocking
+    large-chunk warning; output remained 74.87 kB CSS and 1,130.38 kB
+    JavaScript.
+- **Documentation updated:** Marked the hosted backend deployed in plan 0007,
+  the active v1 plan, and `docs/architecture.md`; appended this canonical
+  rollout entry.
+- **Known limitations:** Authenticated member/non-member hosted token probes
+  were not run because this checkout has no reusable test-session credentials.
+  The 10-assertion pgTAP RPC suite is still blocked on a running local Docker/
+  Supabase stack. Warm/cold hosted timing and the canonical browser-plus-native
+  two-account media rehearsal remain open. The Supabase CLI also emits a
+  non-blocking warning that `[inbucket]` is deprecated in favor of
+  `[local_smtp]`.
+- **Next:** Use the existing signed-in browser and native test accounts to
+  verify member voice success plus non-member/text/missing-channel not-found
+  behavior, then capture cold and prepared warm join timings during the
+  two-account rehearsal.

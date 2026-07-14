@@ -34,6 +34,7 @@ interface ChannelSidebarProps {
   soundboardOpen: boolean;
   canManageChannels: boolean;
   onSelect: (channel: Channel) => void;
+  onPrepareVoiceChannel: (channel: Channel) => void;
   onCreateChannel: (kind: ChannelKind) => void;
   onRenameChannel: (channel: Channel) => void;
   onOpenSettings: () => void;
@@ -53,6 +54,7 @@ export function ChannelSidebar({
   soundboardOpen,
   canManageChannels,
   onSelect,
+  onPrepareVoiceChannel,
   onCreateChannel,
   onRenameChannel,
   onOpenSettings,
@@ -113,6 +115,8 @@ export function ChannelSidebar({
                     <button
                       className={`channel-row ${selectedChannelId === channel.id ? "active" : ""}`}
                       type="button"
+                      onPointerEnter={() => onPrepareVoiceChannel(channel)}
+                      onFocus={() => onPrepareVoiceChannel(channel)}
                       onClick={() => onSelect(channel)}
                     >
                       <Volume2 size={17} />

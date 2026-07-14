@@ -56,15 +56,30 @@ panic finds them.
       and settings access.
 - [x] Normalize local LiveKit quality as Unknown, Excellent, Good, or Poor;
       reconnecting takes display precedence and teardown resets to Unknown.
-- [x] Show one compact room/occupancy card before joining. After joining,
-      remove duplicated room metadata and fill the canvas with equal participant
-      tiles carrying minimal camera/avatar, name, mute, speaking, activity, and
+- [x] Auto-join a selected voice channel and switch calls when another voice
+      channel is selected. Do not render a pre-join or initial connection
+      surface. After joining, fill the canvas with equal participant tiles
+      carrying minimal camera/avatar, name, mute, speaking, activity, and
       remote-volume overlays.
 - [x] Preserve the selected featured screen share and presenter switching while
       moving participant tiles into a compact horizontal strip.
 - [x] Keep autoplay, device, reconnect, and screen-share failures as compact
       banners. Preserve existing audio routing and screen-capture contracts.
 - [x] Anchor soundboard above the floating dock and pin the dock until it closes.
+
+## Follow-up — Compact soundboard and interface zoom
+
+- [x] Replace the wide soundboard surface with a centered 480×380 maximum
+      popover, compact three-column sound rows, internal catalog scrolling, and
+      preserved search/category/volume/edit/retry/stop behavior.
+- [x] Keep 10 px clearance above the floating dock and preserve the dock's
+      composer clearance while browsing a text channel.
+- [x] Enable Tauri's native Cmd/Ctrl `+`, Cmd/Ctrl `-`, and Cmd/Ctrl `0`
+      interface zoom hotkeys with the scoped webview-zoom capability.
+- [x] Cover the compact semantics and native configuration with focused tests,
+      then verify the soundboard footprint at 1024×680 and 1280×800.
+- [x] Cover voice-channel auto-join and room switching, with no manual Join
+      control or “Joining quietly” surface.
 
 ## Validation
 
@@ -74,7 +89,7 @@ panic finds them.
       quality normalization, participant layouts, and featured sharing.
 - [x] Mock browser QA covers 1280×800 and 1024×680, all panel combinations,
       Warm/Flat with Light/Dark, settings scrolling/focus restoration, voice
-      pre-join/joined layouts, dock hiding/reveal, soundboard anchoring, text
+      auto-join/joined layouts, dock hiding/reveal, soundboard anchoring, text
       composer clearance, active-call navigation, and zero console warnings.
 - [ ] Run the canonical browser-plus-native two-account call with human media
       observation: mute/deafen, camera, screen share, soundboard, device changes,

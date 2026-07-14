@@ -96,6 +96,29 @@ describe("VoiceControlDock", () => {
     });
     expect(dock).toHaveAttribute("data-visible", "false");
   });
+
+  it("pins a prominent stop action while local sounds are active", async () => {
+    vi.useFakeTimers();
+    const stopLocalSounds = vi.fn().mockResolvedValue(undefined);
+    renderDock(
+      createVoice({
+        activeLocalSoundCount: 3,
+        stopLocalSounds,
+      }),
+    );
+    const dock = screen.getByRole("region", { name: "Voice controls" });
+
+    act(() => {
+      vi.advanceTimersByTime(VOICE_DOCK_HIDE_DELAY_MS * 2);
+    });
+    expect(dock).toHaveAttribute("data-visible", "true");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Stop my sounds (3 playing)" }),
+    );
+    await act(async () => Promise.resolve());
+    expect(stopLocalSounds).toHaveBeenCalledOnce();
+  });
 });
 
 function renderDock(
@@ -119,6 +142,7 @@ function createVoice(
 ): ReturnType<typeof useVoiceRoom> {
   return {
     status: "connected",
+    joinStage: null,
     connectionQuality: "excellent",
     channel,
     participants: [],
@@ -152,6 +176,8 @@ function createVoice(
     soundboard: mockSoundboardController,
     soundboardVolume: 0.7,
     activeLocalSoundCount: 0,
+    maxConcurrentSounds: 5,
+    prepareVoiceChannel: vi.fn(),
     join: vi.fn().mockResolvedValue(undefined),
     leave: vi.fn().mockResolvedValue(undefined),
     toggleMute: vi.fn().mockResolvedValue(undefined),

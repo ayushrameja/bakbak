@@ -2,10 +2,12 @@ import {
   ConnectionQuality,
   ConnectionError,
   ConnectionErrorReason,
+  LocalAudioTrack,
   Room,
   RoomEvent,
   Track,
   VideoPresets,
+  createLocalAudioTrack,
   supportsAudioOutputSelection,
   type Participant,
   type RemoteAudioTrack,
@@ -32,6 +34,11 @@ import {
 } from "../soundboard/sound-events";
 import { mockSoundboardController } from "../soundboard/mock-catalog";
 import {
+  MAX_CONCURRENT_SOUNDS_PER_USER,
+  clampSoundboardActivities,
+  hasReachedSoundLimit,
+} from "../soundboard/limits";
+import {
   SOUNDBOARD_TRACK_NAME,
   SoundboardAudioPublisher,
 } from "../soundboard/soundboard-audio";
@@ -52,6 +59,7 @@ import { RemoteAudioRenderer } from "./remote-audio";
 import {
   buildLiveKitTokenRequest,
   parseLiveKitTokenResponse,
+  type LiveKitToken,
 } from "./token-request";
 import {
   getScreenShareCapabilities,
@@ -68,6 +76,23 @@ export type VoiceConnectionStatus =
   "disconnected" | "connecting" | "connected" | "reconnecting" | "error";
 
 export type VoiceConnectionQuality = "unknown" | "excellent" | "good" | "poor";
+
+export type VoiceJoinStage =
+  "authorizing" | "connecting" | "microphone" | "soundboard";
+
+export const VOICE_PREPARE_DEBOUNCE_MS = 150;
+export const VOICE_TOKEN_EXPIRY_BUFFER_MS = 30_000;
+export const RELAY_PREFERENCE_DURATION_MS = 10 * 60_000;
+
+type PreparedTokenResult =
+  { ok: true; value: LiveKitToken } | { ok: false; error: unknown };
+
+interface PreparedVoiceJoin {
+  channelId: string;
+  room: Room;
+  operation: number;
+  tokenResult: Promise<PreparedTokenResult>;
+}
 
 export function normalizeVoiceConnectionQuality(
   quality: ConnectionQuality,
@@ -109,6 +134,7 @@ export interface VideoTrackLike {
 
 interface VoiceRoomState {
   status: VoiceConnectionStatus;
+  joinStage: VoiceJoinStage | null;
   connectionQuality: VoiceConnectionQuality;
   channel: Channel | null;
   participants: VoiceParticipant[];
@@ -142,6 +168,8 @@ interface VoiceRoomState {
   soundboard: SoundboardCatalogController;
   soundboardVolume: number;
   activeLocalSoundCount: number;
+  maxConcurrentSounds: number;
+  prepareVoiceChannel: (channel: Channel) => void;
   join: (channel: Channel) => Promise<void>;
   leave: () => Promise<void>;
   toggleMute: () => Promise<void>;
@@ -171,6 +199,7 @@ export function useVoiceRoom(
 ): VoiceRoomState {
   const [initialPreferences] = useState(loadDevicePreferences);
   const [status, setStatus] = useState<VoiceConnectionStatus>("disconnected");
+  const [joinStage, setJoinStage] = useState<VoiceJoinStage | null>(null);
   const [connectionQuality, setConnectionQuality] =
     useState<VoiceConnectionQuality>("unknown");
   const [channel, setChannel] = useState<Channel | null>(null);
@@ -235,9 +264,17 @@ export function useVoiceRoom(
   const outputSelectionSupported =
     audioOutput.supported && supportsAudioOutputSelection();
   const roomRef = useRef<Room | null>(null);
+  const preparedJoinRef = useRef<PreparedVoiceJoin | null>(null);
+  const prepareTimerRef = useRef<number | null>(null);
+  const scheduledPrepareChannelRef = useRef<string | null>(null);
+  const prepareOperationRef = useRef(0);
+  const joiningMicrophoneRef = useRef<LocalAudioTrack | null>(null);
+  const relayPreferredUntilRef = useRef(0);
+  const mutedRef = useRef(false);
   const deafenedRef = useRef(false);
   const joinOperationRef = useRef(0);
   const playbackOperationRef = useRef(0);
+  const soundStartOperationRef = useRef(0);
   const cameraOperationRef = useRef(0);
   const screenShareOperationRef = useRef(0);
   const screenShareSessionRef = useRef<string | null>(null);
@@ -426,6 +463,13 @@ export function useVoiceRoom(
   }, [desktopApp, screenShares, selectedScreenShareId]);
 
   useEffect(() => {
+    if (mode !== "live" || appConfig.livekitUrl.length === 0) return;
+    const room = new Room({ adaptiveStream: true, dynacast: true });
+    void room.prepareConnection(appConfig.livekitUrl).catch(() => undefined);
+    return () => void room.disconnect().catch(() => undefined);
+  }, [mode]);
+
+  useEffect(() => {
     if (!desktopApp) return;
     let disposed = false;
     let unlisten: () => void = () => undefined;
@@ -464,41 +508,134 @@ export function useVoiceRoom(
     };
   }, [desktopApp]);
 
-  const resetVoiceMedia = useCallback(() => {
-    playbackOperationRef.current += 1;
-    cameraOperationRef.current += 1;
-    screenShareOperationRef.current += 1;
-    const screenSessionId = screenShareSessionRef.current;
-    screenShareSessionRef.current = null;
-    const screenStop = screenSessionId
-      ? stopNativeScreenShare(screenSessionId).catch(() => undefined)
-      : Promise.resolve();
-    remoteAudio.cleanup();
-    soundboardAudio.cleanup();
-    audioOutput.cleanup();
-    soundActivities.current.clear();
-    soundActivityTimers.current.forEach((timer) => window.clearTimeout(timer));
-    soundActivityTimers.current.clear();
-    soundboardTracks.current.clear();
-    screenShareTracks.current.clear();
-    setActiveLocalSoundCount(0);
-    deafenedRef.current = false;
-    seenSoundEvents.current.clear();
-    setParticipants([]);
-    setConnectionQuality("unknown");
-    setMuted(false);
-    setDeafened(false);
-    setAudioPlaybackBlocked(false);
-    setCameraEnabled(false);
-    setCameraPending(false);
-    setScreenShares([]);
-    setSelectedScreenShareId(null);
-    setScreenShareState("idle");
-    setScreenShareAudioPublished(false);
-    setScreenShareSourceLabel(null);
-    setScreenShareError(null);
-    return screenStop;
-  }, [audioOutput, remoteAudio, soundboardAudio]);
+  const discardPreparedJoin = useCallback(() => {
+    if (prepareTimerRef.current !== null) {
+      window.clearTimeout(prepareTimerRef.current);
+      prepareTimerRef.current = null;
+    }
+    scheduledPrepareChannelRef.current = null;
+    prepareOperationRef.current += 1;
+    const prepared = preparedJoinRef.current;
+    preparedJoinRef.current = null;
+    void prepared?.room.disconnect().catch(() => undefined);
+  }, []);
+
+  const prepareVoiceChannel = useCallback(
+    (nextChannel: Channel) => {
+      if (
+        mode !== "live" ||
+        nextChannel.kind !== "voice" ||
+        (roomRef.current !== null && channel?.id === nextChannel.id) ||
+        preparedJoinRef.current?.channelId === nextChannel.id ||
+        scheduledPrepareChannelRef.current === nextChannel.id
+      ) {
+        return;
+      }
+
+      if (prepareTimerRef.current !== null) {
+        window.clearTimeout(prepareTimerRef.current);
+      }
+      scheduledPrepareChannelRef.current = nextChannel.id;
+      prepareTimerRef.current = window.setTimeout(() => {
+        prepareTimerRef.current = null;
+        scheduledPrepareChannelRef.current = null;
+        discardPreparedJoin();
+
+        const operation = prepareOperationRef.current + 1;
+        prepareOperationRef.current = operation;
+        const room = new Room({ adaptiveStream: true, dynacast: true });
+        const startedAt = performance.now();
+        const tokenResult: Promise<PreparedTokenResult> = requestLiveKitToken(
+          nextChannel.id,
+          "voice",
+        ).then(
+          (value) => ({ ok: true as const, value }),
+          (error: unknown) => ({ ok: false as const, error }),
+        );
+        const prepared: PreparedVoiceJoin = {
+          channelId: nextChannel.id,
+          room,
+          operation,
+          tokenResult,
+        };
+        preparedJoinRef.current = prepared;
+
+        void tokenResult.then(async (result) => {
+          const isCurrent = () =>
+            prepareOperationRef.current === operation &&
+            preparedJoinRef.current === prepared;
+          if (
+            !isCurrent() ||
+            !result.ok ||
+            !isPreparedVoiceTokenUsable(result.value, Date.now())
+          ) {
+            if (isCurrent()) discardPreparedJoin();
+            return;
+          }
+          try {
+            await room.prepareConnection(
+              result.value.serverUrl,
+              result.value.token,
+            );
+            if (isCurrent() && import.meta.env.DEV) {
+              console.debug("[voice-join] prepared", {
+                durationMs: Math.round(performance.now() - startedAt),
+              });
+            }
+          } catch {
+            if (isCurrent()) discardPreparedJoin();
+          }
+        });
+      }, VOICE_PREPARE_DEBOUNCE_MS);
+    },
+    [channel?.id, discardPreparedJoin, mode],
+  );
+
+  const resetVoiceMedia = useCallback(
+    (preserveLocalControls = false) => {
+      playbackOperationRef.current += 1;
+      soundStartOperationRef.current += 1;
+      cameraOperationRef.current += 1;
+      screenShareOperationRef.current += 1;
+      const screenSessionId = screenShareSessionRef.current;
+      screenShareSessionRef.current = null;
+      const screenStop = screenSessionId
+        ? stopNativeScreenShare(screenSessionId).catch(() => undefined)
+        : Promise.resolve();
+      remoteAudio.cleanup();
+      soundboardAudio.cleanup();
+      audioOutput.cleanup();
+      soundActivities.current.clear();
+      soundActivityTimers.current.forEach((timer) =>
+        window.clearTimeout(timer),
+      );
+      soundActivityTimers.current.clear();
+      soundboardTracks.current.clear();
+      screenShareTracks.current.clear();
+      setActiveLocalSoundCount(0);
+      seenSoundEvents.current.clear();
+      setParticipants([]);
+      setConnectionQuality("unknown");
+      setJoinStage(null);
+      if (!preserveLocalControls) {
+        mutedRef.current = false;
+        deafenedRef.current = false;
+        setMuted(false);
+        setDeafened(false);
+      }
+      setAudioPlaybackBlocked(false);
+      setCameraEnabled(false);
+      setCameraPending(false);
+      setScreenShares([]);
+      setSelectedScreenShareId(null);
+      setScreenShareState("idle");
+      setScreenShareAudioPublished(false);
+      setScreenShareSourceLabel(null);
+      setScreenShareError(null);
+      return screenStop;
+    },
+    [audioOutput, remoteAudio, soundboardAudio],
+  );
 
   const clearParticipantSounds = useCallback(
     (participantId: string, eventId?: string) => {
@@ -537,6 +674,7 @@ export function useVoiceRoom(
       participantId: string,
       eventId: string,
       sound: SoundboardCatalogController["sounds"][number],
+      scheduleExpiry = true,
     ) => {
       const activity: SoundboardActivity = {
         eventId,
@@ -546,14 +684,24 @@ export function useVoiceRoom(
         startedAt: Date.now(),
       };
       const current = soundActivities.current.get(participantId) ?? [];
-      soundActivities.current.set(participantId, [...current, activity]);
-      if (participantId === user.id)
-        setActiveLocalSoundCount(current.length + 1);
-      const timer = window.setTimeout(
-        () => clearParticipantSounds(participantId, eventId),
-        sound.durationMs + 250,
-      );
-      soundActivityTimers.current.set(eventId, timer);
+      const next = clampSoundboardActivities([...current, activity]);
+      const retainedEventIds = new Set(next.map((item) => item.eventId));
+      current
+        .filter((item) => !retainedEventIds.has(item.eventId))
+        .forEach((item) => {
+          const timer = soundActivityTimers.current.get(item.eventId);
+          if (timer !== undefined) window.clearTimeout(timer);
+          soundActivityTimers.current.delete(item.eventId);
+        });
+      soundActivities.current.set(participantId, next);
+      if (participantId === user.id) setActiveLocalSoundCount(next.length);
+      if (scheduleExpiry) {
+        const timer = window.setTimeout(
+          () => clearParticipantSounds(participantId, eventId),
+          sound.durationMs + 250,
+        );
+        soundActivityTimers.current.set(eventId, timer);
+      }
       const room = roomRef.current;
       if (room) refreshParticipants(room);
       else {
@@ -562,7 +710,10 @@ export function useVoiceRoom(
             participant.id === participantId
               ? {
                   ...participant,
-                  activeSounds: [...participant.activeSounds, activity],
+                  activeSounds: clampSoundboardActivities([
+                    ...participant.activeSounds,
+                    activity,
+                  ]),
                 }
               : participant,
           ),
@@ -723,10 +874,16 @@ export function useVoiceRoom(
   );
 
   const disconnectCurrentRoom = useCallback(
-    async (preserveJoinState = false) => {
+    async ({
+      preserveJoinState = false,
+      preserveLocalControls = false,
+    }: {
+      preserveJoinState?: boolean;
+      preserveLocalControls?: boolean;
+    } = {}) => {
       const room = roomRef.current;
       roomRef.current = null;
-      const screenStop = resetVoiceMedia();
+      const screenStop = resetVoiceMedia(preserveLocalControls);
       if (!preserveJoinState) {
         setStatus("disconnected");
         setChannel(null);
@@ -743,8 +900,10 @@ export function useVoiceRoom(
 
   const leave = useCallback(async () => {
     joinOperationRef.current += 1;
+    discardPreparedJoin();
+    stopJoiningMicrophone(joiningMicrophoneRef);
     await disconnectCurrentRoom();
-  }, [disconnectCurrentRoom]);
+  }, [discardPreparedJoin, disconnectCurrentRoom]);
 
   const join = useCallback(
     async (nextChannel: Channel) => {
@@ -753,19 +912,22 @@ export function useVoiceRoom(
       joinOperationRef.current = joinOperation;
       playbackOperationRef.current += 1;
       const isCurrentJoin = () => joinOperationRef.current === joinOperation;
+      const timing = createVoiceJoinTiming(mode === "live");
+      stopJoiningMicrophone(joiningMicrophoneRef);
 
       setChannel(nextChannel);
       setStatus("connecting");
+      setJoinStage("authorizing");
       setError(null);
       setInputDeviceError(null);
       setOutputDeviceError(null);
       setCameraDeviceError(null);
       setAudioPlaybackBlocked(false);
 
-      await disconnectCurrentRoom(true);
-      if (!isCurrentJoin()) return;
-
       if (mode === "mock") {
+        await disconnectCurrentRoom({ preserveJoinState: true });
+        if (!isCurrentJoin()) return;
+        setJoinStage("connecting");
         await new Promise((resolve) => window.setTimeout(resolve, 420));
         if (!isCurrentJoin()) return;
         setParticipants([
@@ -808,73 +970,204 @@ export function useVoiceRoom(
         ]);
         setConnectionQuality("excellent");
         setStatus("connected");
+        setJoinStage(null);
         return;
       }
 
-      let joiningRoom: Room | null = null;
+      const prepared = preparedJoinRef.current;
+      let preparedForJoin: PreparedVoiceJoin | null = null;
+      if (prepared?.channelId === nextChannel.id) {
+        preparedForJoin = prepared;
+        preparedJoinRef.current = null;
+        prepareOperationRef.current += 1;
+      } else if (prepared !== null) {
+        discardPreparedJoin();
+      }
+      if (prepareTimerRef.current !== null) {
+        window.clearTimeout(prepareTimerRef.current);
+        prepareTimerRef.current = null;
+      }
+      scheduledPrepareChannelRef.current = null;
+
+      const tokenPromise = preparedForJoin
+        ? preparedForJoin.tokenResult.then((result) => {
+            if (!result.ok) throw result.error;
+            if (!isPreparedVoiceTokenUsable(result.value, Date.now())) {
+              return requestLiveKitToken(nextChannel.id, "voice");
+            }
+            return result.value;
+          })
+        : requestLiveKitToken(nextChannel.id, "voice");
+      void tokenPromise.catch(() => undefined);
+
+      const currentRoom = roomRef.current;
+      let reusableMicrophone = readLocalMicrophoneTrack(currentRoom);
+      let microphonePromise: Promise<{
+        track: LocalAudioTrack | null;
+        error: unknown;
+      }> | null =
+        currentRoom === null
+          ? acquireMicrophoneTrack(
+              selectedInputId,
+              isCurrentJoin,
+              joiningMicrophoneRef,
+            )
+          : null;
+
+      if (currentRoom && reusableMicrophone) {
+        try {
+          await currentRoom.localParticipant.unpublishTrack(
+            reusableMicrophone as unknown as MediaStreamTrack,
+            false,
+          );
+        } catch {
+          reusableMicrophone = null;
+        }
+      }
+
+      try {
+        await disconnectCurrentRoom({
+          preserveJoinState: true,
+          preserveLocalControls: currentRoom !== null,
+        });
+      } catch {
+        if (isCurrentJoin()) joinOperationRef.current += 1;
+        stopJoiningMicrophone(joiningMicrophoneRef);
+        reusableMicrophone?.stop();
+        void preparedForJoin?.room.disconnect().catch(() => undefined);
+        setStatus("error");
+        setJoinStage(null);
+        setError(
+          "Bakbak could not close the previous voice room. Try joining again.",
+        );
+        timing.finish("error");
+        return;
+      }
+      if (!isCurrentJoin()) {
+        stopJoiningMicrophone(joiningMicrophoneRef);
+        reusableMicrophone?.stop();
+        void preparedForJoin?.room.disconnect().catch(() => undefined);
+        return;
+      }
+
+      if (reusableMicrophone) {
+        joiningMicrophoneRef.current = reusableMicrophone;
+        microphonePromise = Promise.resolve({
+          track: reusableMicrophone,
+          error: null,
+        });
+      } else if (microphonePromise === null) {
+        microphonePromise = acquireMicrophoneTrack(
+          selectedInputId,
+          isCurrentJoin,
+          joiningMicrophoneRef,
+        );
+      }
+
+      let joiningRoom: Room | null = preparedForJoin?.room ?? null;
       let attemptedRelay = false;
       try {
-        const response = await requestLiveKitToken(nextChannel.id, "voice");
-        if (!isCurrentJoin()) return;
+        const response = await tokenPromise;
+        timing.mark("authorization");
+        if (!isCurrentJoin()) {
+          stopJoiningMicrophone(joiningMicrophoneRef);
+          void joiningRoom?.disconnect().catch(() => undefined);
+          return;
+        }
+        setJoinStage("connecting");
 
-        const createJoiningRoom = () => {
-          const room = new Room({ adaptiveStream: true, dynacast: true });
+        const createJoiningRoom = (candidate?: Room) => {
+          const room =
+            candidate ?? new Room({ adaptiveStream: true, dynacast: true });
           roomRef.current = room;
           bindRoomEvents(room);
           return room;
         };
 
-        let room = createJoiningRoom();
+        let room = createJoiningRoom(preparedForJoin?.room);
         joiningRoom = room;
+        const preferRelay = relayPreferredUntilRef.current > Date.now();
+        let connectedWithRelay = preferRelay;
         try {
-          await room.connect(response.serverUrl, response.token);
+          attemptedRelay = preferRelay;
+          await connectVoiceRoom(room, response, preferRelay);
         } catch (initialError) {
           if (!isPeerConnectionFailure(initialError) || !isCurrentJoin()) {
             throw initialError;
           }
 
-          attemptedRelay = true;
+          const retryWithRelay = !preferRelay;
+          attemptedRelay ||= retryWithRelay;
           if (roomRef.current === room) roomRef.current = null;
           await room.disconnect().catch(() => undefined);
           if (!isCurrentJoin()) return;
 
           room = createJoiningRoom();
           joiningRoom = room;
-          await room.connect(response.serverUrl, response.token, {
-            rtcConfig: { iceTransportPolicy: "relay" },
-            maxRetries: 0,
-          });
+          connectedWithRelay = retryWithRelay;
+          await connectVoiceRoom(room, response, retryWithRelay);
         }
+        timing.mark("connection");
+        relayPreferredUntilRef.current = connectedWithRelay
+          ? Date.now() + RELAY_PREFERENCE_DURATION_MS
+          : 0;
         if (!isCurrentJoin() || roomRef.current !== room) {
           void room.disconnect();
           return;
         }
-        await room.localParticipant.setMicrophoneEnabled(
-          true,
-          microphoneCaptureOptions(selectedInputId),
-        );
-        if (!isCurrentJoin() || roomRef.current !== room) {
-          void room.disconnect();
-          return;
-        }
-        if (outputSelectionSupported) {
-          try {
-            await audioOutput.setDevice(selectedOutputId);
-            const outputResult = await switchAudioOutput(
-              room,
-              selectedOutputId,
-            );
-            if (!outputResult.ok) throw new Error(outputResult.message);
-          } catch {
-            setOutputDeviceError(
-              "Bakbak joined using system output because the selected speaker was unavailable.",
-            );
+
+        setJoinStage("microphone");
+        const publishMicrophone = (async () => {
+          const result = await microphonePromise;
+          if (!result.track) throw result.error;
+          if (!isCurrentJoin() || roomRef.current !== room) {
+            result.track.stop();
+            return;
           }
-        }
-        await audioOutput.start().catch(() => undefined);
-        await soundboardAudio
+          if (mutedRef.current && !result.track.isMuted) {
+            await result.track.mute();
+          } else if (!mutedRef.current && result.track.isMuted) {
+            await result.track.unmute();
+          }
+          await room.localParticipant.publishTrack(
+            result.track as unknown as MediaStreamTrack,
+            { source: Track.Source.Microphone },
+          );
+          if (joiningMicrophoneRef.current === result.track) {
+            joiningMicrophoneRef.current = null;
+          }
+          timing.mark("microphone");
+        })();
+        const prepareOutput = (async () => {
+          if (outputSelectionSupported) {
+            try {
+              await audioOutput.setDevice(selectedOutputId);
+              const outputResult = await switchAudioOutput(
+                room,
+                selectedOutputId,
+              );
+              if (!outputResult.ok) throw new Error(outputResult.message);
+            } catch {
+              setOutputDeviceError(
+                "Bakbak joined using system output because the selected speaker was unavailable.",
+              );
+            }
+          }
+          await audioOutput.start().catch(() => undefined);
+        })();
+        const prepareSoundboard = soundboardAudio
           .ensurePublished(room.localParticipant)
-          .catch(() => undefined);
+          .catch(() => undefined)
+          .then(() => timing.mark("soundboard"));
+
+        await publishMicrophone;
+        if (!isCurrentJoin() || roomRef.current !== room) return;
+        setJoinStage("soundboard");
+        await Promise.all([prepareOutput, prepareSoundboard]);
+        if (!isCurrentJoin() || roomRef.current !== room) return;
+
+        remoteAudio.setMuted(deafenedRef.current);
+        soundboardAudio.setDeafened(deafenedRef.current);
         refreshParticipants(room);
         setConnectionQuality(
           normalizeVoiceConnectionQuality(
@@ -882,9 +1175,12 @@ export function useVoiceRoom(
           ),
         );
         setStatus("connected");
+        setJoinStage(null);
         setAudioPlaybackBlocked(!room.canPlaybackAudio);
+        timing.finish("connected");
         void refreshDevices();
       } catch (caught) {
+        stopJoiningMicrophone(joiningMicrophoneRef);
         if (!isCurrentJoin()) {
           void joiningRoom?.disconnect();
           return;
@@ -895,14 +1191,18 @@ export function useVoiceRoom(
         void resetVoiceMedia();
         void room?.disconnect();
         setStatus("error");
+        setJoinStage(null);
         setError(describeVoiceConnectionError(caught, attemptedRelay));
+        timing.finish("error");
       }
     },
     [
       bindRoomEvents,
       audioOutput,
+      discardPreparedJoin,
       disconnectCurrentRoom,
       mode,
+      remoteAudio,
       refreshDevices,
       refreshParticipants,
       resetVoiceMedia,
@@ -932,6 +1232,7 @@ export function useVoiceRoom(
         ),
       );
     }
+    mutedRef.current = nextMuted;
     setMuted(nextMuted);
   }, [muted, refreshParticipants, status]);
 
@@ -1300,23 +1601,51 @@ export function useVoiceRoom(
       if (sound.assetStatus === "error") {
         throw new Error("That sound failed to download. Retry it first.");
       }
+      const localSounds = soundActivities.current.get(user.id) ?? [];
+      if (hasReachedSoundLimit(localSounds.length)) {
+        throw new Error(
+          `Five sounds are already playing. Stop one before adding another.`,
+        );
+      }
       const event = createSoundPlayEvent({
         eventId: crypto.randomUUID(),
         soundId,
         sentAt: Date.now(),
       });
       seenSoundEvents.current.add(event.eventId);
-      addParticipantSound(user.id, event.eventId, sound);
+      addParticipantSound(user.id, event.eventId, sound, mode === "mock");
       if (mode === "mock") return;
 
       const room = roomRef.current;
-      if (!room) throw new Error("Voice room disconnected before playback.");
-      const blob = await soundboardRef.current.getBlob(soundId);
+      if (!room) {
+        clearParticipantSounds(user.id, event.eventId);
+        throw new Error("Voice room disconnected before playback.");
+      }
+      const startOperation = soundStartOperationRef.current;
+      const ensureStartIsCurrent = () => {
+        if (
+          soundStartOperationRef.current === startOperation &&
+          roomRef.current === room
+        ) {
+          return;
+        }
+        clearParticipantSounds(user.id, event.eventId);
+        throw new DOMException("Sound playback was stopped.", "AbortError");
+      };
+      let blob: Blob | null;
+      try {
+        blob = await soundboardRef.current.getBlob(soundId);
+      } catch (caught) {
+        clearParticipantSounds(user.id, event.eventId);
+        throw caught;
+      }
       if (!blob) {
         clearParticipantSounds(user.id, event.eventId);
         throw new Error("Bakbak could not download that sound.");
       }
+      ensureStartIsCurrent();
       await audioOutput.start().catch(() => undefined);
+      ensureStartIsCurrent();
       let playback;
       try {
         playback = await soundboardAudio.play(
@@ -1329,6 +1658,17 @@ export function useVoiceRoom(
         clearParticipantSounds(user.id, event.eventId);
         throw caught;
       }
+      try {
+        ensureStartIsCurrent();
+      } catch (caught) {
+        playback.stop();
+        throw caught;
+      }
+      const expiryTimer = window.setTimeout(
+        () => clearParticipantSounds(user.id, event.eventId),
+        sound.durationMs + 250,
+      );
+      soundActivityTimers.current.set(event.eventId, expiryTimer);
       void playback.finished.then(() =>
         clearParticipantSounds(user.id, event.eventId),
       );
@@ -1355,6 +1695,7 @@ export function useVoiceRoom(
   );
 
   const stopLocalSounds = useCallback(async () => {
+    soundStartOperationRef.current += 1;
     soundboardAudio.cleanup();
     audioOutput.cleanup();
     clearParticipantSounds(user.id);
@@ -1391,16 +1732,25 @@ export function useVoiceRoom(
     () => () => {
       joinOperationRef.current += 1;
       playbackOperationRef.current += 1;
+      soundStartOperationRef.current += 1;
       cameraOperationRef.current += 1;
       screenShareOperationRef.current += 1;
       const screenSessionId = screenShareSessionRef.current;
       screenShareSessionRef.current = null;
       const room = roomRef.current;
       roomRef.current = null;
+      if (prepareTimerRef.current !== null) {
+        window.clearTimeout(prepareTimerRef.current);
+      }
+      prepareOperationRef.current += 1;
+      const prepared = preparedJoinRef.current;
+      preparedJoinRef.current = null;
+      stopJoiningMicrophone(joiningMicrophoneRef);
       remoteAudio.cleanup();
       soundboardAudio.cleanup();
       audioOutput.cleanup();
       if (screenSessionId) void stopNativeScreenShare(screenSessionId);
+      void prepared?.room.disconnect().catch(() => undefined);
       void room?.disconnect();
     },
     [audioOutput, remoteAudio, soundboardAudio],
@@ -1408,6 +1758,7 @@ export function useVoiceRoom(
 
   return {
     status,
+    joinStage,
     connectionQuality,
     channel,
     participants,
@@ -1445,6 +1796,8 @@ export function useVoiceRoom(
     soundboard,
     soundboardVolume,
     activeLocalSoundCount,
+    maxConcurrentSounds: MAX_CONCURRENT_SOUNDS_PER_USER,
+    prepareVoiceChannel,
     join,
     leave,
     toggleMute,
@@ -1471,6 +1824,82 @@ export function microphoneCaptureOptions(deviceId: string) {
     echoCancellation: true,
     noiseSuppression: true,
     autoGainControl: true,
+  };
+}
+
+export function isPreparedVoiceTokenUsable(
+  token: Pick<LiveKitToken, "expiresAt">,
+  nowTimestamp: number,
+): boolean {
+  if (token.expiresAt === null) return false;
+  const expiresAt = Date.parse(token.expiresAt);
+  return (
+    Number.isFinite(expiresAt) &&
+    expiresAt - nowTimestamp > VOICE_TOKEN_EXPIRY_BUFFER_MS
+  );
+}
+
+function readLocalMicrophoneTrack(room: Room | null): LocalAudioTrack | null {
+  const track = room?.localParticipant.getTrackPublication(
+    Track.Source.Microphone,
+  )?.track;
+  return track instanceof LocalAudioTrack ? track : null;
+}
+
+function acquireMicrophoneTrack(
+  deviceId: string,
+  isCurrentJoin: () => boolean,
+  joiningTrackRef: { current: LocalAudioTrack | null },
+): Promise<{ track: LocalAudioTrack | null; error: unknown }> {
+  return createLocalAudioTrack(microphoneCaptureOptions(deviceId)).then(
+    (track) => {
+      if (!isCurrentJoin()) {
+        track.stop();
+        return { track: null, error: new Error("Voice join was cancelled.") };
+      }
+      joiningTrackRef.current = track;
+      return { track, error: null };
+    },
+    (error: unknown) => ({ track: null, error }),
+  );
+}
+
+function stopJoiningMicrophone(ref: { current: LocalAudioTrack | null }): void {
+  const track = ref.current;
+  ref.current = null;
+  track?.stop();
+}
+
+function connectVoiceRoom(
+  room: Room,
+  token: LiveKitToken,
+  relayOnly: boolean,
+): Promise<void> {
+  return relayOnly
+    ? room.connect(token.serverUrl, token.token, {
+        rtcConfig: { iceTransportPolicy: "relay" },
+        maxRetries: 0,
+      })
+    : room.connect(token.serverUrl, token.token);
+}
+
+function createVoiceJoinTiming(enabled: boolean) {
+  const startedAt = performance.now();
+  const stages: Record<string, number> = {};
+  return {
+    mark(stage: string) {
+      if (enabled && import.meta.env.DEV) {
+        stages[stage] = Math.round(performance.now() - startedAt);
+      }
+    },
+    finish(outcome: "connected" | "error") {
+      if (!enabled || !import.meta.env.DEV) return;
+      console.debug("[voice-join] completed", {
+        outcome,
+        totalMs: Math.round(performance.now() - startedAt),
+        stages,
+      });
+    },
   };
 }
 
