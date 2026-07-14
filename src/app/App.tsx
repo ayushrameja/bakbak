@@ -2,12 +2,13 @@ import {
   CircleAlert,
   Hash,
   MessageCircle,
-  MessageSquareText,
-  UserRound,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
   Volume2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Avatar } from "../components/Avatar";
 import { AuthScreen } from "../features/auth/AuthScreen";
 import { InviteGate } from "../features/auth/InviteGate";
 import { ChannelDialog } from "../features/channels/ChannelDialog";
@@ -27,15 +28,20 @@ import {
   enableIncomingMessageSound,
   playIncomingMessageSound,
 } from "../features/chat/message-sound";
-import { ConnectionStatus } from "../features/server/ConnectionStatus";
-import { PeopleDrawer } from "../features/server/PeopleDrawer";
+import { MemberPanel } from "../features/server/MemberPanel";
 import {
   loadAppearancePreferences,
   setAppearancePreferences as persistAppearancePreferences,
   type AccentColor,
   type AppearancePreferences,
+  type SurfaceStyle,
   type ThemePreference,
 } from "../features/settings/appearance-preferences";
+import {
+  loadLayoutPreferences,
+  saveLayoutPreferences,
+  type LayoutPreferences,
+} from "../features/settings/layout-preferences";
 import {
   SettingsPage,
   type ProfileSaveInput,
@@ -44,7 +50,7 @@ import {
 import { Soundboard } from "../features/soundboard/Soundboard";
 import { useSoundboardCatalog } from "../features/soundboard/useSoundboardCatalog";
 import { ScreenShareDialog } from "../features/voice/ScreenShareDialog";
-import { VoiceControlBar } from "../features/voice/VoiceControlBar";
+import { VoiceControlDock } from "../features/voice/VoiceControlDock";
 import { VoiceRoom } from "../features/voice/VoiceRoom";
 import { useVoiceRoom } from "../features/voice/useVoiceRoom";
 import { sessionToAppUser, signOut } from "../lib/auth-service";
@@ -106,11 +112,12 @@ export default function App() {
     useState<SettingsSection>("profile");
   const [appearancePreferences, setAppearancePreferences] =
     useState<AppearancePreferences>(() => loadAppearancePreferences());
-  const [peopleOpen, setPeopleOpen] = useState(false);
+  const [layoutPreferences, setLayoutPreferences] = useState<LayoutPreferences>(
+    () => loadLayoutPreferences(),
+  );
   const [soundboardOpen, setSoundboardOpen] = useState(false);
   const [channelDialog, setChannelDialog] = useState<ChannelDialogState>(null);
   const [drafts, setDrafts] = useState<Record<string, MessageDraft>>({});
-  const [voiceChatOpen, setVoiceChatOpen] = useState(true);
   const [screenShareDialogOpen, setScreenShareDialogOpen] = useState(false);
   const [needsInvite, setNeedsInvite] = useState(false);
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
@@ -125,7 +132,6 @@ export default function App() {
   );
   const selectedChannelIdRef = useRef(selectedChannelId);
   const activeViewRef = useRef(activeView);
-  const voiceChatOpenRef = useRef(voiceChatOpen);
   const presenceSubscriptionRef = useRef<ServerPresenceSubscription | null>(
     null,
   );
@@ -213,10 +219,8 @@ export default function App() {
       setDrafts({});
       setUnreadChannelIds(new Set());
       setLatestMessageIds({});
-      setVoiceChatOpen(true);
       setVoiceSessions([]);
       setActiveView("channel");
-      setPeopleOpen(false);
       setSoundboardOpen(false);
       return;
     }
@@ -450,17 +454,17 @@ export default function App() {
     return latestChannel ? { ...voice, channel: latestChannel } : voice;
   }, [voice, workspace]);
 
-  const channelIds = useMemo(
-    () => workspace?.channels.map((channel) => channel.id) ?? [],
+  const messageChannelIds = useMemo(
+    () =>
+      workspace?.channels
+        .filter((channel) => channel.kind === "text")
+        .map((channel) => channel.id) ?? [],
     [workspace?.channels],
   );
-  const channelKey = channelIds.join("|");
-  const channelKinds = useMemo(
-    () =>
-      new Map(
-        workspace?.channels.map((channel) => [channel.id, channel.kind]) ?? [],
-      ),
-    [workspace?.channels],
+  const channelKey = messageChannelIds.join("|");
+  const messageChannelIdSet = useMemo(
+    () => new Set(messageChannelIds),
+    [messageChannelIds],
   );
 
   const voiceOccupants = useMemo<VoiceRoomOccupant[]>(() => {
@@ -492,10 +496,6 @@ export default function App() {
     activeViewRef.current = activeView;
   }, [activeView]);
 
-  useEffect(() => {
-    voiceChatOpenRef.current = voiceChatOpen;
-  }, [voiceChatOpen]);
-
   const refreshChannelActivity = useCallback(async () => {
     if (
       appConfig.dataMode !== "live" ||
@@ -504,7 +504,9 @@ export default function App() {
     ) {
       return;
     }
-    const activity = await loadLiveChannelActivity(workspaceServerId);
+    const activity = (await loadLiveChannelActivity(workspaceServerId)).filter(
+      (item) => messageChannelIdSet.has(item.channelId),
+    );
     setLatestMessageIds(
       Object.fromEntries(
         activity.map((item) => [item.channelId, item.latestMessageId]),
@@ -515,7 +517,7 @@ export default function App() {
         activity.filter((item) => item.hasUnread).map((item) => item.channelId),
       ),
     );
-  }, [signedInUserId, workspaceServerId]);
+  }, [messageChannelIdSet, signedInUserId, workspaceServerId]);
 
   useEffect(() => {
     if (appConfig.dataMode !== "live" || !workspaceServerId) return;
@@ -535,11 +537,7 @@ export default function App() {
     const unsubscribers = subscribedChannelIds.map((channelId) =>
       subscribeToLiveMessages(channelId, (message) => {
         const selected = message.channelId === selectedChannelIdRef.current;
-        const visible =
-          selected &&
-          activeViewRef.current === "channel" &&
-          (channelKinds.get(message.channelId) === "text" ||
-            voiceChatOpenRef.current);
+        const visible = selected && activeViewRef.current === "channel";
         if (selected) {
           setMessages((current) =>
             current.some((item) => item.id === message.id)
@@ -571,9 +569,10 @@ export default function App() {
       }),
     );
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
-  }, [channelKey, channelKinds, signedInUserId]);
+  }, [channelKey, signedInUserId]);
 
-  const selectedMessageChannelId = selectedChannel?.id ?? null;
+  const selectedMessageChannelId =
+    selectedChannel?.kind === "text" ? selectedChannel.id : null;
   useEffect(() => {
     if (!signedInUserId || !selectedMessageChannelId) return;
     let cancelled = false;
@@ -620,8 +619,12 @@ export default function App() {
   }, [selectedMessageChannelId, signedInUserId]);
 
   useEffect(() => {
-    if (!selectedChannel || activeView !== "channel") return;
-    if (selectedChannel.kind === "voice" && !voiceChatOpen) return;
+    if (
+      !selectedChannel ||
+      selectedChannel.kind !== "text" ||
+      activeView !== "channel"
+    )
+      return;
     const latestMessageId = latestMessageIds[selectedChannel.id];
     setUnreadChannelIds((current) =>
       markChannelRead(current, selectedChannel.id),
@@ -631,11 +634,11 @@ export default function App() {
         () => undefined,
       );
     }
-  }, [activeView, latestMessageIds, selectedChannel, voiceChatOpen]);
+  }, [activeView, latestMessageIds, selectedChannel]);
 
   const handleSend = useCallback(
     async (draft: MessageDraft) => {
-      if (!user || !selectedChannel) return;
+      if (!user || !selectedChannel || selectedChannel.kind !== "text") return;
       const content = draftToSegments(draft);
       const body = segmentsToFallback(content);
       if (!body) return;
@@ -703,10 +706,7 @@ export default function App() {
   function openSettings(section: SettingsSection = "profile") {
     setSettingsSection(section);
     setActiveView("settings");
-    setPeopleOpen(false);
   }
-
-  const closePeople = useCallback(() => setPeopleOpen(false), []);
   const toggleSoundboard = useCallback(
     () => setSoundboardOpen((open) => !open),
     [],
@@ -771,6 +771,22 @@ export default function App() {
     persistAppearancePreferences(next);
   }
 
+  function handleSurfaceStyleChange(surfaceStyle: SurfaceStyle) {
+    const next = { ...appearancePreferences, surfaceStyle };
+    setAppearancePreferences(next);
+    persistAppearancePreferences(next);
+  }
+
+  function updateLayoutPreferences(
+    updater: (current: LayoutPreferences) => LayoutPreferences,
+  ) {
+    setLayoutPreferences((current) => {
+      const next = updater(current);
+      saveLayoutPreferences(next);
+      return next;
+    });
+  }
+
   async function handleCreateChannel(kind: ChannelKind, name: string) {
     if (!workspace || workspace.currentUserRole !== "admin") {
       throw new Error("Only a server admin can create channels.");
@@ -820,7 +836,6 @@ export default function App() {
 
   async function handleSignOut() {
     setSoundboardOpen(false);
-    setPeopleOpen(false);
     await voice.leave();
     await presenceSubscriptionRef.current?.setVoiceChannel(null);
     if (appConfig.dataMode === "live") {
@@ -839,9 +854,16 @@ export default function App() {
   function handleSelectChannel(channel: Channel) {
     selectedChannelIdRef.current = channel.id;
     setSelectedChannelId(channel.id);
-    if (channel.kind === "voice") setVoiceChatOpen(true);
     setActiveView("channel");
-    setPeopleOpen(false);
+    if (
+      channel.kind === "voice" &&
+      (voice.channel?.id !== channel.id ||
+        voice.status === "disconnected" ||
+        voice.status === "error")
+    ) {
+      setSoundboardOpen(false);
+      void voice.join(channel);
+    }
   }
 
   if (authLoading) {
@@ -905,32 +927,55 @@ export default function App() {
   }
 
   return (
-    <div className="desktop-shell">
-      <ChannelSidebar
-        server={workspace.server}
-        channels={workspace.channels}
-        selectedChannelId={selectedChannel.id}
-        user={user}
-        voiceOccupants={voiceOccupants}
-        unreadChannelIds={unreadChannelIds}
-        canManageChannels={workspace.currentUserRole === "admin"}
-        onSelect={handleSelectChannel}
-        onCreateChannel={(kind) => setChannelDialog({ mode: "create", kind })}
-        onRenameChannel={(channel) =>
-          setChannelDialog({ mode: "rename", channel })
-        }
-        onOpenSettings={() => openSettings("profile")}
-      />
-      <main
-        className={`content-shell ${visibleVoice.status !== "disconnected" ? "has-voice-bar" : ""}`}
-      >
+    <div
+      className="desktop-shell"
+      data-left-panel={
+        layoutPreferences.leftPanelVisible ? "visible" : "hidden"
+      }
+      data-right-panel={
+        layoutPreferences.rightPanelVisible ? "visible" : "hidden"
+      }
+    >
+      {layoutPreferences.leftPanelVisible ? (
+        <ChannelSidebar
+          server={workspace.server}
+          channels={workspace.channels}
+          selectedChannelId={selectedChannel.id}
+          user={user}
+          voiceOccupants={voiceOccupants}
+          unreadChannelIds={unreadChannelIds}
+          voice={visibleVoice}
+          mode={appConfig.dataMode}
+          soundboardOpen={soundboardOpen}
+          canManageChannels={workspace.currentUserRole === "admin"}
+          onSelect={handleSelectChannel}
+          onPrepareVoiceChannel={voice.prepareVoiceChannel}
+          onCreateChannel={(kind) => setChannelDialog({ mode: "create", kind })}
+          onRenameChannel={(channel) =>
+            setChannelDialog({ mode: "rename", channel })
+          }
+          onOpenSettings={() => openSettings("profile")}
+          onToggleSoundboard={toggleSoundboard}
+          onOpenScreenShare={() => setScreenShareDialogOpen(true)}
+        />
+      ) : null}
+      <main className="content-shell">
         <TopBar
           channel={selectedChannel}
-          view="channel"
-          members={workspace.members}
-          mode={appConfig.dataMode}
-          voiceConnected={voice.status === "connected"}
-          onOpenPeople={() => setPeopleOpen(true)}
+          leftPanelVisible={layoutPreferences.leftPanelVisible}
+          rightPanelVisible={layoutPreferences.rightPanelVisible}
+          onToggleLeftPanel={() =>
+            updateLayoutPreferences((current) => ({
+              ...current,
+              leftPanelVisible: !current.leftPanelVisible,
+            }))
+          }
+          onToggleRightPanel={() =>
+            updateLayoutPreferences((current) => ({
+              ...current,
+              rightPanelVisible: !current.rightPanelVisible,
+            }))
+          }
         />
         <div className="content-stage">
           {appError ? (
@@ -962,62 +1007,19 @@ export default function App() {
                 onSend={handleSend}
               />
             ) : (
-              <div
-                className={`voice-channel-layout ${voiceChatOpen ? "is-chat-open" : ""}`}
-              >
-                <VoiceRoom
-                  channel={selectedChannel}
-                  user={user}
-                  members={workspace.members}
-                  voice={voice}
-                  occupants={voiceOccupants.filter(
-                    (occupant) => occupant.channelId === selectedChannel.id,
-                  )}
-                  onOpenSettings={() => openSettings("audio")}
-                />
-                <button
-                  className={`voice-chat-toggle ${unreadChannelIds.has(selectedChannel.id) ? "has-unread" : ""}`}
-                  type="button"
-                  aria-expanded={voiceChatOpen}
-                  aria-controls="voice-chat-dock"
-                  onClick={() => setVoiceChatOpen((open) => !open)}
-                >
-                  <MessageSquareText size={16} />
-                  {voiceChatOpen ? "Hide chat" : "Show chat"}
-                </button>
-                {voiceChatOpen ? (
-                  <aside
-                    className="voice-chat-dock"
-                    id="voice-chat-dock"
-                    aria-label={`${selectedChannel.name} chat`}
-                  >
-                    <ChatView
-                      compact
-                      channel={selectedChannel}
-                      messages={messages.filter(
-                        (message) => message.channelId === selectedChannel.id,
-                      )}
-                      members={workspace.members}
-                      currentUser={user}
-                      sending={sending}
-                      draft={drafts[selectedChannel.id] ?? EMPTY_MESSAGE_DRAFT}
-                      onDraftChange={(draft) =>
-                        setDrafts((current) => ({
-                          ...current,
-                          [selectedChannel.id]: draft,
-                        }))
-                      }
-                      onSend={handleSend}
-                    />
-                  </aside>
-                ) : null}
-              </div>
+              <VoiceRoom
+                channel={selectedChannel}
+                user={user}
+                members={workspace.members}
+                voice={voice}
+                onOpenSettings={() => openSettings("audio")}
+              />
             )}
           </div>
         </div>
         {soundboardOpen && visibleVoice.status === "connected" ? (
           <aside
-            className="soundboard-drawer"
+            className={`soundboard-drawer ${selectedChannel.kind === "text" ? "is-over-text" : ""}`}
             id="soundboard-drawer"
             aria-label="Soundboard"
           >
@@ -1030,6 +1032,7 @@ export default function App() {
               error={voice.soundboard.error}
               volume={voice.soundboardVolume}
               activeLocalSoundCount={voice.activeLocalSoundCount}
+              maxConcurrentSounds={voice.maxConcurrentSounds}
               onPlay={voice.dispatchSound}
               onStopAll={voice.stopLocalSounds}
               onVolumeChange={voice.setSoundboardVolume}
@@ -1038,19 +1041,20 @@ export default function App() {
             />
           </aside>
         ) : null}
-        <VoiceControlBar
-          voice={visibleVoice}
-          soundboardOpen={soundboardOpen}
-          onToggleSoundboard={toggleSoundboard}
-          onOpenDevices={() => openSettings("audio")}
-          onOpenScreenShare={() => setScreenShareDialogOpen(true)}
-        />
+        {activeView === "channel" ? (
+          <VoiceControlDock
+            voice={visibleVoice}
+            soundboardOpen={soundboardOpen}
+            overTextChannel={selectedChannel.kind === "text"}
+            onToggleSoundboard={toggleSoundboard}
+            onOpenDevices={() => openSettings("audio")}
+            onOpenScreenShare={() => setScreenShareDialogOpen(true)}
+          />
+        ) : null}
       </main>
-      <PeopleDrawer
-        members={workspace.members}
-        open={peopleOpen}
-        onClose={closePeople}
-      />
+      {layoutPreferences.rightPanelVisible ? (
+        <MemberPanel members={workspace.members} />
+      ) : null}
       {screenShareDialogOpen ? (
         <ScreenShareDialog
           audioAvailable={voice.screenShareAudioAvailable}
@@ -1084,6 +1088,7 @@ export default function App() {
           themePreference={appearancePreferences.theme}
           accent={appearancePreferences.accent}
           accentIntensity={appearancePreferences.intensity}
+          surfaceStyle={appearancePreferences.surfaceStyle}
           inputDevices={voice.inputDevices}
           outputDevices={voice.outputDevices}
           cameraDevices={voice.cameraDevices}
@@ -1108,6 +1113,7 @@ export default function App() {
           onSectionChange={setSettingsSection}
           onThemeChange={handleThemeChange}
           onAccentChange={handleAccentChange}
+          onSurfaceStyleChange={handleSurfaceStyleChange}
           onSaveProfile={handleSaveProfile}
           onInputChange={(deviceId) => void voice.setInputDevice(deviceId)}
           onOutputChange={(deviceId) => void voice.setOutputDevice(deviceId)}
@@ -1123,60 +1129,60 @@ export default function App() {
 
 function TopBar({
   channel,
-  view,
-  members,
-  mode,
-  voiceConnected,
-  onOpenPeople,
+  leftPanelVisible,
+  rightPanelVisible,
+  onToggleLeftPanel,
+  onToggleRightPanel,
 }: {
   channel: Channel;
-  view: AppView;
-  members: WorkspaceSnapshot["members"];
-  mode: "mock" | "live";
-  voiceConnected: boolean;
-  onOpenPeople: () => void;
+  leftPanelVisible: boolean;
+  rightPanelVisible: boolean;
+  onToggleLeftPanel: () => void;
+  onToggleRightPanel: () => void;
 }) {
-  const activeMembers = members.filter((member) => member.status !== "offline");
   return (
     <header className="top-bar">
-      <div className="top-bar__channel">
-        {view === "settings" ? (
-          <UserRound size={20} />
-        ) : channel.kind === "text" ? (
-          <Hash size={20} />
-        ) : (
-          <Volume2 size={20} />
-        )}
-        <div>
-          <strong>
-            {view === "settings" ? "Your settings" : channel.name}
-          </strong>
-          <span>
-            {view === "settings"
-              ? "A few choices that stay yours."
-              : channel.topic}
-          </span>
+      <div className="top-bar__leading">
+        <button
+          className="panel-toggle"
+          type="button"
+          aria-label={
+            leftPanelVisible ? "Hide channel panel" : "Show channel panel"
+          }
+          aria-controls="channel-sidebar"
+          aria-expanded={leftPanelVisible}
+          onClick={onToggleLeftPanel}
+        >
+          {leftPanelVisible ? (
+            <PanelLeftClose size={18} />
+          ) : (
+            <PanelLeftOpen size={18} />
+          )}
+        </button>
+        <div className="top-bar__channel">
+          {channel.kind === "text" ? <Hash size={20} /> : <Volume2 size={20} />}
+          <div>
+            <strong>{channel.name}</strong>
+            <span>{channel.topic}</span>
+          </div>
         </div>
       </div>
       <div className="top-bar__actions">
-        <ConnectionStatus
-          mode={mode}
-          backendUrl={appConfig.supabaseUrl}
-          backendRegion={appConfig.backendRegion}
-          voiceConnected={voiceConnected}
-        />
         <button
-          className="people-trigger"
+          className="panel-toggle"
           type="button"
-          onClick={onOpenPeople}
-          aria-label={`Open people, ${activeMembers.length} online`}
+          aria-label={
+            rightPanelVisible ? "Hide member panel" : "Show member panel"
+          }
+          aria-controls="member-panel"
+          aria-expanded={rightPanelVisible}
+          onClick={onToggleRightPanel}
         >
-          <span className="people-trigger__avatars" aria-hidden="true">
-            {activeMembers.slice(0, 3).map((member) => (
-              <Avatar user={member} size="small" key={member.id} />
-            ))}
-          </span>
-          <span>{activeMembers.length} here</span>
+          {rightPanelVisible ? (
+            <PanelRightClose size={18} />
+          ) : (
+            <PanelRightOpen size={18} />
+          )}
         </button>
       </div>
     </header>

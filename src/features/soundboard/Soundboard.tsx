@@ -24,6 +24,7 @@ interface SoundboardProps {
   error: string | null;
   volume: number;
   activeLocalSoundCount: number;
+  maxConcurrentSounds: number;
   onPlay: (soundId: string) => Promise<void>;
   onStopAll: () => Promise<void>;
   onVolumeChange: (volume: number) => void;
@@ -40,6 +41,7 @@ export function Soundboard({
   error: catalogError,
   volume,
   activeLocalSoundCount,
+  maxConcurrentSounds,
   onPlay,
   onStopAll,
   onVolumeChange,
@@ -53,6 +55,7 @@ export function Soundboard({
     null,
   );
   const [error, setError] = useState<string | null>(null);
+  const soundLimitReached = activeLocalSoundCount >= maxConcurrentSounds;
   const visibleSounds = useMemo(
     () =>
       sounds.filter((sound) => {
@@ -81,6 +84,8 @@ export function Soundboard({
       setActiveSound(sound.id);
       window.setTimeout(() => setActiveSound(null), 520);
     } catch (caught) {
+      if (caught instanceof DOMException && caught.name === "AbortError")
+        return;
       setError(
         caught instanceof Error ? caught.message : "That sound missed its cue.",
       );
@@ -88,12 +93,17 @@ export function Soundboard({
   }
 
   return (
-    <section className="soundboard-card">
-      <header>
-        <div>
-          <span className="eyebrow">Shared soundboard</span>
-          <h3>Perfectly timed nonsense</h3>
-        </div>
+    <section className="soundboard-card" aria-label="Soundboard controls">
+      <header className="soundboard-compact-header">
+        <label className="soundboard-search">
+          <Search size={15} />
+          <input
+            aria-label="Search sounds"
+            value={query}
+            placeholder="Find the perfect sound"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
         <div className="soundboard-header-actions">
           <label className="soundboard-volume">
             <Volume2 size={14} />
@@ -108,55 +118,46 @@ export function Soundboard({
               onChange={(event) => onVolumeChange(Number(event.target.value))}
             />
           </label>
-          {activeLocalSoundCount > 0 ? (
-            <button
-              className="soundboard-stop"
-              type="button"
-              onClick={() => void onStopAll()}
-            >
-              <Square size={12} /> Stop my sounds ({activeLocalSoundCount})
-            </button>
-          ) : null}
-          <span className={`soundboard-status ${connected ? "online" : ""}`}>
+          <span
+            className={`soundboard-status ${connected ? "online" : ""}`}
+            aria-label={
+              connected
+                ? deafened
+                  ? "Soundboard connected; local monitoring muted"
+                  : "Soundboard connected"
+                : "Join voice to sync sounds"
+            }
+            title={
+              connected
+                ? deafened
+                  ? "Sending silently"
+                  : "Room synced"
+                : "Join to sync"
+            }
+          >
             <Radio size={14} />
-            {connected
-              ? deafened
-                ? "Sending silently"
-                : "Room synced"
-              : "Join to sync"}
           </span>
         </div>
       </header>
 
-      <div className="soundboard-tools">
-        <label className="soundboard-search">
-          <Search size={15} />
-          <input
-            aria-label="Search sounds"
-            value={query}
-            placeholder="Find the perfect interruption"
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </label>
-        <div className="soundboard-categories" aria-label="Sound categories">
+      <div className="soundboard-categories" aria-label="Sound categories">
+        <button
+          className={selectedCategoryId === "all" ? "is-active" : ""}
+          type="button"
+          onClick={() => setSelectedCategoryId("all")}
+        >
+          All
+        </button>
+        {categories.map((category) => (
           <button
-            className={selectedCategoryId === "all" ? "is-active" : ""}
+            className={selectedCategoryId === category.id ? "is-active" : ""}
+            key={category.id}
             type="button"
-            onClick={() => setSelectedCategoryId("all")}
+            onClick={() => setSelectedCategoryId(category.id)}
           >
-            All
+            {category.name}
           </button>
-          {categories.map((category) => (
-            <button
-              className={selectedCategoryId === category.id ? "is-active" : ""}
-              key={category.id}
-              type="button"
-              onClick={() => setSelectedCategoryId(category.id)}
-            >
-              {category.name}
-            </button>
-          ))}
-        </div>
+        ))}
       </div>
 
       {loading && sounds.length === 0 ? (
@@ -172,8 +173,12 @@ export function Soundboard({
             <div className="sound-card" key={sound.id}>
               <button
                 className={`sound-button ${activeSound === sound.id ? "is-playing" : ""}`}
+                data-asset-status={sound.assetStatus}
                 type="button"
-                disabled={sound.assetStatus === "loading"}
+                disabled={
+                  sound.assetStatus === "loading" ||
+                  (sound.assetStatus === "ready" && soundLimitReached)
+                }
                 onClick={() => void play(sound)}
                 aria-label={`${sound.label}${sound.assetStatus === "error" ? ", retry download" : ""}`}
               >
@@ -209,13 +214,27 @@ export function Soundboard({
 
       {error || catalogError ? (
         <p className="soundboard-error">{error ?? catalogError}</p>
-      ) : (
-        <p className="soundboard-note">
-          {deafened
-            ? "Friends still receive sounds you send while your local monitor stays silent."
-            : "Sounds use the call path once, with your own local volume."}
-        </p>
-      )}
+      ) : null}
+
+      <footer className="soundboard-stop-footer">
+        <div>
+          <strong>
+            {activeLocalSoundCount}/{maxConcurrentSounds} playing
+          </strong>
+          <span>
+            {soundLimitReached
+              ? "Stop your stack before adding another sound."
+              : "You can overlap up to five sounds."}
+          </span>
+        </div>
+        <button
+          type="button"
+          disabled={activeLocalSoundCount === 0}
+          onClick={() => void onStopAll()}
+        >
+          <Square size={14} /> Stop my sounds
+        </button>
+      </footer>
 
       {editingSound ? (
         <EditSoundModal

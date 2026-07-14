@@ -7,36 +7,54 @@ and phase completion belong in the numbered files under `docs/plans`.
 
 ## Current implementation state
 
-As of 2026-07-13, Bakbak has a complete local/mock product path and production
+As of 2026-07-14, Bakbak has a complete local/mock product path and production
 Supabase and LiveKit adapters. The renderer provides the invite-only welcome
-flow and a Warm Adda shell built around a channel shelf,
-conversation canvas, full-app settings overlay, header avatar cluster,
-accessible People drawer, and one persistent voice bar. Text and voice channels
-share Realtime chat, structured individual mentions, account-synced unread
-emphasis, incoming-message sounds, and per-channel drafts that survive settings
-and room navigation. Voice rooms add a collapsible chat dock without coupling
-reading or sending to joining the call. Settings cover profile, audio/video,
-appearance, active-call controls, and confirmed logout. System/Light/Dark plus
-Coral/Purple/Red/Yellow accent and intensity preferences are synchronously
-applied before React renders and follow OS changes in System mode. Profiles
-support validated display names plus preview, upload, replace, and removal of
-private avatars. Admin-only controls create or rename text and voice channels,
-while Realtime reconciles changes for every member.
+flow and a three-panel shell with a 232 px channel panel, flexible conversation
+canvas, and 240 px online/offline member panel. Both side panels are visible by
+default, independently optional, and persisted per device without responsive
+overlays or automatic hiding. Settings is a centered, focus-trapped in-app
+modal with internal scrolling, active-call controls, and confirmed logout.
+System/Light/Dark, Coral/Purple/Red/Yellow accent/intensity, and Warm/Flat
+surface preferences are synchronously applied before React renders. Flat uses
+crisp grayscale surfaces without decorative gradients, glow, glass blur, or
+heavy shadows while preserving semantic accent, presence, danger, and focus
+colors. Profiles support validated display names plus preview, upload, replace,
+and removal of private avatars. Admin-only controls create or rename text and
+voice channels, while Realtime reconciles changes for every member.
+
+Upgraded clients expose chat, structured individual mentions, account-synced
+unread emphasis, incoming-message sounds, and drafts only for text channels.
+Voice-channel message rows, RPC permissions, and read-state data remain intact
+for installed-client compatibility, but the upgraded renderer neither loads,
+subscribes to, sends, drafts, notifies, nor shows unread state for them. No
+destructive database migration accompanies this client-only boundary.
 
 Voice rooms retain locally persisted microphone/speaker/camera selection,
-opt-in 720p camera calls, pre-join occupancy with elapsed timers, mute/deafen,
+opt-in 720p camera calls, sidebar occupancy with elapsed timers, mute/deafen,
 per-participant volume, remote-track audio/video rendering, autoplay recovery,
-reconnect/error states, and the desktop featured screen-share stage. The single
-voice bar stays mounted across chat, voice, and settings; mute, deafen,
-soundboard, and leave are direct actions, while camera, screen sharing, and
-device settings use its More menu. The soundboard now opens as a bar-anchored
-drawer while retaining category filtering, member-editable labels, emoji and
-categories, persisted global volume, per-participant volume, overlapping
-activity badges, retry states, and stop-all. Deafen suppresses remote speech
-and local/incoming soundboard monitoring without blocking outbound soundboard
-audio. The selected speaker routes calls and soundboard audio; message alerts
-remain on system output. Mock mode exercises these interactions without
-credentials, a backend, or protected media.
+reconnect/error states, and the desktop featured screen-share stage. Selecting
+a voice channel immediately joins it; selecting another voice channel switches
+the active call without a pre-join or initial connection surface. An active call
+adds a sidebar control block with room, backend latency, normalized local
+LiveKit quality, camera, screen-share, soundboard, and disconnect actions. The
+user row retains mute, deafen, and settings. A centered global dock supplies
+direct microphone, camera, screen-share, soundboard, More, and disconnect
+actions across channel navigation; it reveals at connection, keyboard focus,
+or the lower canvas edge and hides after 2.5 seconds idle unless an owned
+surface is open. Settings suppresses the dock and provides compact call
+controls instead. The soundboard opens as a centered, internally scrolling
+480×380 maximum popover above the dock and pins it while retaining category
+filtering, member-editable labels, emoji and categories, persisted global
+volume, per-participant volume, overlapping activity badges, retry states, and
+stop-all. A sender reserves at most five pending/active sounds, the drawer and
+global dock expose prominent stop controls, and upgraded clients clamp remote
+activity to the newest five events. Participant tiles replace a camera-off
+avatar with the newest sound emoji or overlay it on camera video, with overlap
+counting and reduced-motion behavior. Deafen suppresses remote speech and local/incoming soundboard
+monitoring without blocking outbound soundboard audio. The selected speaker
+routes calls and soundboard audio; message alerts remain on system output. Mock
+mode exercises these interactions without credentials, a backend, or protected
+media.
 
 The hosted project has a private, operator-managed `soundboard` Storage bucket
 and a typed Postgres catalog for MP3 assets. Objects are partitioned by server
@@ -68,6 +86,18 @@ render stable-ID mentions against current profile data while retaining the
 generated plain-text body for older clients. The live two-account acceptance
 matrix remains open.
 
+The additive `202607140001_voice_join_context.sql` migration is implemented and
+deployed. It adds the security-invoker
+`get_voice_join_context(channel_id)` RPC, which returns one authorized voice
+channel/server/display-name context through the caller's RLS session. The
+updated token function verifies the platform-accepted bearer token with
+Supabase `getClaims` and consumes this single query instead of making separate
+remote user, channel, membership, and profile round trips. Hosted migration
+history matches the repository through `202607140001`; `livekit-token` version
+5 is ACTIVE with JWT verification enabled. The unauthenticated function and
+anonymous RPC probes both return 401. Authenticated member/non-member probes
+remain open until reusable test sessions are available.
+
 The Supabase schema, least-privilege grants, Row Level Security policies,
 atomic hashed invite flow, deterministic default rooms, and Realtime
 publication are deployed to the hosted Bakbak project. The protected
@@ -82,7 +112,8 @@ graceful leave, and expires locally after 55 seconds if a client crashes. The
 clean local schema, invite, RLS, presence, Storage, catalog, structured-message,
 and read-state suite passes 167 assertions. Voice
 connections retry once with relay-only ICE after a normal peer-connection
-failure and report a specific TURN/TLS diagnostic if that also fails. The
+failure, remember a successful relay fallback for ten minutes in memory, and
+report a specific TURN/TLS diagnostic if both routes fail. The
 tracked token function now accepts an optional backward-compatible purpose.
 Ordinary voice tokens permit microphone, camera, LiveKit data, and video-only
 screen publication for the compatibility fallback. Native screen companions
@@ -172,7 +203,9 @@ bakbak/
 │       ├── 0002-voice-video-and-presence.md
 │       ├── 0003-screen-sharing.md
 │       ├── 0004-warm-adda-ui-settings-channels-arm64.md
-│       └── 0005-voice-chat-mentions-settings-accents.md
+│       ├── 0005-voice-chat-mentions-settings-accents.md
+│       ├── 0006-discord-shaped-bakbak-hearted-ui.md
+│       └── 0007-voice-join-acceleration-and-soundboard-polish.md
 ├── public/
 │   ├── bakbak.svg                 # renderer favicon/source logo
 │   └── theme-init.js              # parser-blocking, CSP-safe first-paint theme bootstrap
@@ -205,37 +238,40 @@ architectural placeholder folders are not used.
 
 ## UI composition
 
-The renderer uses a two-part desktop layout plus an overlay layer:
+The renderer uses a three-panel desktop layout plus a modal layer:
 
-1. A channel shelf containing the private server's text and voice rooms, the
-   signed-in user's identity/actions, voice occupancy, and admin-only create and
-   rename controls.
-2. A conversation canvas for text chat, voice, empty states, and errors.
-   The header shows an avatar cluster and opens the accessible People drawer;
-   members no longer consume a permanent third column.
-3. A persistent voice bar remains mounted while connecting, connected, or
-   reconnecting across every canvas view. Mute, deafen, soundboard, and leave
-   are direct controls; camera, screen sharing, and devices live under More.
-4. The soundboard opens from that bar as a drawer instead of taking permanent
-   voice-room space. A single featured share stage remains above participant
-   video tiles, with presenter switching when multiple friends share.
-5. Settings opens as a full-app modal overlay rather than a route or canvas
-   replacement. Its left navigation, focus trap/restoration, active-call strip,
-   and confirmed logout preserve the selected channel, drafts, and voice room.
-6. A selected voice room shows an open, collapsible 340 px chat dock at the
-   1280 px layout. At 1024 px it becomes a slide-over drawer so the participant
-   surface keeps its usable width.
+1. The 232 px channel panel contains the private server's text and voice rooms,
+   active-call/sidebar controls, signed-in user actions, voice occupancy, and
+   admin-only create/rename controls.
+2. The flexible center canvas contains text chat or the voice room. Header-edge
+   buttons independently toggle the left and right panels, immediately
+   reallocating space across all four combinations.
+3. The 240 px member panel is visible by default and groups online/idle and
+   offline members in normal document flow. It is not a drawer or overlay.
+4. During a call, an absolute centered dock appears across channel navigation.
+   It auto-hides without consuming layout, clears the text composer, remains
+   keyboard discoverable, and owns its More menu and compact 480×380 maximum
+   soundboard popover anchoring.
+5. Selecting a voice channel joins it immediately, and selecting another voice
+   channel switches the active call. Hover/focus can prepare one candidate room
+   without media or presence side effects; click consumes that work and shows a
+   compact stage loader instead of a blank canvas. After connection, one/two-
+   person tiles stay compact and larger calls use an equal responsive grid. A
+   selected screen share remains featured while participant tiles move into a
+   compact horizontal strip.
+6. Settings overlays the shell as a centered modal up to 1000×720 with 16–24 px
+   viewport margins, left navigation, internal scrolling, focus trap/
+   restoration, backdrop/X/Escape dismissal, compact call controls, and
+   confirmed logout.
 
-The top bar includes an accessible hover/focus connection detail. In live mode
-it measures a Supabase Auth health round trip every 30 seconds and labels the
-publicly configured backend region. Voice is separately labelled India West,
-the observed LiveKit signaling region; it is never presented as the database
-ping. The Warm Adda visual language uses oat/stone light surfaces, charcoal
-dark surfaces, coral actions, teal presence, semantic color tokens, and
-restrained ambient motion. Coral remains the default, with Purple, Red, and
-Yellow device-local alternatives and 25–100% intensity. System, Light, and Dark
-all preserve clear focus, readable contrast, reduced-motion behavior, and the
-supported 1024×680 and 1280×800 desktop layouts.
+The reusable backend health poll measures a Supabase Auth round trip every 30
+seconds and labels the result as backend latency. LiveKit
+`ConnectionQualityChanged` events separately normalize the local participant as
+Unknown/Excellent/Good/Poor; reconnecting display takes precedence. Warm uses
+oat/stone light surfaces or charcoal dark surfaces with restrained ambience.
+Flat retains the same theme/accent/semantic tokens on grayscale backgrounds but
+removes decorative depth. Both modes preserve focus, readable contrast,
+reduced-motion behavior, and the supported 1024×680 and 1280×800 layouts.
 
 ## Runtime and trust boundaries
 
@@ -250,6 +286,9 @@ sound objects. It must never contain a service-role key or LiveKit API secret.
 
 Tauri owns the native window, capabilities, application identity, and desktop
 bundles. V1 should expose the smallest capability set needed by the renderer.
+The main window enables Tauri's built-in interface zoom hotkeys, providing
+Cmd/Ctrl `+`, Cmd/Ctrl `-`, and Cmd/Ctrl `0` through the narrowly scoped
+webview-zoom capability.
 Native commands are not an authorization substitute for Supabase RLS or Edge
 Function validation. The updater capability may check, download, and install a
 manifest-signed update, while the process capability is narrowed to restart.
@@ -360,7 +399,10 @@ An invite-management UI is deferred until post-v1.
   `auth.uid()`, require admin membership in the affected server, validate names,
   and preserve channel ID and kind during rename.
 - The LiveKit token function verifies the caller's Supabase JWT, current server
-  membership, and that the requested channel is a voice channel.
+  membership, and that the requested channel is a voice channel. Platform JWT
+  verification remains enabled; the function uses verified `getClaims` output
+  and the RLS-protected `get_voice_join_context` RPC rather than decoding an
+  unverified token or making serial authorization queries.
 - Soundboard objects are private and readable only when the first object-path
   segment matches a server membership for the signed-in user. No authenticated
   client insert, update, or delete policy exists.
@@ -381,14 +423,14 @@ An invite-management UI is deferred until post-v1.
    atomically, then creates membership.
 5. The renderer refreshes membership and channel data.
 
-### Profile, appearance, and overlay settings
+### Profile, appearance, and modal settings
 
-1. The renderer validates and applies `bakbak.appearancePreferences.v2`
+1. The renderer validates and applies `bakbak.appearancePreferences.v3`
    synchronously before mounting React. A local parser-blocking bootstrap sets
-   theme, accent, intensity, and theme-specific CSS tokens before the production
-   stylesheet loads; React then installs the System media-query listener.
-   Explicit Light or Dark choices ignore OS changes. A valid v1 theme-only value
-   migrates to Coral at 100% intensity.
+   theme, accent, intensity, surface style, and theme-specific CSS tokens before
+   the production stylesheet loads; React then installs the System media-query
+   listener. Explicit Light or Dark choices ignore OS changes. Valid v1/v2
+   values migrate to Warm while preserving their supported fields.
 2. Profile edits validate a trimmed 1–50 character display name and an optional
    PNG, JPEG, or WebP avatar no larger than 2 MiB.
 3. A new avatar uploads first to `<user UUID>/<generated UUID>`. The renderer
@@ -422,15 +464,17 @@ An invite-management UI is deferred until post-v1.
 4. Channel Realtime subscribes before its catch-up snapshot and replays buffered
    events after the snapshot, so an overlapping create or rename cannot be
    overwritten by stale data. Channels reconcile by stable ID and sort by
-   position then ID; only the creating client selects a new channel, and
-   creating a voice channel never joins it automatically.
+   position then ID. Only the creating client selects a new channel; selecting
+   a newly created voice channel also joins it automatically.
 
-### Text and voice-channel chat
+### Text-channel chat and voice-message compatibility
 
-1. A member selects a text or voice channel. Voice selection opens a chat dock
-   by default; joining the room remains a separate action.
-2. The renderer loads messages through the Supabase client; RLS verifies server
-   membership for either channel kind.
+1. A member selects a text channel. The upgraded renderer loads messages,
+   activity, drafts, and Realtime subscriptions only for known text-channel
+   IDs.
+2. RLS verifies server membership. The deployed RPCs and schema still permit
+   voice-channel messages for older clients, but upgraded clients do not expose
+   that surface or create invisible voice unread state.
 3. A submitted structured draft becomes exact text/mention segments and calls
    `send_message`. Postgres validates membership, segment shape, size, and each
    mention before deriving the author and plain-text fallback.
@@ -440,10 +484,9 @@ An invite-management UI is deferred until post-v1.
 6. A committed message from another user plays a short local notification tone.
    `get_channel_activity` compares the latest message with the account's private
    marker so unread emphasis follows the signed-in user across clients.
-7. A visible selected text chat or open selected voice dock advances the marker
-   through `mark_channel_read`. A collapsed voice dock can therefore become
-   unread while its call surface remains selected. Realtime read-state changes
-   refresh the activity snapshot on other signed-in clients.
+7. A visible selected text chat advances the marker through
+   `mark_channel_read`. Realtime read-state changes refresh the activity
+   snapshot on other signed-in clients.
 8. Mention ranges are atomic draft metadata. Editing through one converts it to
    plain text; selecting a member from the accessible `@` combobox stores that
    member ID. Rendering resolves the current Realtime profile name and uses the
@@ -474,31 +517,47 @@ An invite-management UI is deferred until post-v1.
 
 ### Voice room
 
-1. A member selects a voice channel and requests a token from the protected
-   `livekit-token` Edge Function using their Supabase access token.
-2. The function authenticates the user and verifies membership plus voice
-   channel type.
-3. The function creates a narrowly scoped, short-lived LiveKit participant
-   token permitting microphone, camera, data, and video-only screen fallback
-   publication, then returns it with the public LiveKit URL.
-4. The renderer generation-gates connection attempts so a newer join, leave,
-   sign-out, or unmount invalidates pending token, connection, and microphone
-   work. A stale attempt can disconnect only the LiveKit room it created.
-5. Camera remains off through join. An explicit camera action publishes an
+1. Live workspace load prepares the public LiveKit endpoint. Pointer hover or
+   keyboard focus held for 150 ms prepares only the newest voice channel by
+   requesting one five-minute token and calling `Room.prepareConnection`.
+   Preparation never requests microphone access, joins, or publishes presence;
+   stale candidates and tokens within 30 seconds of expiry are discarded.
+2. A click consumes the matching prepared room and in-flight request, or starts
+   the same work immediately. In parallel it creates the first microphone
+   track. Selecting a different channel generation-gates the previous attempt.
+3. The function verifies the bearer token with Supabase `getClaims`; a
+   security-invoker RPC returns the authorized voice channel, server, and
+   profile display name in one RLS-protected query. The function signs the same
+   narrowly scoped, five-minute token and preserves indistinguishable missing,
+   text-channel, and non-member responses.
+4. After LiveKit connects, microphone publication, output preparation, and the
+   existing soundboard-track preparation run concurrently. Bakbak still awaits
+   soundboard `ensurePublished` settlement before reporting `connected`.
+5. Direct channel switching unpublishes the current microphone without
+   stopping it, disconnects the old room, republishes it into the new room, and
+   preserves mute/deafen state. Leave, sign-out, a failed switch, and teardown
+   stop every retained or pending microphone immediately.
+6. The renderer generation-gates all token, connection, and microphone work so
+   a stale attempt can disconnect only its own room. A compact polite status
+   loader announces authorization, connection, microphone, or soundboard work;
+   reconnecting uses the same treatment.
+7. Camera remains off through join. An explicit camera action publishes an
    adaptive 720p track. Local video is mirrored; subscribed remote tracks attach
    to participant tiles, and avatar fallbacks remain visible while video is off.
-6. The current connection manages microphone, speaker, and camera switches,
+8. The current connection manages microphone, speaker, and camera switches,
    autoplay recovery, mute, deafen, participant, speaking, reconnect, and error
    state. Output switching is capability-checked; unsupported runtimes show
    system output only. A missing remembered device falls back to default.
-7. Unsubscription, leaving, disconnecting, and unmounting detach remote audio
+9. Unsubscription, leaving, disconnecting, and unmounting detach remote audio
    and video, invalidate pending camera/join work, stop active local sounds,
    pause and detach the selected-speaker monitor, stop its MediaStream tracks,
    close its Web Audio context, disconnect the room, and release local tracks.
-8. If signaling succeeds but the initial WebRTC peer connection fails, the
-   renderer retries once with `iceTransportPolicy: relay`. A second failure is
-   reported as a TURN/TLS or local network-policy problem rather than a token or
-   authentication error.
+10. If direct WebRTC fails and relay succeeds, later joins prefer relay for ten
+    minutes in memory. Relay-first failure retries direct; expiry periodically
+    restores direct probing. A total failure is reported as a TURN/TLS or local
+    network-policy problem rather than token/authentication failure.
+11. Development builds record preparation, authorization, connection,
+    microphone, soundboard, and total timing without identifiers or tokens.
 
 ### Desktop screen share
 
@@ -560,9 +619,15 @@ An invite-management UI is deferred until post-v1.
    never trust a payload sender or volume and never replay control messages
    locally; remote listeners hear only the participant's LiveKit audio track.
 5. Activity state uses the catalog duration. Participant cards show the newest
-   emoji, an overlap count, Playing status, and the speaking treatment. A
-   reliable `soundboard:stop-all` message clears that participant immediately;
-   disconnect, leave, and track cleanup do the same.
+   emoji, an overlap count up to five, Playing status, and the speaking
+   treatment. Camera-off tiles replace the avatar with that emoji; camera-on
+   tiles center it over video. Upgraded senders reserve pending/active activity
+   before any asset work and reject a sixth start, rolling back reservations on
+   every failure. Upgraded receivers render only the newest five events from an
+   older sender. Local stop-all also invalidates pending asset starts before
+   they can play or publish activity. A reliable `soundboard:stop-all` message
+   clears that participant immediately; disconnect, leave, and track cleanup do
+   the same.
 6. Remote named tracks use `soundboard volume × participant volume`. Normal
    microphone speech keeps only participant volume. Deafen suppresses remote
    audio and the sender's local monitor branch without muting outbound
@@ -581,10 +646,12 @@ cameraDeviceId, soundboardVolume }` under the versioned local-storage key
 `bakbak.devicePreferences.v1`. These identifiers never sync to Supabase. If a
 remembered device is absent, the selector returns to the runtime's default
 device. Chat notification audio deliberately bypasses the selected call output.
-The renderer stores `{ theme, accent, intensity }` separately under
-`bakbak.appearancePreferences.v2`. Theme is System/Light/Dark, accent is
-Coral/Purple/Red/Yellow, and intensity is a validated 25–100% five-point step.
-Appearance is device-local and never part of the profile or Supabase schema.
+The renderer stores `{ theme, accent, intensity, surfaceStyle }` separately
+under `bakbak.appearancePreferences.v3`. Theme is System/Light/Dark, accent is
+Coral/Purple/Red/Yellow, intensity is a validated 25–100% five-point step, and
+surface style is Warm/Flat. It also stores independent panel visibility under
+`bakbak.layoutPreferences.v1`; malformed values restore both panels. These
+preferences are device-local and never part of the profile or Supabase schema.
 
 ### Desktop release and update
 
@@ -628,13 +695,25 @@ These contracts match the current implementation.
 - **Authentication:** `Authorization: Bearer <Supabase access token>`
 - **Request:** `{ "channelId": "<voice-channel-uuid>", "purpose": "voice|screen_share" }`; `purpose` is optional and defaults to `voice` for installed-client compatibility
 - **Success:** `{ "token": "<short-lived-token>", "serverUrl": "wss://...", "roomName": "bakbak-voice-<channel-id>", "expiresAt": "<ISO timestamp>" }`
-- **Validation:** authenticated user, current server membership, existing voice
-  channel, server-derived participant identity/room name, and an allowed
+- **Validation:** platform JWT gate plus verified Supabase claims, current
+  server membership, existing voice channel, server-derived participant
+  identity/room name, and an allowed
   purpose. Screen companions receive exact source grants and no subscribe/data
   permissions.
 - **Errors:** normalized unauthorized, origin/method/payload,
   not-found/invalid-channel, request-failed, and service-unavailable responses
   without secret details.
+
+### `POST /rest/v1/rpc/get_voice_join_context`
+
+- **Authentication:** valid Supabase user session
+- **Request:** `{ "p_channel_id": "<voice-channel-uuid>" }`
+- **Success:** one row containing the authorized channel ID, server ID, and the
+  caller's profile display name
+- **Validation:** security-invoker execution under the caller's RLS context,
+  current matching server membership, and `voice` channel kind
+- **Errors:** missing, text, non-member, and cross-server channels return no
+  row, preserving the token endpoint's indistinguishable not-found response
 
 ### `POST /rest/v1/rpc/redeem_invite_code`
 
@@ -787,6 +866,18 @@ that it has passed.
 
 ## Current limitations and deferred work
 
+- Plan 0006's three-panel shell, centered settings modal, Flat surfaces,
+  text-only upgraded chat boundary, sidebar call controls, floating dock, and
+  simplified voice canvas pass automated and mock-browser validation. The
+  canonical browser-plus-native two-account call still requires human audio,
+  camera, screen-share, soundboard, quality, reconnect, and dual-control-surface
+  observation before distribution.
+- Plan 0007's prepared-room lifecycle, claims validation, microphone reuse,
+  loader, participant sizing, sound emoji treatment, and five-sound controls
+  pass automated and mock-browser validation, and its migration/token function
+  are deployed with the JWT gate preserved. Authenticated member/non-member
+  probes, real hosted warm/cold timing, and the two-account media rehearsal
+  remain required before the latency targets can be claimed.
 - The Warm Adda renderer, profile/avatar services, channel RPCs, and policies
   are implemented, and migration
   `202607120003_profile_avatars_and_channel_management.sql` is deployed to the

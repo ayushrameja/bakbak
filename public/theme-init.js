@@ -1,11 +1,17 @@
 (() => {
+  const v3Key = "bakbak.appearancePreferences.v3";
   const v2Key = "bakbak.appearancePreferences.v2";
   const v1Key = "bakbak.appearancePreferences.v1";
-  const defaults = { theme: "system", accent: "coral", intensity: 100 };
+  const defaults = {
+    theme: "system",
+    accent: "coral",
+    intensity: 100,
+    surfaceStyle: "warm",
+  };
   const hues = { coral: 12, purple: 276, red: 355, yellow: 44 };
   let preferences = defaults;
   try {
-    const stored = JSON.parse(globalThis.localStorage.getItem(v2Key) ?? "null");
+    const stored = JSON.parse(globalThis.localStorage.getItem(v3Key) ?? "null");
     const themeValid = ["system", "light", "dark"].includes(stored?.theme);
     const accentValid = ["coral", "purple", "red", "yellow"].includes(
       stored?.accent,
@@ -15,14 +21,27 @@
       stored.intensity >= 25 &&
       stored.intensity <= 100 &&
       stored.intensity % 5 === 0;
-    if (themeValid && accentValid && intensityValid) {
+    const surfaceValid = ["warm", "flat"].includes(stored?.surfaceStyle);
+    if (themeValid && accentValid && intensityValid && surfaceValid) {
       preferences = stored;
     } else {
-      const legacy = JSON.parse(
-        globalThis.localStorage.getItem(v1Key) ?? "null",
-      );
-      if (["system", "light", "dark"].includes(legacy?.theme)) {
-        preferences = { ...defaults, theme: legacy.theme };
+      const v2 = JSON.parse(globalThis.localStorage.getItem(v2Key) ?? "null");
+      const v2Valid =
+        ["system", "light", "dark"].includes(v2?.theme) &&
+        ["coral", "purple", "red", "yellow"].includes(v2?.accent) &&
+        Number.isInteger(v2?.intensity) &&
+        v2.intensity >= 25 &&
+        v2.intensity <= 100 &&
+        v2.intensity % 5 === 0;
+      if (v2Valid) {
+        preferences = { ...v2, surfaceStyle: "warm" };
+      } else {
+        const legacy = JSON.parse(
+          globalThis.localStorage.getItem(v1Key) ?? "null",
+        );
+        if (["system", "light", "dark"].includes(legacy?.theme)) {
+          preferences = { ...defaults, theme: legacy.theme };
+        }
       }
     }
   } catch {
@@ -58,6 +77,7 @@
   root.dataset.themePreference = preferences.theme;
   root.dataset.accent = preferences.accent;
   root.dataset.accentIntensity = String(preferences.intensity);
+  root.dataset.surfaceStyle = preferences.surfaceStyle;
   root.style.colorScheme = resolved;
   root.style.setProperty(
     "--accent",
@@ -85,6 +105,12 @@
   );
   themeColor?.setAttribute(
     "content",
-    resolved === "dark" ? "#211e1b" : "#f3ede3",
+    preferences.surfaceStyle === "flat"
+      ? resolved === "dark"
+        ? "#090909"
+        : "#ffffff"
+      : resolved === "dark"
+        ? "#211e1b"
+        : "#f3ede3",
   );
 })();

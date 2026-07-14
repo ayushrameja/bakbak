@@ -1,13 +1,7 @@
 import { Cloud, Radio, Wifi } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useId } from "react";
 import type { DataMode } from "../../lib/types";
-
-const POLL_INTERVAL_MS = 30_000;
-
-type Latency =
-  | { status: "checking" }
-  | { status: "available"; milliseconds: number }
-  | { status: "unavailable" };
+import { backendLatencyLabel, useBackendLatency } from "./backend-latency";
 
 interface ConnectionStatusProps {
   mode: DataMode;
@@ -22,61 +16,9 @@ export function ConnectionStatus({
   backendRegion,
   voiceConnected,
 }: ConnectionStatusProps) {
-  const [latency, setLatency] = useState<Latency>(() =>
-    mode === "mock"
-      ? { status: "available", milliseconds: 0 }
-      : { status: "checking" },
-  );
+  const latency = useBackendLatency(mode, backendUrl);
   const detailId = useId();
-
-  useEffect(() => {
-    if (mode === "mock" || !backendUrl) return;
-
-    let active = true;
-    let controller: AbortController | null = null;
-
-    const measure = async () => {
-      controller?.abort();
-      const nextController = new AbortController();
-      controller = nextController;
-      const startedAt = performance.now();
-      setLatency({ status: "checking" });
-
-      try {
-        await fetch(`${backendUrl}/auth/v1/health`, {
-          cache: "no-store",
-          signal: nextController.signal,
-        });
-        if (active) {
-          setLatency({
-            status: "available",
-            milliseconds: Math.round(performance.now() - startedAt),
-          });
-        }
-      } catch {
-        if (active && !nextController.signal.aborted) {
-          setLatency({ status: "unavailable" });
-        }
-      }
-    };
-
-    void measure();
-    const interval = window.setInterval(() => void measure(), POLL_INTERVAL_MS);
-    return () => {
-      active = false;
-      controller?.abort();
-      window.clearInterval(interval);
-    };
-  }, [backendUrl, mode]);
-
-  const latencyLabel =
-    mode === "mock"
-      ? "Local"
-      : latency.status === "available"
-        ? `${latency.milliseconds} ms`
-        : latency.status === "unavailable"
-          ? "Retrying"
-          : "Checking";
+  const latencyLabel = backendLatencyLabel(mode, latency);
 
   return (
     <div

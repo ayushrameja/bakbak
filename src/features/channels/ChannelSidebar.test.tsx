@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { AppUser, Channel, Server } from "../../lib/types";
+import type { useVoiceRoom } from "../voice/useVoiceRoom";
 import { ChannelSidebar } from "./ChannelSidebar";
 
 const user: AppUser = {
@@ -38,11 +39,20 @@ function renderSidebar(
     user,
     voiceOccupants: [],
     unreadChannelIds: new Set(),
+    voice: {
+      status: "disconnected",
+      channel: null,
+    } as unknown as ReturnType<typeof useVoiceRoom>,
+    mode: "mock",
+    soundboardOpen: false,
     canManageChannels: false,
     onSelect: vi.fn(),
+    onPrepareVoiceChannel: vi.fn(),
     onCreateChannel: vi.fn(),
     onRenameChannel: vi.fn(),
     onOpenSettings: vi.fn(),
+    onToggleSoundboard: vi.fn(),
+    onOpenScreenShare: vi.fn(),
     ...overrides,
   };
   render(<ChannelSidebar {...props} />);
@@ -96,15 +106,27 @@ describe("ChannelSidebar room shelf", () => {
     );
   });
 
-  it("emphasizes unread voice channels", () => {
+  it("does not expose unread state for voice channels", () => {
     renderSidebar([voiceChannel], {
       selectedChannelId: "different-channel",
       unreadChannelIds: new Set([voiceChannel.id]),
     });
 
-    expect(screen.getByRole("button", { name: /Lounge/i })).toHaveClass(
+    expect(screen.getByRole("button", { name: /Lounge/i })).not.toHaveClass(
       "channel-row--unread",
     );
+  });
+
+  it("prepares voice channels for pointer and keyboard discovery", () => {
+    const onPrepareVoiceChannel = vi.fn();
+    renderSidebar([voiceChannel], { onPrepareVoiceChannel });
+    const button = screen.getByRole("button", { name: /Lounge/i });
+
+    fireEvent.pointerEnter(button);
+    fireEvent.focus(button);
+
+    expect(onPrepareVoiceChannel).toHaveBeenCalledTimes(2);
+    expect(onPrepareVoiceChannel).toHaveBeenLastCalledWith(voiceChannel);
   });
 
   it("shows voice occupants without joining the room", () => {

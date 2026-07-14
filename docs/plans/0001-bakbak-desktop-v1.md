@@ -42,9 +42,10 @@ starts with context instead of archaeological guessing.
 - Place shared UI in `src/components`, service clients in `src/lib`, and the
   application shell/providers in `src/app`.
 - Keep native configuration and Rust code isolated in `src-tauri`.
-- Use the Warm Adda light/dark desktop interface with a channel shelf, main
-  conversation/settings canvas, People drawer, and one persistent voice bar.
-  The deferred server rail remains out of scope until multi-server navigation.
+- Use the Warm Adda/Flat light/dark desktop interface with independently
+  optional channel and member panels, a flexible conversation canvas, centered
+  settings modal, sidebar call block, and auto-hiding floating voice dock. The
+  deferred server rail remains out of scope until multi-server navigation.
 - Commit `.env.example` only. Use ignored `.env` files locally and
   platform-managed secrets for backend functions.
 
@@ -140,6 +141,15 @@ Apple-Silicon-only release boundary are approved under
 Voice-channel chat, stable-ID mentions, account-synced unread state, the
 full-app settings overlay, and local accent themes are approved under
 `0005-voice-chat-mentions-settings-accents.md`.
+The optional three-panel shell, Flat surfaces, centered settings modal,
+voice-chat UI removal, floating call controls, and simplified voice canvas are
+approved under `0006-discord-shaped-bakbak-hearted-ui.md`. Plan 0006 supersedes
+only the conflicting UI decisions in plans 0004 and 0005; their backend and
+compatibility work remains in force.
+Prepared voice joins, verified-claims token authorization, microphone reuse,
+compact participant sizing, animated sound activity, and the five-sound safety
+limit are approved under
+`0007-voice-join-acceleration-and-soundboard-polish.md`.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -151,15 +161,35 @@ full-app settings overlay, and local accent themes are approved under
 - [x] Add System, Light, and Dark appearance preferences applied before render.
 - [x] Add Profile, Audio & Video, and Appearance settings while
       preserving per-channel chat drafts and active voice state.
-- [x] Add a full-app Discord-style settings overlay with active-call controls
-      and move confirmed logout into its navigation.
+- [x] Add a centered, focus-trapped settings modal with active-call controls and
+      move confirmed logout into its navigation.
 - [x] Add Coral, Purple, Red, and Yellow device-local accents with 25–100%
       intensity and pre-render application.
-- [x] Add text chat to voice channels with account-synced unread markers.
+- [x] Preserve the deployed voice-message/read-state backend for older clients
+      while filtering upgraded-client chat, activity, and subscriptions to text
+      channels.
 - [x] Add structured individual mentions backed by stable profile IDs.
 - [x] Deploy the plan 0005 migration to hosted Supabase.
 - [ ] Complete the plan 0005 browser-plus-native two-account acceptance run.
-- [x] Add the People drawer, consolidated voice bar, and soundboard drawer.
+- [x] Add independently persisted channel/member panels, a sidebar call block,
+      an auto-hiding floating voice dock, and a dock-anchored soundboard drawer.
+- [x] Keep the soundboard drawer compact and internally scrolling rather than
+      allowing it to consume the center canvas.
+- [x] Add native Cmd/Ctrl `+`, `-`, and `0` interface zoom shortcuts.
+- [x] Add Warm/Flat surface styles and apply them before React mounts.
+- [x] Auto-join selected voice channels, remove the pre-join/initial connection
+      surface, and retain the simplified participant/share layout under plan 0006.
+- [x] Add hover/focus voice preparation, concurrent microphone acquisition,
+      direct-switch microphone reuse, relay preference, and accessible join
+      stages while preserving the soundboard-publication connection gate under
+      plan 0007.
+- [x] Add occupancy-aware participant tiles, active-sound emoji treatment, a
+      sender-enforced five-sound limit, and prominent soundboard/dock stop
+      controls under plan 0007.
+- [x] Deploy the plan 0007 voice-context migration and token function with the
+      JWT gate preserved.
+- [ ] Measure hosted warm/cold joins and complete plan 0007's authenticated
+      member/non-member probes plus browser-native two-account acceptance run.
 - [x] Add private profile-avatar and admin channel-management code plus focused
       frontend/database tests under plan 0004.
 - [x] Deploy the plan 0004 avatar/channel migration to hosted Supabase.

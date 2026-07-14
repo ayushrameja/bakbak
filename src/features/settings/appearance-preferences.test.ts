@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   APPEARANCE_PREFERENCES_KEY,
   LEGACY_APPEARANCE_PREFERENCES_KEY,
+  V2_APPEARANCE_PREFERENCES_KEY,
   accentTokens,
+  applyAppearancePreferences,
   applyThemePreference,
   initializeAppearancePreferences,
   loadAppearancePreferences,
@@ -39,6 +41,7 @@ describe("appearance preferences", () => {
     window.localStorage.clear();
     document.documentElement.removeAttribute("data-theme");
     document.documentElement.removeAttribute("data-theme-preference");
+    document.documentElement.removeAttribute("data-surface-style");
     document.documentElement.style.colorScheme = "";
     document.documentElement.style.removeProperty("--accent");
   });
@@ -52,6 +55,20 @@ describe("appearance preferences", () => {
       theme: "dark",
       accent: "coral",
       intensity: 100,
+      surfaceStyle: "warm",
+    });
+  });
+
+  it("migrates v2 appearance values to Warm surfaces", () => {
+    window.localStorage.setItem(
+      V2_APPEARANCE_PREFERENCES_KEY,
+      JSON.stringify({ theme: "light", accent: "purple", intensity: 65 }),
+    );
+    expect(loadAppearancePreferences()).toEqual({
+      theme: "light",
+      accent: "purple",
+      intensity: 65,
+      surfaceStyle: "warm",
     });
   });
 
@@ -60,6 +77,7 @@ describe("appearance preferences", () => {
       theme: "system",
       accent: "coral",
       intensity: 100,
+      surfaceStyle: "warm",
     });
 
     window.localStorage.setItem(APPEARANCE_PREFERENCES_KEY, "not-json");
@@ -67,6 +85,7 @@ describe("appearance preferences", () => {
       theme: "system",
       accent: "coral",
       intensity: 100,
+      surfaceStyle: "warm",
     });
   });
 
@@ -86,6 +105,7 @@ describe("appearance preferences", () => {
       theme: "light",
       accent: "coral",
       intensity: 100,
+      surfaceStyle: "warm",
     });
 
     applyThemePreference("dark", {
@@ -141,5 +161,27 @@ describe("appearance preferences", () => {
       expect(vivid.bright).toMatch(/^hsl\(/);
       expect(vivid.onAccent).toBe(accent === "yellow" ? "#211e1b" : "#fffaf2");
     }
+  });
+
+  it("applies Flat surfaces before render without dropping the accent", () => {
+    applyAppearancePreferences(
+      {
+        theme: "dark",
+        accent: "red",
+        intensity: 75,
+        surfaceStyle: "flat",
+      },
+      { document },
+    );
+
+    expect(document.documentElement).toHaveAttribute(
+      "data-surface-style",
+      "flat",
+    );
+    expect(document.documentElement).toHaveAttribute("data-accent", "red");
+    expect(
+      document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+        ?.content,
+    ).toBe("#090909");
   });
 });

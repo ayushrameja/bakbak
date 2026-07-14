@@ -1,21 +1,13 @@
 import {
-  AudioLines,
   CircleAlert,
+  LoaderCircle,
   Mic,
   MicOff,
-  Phone,
-  Radio,
   RefreshCw,
-  Settings2,
   Volume2,
 } from "lucide-react";
 import { Avatar } from "../../components/Avatar";
-import type {
-  AppUser,
-  Channel,
-  ServerMember,
-  VoiceRoomOccupant,
-} from "../../lib/types";
+import type { AppUser, Channel, ServerMember } from "../../lib/types";
 import { ParticipantVideo } from "./ParticipantVideo";
 import { ScreenShareStage } from "./ScreenShareStage";
 import { VoiceElapsedTime } from "./VoiceElapsedTime";
@@ -26,7 +18,6 @@ interface VoiceRoomProps {
   user: AppUser;
   members?: ServerMember[];
   voice: ReturnType<typeof useVoiceRoom>;
-  occupants: VoiceRoomOccupant[];
   onOpenSettings: () => void;
 }
 
@@ -35,97 +26,36 @@ export function VoiceRoom({
   user,
   members = [],
   voice,
-  occupants,
   onOpenSettings,
 }: VoiceRoomProps) {
   const isThisRoom = voice.channel?.id === channel.id;
   const isConnected = isThisRoom && voice.status === "connected";
-  const isBusy =
-    isThisRoom &&
-    (voice.status === "connecting" || voice.status === "reconnecting");
+  const isConnecting = isThisRoom && voice.status === "connecting";
+  const isReconnecting = isThisRoom && voice.status === "reconnecting";
+  const participantLayout =
+    voice.participants.length === 1
+      ? "is-solo"
+      : voice.participants.length === 2
+        ? "is-pair"
+        : "is-group";
 
   return (
-    <section className="voice-room-view">
-      <div className="voice-room-hero">
-        <div className="voice-room-hero__copy">
-          <span className="eyebrow">
-            <Radio size={14} /> Drop-in voice
-          </span>
-          <h2>{channel.name}</h2>
-          <p>{channel.topic}</p>
-        </div>
-        <div className={`voice-presence-pill ${isConnected ? "is-live" : ""}`}>
-          <i />{" "}
-          {isConnected
-            ? `${voice.participants.length} in the room`
-            : occupants.length > 0
-              ? `${occupants.length} talking now`
-              : "Room is open"}
-        </div>
-      </div>
-
-      {!isConnected && occupants.length > 0 ? (
-        <div className="voice-occupancy-preview">
-          <span>Already in {channel.name}</span>
-          <div>
-            {occupants.map((occupant) => (
-              <div key={occupant.userId}>
-                <Avatar
-                  user={{
-                    displayName: occupant.displayName,
-                    avatarUrl: occupant.avatarUrl,
-                    status: "online",
-                  }}
-                  size="small"
-                  showStatus
-                />
-                <strong>{occupant.displayName}</strong>
-                <VoiceElapsedTime joinedAt={occupant.joinedAt} />
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {!isThisRoom || voice.status === "disconnected" ? (
-        <div className="join-voice-card">
-          <div className="join-voice-card__orbit">
-            <AudioLines size={34} />
-            <i />
-            <i />
-            <i />
-          </div>
-          <h3>Pull up a chair</h3>
-          <p>
-            You can listen first, mute whenever, and leave without writing a
-            farewell essay.
-          </p>
-          <button
-            className="primary-button"
-            type="button"
-            onClick={() => void voice.join(channel)}
-          >
-            <Phone size={18} /> Join {channel.name}
-          </button>
-          <button
-            className="text-button"
-            type="button"
-            onClick={onOpenSettings}
-          >
-            <Settings2 size={15} /> Check microphone first
-          </button>
-        </div>
-      ) : null}
-
-      {isBusy ? (
-        <div className="voice-loading">
-          <RefreshCw size={24} />
-          <h3>
-            {voice.status === "reconnecting"
+    <section
+      className={`voice-room-view ${isConnected ? "is-connected" : ""} ${voice.screenShares.length > 0 ? "has-screen-share" : ""}`}
+    >
+      {isConnecting || isReconnecting ? (
+        <div className="voice-loading" role="status" aria-live="polite">
+          <LoaderCircle size={25} />
+          <strong>
+            {isReconnecting
+              ? `Reconnecting to ${channel.name}…`
+              : `Connecting to ${channel.name}…`}
+          </strong>
+          <span>
+            {isReconnecting
               ? "Finding the room again…"
-              : "Joining quietly…"}
-          </h3>
-          <p>LiveKit is setting up a secure, short-lived voice session.</p>
+              : describeJoinStage(voice.joinStage)}
+          </span>
         </div>
       ) : null}
 
@@ -207,7 +137,10 @@ export function VoiceRoom({
             localSourceLabel={voice.screenShareSourceLabel}
             onSelect={voice.selectScreenShare}
           />
-          <div className="participant-grid">
+          <div
+            className={`participant-grid ${participantLayout} ${voice.screenShares.length > 0 ? "is-strip" : ""}`}
+            data-participant-count={voice.participants.length}
+          >
             {voice.participants.map((participant) => {
               const latestSound = participant.activeSounds.at(-1);
               const soundActive = participant.activeSounds.length > 0;
@@ -232,10 +165,30 @@ export function VoiceRoom({
                 >
                   <div className="participant-card__media">
                     {participant.cameraEnabled && participant.cameraTrack ? (
-                      <ParticipantVideo
-                        track={participant.cameraTrack}
-                        local={participant.isLocal}
-                        label={displayName}
+                      <>
+                        <ParticipantVideo
+                          track={participant.cameraTrack}
+                          local={participant.isLocal}
+                          label={displayName}
+                        />
+                        {latestSound ? (
+                          <SoundEmoji
+                            key={latestSound.eventId}
+                            emoji={latestSound.emoji}
+                            label={`${displayName} is playing ${latestSound.label}`}
+                            count={participant.activeSounds.length}
+                            maximum={voice.maxConcurrentSounds}
+                            overlay
+                          />
+                        ) : null}
+                      </>
+                    ) : latestSound ? (
+                      <SoundEmoji
+                        key={latestSound.eventId}
+                        emoji={latestSound.emoji}
+                        label={`${displayName} is playing ${latestSound.label}`}
+                        count={participant.activeSounds.length}
+                        maximum={voice.maxConcurrentSounds}
                       />
                     ) : (
                       <div className="participant-card__avatar">
@@ -243,17 +196,6 @@ export function VoiceRoom({
                         <span className="speaker-rings" />
                       </div>
                     )}
-                    {latestSound ? (
-                      <span
-                        className="participant-card__sound"
-                        aria-label={`${displayName} is playing ${latestSound.label}`}
-                      >
-                        {latestSound.emoji}
-                        {participant.activeSounds.length > 1 ? (
-                          <i>+{participant.activeSounds.length - 1}</i>
-                        ) : null}
-                      </span>
-                    ) : null}
                   </div>
                   <div className="participant-card__identity">
                     <strong>
@@ -313,4 +255,43 @@ export function VoiceRoom({
       ) : null}
     </section>
   );
+}
+
+function SoundEmoji({
+  emoji,
+  label,
+  count,
+  maximum,
+  overlay = false,
+}: {
+  emoji: string;
+  label: string;
+  count: number;
+  maximum: number;
+  overlay?: boolean;
+}) {
+  return (
+    <span
+      className={`participant-card__sound-emoji ${overlay ? "is-overlay" : "is-avatar"}`}
+      aria-label={label}
+      role="img"
+    >
+      <b aria-hidden="true">{emoji}</b>
+      {count > 1 ? (
+        <i>
+          {count}/{maximum}
+        </i>
+      ) : null}
+    </span>
+  );
+}
+
+function describeJoinStage(
+  stage: ReturnType<typeof useVoiceRoom>["joinStage"],
+) {
+  if (stage === "authorizing") return "Checking room access…";
+  if (stage === "connecting") return "Finding the fastest voice route…";
+  if (stage === "microphone") return "Starting your microphone…";
+  if (stage === "soundboard") return "Preparing room audio…";
+  return "Preparing voice…";
 }

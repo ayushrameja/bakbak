@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { readAllowedOrigins } from "../_shared/cors.ts";
+import { authenticateUserFromClaims } from "./auth.ts";
 import {
   handleLiveKitTokenRequest,
   type TokenSigningInput,
@@ -61,23 +62,16 @@ async function authenticateUser(
     configuration.supabaseUrl,
     configuration.supabaseAnonKey,
   );
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error !== null || user === null) {
-    return null;
-  }
-
-  return { id: user.id };
+  return await authenticateUserFromClaims(request, (token) =>
+    supabase.auth.getClaims(token),
+  );
 }
 
 async function findVoiceChannelAccess(
   request: Request,
   configuration: FunctionConfiguration,
   channelId: string,
-  userId: string,
+  _userId: string,
 ): Promise<VoiceChannelAccess | null> {
   const authorization = request.headers.get("authorization");
 
@@ -94,51 +88,37 @@ async function findVoiceChannelAccess(
     configuration.supabaseUrl,
     configuration.supabaseAnonKey,
   );
-  const { data: channel, error: channelError } = await supabase
-    .from("channels")
-    .select("id, server_id")
-    .eq("id", channelId)
-    .eq("kind", "voice")
+  const { data, error: contextError } = await supabase
+    .rpc("get_voice_join_context", { p_channel_id: channelId })
     .maybeSingle();
+  const context: unknown = data;
 
-  if (channelError !== null) {
-    throw new Error("Channel lookup failed.");
+  if (contextError !== null) {
+    throw new Error("Voice access lookup failed.");
   }
 
-  if (channel === null) {
+  if (context === null || context === undefined) {
     return null;
   }
 
-  const { data: membership, error: membershipError } = await supabase
-    .from("memberships")
-    .select("user_id")
-    .eq("server_id", channel.server_id)
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (membershipError !== null) {
-    throw new Error("Membership lookup failed.");
-  }
-
-  if (membership === null) {
-    return null;
-  }
-
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("display_name")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (profileError !== null || profile === null) {
-    throw new Error("Profile lookup failed.");
+  if (
+    !isRecord(context) ||
+    typeof context.channel_id !== "string" ||
+    typeof context.server_id !== "string" ||
+    typeof context.display_name !== "string"
+  ) {
+    throw new Error("Voice access lookup returned invalid data.");
   }
 
   return {
-    channelId: channel.id,
-    serverId: channel.server_id,
-    displayName: profile.display_name,
+    channelId: context.channel_id,
+    serverId: context.server_id,
+    displayName: context.display_name,
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function createRequestClient(

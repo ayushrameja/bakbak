@@ -30,7 +30,11 @@ import {
   validateAvatarFile,
   validateDisplayName,
 } from "../../lib/profile-service";
-import type { AccentColor, ThemePreference } from "./appearance-preferences";
+import type {
+  AccentColor,
+  SurfaceStyle,
+  ThemePreference,
+} from "./appearance-preferences";
 
 export type SettingsSection = "profile" | "audio" | "appearance";
 
@@ -46,6 +50,7 @@ interface SettingsPageProps {
   themePreference: ThemePreference;
   accent: AccentColor;
   accentIntensity: number;
+  surfaceStyle: SurfaceStyle;
   inputDevices: MediaDeviceInfo[];
   outputDevices: MediaDeviceInfo[];
   cameraDevices: MediaDeviceInfo[];
@@ -65,6 +70,7 @@ interface SettingsPageProps {
   onSectionChange: (section: SettingsSection) => void;
   onThemeChange: (preference: ThemePreference) => void;
   onAccentChange: (accent: AccentColor, intensity: number) => void;
+  onSurfaceStyleChange: (surfaceStyle: SurfaceStyle) => void;
   onSaveProfile: (input: ProfileSaveInput) => Promise<{ warning?: string }>;
   onInputChange: (deviceId: string) => void;
   onOutputChange: (deviceId: string) => void;
@@ -142,157 +148,173 @@ export function SettingsPage(props: SettingsPageProps) {
   }
 
   return (
-    <section
-      ref={dialogRef}
-      className="settings-page"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="settings-title"
+    <div
+      className="settings-page-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.currentTarget === event.target && !confirmingSignOut) {
+          props.onClose();
+        }
+      }}
     >
-      <header className="settings-page__header">
-        <div>
-          <span className="eyebrow">Your corner</span>
-          <h1 id="settings-title">Settings</h1>
-          <p>Make Bakbak feel, sound, and look like your place.</p>
-        </div>
-        <button
-          ref={closeRef}
-          className="settings-close"
-          type="button"
-          onClick={props.onClose}
-          aria-label="Close settings"
-        >
-          <X size={20} />
-        </button>
-      </header>
+      <section
+        ref={dialogRef}
+        className="settings-page"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-title"
+      >
+        <header className="settings-page__header">
+          <div>
+            <span className="eyebrow">Your corner</span>
+            <h1 id="settings-title">Settings</h1>
+            <p>Make Bakbak feel, sound, and look like your place.</p>
+          </div>
+          <button
+            ref={closeRef}
+            className="settings-close"
+            type="button"
+            onClick={props.onClose}
+            aria-label="Close settings"
+          >
+            <X size={20} />
+          </button>
+        </header>
 
-      <div className="settings-page__body">
-        <nav className="settings-nav" aria-label="Settings sections">
-          <SettingsNavButton
-            active={props.section === "profile"}
-            icon={<UserRound size={17} />}
-            label="Profile"
-            onClick={() => props.onSectionChange("profile")}
-          />
-          <SettingsNavButton
-            active={props.section === "audio"}
-            icon={<Headphones size={17} />}
-            label="Audio & video"
-            onClick={() => props.onSectionChange("audio")}
-          />
-          <SettingsNavButton
-            active={props.section === "appearance"}
-            icon={<Palette size={17} />}
-            label="Appearance"
-            onClick={() => props.onSectionChange("appearance")}
-          />
-          <div className="settings-nav__spacer" />
-          {props.voiceStatus !== "disconnected" ? (
-            <div className="settings-call-strip">
-              <span>Connected to</span>
-              <strong>{props.voiceChannelName ?? "Voice room"}</strong>
+        <div className="settings-page__body">
+          <nav className="settings-nav" aria-label="Settings sections">
+            <SettingsNavButton
+              active={props.section === "profile"}
+              icon={<UserRound size={17} />}
+              label="Profile"
+              onClick={() => props.onSectionChange("profile")}
+            />
+            <SettingsNavButton
+              active={props.section === "audio"}
+              icon={<Headphones size={17} />}
+              label="Audio & video"
+              onClick={() => props.onSectionChange("audio")}
+            />
+            <SettingsNavButton
+              active={props.section === "appearance"}
+              icon={<Palette size={17} />}
+              label="Appearance"
+              onClick={() => props.onSectionChange("appearance")}
+            />
+            <div className="settings-nav__spacer" />
+            {props.voiceStatus !== "disconnected" ? (
+              <div className="settings-call-strip">
+                <span>Connected to</span>
+                <strong>{props.voiceChannelName ?? "Voice room"}</strong>
+                <div>
+                  <button
+                    type="button"
+                    aria-label={props.voiceMuted ? "Unmute" : "Mute"}
+                    onClick={props.onToggleMute}
+                  >
+                    {props.voiceMuted ? (
+                      <MicOff size={15} />
+                    ) : (
+                      <Mic size={15} />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={props.voiceDeafened ? "Undeafen" : "Deafen"}
+                    onClick={props.onToggleDeafen}
+                  >
+                    {props.voiceDeafened ? (
+                      <VolumeX size={15} />
+                    ) : (
+                      <Volume2 size={15} />
+                    )}
+                  </button>
+                  <button
+                    className="is-danger"
+                    type="button"
+                    aria-label="Leave voice"
+                    onClick={props.onLeaveVoice}
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            <button
+              className="settings-logout"
+              type="button"
+              onClick={() => {
+                setSignOutError(null);
+                setConfirmingSignOut(true);
+              }}
+            >
+              <LogOut size={17} /> Log out
+            </button>
+          </nav>
+
+          <div className="settings-canvas">
+            {props.section === "profile" ? (
+              <ProfileSettings user={props.user} onSave={props.onSaveProfile} />
+            ) : null}
+            {props.section === "audio" ? <AudioSettings {...props} /> : null}
+            {props.section === "appearance" ? (
+              <AppearanceSettings
+                preference={props.themePreference}
+                accent={props.accent}
+                intensity={props.accentIntensity}
+                surfaceStyle={props.surfaceStyle}
+                onChange={props.onThemeChange}
+                onAccentChange={props.onAccentChange}
+                onSurfaceStyleChange={props.onSurfaceStyleChange}
+              />
+            ) : null}
+          </div>
+        </div>
+        {confirmingSignOut ? (
+          <div className="settings-confirm-backdrop" role="presentation">
+            <section
+              ref={signOutDialogRef}
+              className="settings-confirm"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="sign-out-title"
+            >
+              <span className="eyebrow">One last click</span>
+              <h2 id="sign-out-title">Log out of Bakbak?</h2>
+              <p>
+                {props.voiceStatus !== "disconnected"
+                  ? "This will also leave your active voice room."
+                  : "Your local appearance and device choices will stay on this computer."}
+              </p>
+              {signOutError ? (
+                <p className="settings-error" role="alert">
+                  {signOutError}
+                </p>
+              ) : null}
               <div>
                 <button
+                  ref={staySignedInRef}
+                  className="secondary-button"
                   type="button"
-                  aria-label={props.voiceMuted ? "Unmute" : "Mute"}
-                  onClick={props.onToggleMute}
+                  disabled={signingOut}
+                  onClick={() => setConfirmingSignOut(false)}
                 >
-                  {props.voiceMuted ? <MicOff size={15} /> : <Mic size={15} />}
+                  Stay signed in
                 </button>
                 <button
+                  className="danger-button"
                   type="button"
-                  aria-label={props.voiceDeafened ? "Undeafen" : "Deafen"}
-                  onClick={props.onToggleDeafen}
+                  disabled={signingOut}
+                  onClick={() => void confirmSignOut()}
                 >
-                  {props.voiceDeafened ? (
-                    <VolumeX size={15} />
-                  ) : (
-                    <Volume2 size={15} />
-                  )}
-                </button>
-                <button
-                  className="is-danger"
-                  type="button"
-                  aria-label="Leave voice"
-                  onClick={props.onLeaveVoice}
-                >
-                  <X size={15} />
+                  <LogOut size={16} /> {signingOut ? "Logging out…" : "Log out"}
                 </button>
               </div>
-            </div>
-          ) : null}
-          <button
-            className="settings-logout"
-            type="button"
-            onClick={() => {
-              setSignOutError(null);
-              setConfirmingSignOut(true);
-            }}
-          >
-            <LogOut size={17} /> Log out
-          </button>
-        </nav>
-
-        <div className="settings-canvas">
-          {props.section === "profile" ? (
-            <ProfileSettings user={props.user} onSave={props.onSaveProfile} />
-          ) : null}
-          {props.section === "audio" ? <AudioSettings {...props} /> : null}
-          {props.section === "appearance" ? (
-            <AppearanceSettings
-              preference={props.themePreference}
-              accent={props.accent}
-              intensity={props.accentIntensity}
-              onChange={props.onThemeChange}
-              onAccentChange={props.onAccentChange}
-            />
-          ) : null}
-        </div>
-      </div>
-      {confirmingSignOut ? (
-        <div className="settings-confirm-backdrop" role="presentation">
-          <section
-            ref={signOutDialogRef}
-            className="settings-confirm"
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="sign-out-title"
-          >
-            <span className="eyebrow">One last click</span>
-            <h2 id="sign-out-title">Log out of Bakbak?</h2>
-            <p>
-              {props.voiceStatus !== "disconnected"
-                ? "This will also leave your active voice room."
-                : "Your local appearance and device choices will stay on this computer."}
-            </p>
-            {signOutError ? (
-              <p className="settings-error" role="alert">
-                {signOutError}
-              </p>
-            ) : null}
-            <div>
-              <button
-                ref={staySignedInRef}
-                className="secondary-button"
-                type="button"
-                disabled={signingOut}
-                onClick={() => setConfirmingSignOut(false)}
-              >
-                Stay signed in
-              </button>
-              <button
-                className="danger-button"
-                type="button"
-                disabled={signingOut}
-                onClick={() => void confirmSignOut()}
-              >
-                <LogOut size={16} /> {signingOut ? "Logging out…" : "Log out"}
-              </button>
-            </div>
-          </section>
-        </div>
-      ) : null}
-    </section>
+            </section>
+          </div>
+        ) : null}
+      </section>
+    </div>
   );
 }
 
@@ -780,14 +802,18 @@ function AppearanceSettings({
   preference,
   accent,
   intensity,
+  surfaceStyle,
   onChange,
   onAccentChange,
+  onSurfaceStyleChange,
 }: {
   preference: ThemePreference;
   accent: AccentColor;
   intensity: number;
+  surfaceStyle: SurfaceStyle;
   onChange: (preference: ThemePreference) => void;
   onAccentChange: (accent: AccentColor, intensity: number) => void;
+  onSurfaceStyleChange: (surfaceStyle: SurfaceStyle) => void;
 }) {
   const options: Array<{
     value: ThemePreference;
@@ -838,6 +864,40 @@ function AppearanceSettings({
           </button>
         ))}
       </div>
+      <section className="surface-settings" aria-labelledby="surface-title">
+        <div>
+          <h3 id="surface-title">Surface style</h3>
+          <p>Keep the warmth, or make every surface calm and flat.</p>
+        </div>
+        <div
+          className="surface-options"
+          role="radiogroup"
+          aria-label="Surface style"
+        >
+          <button
+            className={surfaceStyle === "warm" ? "is-active" : ""}
+            type="button"
+            role="radio"
+            aria-checked={surfaceStyle === "warm"}
+            onClick={() => onSurfaceStyleChange("warm")}
+          >
+            <span>Warm</span>
+            <small>Gradients, depth, and soft light</small>
+            {surfaceStyle === "warm" ? <Check size={15} /> : null}
+          </button>
+          <button
+            className={surfaceStyle === "flat" ? "is-active" : ""}
+            type="button"
+            role="radio"
+            aria-checked={surfaceStyle === "flat"}
+            onClick={() => onSurfaceStyleChange("flat")}
+          >
+            <span>Flat</span>
+            <small>Plain grayscale surfaces, no glow</small>
+            {surfaceStyle === "flat" ? <Check size={15} /> : null}
+          </button>
+        </div>
+      </section>
       <section className="accent-settings" aria-labelledby="accent-title">
         <div>
           <h3 id="accent-title">Accent colour</h3>
