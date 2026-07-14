@@ -15,6 +15,16 @@ motion. Settings become part of the main application canvas, voice controls
 remain available across navigation, and server admins can create or rename
 text and voice rooms without receiving broad table-write authority.
 
+## Superseded UI decisions — 2026-07-14
+
+Plan 0006 supersedes the permanent absence of a member column, the People
+drawer, full-app settings presentation, and the layout-consuming persistent
+voice bar. Warm remains the default visual identity, while the upgraded shell
+now uses independently optional channel/member panels, a centered settings
+modal, a floating call dock, and an optional Flat surface style. Profile,
+avatar, channel-management, authorization, migration, distribution, and manual
+acceptance requirements in this plan remain active.
+
 ## Accepted product behavior
 
 - The channel shelf and conversation canvas remain visible while a People

@@ -1,5 +1,4 @@
 import {
-  AudioLines,
   CircleAlert,
   Mic,
   MicOff,
@@ -45,75 +44,63 @@ export function VoiceRoom({
     (voice.status === "connecting" || voice.status === "reconnecting");
 
   return (
-    <section className="voice-room-view">
-      <div className="voice-room-hero">
-        <div className="voice-room-hero__copy">
-          <span className="eyebrow">
-            <Radio size={14} /> Drop-in voice
-          </span>
-          <h2>{channel.name}</h2>
-          <p>{channel.topic}</p>
-        </div>
-        <div className={`voice-presence-pill ${isConnected ? "is-live" : ""}`}>
-          <i />{" "}
-          {isConnected
-            ? `${voice.participants.length} in the room`
-            : occupants.length > 0
-              ? `${occupants.length} talking now`
-              : "Room is open"}
-        </div>
-      </div>
-
-      {!isConnected && occupants.length > 0 ? (
-        <div className="voice-occupancy-preview">
-          <span>Already in {channel.name}</span>
-          <div>
-            {occupants.map((occupant) => (
-              <div key={occupant.userId}>
-                <Avatar
-                  user={{
-                    displayName: occupant.displayName,
-                    avatarUrl: occupant.avatarUrl,
-                    status: "online",
-                  }}
-                  size="small"
-                  showStatus
-                />
-                <strong>{occupant.displayName}</strong>
-                <VoiceElapsedTime joinedAt={occupant.joinedAt} />
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
+    <section
+      className={`voice-room-view ${isConnected ? "is-connected" : ""} ${voice.screenShares.length > 0 ? "has-screen-share" : ""}`}
+    >
       {!isThisRoom || voice.status === "disconnected" ? (
-        <div className="join-voice-card">
-          <div className="join-voice-card__orbit">
-            <AudioLines size={34} />
-            <i />
-            <i />
-            <i />
+        <div className="prejoin-voice-card">
+          <div className="prejoin-voice-card__copy">
+            <span className="eyebrow">
+              <Radio size={14} /> Voice room
+            </span>
+            <h2>{channel.name}</h2>
+            <p>{channel.topic}</p>
           </div>
-          <h3>Pull up a chair</h3>
-          <p>
-            You can listen first, mute whenever, and leave without writing a
-            farewell essay.
-          </p>
-          <button
-            className="primary-button"
-            type="button"
-            onClick={() => void voice.join(channel)}
-          >
-            <Phone size={18} /> Join {channel.name}
-          </button>
-          <button
-            className="text-button"
-            type="button"
-            onClick={onOpenSettings}
-          >
-            <Settings2 size={15} /> Check microphone first
-          </button>
+          <div className="prejoin-voice-card__presence">
+            <div className="voice-presence-pill">
+              <i />
+              {occupants.length > 0
+                ? `${occupants.length} talking now`
+                : "Room is open"}
+            </div>
+            {occupants.length > 0 ? (
+              <div className="prejoin-voice-card__people">
+                {occupants.map((occupant) => (
+                  <div key={occupant.userId}>
+                    <Avatar
+                      user={{
+                        displayName: occupant.displayName,
+                        avatarUrl: occupant.avatarUrl,
+                        status: "online",
+                      }}
+                      size="small"
+                      showStatus
+                    />
+                    <span>
+                      <strong>{occupant.displayName}</strong>
+                      <VoiceElapsedTime joinedAt={occupant.joinedAt} />
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          <div className="prejoin-voice-card__actions">
+            <button
+              className="primary-button"
+              type="button"
+              onClick={() => void voice.join(channel)}
+            >
+              <Phone size={18} /> Join voice
+            </button>
+            <button
+              className="text-button"
+              type="button"
+              onClick={onOpenSettings}
+            >
+              <Settings2 size={15} /> Check microphone
+            </button>
+          </div>
         </div>
       ) : null}
 
@@ -207,7 +194,9 @@ export function VoiceRoom({
             localSourceLabel={voice.screenShareSourceLabel}
             onSelect={voice.selectScreenShare}
           />
-          <div className="participant-grid">
+          <div
+            className={`participant-grid ${voice.screenShares.length > 0 ? "is-strip" : ""}`}
+          >
             {voice.participants.map((participant) => {
               const latestSound = participant.activeSounds.at(-1);
               const soundActive = participant.activeSounds.length > 0;

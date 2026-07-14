@@ -1,4 +1,4 @@
-import { MessageSquareText, Send, Sparkles } from "lucide-react";
+import { Send, Sparkles } from "lucide-react";
 import {
   useEffect,
   useMemo,
@@ -29,7 +29,6 @@ interface ChatViewProps {
   currentUser: AppUser;
   sending: boolean;
   draft: MessageDraft;
-  compact?: boolean;
   onDraftChange: (draft: MessageDraft) => void;
   onSend: (draft: MessageDraft) => Promise<void>;
 }
@@ -41,7 +40,6 @@ export function ChatView({
   currentUser,
   sending,
   draft,
-  compact = false,
   onDraftChange,
   onSend,
 }: ChatViewProps) {
@@ -147,27 +145,16 @@ export function ChatView({
   }
 
   return (
-    <section className={`chat-view ${compact ? "chat-view--compact" : ""}`}>
-      {compact ? (
-        <header className="voice-chat-dock__header">
-          <MessageSquareText size={17} />
-          <div>
-            <strong>{channel.name} chat</strong>
-            <span>Messages stay with this voice room</span>
-          </div>
-        </header>
-      ) : null}
+    <section className="chat-view">
       <div className="message-list" ref={listRef}>
-        {!compact ? (
-          <div className="channel-intro">
-            <span className="channel-intro__icon">#</span>
-            <h2>Welcome to #{channel.name}</h2>
-            <p>{channel.topic || "This is where the conversation begins."}</p>
-            <span className="channel-intro__meta">
-              <Sparkles size={15} /> Private room · friends only
-            </span>
-          </div>
-        ) : null}
+        <div className="channel-intro">
+          <span className="channel-intro__icon">#</span>
+          <h2>Welcome to #{channel.name}</h2>
+          <p>{channel.topic || "This is where the conversation begins."}</p>
+          <span className="channel-intro__meta">
+            <Sparkles size={15} /> Private room · friends only
+          </span>
+        </div>
 
         {messages.length === 0 ? (
           <div className="empty-conversation">

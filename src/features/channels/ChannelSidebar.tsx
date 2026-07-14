@@ -1,13 +1,26 @@
-import { Hash, Pencil, Plus, Settings, Volume2 } from "lucide-react";
+import {
+  Hash,
+  HeadphoneOff,
+  Headphones,
+  Mic,
+  MicOff,
+  Pencil,
+  Plus,
+  Settings,
+  Volume2,
+} from "lucide-react";
 import { Avatar } from "../../components/Avatar";
 import type {
   AppUser,
   Channel,
   ChannelKind,
+  DataMode,
   Server,
   VoiceRoomOccupant,
 } from "../../lib/types";
 import { VoiceElapsedTime } from "../voice/VoiceElapsedTime";
+import { SidebarVoicePanel } from "../voice/SidebarVoicePanel";
+import type { useVoiceRoom } from "../voice/useVoiceRoom";
 
 interface ChannelSidebarProps {
   server: Server;
@@ -16,11 +29,16 @@ interface ChannelSidebarProps {
   user: AppUser;
   voiceOccupants: VoiceRoomOccupant[];
   unreadChannelIds: ReadonlySet<string>;
+  voice: ReturnType<typeof useVoiceRoom>;
+  mode: DataMode;
+  soundboardOpen: boolean;
   canManageChannels: boolean;
   onSelect: (channel: Channel) => void;
   onCreateChannel: (kind: ChannelKind) => void;
   onRenameChannel: (channel: Channel) => void;
   onOpenSettings: () => void;
+  onToggleSoundboard: () => void;
+  onOpenScreenShare: () => void;
 }
 
 export function ChannelSidebar({
@@ -30,17 +48,22 @@ export function ChannelSidebar({
   user,
   voiceOccupants,
   unreadChannelIds,
+  voice,
+  mode,
+  soundboardOpen,
   canManageChannels,
   onSelect,
   onCreateChannel,
   onRenameChannel,
   onOpenSettings,
+  onToggleSoundboard,
+  onOpenScreenShare,
 }: ChannelSidebarProps) {
   const textChannels = channels.filter((channel) => channel.kind === "text");
   const voiceChannels = channels.filter((channel) => channel.kind === "voice");
 
   return (
-    <aside className="channel-sidebar">
+    <aside className="channel-sidebar" id="channel-sidebar">
       <header className="server-switcher">
         <div>
           <strong>{server.name}</strong>
@@ -88,7 +111,7 @@ export function ChannelSidebar({
                 return (
                   <div className="channel-row-stack">
                     <button
-                      className={`channel-row ${selectedChannelId === channel.id ? "active" : ""} ${unreadChannelIds.has(channel.id) ? "channel-row--unread" : ""}`}
+                      className={`channel-row ${selectedChannelId === channel.id ? "active" : ""}`}
                       type="button"
                       onClick={() => onSelect(channel)}
                     >
@@ -130,12 +153,46 @@ export function ChannelSidebar({
 
       <div className="sidebar-spacer" />
 
+      <SidebarVoicePanel
+        voice={voice}
+        mode={mode}
+        soundboardOpen={soundboardOpen}
+        onToggleSoundboard={onToggleSoundboard}
+        onOpenScreenShare={onOpenScreenShare}
+      />
+
       <div className="user-dock">
         <Avatar user={user} size="small" showStatus />
         <div className="user-dock__identity">
           <strong>{user.displayName}</strong>
-          <span>Available</span>
+          <span>{voice.status === "connected" ? "In voice" : "Available"}</span>
         </div>
+        {voice.status !== "disconnected" ? (
+          <>
+            <button
+              className={voice.muted ? "is-active" : ""}
+              type="button"
+              disabled={voice.status !== "connected"}
+              onClick={() => void voice.toggleMute()}
+              aria-label={voice.muted ? "Unmute" : "Mute"}
+            >
+              {voice.muted ? <MicOff size={16} /> : <Mic size={16} />}
+            </button>
+            <button
+              className={voice.deafened ? "is-active" : ""}
+              type="button"
+              disabled={voice.status !== "connected"}
+              onClick={() => void voice.toggleDeafen()}
+              aria-label={voice.deafened ? "Undeafen" : "Deafen"}
+            >
+              {voice.deafened ? (
+                <HeadphoneOff size={16} />
+              ) : (
+                <Headphones size={16} />
+              )}
+            </button>
+          </>
+        ) : null}
         <button type="button" onClick={onOpenSettings} aria-label="Settings">
           <Settings size={16} />
         </button>

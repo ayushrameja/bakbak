@@ -2,6 +2,16 @@
 
 **Status:** Implemented and deployed; two-account acceptance remains open.
 
+## Superseded UI decisions — 2026-07-14
+
+Plan 0006 removes voice-channel chat from upgraded clients and replaces the
+full-app settings presentation with a centered in-app modal. The hosted
+structured-message/read-state migration remains additive and unchanged so
+older installed clients can continue using voice messages safely. Stable-ID
+mentions, text-channel unread state, accent choices, and the migration's
+security contracts remain active; voice-chat UI/read-state acceptance is no
+longer a release criterion for the upgraded client.
+
 ## Goal
 
 Make voice rooms useful as persistent conversations, keep mentions stable across

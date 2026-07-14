@@ -23,6 +23,7 @@ function renderSettings(
     themePreference: "system",
     accent: "coral",
     accentIntensity: 100,
+    surfaceStyle: "warm",
     inputDevices: [],
     outputDevices: [],
     cameraDevices: [],
@@ -42,6 +43,7 @@ function renderSettings(
     onSectionChange: vi.fn(),
     onThemeChange: vi.fn(),
     onAccentChange: vi.fn(),
+    onSurfaceStyleChange: vi.fn(),
     onSaveProfile: vi.fn().mockResolvedValue({}),
     onInputChange: vi.fn(),
     onOutputChange: vi.fn(),
@@ -262,6 +264,14 @@ describe("SettingsPage", () => {
     expect(onAccentChange).toHaveBeenCalledWith("coral", 60);
   });
 
+  it("switches between Warm and Flat surfaces", async () => {
+    const onSurfaceStyleChange = vi.fn();
+    renderSettings("appearance", { onSurfaceStyleChange });
+
+    await userEvent.click(screen.getByRole("radio", { name: /Flat/i }));
+    expect(onSurfaceStyleChange).toHaveBeenCalledWith("flat");
+  });
+
   it("traps focus, closes with Escape, and restores the opener", () => {
     const opener = document.createElement("button");
     opener.textContent = "Open settings";
@@ -288,6 +298,15 @@ describe("SettingsPage", () => {
     unmount();
     expect(opener).toHaveFocus();
     opener.remove();
+  });
+
+  it("closes when the modal backdrop is clicked", () => {
+    const onClose = vi.fn();
+    const { container } = renderSettings("profile", { onClose });
+    const backdrop = container.querySelector(".settings-page-backdrop");
+    expect(backdrop).not.toBeNull();
+    fireEvent.mouseDown(backdrop!);
+    expect(onClose).toHaveBeenCalledOnce();
   });
 
   it("keeps logout inside settings and confirms an active call exit", async () => {

@@ -1,9 +1,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
+import { ConnectionQuality } from "livekit-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppUser, Channel } from "../../lib/types";
 import { SoundboardAudioPublisher } from "../soundboard/soundboard-audio";
 import { AudioOutputRouter } from "./audio-output-router";
-import { useVoiceRoom } from "./useVoiceRoom";
+import { normalizeVoiceConnectionQuality, useVoiceRoom } from "./useVoiceRoom";
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -53,6 +54,7 @@ vi.mock("livekit-client", () => {
       isSpeaking: false,
       isMicrophoneEnabled: true,
       isCameraEnabled: false,
+      connectionQuality: "unknown",
       joinedAt: new Date("2026-07-11T12:00:00.000Z"),
       lastCameraError: undefined,
       getTrackPublication: vi.fn(),
@@ -76,6 +78,13 @@ vi.mock("livekit-client", () => {
   }
 
   return {
+    ConnectionQuality: {
+      Excellent: "excellent",
+      Good: "good",
+      Poor: "poor",
+      Lost: "lost",
+      Unknown: "unknown",
+    },
     ConnectionError,
     ConnectionErrorReason: {
       NotAllowed: 0,
@@ -86,6 +95,7 @@ vi.mock("livekit-client", () => {
     Room,
     RoomEvent: {
       ActiveSpeakersChanged: "activeSpeakersChanged",
+      ConnectionQualityChanged: "connectionQualityChanged",
       AudioPlaybackStatusChanged: "audioPlaybackStatusChanged",
       DataReceived: "dataReceived",
       Disconnected: "disconnected",
@@ -114,6 +124,26 @@ vi.mock("livekit-client", () => {
     VideoPresets: { h720: { resolution: { width: 1280, height: 720 } } },
     supportsAudioOutputSelection: () => false,
   };
+});
+
+describe("voice connection quality", () => {
+  it("normalizes LiveKit quality for the UI", () => {
+    expect(normalizeVoiceConnectionQuality(ConnectionQuality.Excellent)).toBe(
+      "excellent",
+    );
+    expect(normalizeVoiceConnectionQuality(ConnectionQuality.Good)).toBe(
+      "good",
+    );
+    expect(normalizeVoiceConnectionQuality(ConnectionQuality.Poor)).toBe(
+      "poor",
+    );
+    expect(normalizeVoiceConnectionQuality(ConnectionQuality.Lost)).toBe(
+      "poor",
+    );
+    expect(normalizeVoiceConnectionQuality(ConnectionQuality.Unknown)).toBe(
+      "unknown",
+    );
+  });
 });
 
 vi.mock("../../lib/supabase", () => ({

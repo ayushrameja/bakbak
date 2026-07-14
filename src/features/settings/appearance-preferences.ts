@@ -1,15 +1,18 @@
-export const APPEARANCE_PREFERENCES_KEY = "bakbak.appearancePreferences.v2";
+export const APPEARANCE_PREFERENCES_KEY = "bakbak.appearancePreferences.v3";
+export const V2_APPEARANCE_PREFERENCES_KEY = "bakbak.appearancePreferences.v2";
 export const LEGACY_APPEARANCE_PREFERENCES_KEY =
   "bakbak.appearancePreferences.v1";
 
 export type ThemePreference = "system" | "light" | "dark";
 export type ResolvedTheme = Exclude<ThemePreference, "system">;
 export type AccentColor = "coral" | "purple" | "red" | "yellow";
+export type SurfaceStyle = "warm" | "flat";
 
 export interface AppearancePreferences {
   theme: ThemePreference;
   accent: AccentColor;
   intensity: number;
+  surfaceStyle: SurfaceStyle;
 }
 
 interface StorageLike {
@@ -27,6 +30,7 @@ export const DEFAULT_APPEARANCE_PREFERENCES: AppearancePreferences = {
   theme: "system",
   accent: "coral",
   intensity: 100,
+  surfaceStyle: "warm",
 };
 const SYSTEM_DARK_QUERY = "(prefers-color-scheme: dark)";
 const THEME_COLORS: Record<ResolvedTheme, string> = {
@@ -61,6 +65,10 @@ function isIntensity(value: unknown): value is number {
     value <= 100 &&
     value % 5 === 0
   );
+}
+
+function isSurfaceStyle(value: unknown): value is SurfaceStyle {
+  return value === "warm" || value === "flat";
 }
 
 function browserDocument(): Document | undefined {
@@ -108,14 +116,36 @@ export function loadAppearancePreferences(
       "theme" in value &&
       "accent" in value &&
       "intensity" in value &&
+      "surfaceStyle" in value &&
       isThemePreference(value.theme) &&
       isAccentColor(value.accent) &&
-      isIntensity(value.intensity)
+      isIntensity(value.intensity) &&
+      isSurfaceStyle(value.surfaceStyle)
     ) {
       return {
         theme: value.theme,
         accent: value.accent,
         intensity: value.intensity,
+        surfaceStyle: value.surfaceStyle,
+      };
+    }
+
+    const v2 = readStoredPreferences(storage, V2_APPEARANCE_PREFERENCES_KEY);
+    if (
+      v2 &&
+      typeof v2 === "object" &&
+      "theme" in v2 &&
+      "accent" in v2 &&
+      "intensity" in v2 &&
+      isThemePreference(v2.theme) &&
+      isAccentColor(v2.accent) &&
+      isIntensity(v2.intensity)
+    ) {
+      return {
+        theme: v2.theme,
+        accent: v2.accent,
+        intensity: v2.intensity,
+        surfaceStyle: "warm",
       };
     }
 
@@ -213,6 +243,7 @@ export function applyAppearancePreferences(
   root.dataset.themePreference = preferences.theme;
   root.dataset.accent = preferences.accent;
   root.dataset.accentIntensity = String(preferences.intensity);
+  root.dataset.surfaceStyle = preferences.surfaceStyle;
   root.style.colorScheme = resolvedTheme;
   root.style.setProperty("--accent", tokens.accent);
   root.style.setProperty("--accent-bright", tokens.bright);
@@ -229,7 +260,12 @@ export function applyAppearancePreferences(
     themeColor.name = "theme-color";
     targetDocument.head.append(themeColor);
   }
-  themeColor.content = THEME_COLORS[resolvedTheme];
+  themeColor.content =
+    preferences.surfaceStyle === "flat"
+      ? resolvedTheme === "dark"
+        ? "#090909"
+        : "#ffffff"
+      : THEME_COLORS[resolvedTheme];
   return resolvedTheme;
 }
 

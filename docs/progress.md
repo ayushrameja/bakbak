@@ -1667,3 +1667,99 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed. `file` reported a
 - **Next:** Fully quit and reopen Bakbak, select a text channel, and send one
   message. Then open a voice-channel chat and complete the plan 0005 two-account
   read-state and rename-propagation rehearsal.
+
+## 2026-07-14 — Plan 0006 slice 1: shell, Flat surfaces, modal settings, and text-only chat
+
+- **Completed:** Replaced the People drawer with a default-visible 240 px
+  online/offline member panel and added independent persisted header toggles for
+  it and the 232 px channel panel. Implemented all four in-flow panel layouts,
+  reduced shell spacing and comparable non-semantic radii by about half, added
+  `surfaceStyle` and the v3 appearance migration/bootstrap, and implemented
+  crisp Warm/Flat surfaces across auth, invite, shell, voice, and settings.
+  Replaced the full-app settings presentation with a centered, internally
+  scrolling, focus-trapped modal. Removed upgraded-client voice chat, drafts,
+  loads, subscriptions, sends, unread markers, and notification behavior while
+  keeping text chat/mentions and the deployed database compatibility contract.
+- **Decisions:** Panel visibility remains entirely user controlled even at
+  1024×680; the layout never silently substitutes drawers or responsive hiding.
+  Appearance v1/v2 migrates to Warm so existing devices keep their visual
+  intent. Voice-message rows, RPCs, policies, and older-client behavior remain
+  untouched; the renderer filters known text-channel IDs instead of performing
+  a destructive migration.
+- **Validation:**
+  - Focused Vitest runs — passed layout default/corruption/persistence, all four
+    shell states and accessible toggles, appearance v1/v2-to-v3 migration,
+    parser-blocking Flat first paint, settings focus/Escape/backdrop/logout, and
+    upgraded-client voice-chat absence while text chat remains available.
+  - In-app browser mock QA at 1280×800 and 1024×680 — passed all four panel
+    combinations, exact 232/flexible/240 px allocation, Warm/Flat with
+    Light/Dark, centered 1000×720 maximum settings sizing, 23.5 px compact-
+    viewport margins, internal Appearance scrolling, Escape focus restoration,
+    and zero console warnings.
+- **Documentation updated:** Added
+  `docs/plans/0006-discord-shaped-bakbak-hearted-ui.md`; marked conflicting UI
+  decisions in plans 0004 and 0005 as superseded; updated the main v1 plan,
+  `docs/architecture.md`, and this canonical progress log.
+- **Known limitations:** The final repository/native gate ran after slice 2 and
+  is recorded in the next entry. The browser-plus-native two-account media call
+  remains a human acceptance task. The updater-enabled build cannot run locally
+  without the protected `TAURI_SIGNING_PRIVATE_KEY`.
+- **Next:** Complete and validate plan 0006 slice 2's call controls and joined
+  voice canvas, then perform the canonical two-account media rehearsal.
+
+## 2026-07-14 — Plan 0006 slice 2: floating call controls and simplified voice canvas
+
+- **Completed:** Replaced the layout-consuming voice bar with a centered global
+  dock that reveals after connection, keyboard focus, or lower-canvas pointer
+  movement and hides after 2.5 seconds idle. It stays pinned for hover, focus,
+  More, and soundboard; clears the text composer; and is suppressed by settings.
+  Added direct microphone, camera, screen-share, soundboard, More, and disconnect
+  actions plus Deafen/Audio & Video inside More. Added the sidebar call block and
+  compact user-row call actions, reusable accurately labelled backend latency,
+  and normalized local LiveKit quality handling. Simplified pre-join to one
+  room/occupancy card and joined voice to equal participant tiles, compact error
+  banners, and the existing featured-share stage with a participant strip.
+- **Decisions:** Reconnecting display takes precedence over connection quality,
+  and teardown resets quality to Unknown. Soundboard is a dock-owned surface and
+  therefore pins above it until closed. Existing camera, remote-volume,
+  soundboard audio, selected-presenter, and native/renderer screen-capture paths
+  remain behaviorally unchanged.
+- **Validation:**
+  - `pnpm format:check` — passed; all matched files use Prettier formatting.
+  - `pnpm lint` — passed with zero warnings.
+  - `pnpm typecheck` — passed both renderer and Node TypeScript projects.
+  - `pnpm test` — passed 36 Vitest files with 160 tests plus all 10 release
+    script tests.
+  - `pnpm version:check` — passed; version `0.6.0` is synchronized.
+  - `pnpm build` — passed; produced 69.75 kB CSS and 1,125.48 kB JavaScript.
+    Vite retained the existing non-blocking large-chunk warning.
+  - `pnpm security:scan` — passed after the renderer build and again after the
+    native bundle for `dist` and `src-tauri/target/release/bundle`.
+  - In-app browser mock QA at 1024×680 — passed compact pre-join, joined
+    participant grid, no voice chat, sidebar controls/Excellent quality, dock
+    idle hiding and lower-edge reveal, More-menu pinning beyond 2.5 seconds,
+    soundboard pinning with a 10 px non-overlapping dock gap, text-composer
+    clearance, active-call text/settings navigation, settings compact controls,
+    disconnect, and zero console warnings. The 1280×800 shell/settings pass from
+    slice 1 also remained clean.
+  - `pnpm tauri:build:local` — passed and produced an ad-hoc-signed Apple
+    Silicon `Bakbak.app`. Notarization was skipped because Apple credentials are
+    unavailable.
+  - `codesign --verify --deep --strict --verbose=4
+src-tauri/target/release/bundle/macos/Bakbak.app` — passed. `file` identified
+    a Mach-O 64-bit arm64 executable and `lipo -archs` returned `arm64`.
+  - Updater-enabled `pnpm tauri build` — skipped because the protected
+    `TAURI_SIGNING_PRIVATE_KEY` is unavailable in this local environment.
+- **Documentation updated:** Completed plan 0006's implemented and mock-tested
+  criteria; updated `docs/architecture.md`, the active v1 plan, supersession
+  notes in plans 0004/0005, and this canonical progress log.
+- **Known limitations:** Automated/mock validation cannot prove cross-device
+  audio, real camera/screen tracks, LiveKit quality transitions, reconnect, or
+  exact-once soundboard playback. The required browser-plus-native two-account
+  call remains open, as do release signing/notarization and Windows-native
+  acceptance. The production renderer still emits the existing large-chunk
+  warning.
+- **Next:** Run the canonical browser-plus-native two-account call in Warm/Flat
+  and Light/Dark, covering both control surfaces, panel hiding, text/settings
+  navigation, mute/deafen, camera, screen share, soundboard, device changes,
+  quality changes, reconnect, and disconnect before distribution.

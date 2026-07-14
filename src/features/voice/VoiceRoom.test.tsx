@@ -28,6 +28,7 @@ function createVoice(
 ): ReturnType<typeof useVoiceRoom> {
   return {
     status: "connected",
+    connectionQuality: "excellent",
     channel,
     participants: [],
     muted: false,
@@ -81,7 +82,7 @@ function createVoice(
   };
 }
 
-describe("VoiceRoom audio recovery", () => {
+describe("VoiceRoom", () => {
   it("shows active occupants before joining", () => {
     render(
       <VoiceRoom
@@ -101,7 +102,7 @@ describe("VoiceRoom audio recovery", () => {
       />,
     );
 
-    expect(screen.getByText("Already in Lounge")).toBeVisible();
+    expect(screen.getByText("1 talking now")).toBeVisible();
     expect(screen.getByText("Mira")).toBeVisible();
   });
 
@@ -122,6 +123,42 @@ describe("VoiceRoom audio recovery", () => {
     expect(screen.getByText("Room audio needs one click")).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "Enable audio" }));
     expect(resumeAudio).toHaveBeenCalledOnce();
+  });
+
+  it("removes pre-join metadata after joining and switches to a share layout", () => {
+    const screenShare = {
+      id: "share-1",
+      ownerId: user.id,
+      displayName: user.displayName,
+      isLocal: true,
+      joinedAt: null,
+      track: { attach: vi.fn(), detach: vi.fn() },
+      audioPublished: false,
+    };
+    const voice = createVoice({
+      screenShares: [screenShare],
+      selectedScreenShareId: screenShare.id,
+    });
+    const { container } = render(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={voice}
+        occupants={[]}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Join voice" }),
+    ).not.toBeInTheDocument();
+    expect(container.querySelector(".voice-room-view")).toHaveClass(
+      "is-connected",
+      "has-screen-share",
+    );
+    expect(container.querySelector(".participant-grid")).toHaveClass(
+      "is-strip",
+    );
   });
 
   it("waits for the persistent control bar to undeafen before audio recovery", () => {

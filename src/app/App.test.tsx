@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
 vi.mock("../lib/env", () => ({
@@ -16,6 +16,8 @@ vi.mock("../lib/env", () => ({
 }));
 
 describe("App navigation state", () => {
+  beforeEach(() => window.localStorage.clear());
+
   it("preserves each channel draft while visiting settings and other rooms", async () => {
     render(<App />);
     await userEvent.click(
@@ -46,5 +48,74 @@ describe("App navigation state", () => {
     expect(
       await screen.findByRole("combobox", { name: "Message #lobby" }),
     ).toHaveValue("tea-fuelled thought");
+  });
+
+  it("shows, hides, and persists both side panels independently", async () => {
+    const first = render(<App />);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Enter the preview" }),
+    );
+
+    expect(
+      screen.getByRole("complementary", { name: "Members" }),
+    ).toBeVisible();
+    const shell = document.querySelector(".desktop-shell");
+    expect(shell).toHaveAttribute("data-left-panel", "visible");
+    expect(shell).toHaveAttribute("data-right-panel", "visible");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Hide channel panel" }),
+    );
+    expect(shell).toHaveAttribute("data-left-panel", "hidden");
+    expect(shell).toHaveAttribute("data-right-panel", "visible");
+    expect(
+      screen.getByRole("button", { name: "Show channel panel" }),
+    ).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Hide member panel" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Show member panel" }),
+    ).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByRole("complementary", { name: "Members" }),
+    ).not.toBeInTheDocument();
+    expect(shell).toHaveAttribute("data-left-panel", "hidden");
+    expect(shell).toHaveAttribute("data-right-panel", "hidden");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Show channel panel" }),
+    );
+    expect(shell).toHaveAttribute("data-left-panel", "visible");
+    expect(shell).toHaveAttribute("data-right-panel", "hidden");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Hide channel panel" }),
+    );
+
+    first.unmount();
+    render(<App />);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Enter the preview" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Show channel panel" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Show member panel" }),
+    ).toBeVisible();
+  });
+
+  it("does not expose text chat inside voice channels", async () => {
+    render(<App />);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Enter the preview" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Coffee table" }));
+
+    expect(
+      screen.queryByRole("combobox", { name: "Message #Coffee table" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /chat/i }),
+    ).not.toBeInTheDocument();
   });
 });

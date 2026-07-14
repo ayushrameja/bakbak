@@ -7,30 +7,41 @@ and phase completion belong in the numbered files under `docs/plans`.
 
 ## Current implementation state
 
-As of 2026-07-13, Bakbak has a complete local/mock product path and production
+As of 2026-07-14, Bakbak has a complete local/mock product path and production
 Supabase and LiveKit adapters. The renderer provides the invite-only welcome
-flow and a Warm Adda shell built around a channel shelf,
-conversation canvas, full-app settings overlay, header avatar cluster,
-accessible People drawer, and one persistent voice bar. Text and voice channels
-share Realtime chat, structured individual mentions, account-synced unread
-emphasis, incoming-message sounds, and per-channel drafts that survive settings
-and room navigation. Voice rooms add a collapsible chat dock without coupling
-reading or sending to joining the call. Settings cover profile, audio/video,
-appearance, active-call controls, and confirmed logout. System/Light/Dark plus
-Coral/Purple/Red/Yellow accent and intensity preferences are synchronously
-applied before React renders and follow OS changes in System mode. Profiles
-support validated display names plus preview, upload, replace, and removal of
-private avatars. Admin-only controls create or rename text and voice channels,
-while Realtime reconciles changes for every member.
+flow and a three-panel shell with a 232 px channel panel, flexible conversation
+canvas, and 240 px online/offline member panel. Both side panels are visible by
+default, independently optional, and persisted per device without responsive
+overlays or automatic hiding. Settings is a centered, focus-trapped in-app
+modal with internal scrolling, active-call controls, and confirmed logout.
+System/Light/Dark, Coral/Purple/Red/Yellow accent/intensity, and Warm/Flat
+surface preferences are synchronously applied before React renders. Flat uses
+crisp grayscale surfaces without decorative gradients, glow, glass blur, or
+heavy shadows while preserving semantic accent, presence, danger, and focus
+colors. Profiles support validated display names plus preview, upload, replace,
+and removal of private avatars. Admin-only controls create or rename text and
+voice channels, while Realtime reconciles changes for every member.
+
+Upgraded clients expose chat, structured individual mentions, account-synced
+unread emphasis, incoming-message sounds, and drafts only for text channels.
+Voice-channel message rows, RPC permissions, and read-state data remain intact
+for installed-client compatibility, but the upgraded renderer neither loads,
+subscribes to, sends, drafts, notifies, nor shows unread state for them. No
+destructive database migration accompanies this client-only boundary.
 
 Voice rooms retain locally persisted microphone/speaker/camera selection,
 opt-in 720p camera calls, pre-join occupancy with elapsed timers, mute/deafen,
 per-participant volume, remote-track audio/video rendering, autoplay recovery,
-reconnect/error states, and the desktop featured screen-share stage. The single
-voice bar stays mounted across chat, voice, and settings; mute, deafen,
-soundboard, and leave are direct actions, while camera, screen sharing, and
-device settings use its More menu. The soundboard now opens as a bar-anchored
-drawer while retaining category filtering, member-editable labels, emoji and
+reconnect/error states, and the desktop featured screen-share stage. An active
+call adds a sidebar control block with room, backend latency, normalized local
+LiveKit quality, camera, screen-share, soundboard, and disconnect actions. The
+user row retains mute, deafen, and settings. A centered global dock supplies
+direct microphone, camera, screen-share, soundboard, More, and disconnect
+actions across channel navigation; it reveals at connection, keyboard focus,
+or the lower canvas edge and hides after 2.5 seconds idle unless an owned
+surface is open. Settings suppresses the dock and provides compact call
+controls instead. The soundboard opens above and pins the dock while retaining
+category filtering, member-editable labels, emoji and
 categories, persisted global volume, per-participant volume, overlapping
 activity badges, retry states, and stop-all. Deafen suppresses remote speech
 and local/incoming soundboard monitoring without blocking outbound soundboard
@@ -172,7 +183,8 @@ bakbak/
 │       ├── 0002-voice-video-and-presence.md
 │       ├── 0003-screen-sharing.md
 │       ├── 0004-warm-adda-ui-settings-channels-arm64.md
-│       └── 0005-voice-chat-mentions-settings-accents.md
+│       ├── 0005-voice-chat-mentions-settings-accents.md
+│       └── 0006-discord-shaped-bakbak-hearted-ui.md
 ├── public/
 │   ├── bakbak.svg                 # renderer favicon/source logo
 │   └── theme-init.js              # parser-blocking, CSP-safe first-paint theme bootstrap
@@ -205,37 +217,36 @@ architectural placeholder folders are not used.
 
 ## UI composition
 
-The renderer uses a two-part desktop layout plus an overlay layer:
+The renderer uses a three-panel desktop layout plus a modal layer:
 
-1. A channel shelf containing the private server's text and voice rooms, the
-   signed-in user's identity/actions, voice occupancy, and admin-only create and
-   rename controls.
-2. A conversation canvas for text chat, voice, empty states, and errors.
-   The header shows an avatar cluster and opens the accessible People drawer;
-   members no longer consume a permanent third column.
-3. A persistent voice bar remains mounted while connecting, connected, or
-   reconnecting across every canvas view. Mute, deafen, soundboard, and leave
-   are direct controls; camera, screen sharing, and devices live under More.
-4. The soundboard opens from that bar as a drawer instead of taking permanent
-   voice-room space. A single featured share stage remains above participant
-   video tiles, with presenter switching when multiple friends share.
-5. Settings opens as a full-app modal overlay rather than a route or canvas
-   replacement. Its left navigation, focus trap/restoration, active-call strip,
-   and confirmed logout preserve the selected channel, drafts, and voice room.
-6. A selected voice room shows an open, collapsible 340 px chat dock at the
-   1280 px layout. At 1024 px it becomes a slide-over drawer so the participant
-   surface keeps its usable width.
+1. The 232 px channel panel contains the private server's text and voice rooms,
+   active-call/sidebar controls, signed-in user actions, voice occupancy, and
+   admin-only create/rename controls.
+2. The flexible center canvas contains text chat or the voice room. Header-edge
+   buttons independently toggle the left and right panels, immediately
+   reallocating space across all four combinations.
+3. The 240 px member panel is visible by default and groups online/idle and
+   offline members in normal document flow. It is not a drawer or overlay.
+4. During a call, an absolute centered dock appears across channel navigation.
+   It auto-hides without consuming layout, clears the text composer, remains
+   keyboard discoverable, and owns its More menu and soundboard anchoring.
+5. Before joining voice, one compact room/occupancy card exposes Join and
+   microphone settings. After joining, equal participant tiles fill the canvas
+   with minimal state overlays. A selected screen share remains featured while
+   participant tiles move into a compact horizontal strip.
+6. Settings overlays the shell as a centered modal up to 1000×720 with 16–24 px
+   viewport margins, left navigation, internal scrolling, focus trap/
+   restoration, backdrop/X/Escape dismissal, compact call controls, and
+   confirmed logout.
 
-The top bar includes an accessible hover/focus connection detail. In live mode
-it measures a Supabase Auth health round trip every 30 seconds and labels the
-publicly configured backend region. Voice is separately labelled India West,
-the observed LiveKit signaling region; it is never presented as the database
-ping. The Warm Adda visual language uses oat/stone light surfaces, charcoal
-dark surfaces, coral actions, teal presence, semantic color tokens, and
-restrained ambient motion. Coral remains the default, with Purple, Red, and
-Yellow device-local alternatives and 25–100% intensity. System, Light, and Dark
-all preserve clear focus, readable contrast, reduced-motion behavior, and the
-supported 1024×680 and 1280×800 desktop layouts.
+The reusable backend health poll measures a Supabase Auth round trip every 30
+seconds and labels the result as backend latency. LiveKit
+`ConnectionQualityChanged` events separately normalize the local participant as
+Unknown/Excellent/Good/Poor; reconnecting display takes precedence. Warm uses
+oat/stone light surfaces or charcoal dark surfaces with restrained ambience.
+Flat retains the same theme/accent/semantic tokens on grayscale backgrounds but
+removes decorative depth. Both modes preserve focus, readable contrast,
+reduced-motion behavior, and the supported 1024×680 and 1280×800 layouts.
 
 ## Runtime and trust boundaries
 
@@ -381,14 +392,14 @@ An invite-management UI is deferred until post-v1.
    atomically, then creates membership.
 5. The renderer refreshes membership and channel data.
 
-### Profile, appearance, and overlay settings
+### Profile, appearance, and modal settings
 
-1. The renderer validates and applies `bakbak.appearancePreferences.v2`
+1. The renderer validates and applies `bakbak.appearancePreferences.v3`
    synchronously before mounting React. A local parser-blocking bootstrap sets
-   theme, accent, intensity, and theme-specific CSS tokens before the production
-   stylesheet loads; React then installs the System media-query listener.
-   Explicit Light or Dark choices ignore OS changes. A valid v1 theme-only value
-   migrates to Coral at 100% intensity.
+   theme, accent, intensity, surface style, and theme-specific CSS tokens before
+   the production stylesheet loads; React then installs the System media-query
+   listener. Explicit Light or Dark choices ignore OS changes. Valid v1/v2
+   values migrate to Warm while preserving their supported fields.
 2. Profile edits validate a trimmed 1–50 character display name and an optional
    PNG, JPEG, or WebP avatar no larger than 2 MiB.
 3. A new avatar uploads first to `<user UUID>/<generated UUID>`. The renderer
@@ -425,12 +436,14 @@ An invite-management UI is deferred until post-v1.
    position then ID; only the creating client selects a new channel, and
    creating a voice channel never joins it automatically.
 
-### Text and voice-channel chat
+### Text-channel chat and voice-message compatibility
 
-1. A member selects a text or voice channel. Voice selection opens a chat dock
-   by default; joining the room remains a separate action.
-2. The renderer loads messages through the Supabase client; RLS verifies server
-   membership for either channel kind.
+1. A member selects a text channel. The upgraded renderer loads messages,
+   activity, drafts, and Realtime subscriptions only for known text-channel
+   IDs.
+2. RLS verifies server membership. The deployed RPCs and schema still permit
+   voice-channel messages for older clients, but upgraded clients do not expose
+   that surface or create invisible voice unread state.
 3. A submitted structured draft becomes exact text/mention segments and calls
    `send_message`. Postgres validates membership, segment shape, size, and each
    mention before deriving the author and plain-text fallback.
@@ -440,10 +453,9 @@ An invite-management UI is deferred until post-v1.
 6. A committed message from another user plays a short local notification tone.
    `get_channel_activity` compares the latest message with the account's private
    marker so unread emphasis follows the signed-in user across clients.
-7. A visible selected text chat or open selected voice dock advances the marker
-   through `mark_channel_read`. A collapsed voice dock can therefore become
-   unread while its call surface remains selected. Realtime read-state changes
-   refresh the activity snapshot on other signed-in clients.
+7. A visible selected text chat advances the marker through
+   `mark_channel_read`. Realtime read-state changes refresh the activity
+   snapshot on other signed-in clients.
 8. Mention ranges are atomic draft metadata. Editing through one converts it to
    plain text; selecting a member from the accessible `@` combobox stores that
    member ID. Rendering resolves the current Realtime profile name and uses the
@@ -581,10 +593,12 @@ cameraDeviceId, soundboardVolume }` under the versioned local-storage key
 `bakbak.devicePreferences.v1`. These identifiers never sync to Supabase. If a
 remembered device is absent, the selector returns to the runtime's default
 device. Chat notification audio deliberately bypasses the selected call output.
-The renderer stores `{ theme, accent, intensity }` separately under
-`bakbak.appearancePreferences.v2`. Theme is System/Light/Dark, accent is
-Coral/Purple/Red/Yellow, and intensity is a validated 25–100% five-point step.
-Appearance is device-local and never part of the profile or Supabase schema.
+The renderer stores `{ theme, accent, intensity, surfaceStyle }` separately
+under `bakbak.appearancePreferences.v3`. Theme is System/Light/Dark, accent is
+Coral/Purple/Red/Yellow, intensity is a validated 25–100% five-point step, and
+surface style is Warm/Flat. It also stores independent panel visibility under
+`bakbak.layoutPreferences.v1`; malformed values restore both panels. These
+preferences are device-local and never part of the profile or Supabase schema.
 
 ### Desktop release and update
 
@@ -787,6 +801,12 @@ that it has passed.
 
 ## Current limitations and deferred work
 
+- Plan 0006's three-panel shell, centered settings modal, Flat surfaces,
+  text-only upgraded chat boundary, sidebar call controls, floating dock, and
+  simplified voice canvas pass automated and mock-browser validation. The
+  canonical browser-plus-native two-account call still requires human audio,
+  camera, screen-share, soundboard, quality, reconnect, and dual-control-surface
+  observation before distribution.
 - The Warm Adda renderer, profile/avatar services, channel RPCs, and policies
   are implemented, and migration
   `202607120003_profile_avatars_and_channel_management.sql` is deployed to the

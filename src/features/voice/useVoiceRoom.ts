@@ -1,4 +1,5 @@
 import {
+  ConnectionQuality,
   ConnectionError,
   ConnectionErrorReason,
   Room,
@@ -66,6 +67,18 @@ import { chooseFeaturedScreenShare } from "./screen-share-selection";
 export type VoiceConnectionStatus =
   "disconnected" | "connecting" | "connected" | "reconnecting" | "error";
 
+export type VoiceConnectionQuality = "unknown" | "excellent" | "good" | "poor";
+
+export function normalizeVoiceConnectionQuality(
+  quality: ConnectionQuality,
+): VoiceConnectionQuality {
+  if (quality === ConnectionQuality.Excellent) return "excellent";
+  if (quality === ConnectionQuality.Good) return "good";
+  if (quality === ConnectionQuality.Poor || quality === ConnectionQuality.Lost)
+    return "poor";
+  return "unknown";
+}
+
 export interface VoiceParticipant {
   id: string;
   displayName: string;
@@ -96,6 +109,7 @@ export interface VideoTrackLike {
 
 interface VoiceRoomState {
   status: VoiceConnectionStatus;
+  connectionQuality: VoiceConnectionQuality;
   channel: Channel | null;
   participants: VoiceParticipant[];
   muted: boolean;
@@ -157,6 +171,8 @@ export function useVoiceRoom(
 ): VoiceRoomState {
   const [initialPreferences] = useState(loadDevicePreferences);
   const [status, setStatus] = useState<VoiceConnectionStatus>("disconnected");
+  const [connectionQuality, setConnectionQuality] =
+    useState<VoiceConnectionQuality>("unknown");
   const [channel, setChannel] = useState<Channel | null>(null);
   const [participants, setParticipants] = useState<VoiceParticipant[]>([]);
   const [muted, setMuted] = useState(false);
@@ -469,6 +485,7 @@ export function useVoiceRoom(
     deafenedRef.current = false;
     seenSoundEvents.current.clear();
     setParticipants([]);
+    setConnectionQuality("unknown");
     setMuted(false);
     setDeafened(false);
     setAudioPlaybackBlocked(false);
@@ -565,6 +582,11 @@ export function useVoiceRoom(
         .on(RoomEvent.ParticipantConnected, sync)
         .on(RoomEvent.ParticipantDisconnected, sync)
         .on(RoomEvent.ActiveSpeakersChanged, sync)
+        .on(RoomEvent.ConnectionQualityChanged, (quality, participant) => {
+          if (isCurrentRoom() && participant.isLocal) {
+            setConnectionQuality(normalizeVoiceConnectionQuality(quality));
+          }
+        })
         .on(RoomEvent.TrackMuted, sync)
         .on(RoomEvent.TrackUnmuted, sync)
         .on(RoomEvent.TrackPublished, (publication: RemoteTrackPublication) => {
@@ -784,6 +806,7 @@ export function useVoiceRoom(
             activeSounds: [],
           },
         ]);
+        setConnectionQuality("excellent");
         setStatus("connected");
         return;
       }
@@ -853,6 +876,11 @@ export function useVoiceRoom(
           .ensurePublished(room.localParticipant)
           .catch(() => undefined);
         refreshParticipants(room);
+        setConnectionQuality(
+          normalizeVoiceConnectionQuality(
+            room.localParticipant.connectionQuality,
+          ),
+        );
         setStatus("connected");
         setAudioPlaybackBlocked(!room.canPlaybackAudio);
         void refreshDevices();
@@ -1380,6 +1408,7 @@ export function useVoiceRoom(
 
   return {
     status,
+    connectionQuality,
     channel,
     participants,
     muted,
