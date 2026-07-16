@@ -1989,3 +1989,62 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed. `file` identified 
   verify member voice success plus non-member/text/missing-channel not-found
   behavior, then capture cold and prepared warm join timings during the
   two-account rehearsal.
+
+## 2026-07-16 — Target mute at the speech microphone
+
+- **Completed:** Named the real speech publication `bakbak-microphone` and
+  added one selector that prefers that name while falling back to an unnamed,
+  non-soundboard microphone publication for older clients. Mute/unmute now
+  controls that exact local publication instead of LiveKit's first
+  microphone-source track. Participant mute indicators and direct room-switch
+  microphone reuse use the same selector. Added actionable mute/unmute failure
+  feedback without changing the displayed state, and expanded the LiveKit test
+  double to model both microphone-source publications with the soundboard
+  deliberately arriving first.
+- **Decisions:** Kept `bakbak-soundboard` on `Track.Source.Microphone` because
+  the current restricted token grant cannot encode `Track.Source.Unknown`.
+  Track names, not same-source publication order, now separate speech from
+  soundboard audio. Mock mode retains its local state-only behavior, and
+  outbound soundboard audio remains independent while speech is muted.
+- **Validation:**
+  - `pnpm exec vitest run
+src/features/voice/microphone-publication.test.ts
+src/features/voice/useVoiceRoom.test.tsx
+src/features/soundboard/soundboard-audio.test.ts` — passed 3 files and 27 tests,
+    including soundboard-first publication order, named and legacy speech
+    selection, speech-only mute/unmute, independent soundboard unmute, muted
+    direct-switch reuse, and mute failure rollback.
+  - Initial `pnpm check` — stopped at `format:check` because the architecture
+    update needed Prettier formatting; formatted the file and reran.
+  - Second `pnpm check` — stopped at lint on three unnecessary test-only type
+    assertions; removed them and reran.
+  - Final `pnpm check` — passed formatting, lint, renderer/Node typechecks, 38
+    Vitest files with 186 tests, 10 release-script tests, synchronized version
+    `0.7.0`, the production build, and the secret scan. Vite retained the
+    existing non-blocking large-chunk warning; output was 74.87 kB CSS and
+    1,130.97 kB JavaScript.
+  - `pnpm tauri:build:local` — passed and produced an ad-hoc-signed Apple
+    Silicon `Bakbak.app`; notarization was skipped because Apple credentials
+    are unavailable.
+  - `codesign --verify --deep --strict --verbose=4
+src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
+  - `file src-tauri/target/release/bundle/macos/Bakbak.app/Contents/MacOS/bakbak`
+    and `lipo -archs
+src-tauri/target/release/bundle/macos/Bakbak.app/Contents/MacOS/bakbak` —
+    identified a Mach-O 64-bit arm64 executable and returned `arm64`.
+  - Final `pnpm security:scan` — passed for `dist` and the native bundle.
+  - Final `pnpm format:check` and `git diff --check` — passed after appending
+    this progress entry.
+- **Documentation updated:** Updated `docs/architecture.md` with the named
+  speech/soundboard publication contract and appended this canonical progress
+  entry. The active plan's manual mute/deafen acceptance checkbox remains open.
+- **Known limitations:** Automated tests prove track targeting and state
+  behavior but cannot prove that a remote physical client stops hearing the
+  microphone. The canonical browser-plus-native two-account audio rehearsal
+  was not run. The updater-enabled `pnpm tauri build` was skipped because
+  `TAURI_SIGNING_PRIVATE_KEY` is absent; the local app-only build does not test
+  updater signing.
+- **Next:** Run the browser-plus-native two-account call and verify mute from
+  the sidebar, floating dock, and Settings; confirm remote speech stops,
+  soundboard playback remains audible, unmute restores speech, and switching
+  rooms preserves mute before completing the manual acceptance checkbox.

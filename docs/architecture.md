@@ -7,7 +7,7 @@ and phase completion belong in the numbered files under `docs/plans`.
 
 ## Current implementation state
 
-As of 2026-07-14, Bakbak has a complete local/mock product path and production
+As of 2026-07-16, Bakbak has a complete local/mock product path and production
 Supabase and LiveKit adapters. The renderer provides the invite-only welcome
 flow and a three-panel shell with a 232 px channel panel, flexible conversation
 canvas, and 240 px online/offline member panel. Both side panels are visible by
@@ -119,20 +119,22 @@ Ordinary voice tokens permit microphone, camera, LiveKit data, and video-only
 screen publication for the compatibility fallback. Native screen companions
 receive generated identities and may publish only screen video/audio into the
 same room, with no subscriptions, data, or metadata updates. The backward-
-compatible function is deployed, and its unauthenticated probe still returns 401. A second audio track named
-`bakbak-soundboard` uses the permitted microphone source because
-the current LiveKit server SDK cannot encode `Track.Source.Unknown` into token
-publish permissions. The track stays muted while no sound is active, unmutes
-for playback, and returns to muted after the final overlapping sound ends or
-stop-all runs. This prevents an idle synthetic microphone stream from keeping
-system audio in a suppressed communications state. Track name, rather than
-source, distinguishes soundboard audio from speech. Explicit stop-all and voice
-teardown also pause and detach the local monitor element, stop its routing
-stream, close its `AudioContext`, and recreate that graph with the remembered
-speaker on the next sound. Natural completion of the final overlapping clip
-performs the same monitor-stream flush but keeps the shared `AudioContext` and
-LiveKit publication alive, avoiding renegotiation before the next sound. The
-final Arc-plus-native
+compatible function is deployed, and its unauthenticated probe still returns 401. Speech publishes as `bakbak-microphone`. A second audio track named
+`bakbak-soundboard` uses the permitted microphone source because the current
+LiveKit server SDK cannot encode `Track.Source.Unknown` into token publish
+permissions. Mute, participant state, and direct-switch reuse select the named
+speech publication, with a non-soundboard microphone fallback for older
+clients, instead of relying on same-source publication order. The soundboard
+track stays muted while no sound is active, unmutes for playback, and returns
+to muted after the final overlapping sound ends or stop-all runs. This prevents
+an idle synthetic microphone stream from keeping system audio in a suppressed
+communications state. Track name, rather than source, distinguishes soundboard
+audio from speech. Explicit stop-all and voice teardown also pause and detach
+the local monitor element, stop its routing stream, close its `AudioContext`,
+and recreate that graph with the remembered speaker on the next sound. Natural
+completion of the final overlapping clip performs the same monitor-stream
+flush but keeps the shared `AudioContext` and LiveKit publication alive,
+avoiding renegotiation before the next sound. The final Arc-plus-native
 voice, video, device, soundboard, reconnect, and crash-expiry rehearsal remains
 open for human observation.
 
@@ -339,9 +341,9 @@ Clients never receive bucket-management authority.
 
 ### LiveKit
 
-LiveKit transports voice, opt-in camera tracks, at most one named soundboard
-audio track, desktop screen companions, participant/speaking state, and small
-soundboard control messages.
+LiveKit transports a named `bakbak-microphone` speech track, opt-in camera
+tracks, at most one named soundboard audio track, desktop screen companions,
+participant/speaking state, and small soundboard control messages.
 A protected Supabase Edge Function is the only component allowed to sign
 LiveKit participant tokens. Voice tokens allow microphone, camera, data, and
 video-only screen publication. Screen-companion tokens use generated identities
@@ -530,9 +532,12 @@ An invite-management UI is deferred until post-v1.
    profile display name in one RLS-protected query. The function signs the same
    narrowly scoped, five-minute token and preserves indistinguishable missing,
    text-channel, and non-member responses.
-4. After LiveKit connects, microphone publication, output preparation, and the
-   existing soundboard-track preparation run concurrently. Bakbak still awaits
-   soundboard `ensurePublished` settlement before reporting `connected`.
+4. After LiveKit connects, the speech track publishes as `bakbak-microphone`
+   while output preparation and the existing soundboard-track preparation run
+   concurrently. Bakbak still awaits soundboard `ensurePublished` settlement
+   before reporting `connected`. Speech selection prefers that exact name and
+   falls back to an unnamed, non-soundboard microphone publication for older
+   clients.
 5. Direct channel switching unpublishes the current microphone without
    stopping it, disconnects the old room, republishes it into the new room, and
    preserves mute/deafen state. Leave, sign-out, a failed switch, and teardown
@@ -895,7 +900,8 @@ that it has passed.
 - LiveKit's current server SDK throws while encoding `Track.Source.Unknown` in
   a token source allowlist. Bakbak therefore publishes the dedicated named
   soundboard track as a second microphone-source track and distinguishes it by
-  `bakbak-soundboard`.
+  `bakbak-soundboard`; speech is independently named `bakbak-microphone` so mute
+  and reuse never depend on publication order.
 - macOS 14+ native video and matched source audio are implemented. Older macOS
   and current Windows builds expose only WebView video sharing when
   `getDisplayMedia` exists. The Windows native picker, process/display-matched

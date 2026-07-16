@@ -10,6 +10,8 @@ import {
   createLocalAudioTrack,
   supportsAudioOutputSelection,
   type Participant,
+  type LocalParticipant,
+  type LocalTrackPublication,
   type RemoteAudioTrack,
   type RemoteParticipant,
   type RemoteTrackPublication,
@@ -55,6 +57,10 @@ import {
   switchCameraInput,
 } from "./audio-actions";
 import { AudioOutputRouter } from "./audio-output-router";
+import {
+  SPEECH_MICROPHONE_TRACK_NAME,
+  findSpeechMicrophonePublication,
+} from "./microphone-publication";
 import { RemoteAudioRenderer } from "./remote-audio";
 import {
   buildLiveKitTokenRequest,
@@ -1131,7 +1137,10 @@ export function useVoiceRoom(
           }
           await room.localParticipant.publishTrack(
             result.track as unknown as MediaStreamTrack,
-            { source: Track.Source.Microphone },
+            {
+              name: SPEECH_MICROPHONE_TRACK_NAME,
+              source: Track.Source.Microphone,
+            },
           );
           if (joiningMicrophoneRef.current === result.track) {
             joiningMicrophoneRef.current = null;
@@ -1218,10 +1227,30 @@ export function useVoiceRoom(
   const toggleMute = useCallback(async () => {
     if (status !== "connected") return;
     const room = roomRef.current;
-    const nextMuted = !muted;
+    const nextMuted = !mutedRef.current;
     if (room) {
-      await room.localParticipant.setMicrophoneEnabled(!nextMuted);
+      const publication = readLocalMicrophonePublication(room.localParticipant);
+      if (!publication?.track) {
+        setInputDeviceError(
+          "Bakbak could not find the active microphone track. Rejoin voice and try again.",
+        );
+        return;
+      }
+      try {
+        if (nextMuted) await publication.mute();
+        else await publication.unmute();
+      } catch {
+        if (roomRef.current === room) {
+          setInputDeviceError(
+            nextMuted
+              ? "Bakbak could not mute the microphone. Check the active input device and try again."
+              : "Bakbak could not unmute the microphone. Check microphone permission and the selected input device.",
+          );
+        }
+        return;
+      }
       if (roomRef.current !== room) return;
+      setInputDeviceError(null);
       refreshParticipants(room);
     } else {
       setParticipants((current) =>
@@ -1234,7 +1263,7 @@ export function useVoiceRoom(
     }
     mutedRef.current = nextMuted;
     setMuted(nextMuted);
-  }, [muted, refreshParticipants, status]);
+  }, [refreshParticipants, status]);
 
   const toggleDeafen = useCallback(async () => {
     if (status !== "connected") return;
@@ -1839,10 +1868,18 @@ export function isPreparedVoiceTokenUsable(
   );
 }
 
+function readLocalMicrophonePublication(
+  participant: LocalParticipant,
+): LocalTrackPublication | undefined {
+  return findSpeechMicrophonePublication(
+    participant.getTrackPublications() as LocalTrackPublication[],
+  );
+}
+
 function readLocalMicrophoneTrack(room: Room | null): LocalAudioTrack | null {
-  const track = room?.localParticipant.getTrackPublication(
-    Track.Source.Microphone,
-  )?.track;
+  const track = room
+    ? readLocalMicrophonePublication(room.localParticipant)?.track
+    : undefined;
   return track instanceof LocalAudioTrack ? track : null;
 }
 
@@ -2045,12 +2082,15 @@ function participantToView(
   const cameraPublication = participant.getTrackPublication(
     Track.Source.Camera,
   );
+  const microphonePublication = findSpeechMicrophonePublication(
+    participant.getTrackPublications(),
+  );
   return {
     id: participant.identity,
     displayName: participant.name || participant.identity || "Friend",
     isLocal,
     isSpeaking: participant.isSpeaking,
-    isMuted: !participant.isMicrophoneEnabled,
+    isMuted: microphonePublication?.isMuted ?? true,
     volume: isLocal ? 1 : ((participant as RemoteParticipant).getVolume() ?? 1),
     joinedAt: participant.joinedAt?.toISOString() ?? null,
     cameraEnabled: participant.isCameraEnabled,
