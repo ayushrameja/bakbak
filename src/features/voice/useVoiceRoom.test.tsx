@@ -1,14 +1,26 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { ConnectionQuality } from "livekit-client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ConnectionQuality, LocalAudioTrack, Track } from "livekit-client";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type Mock,
+} from "vitest";
 import type { AppUser, Channel } from "../../lib/types";
 import {
   MAX_CONCURRENT_SOUNDS_PER_USER,
   clampSoundboardActivities,
 } from "../soundboard/limits";
 import { mockSoundboardController } from "../soundboard/mock-catalog";
-import { SoundboardAudioPublisher } from "../soundboard/soundboard-audio";
+import {
+  SOUNDBOARD_TRACK_NAME,
+  SoundboardAudioPublisher,
+} from "../soundboard/soundboard-audio";
 import { AudioOutputRouter } from "./audio-output-router";
+import { SPEECH_MICROPHONE_TRACK_NAME } from "./microphone-publication";
 import {
   RELAY_PREFERENCE_DURATION_MS,
   VOICE_PREPARE_DEBOUNCE_MS,
@@ -28,12 +40,30 @@ interface RoomDouble {
   disconnect: ReturnType<typeof vi.fn>;
   prepareConnection: ReturnType<typeof vi.fn>;
   localParticipant: {
+    getTrackPublication: Mock<
+      (source: string) => PublicationDouble | undefined
+    >;
+    getTrackPublications: Mock<() => PublicationDouble[]>;
     setMicrophoneEnabled: ReturnType<typeof vi.fn>;
     setCameraEnabled: ReturnType<typeof vi.fn>;
     publishData: ReturnType<typeof vi.fn>;
     publishTrack: ReturnType<typeof vi.fn>;
     unpublishTrack: ReturnType<typeof vi.fn>;
   };
+}
+
+interface PublicationDouble {
+  track: {
+    isMuted: boolean;
+    stop: () => void;
+    mute: () => Promise<unknown>;
+    unmute: () => Promise<unknown>;
+  };
+  source: string;
+  trackName: string;
+  readonly isMuted: boolean;
+  mute: Mock<() => Promise<unknown>>;
+  unmute: Mock<() => Promise<unknown>>;
 }
 
 const liveKitState = vi.hoisted(() => ({
@@ -79,7 +109,7 @@ vi.mock("livekit-client", () => {
 
     readonly canPlaybackAudio = true;
     readonly remoteParticipants = new Map();
-    private microphoneTrack: LocalAudioTrack | null = null;
+    private trackPublications: PublicationDouble[] = [];
     readonly localParticipant = {
       identity: "user-1",
       name: "Ayu",
@@ -90,34 +120,51 @@ vi.mock("livekit-client", () => {
       joinedAt: new Date("2026-07-11T12:00:00.000Z"),
       lastCameraError: undefined,
       getTrackPublication: vi.fn((source: string) =>
-        source === "microphone" && this.microphoneTrack
-          ? { track: this.microphoneTrack }
-          : undefined,
+        this.trackPublications.find(
+          (publication) => publication.source === source,
+        ),
       ),
+      getTrackPublications: vi.fn(() => [...this.trackPublications]),
       setMicrophoneEnabled: vi.fn().mockResolvedValue(undefined),
       setCameraEnabled: vi.fn().mockResolvedValue(undefined),
       publishData: vi.fn().mockResolvedValue(undefined),
-      publishTrack: vi.fn((track: unknown, options?: { source?: string }) => {
-        if (
-          options?.source === "microphone" &&
-          track instanceof LocalAudioTrack
-        ) {
-          this.microphoneTrack = track;
-        }
-        return Promise.resolve({
-          mute: vi.fn().mockResolvedValue(undefined),
-          unmute: vi.fn().mockResolvedValue(undefined),
-        });
-      }),
+      publishTrack: vi.fn(
+        (
+          track: unknown,
+          options?: { source?: string; name?: string },
+        ): Promise<PublicationDouble> => {
+          if (!(track instanceof LocalAudioTrack)) {
+            return Promise.reject(new Error("Unexpected non-audio track."));
+          }
+          const publication: PublicationDouble = {
+            track,
+            source: options?.source ?? "unknown",
+            trackName: options?.name ?? "browser-generated-track-id",
+            get isMuted() {
+              return track.isMuted;
+            },
+            mute: vi.fn(() => track.mute()),
+            unmute: vi.fn(() => track.unmute()),
+          };
+          this.trackPublications.push(publication);
+          return Promise.resolve(publication);
+        },
+      ),
       unpublishTrack: vi.fn((track: unknown) => {
-        if (track === this.microphoneTrack) this.microphoneTrack = null;
+        this.trackPublications = this.trackPublications.filter(
+          (publication) => publication.track !== track,
+        );
         return Promise.resolve();
       }),
     };
     readonly connect: ReturnType<typeof vi.fn>;
     readonly disconnect = vi.fn((stopTracks = true) => {
-      if (stopTracks) this.microphoneTrack?.stop();
-      this.microphoneTrack = null;
+      if (stopTracks) {
+        this.trackPublications.forEach((publication) =>
+          publication.track.stop(),
+        );
+      }
+      this.trackPublications = [];
       return Promise.resolve();
     });
     readonly prepareConnection = vi.fn().mockResolvedValue(undefined);
@@ -631,7 +678,10 @@ describe("useVoiceRoom join lifecycle", () => {
     expect(room).toBeDefined();
     expect(room?.localParticipant.publishTrack).toHaveBeenCalledWith(
       expect.anything(),
-      { source: "microphone" },
+      {
+        name: SPEECH_MICROPHONE_TRACK_NAME,
+        source: "microphone",
+      },
     );
     expect(result.current.selectedInputId).toBe("default");
     expect(result.current.status).toBe("connected");
@@ -677,7 +727,10 @@ describe("useVoiceRoom join lifecycle", () => {
     expect(secondRoom).toBeDefined();
     expect(secondRoom?.localParticipant.publishTrack).toHaveBeenCalledWith(
       expect.anything(),
-      { source: "microphone" },
+      {
+        name: SPEECH_MICROPHONE_TRACK_NAME,
+        source: "microphone",
+      },
     );
     expect(firstRoom?.localParticipant.unpublishTrack).toHaveBeenCalled();
     expect(result.current.selectedInputId).toBe("default");
@@ -685,24 +738,88 @@ describe("useVoiceRoom join lifecycle", () => {
     expect(result.current.channel).toEqual(coffeeTable);
   });
 
-  it("reuses a muted microphone during a direct room switch and stops it on leave", async () => {
+  it("mutes and reuses speech when the soundboard microphone publication arrives first", async () => {
+    const microphone = createLocalAudioTrackDouble();
+    const soundboardTrack = createLocalAudioTrackDouble();
+    const microphoneReady = deferred<typeof microphone>();
+    const soundboardPublications: PublicationDouble[] = [];
+    liveKitState.createLocalAudioTrack.mockReturnValueOnce(
+      microphoneReady.promise,
+    );
+    vi.spyOn(
+      SoundboardAudioPublisher.prototype,
+      "ensurePublished",
+    ).mockImplementation(async (participant) => {
+      const publication = (await participant.publishTrack(
+        soundboardTrack as unknown as MediaStreamTrack,
+        {
+          name: SOUNDBOARD_TRACK_NAME,
+          source: Track.Source.Microphone,
+        },
+      )) as unknown as PublicationDouble;
+      await publication.mute();
+      soundboardPublications.push(publication);
+    });
     supabaseState.invoke
       .mockResolvedValueOnce(tokenResponse)
       .mockResolvedValueOnce(tokenResponse);
     const { result } = renderHook(() => useVoiceRoom(user, "live"));
 
-    await act(async () => {
-      await result.current.join(lounge);
+    let firstJoin!: Promise<void>;
+    act(() => {
+      firstJoin = result.current.join(lounge);
     });
+    await waitFor(() => expect(liveKitState.rooms).toHaveLength(1));
     const firstRoom = liveKitState.rooms[0];
-    const publishCalls = firstRoom?.localParticipant.publishTrack.mock.calls as
-      [unknown, { source?: string }?][] | undefined;
-    const microphone = publishCalls?.find(
-      ([, options]) => options?.source === "microphone",
-    )?.[0] as
-      | { mute: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn> }
-      | undefined;
-    expect(microphone).toBeDefined();
+    await waitFor(() =>
+      expect(firstRoom?.localParticipant.getTrackPublications()).toHaveLength(
+        1,
+      ),
+    );
+    expect(
+      firstRoom?.localParticipant.getTrackPublications()[0]?.trackName,
+    ).toBe(SOUNDBOARD_TRACK_NAME);
+
+    await act(async () => {
+      microphoneReady.resolve(microphone);
+      await firstJoin;
+    });
+
+    const firstPublications =
+      firstRoom?.localParticipant.getTrackPublications();
+    const speechPublication = firstPublications?.find(
+      (publication) => publication.trackName === SPEECH_MICROPHONE_TRACK_NAME,
+    );
+    const firstSoundboardPublication = soundboardPublications[0];
+    expect(speechPublication?.track).toBe(microphone);
+    expect(result.current.participants[0]?.isMuted).toBe(false);
+
+    const soundboardMuteCalls =
+      firstSoundboardPublication?.mute.mock.calls.length;
+    await act(async () => {
+      await result.current.toggleMute();
+    });
+    expect(speechPublication?.mute).toHaveBeenCalledOnce();
+    expect(firstSoundboardPublication?.mute).toHaveBeenCalledTimes(
+      soundboardMuteCalls ?? 0,
+    );
+    expect(microphone.isMuted).toBe(true);
+    expect(result.current.muted).toBe(true);
+    expect(result.current.participants[0]?.isMuted).toBe(true);
+
+    await act(async () => {
+      await firstSoundboardPublication?.unmute();
+    });
+    expect(soundboardTrack.isMuted).toBe(false);
+    expect(microphone.isMuted).toBe(true);
+    expect(result.current.muted).toBe(true);
+
+    await act(async () => {
+      await result.current.toggleMute();
+    });
+    expect(speechPublication?.unmute).toHaveBeenCalledOnce();
+    expect(result.current.muted).toBe(false);
+    expect(result.current.participants[0]?.isMuted).toBe(false);
 
     await act(async () => {
       await result.current.toggleMute();
@@ -716,15 +833,45 @@ describe("useVoiceRoom join lifecycle", () => {
     );
     expect(secondRoom?.localParticipant.publishTrack).toHaveBeenCalledWith(
       microphone,
-      { source: "microphone" },
+      {
+        name: SPEECH_MICROPHONE_TRACK_NAME,
+        source: "microphone",
+      },
     );
-    expect(microphone?.mute).toHaveBeenCalled();
     expect(result.current.muted).toBe(true);
 
     await act(async () => {
       await result.current.leave();
     });
-    expect(microphone?.stop).toHaveBeenCalled();
+    expect(microphone.stop).toHaveBeenCalled();
+  });
+
+  it("keeps the current state and reports an error when speech mute fails", async () => {
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    const room = liveKitState.rooms[0];
+    const publications = room?.localParticipant.getTrackPublications();
+    const speechPublication = publications?.find(
+      (publication) => publication.trackName === SPEECH_MICROPHONE_TRACK_NAME,
+    );
+    speechPublication?.mute.mockRejectedValueOnce(
+      new Error("microphone disappeared"),
+    );
+
+    await act(async () => {
+      await result.current.toggleMute();
+    });
+
+    expect(result.current.muted).toBe(false);
+    expect(result.current.participants[0]?.isMuted).toBe(false);
+    expect(result.current.inputDeviceError).toContain(
+      "could not mute the microphone",
+    );
+    expect(room?.localParticipant.setMicrophoneEnabled).not.toHaveBeenCalled();
   });
 
   it("stops the retained microphone when the previous room cannot disconnect", async () => {
@@ -738,9 +885,9 @@ describe("useVoiceRoom join lifecycle", () => {
     });
     const firstRoom = liveKitState.rooms[0];
     const publishCalls = firstRoom?.localParticipant.publishTrack.mock.calls as
-      [unknown, { source?: string }?][] | undefined;
+      [unknown, { source?: string; name?: string }?][] | undefined;
     const microphone = publishCalls?.find(
-      ([, options]) => options?.source === "microphone",
+      ([, options]) => options?.name === SPEECH_MICROPHONE_TRACK_NAME,
     )?.[0] as { stop: ReturnType<typeof vi.fn> } | undefined;
     firstRoom?.disconnect.mockRejectedValueOnce(new Error("disconnect failed"));
 
@@ -801,7 +948,10 @@ describe("useVoiceRoom join lifecycle", () => {
     expect(secondRoom?.connect).toHaveBeenCalledOnce();
     expect(secondRoom?.localParticipant.publishTrack).toHaveBeenCalledWith(
       expect.anything(),
-      { source: "microphone" },
+      {
+        name: SPEECH_MICROPHONE_TRACK_NAME,
+        source: "microphone",
+      },
     );
     expect(result.current.status).toBe("connected");
     expect(result.current.channel).toEqual(coffeeTable);
@@ -831,7 +981,10 @@ describe("useVoiceRoom join lifecycle", () => {
     );
     expect(
       liveKitState.rooms[1]?.localParticipant.publishTrack,
-    ).toHaveBeenCalledWith(expect.anything(), { source: "microphone" });
+    ).toHaveBeenCalledWith(expect.anything(), {
+      name: SPEECH_MICROPHONE_TRACK_NAME,
+      source: "microphone",
+    });
     expect(result.current.status).toBe("connected");
   });
 
@@ -1014,6 +1167,18 @@ describe("useVoiceRoom join lifecycle", () => {
     });
   });
 });
+
+type LocalAudioTrackDouble = PublicationDouble["track"] & {
+  stop: Mock<() => void>;
+  mute: Mock<() => Promise<unknown>>;
+  unmute: Mock<() => Promise<unknown>>;
+};
+
+function createLocalAudioTrackDouble(): LocalAudioTrackDouble {
+  const LocalAudioTrackDoubleConstructor =
+    LocalAudioTrack as unknown as new () => LocalAudioTrackDouble;
+  return new LocalAudioTrackDoubleConstructor();
+}
 
 function deferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
