@@ -84,6 +84,7 @@ const screenShareState = vi.hoisted(() => ({
   desktop: false,
   getCapabilities: vi.fn(),
   start: vi.fn(),
+  update: vi.fn(),
   stop: vi.fn(),
   listen: vi.fn(),
 }));
@@ -325,6 +326,7 @@ vi.mock("./screen-share-service", () => ({
   isDesktopApp: () => screenShareState.desktop,
   getScreenShareCapabilities: screenShareState.getCapabilities,
   startScreenShare: screenShareState.start,
+  updateScreenShareSettings: screenShareState.update,
   stopScreenShare: screenShareState.stop,
   listenForScreenShareLifecycle: screenShareState.listen,
 }));
@@ -407,6 +409,7 @@ describe("useVoiceRoom join lifecycle", () => {
       reason: null,
     });
     screenShareState.start.mockReset();
+    screenShareState.update.mockReset();
     screenShareState.stop.mockReset();
     screenShareState.stop.mockResolvedValue(undefined);
     screenShareState.listen.mockReset();
@@ -465,6 +468,10 @@ describe("useVoiceRoom join lifecycle", () => {
       available: true,
       nativeCapture: true,
       systemAudio: true,
+      sourceKinds: ["display", "window", "application"],
+      resolutions: [480, 720, 1080],
+      frameRates: [15, 30, 60],
+      dynamicSettings: true,
       reason: null,
     });
     const effects = vi.fn();
@@ -722,7 +729,9 @@ describe("useVoiceRoom join lifecycle", () => {
     screenShareState.start.mockResolvedValue({
       sessionId: "native-share-1",
       sourceLabel: "Demo window",
+      sourceKind: "window",
       audioPublished: true,
+      settings: { resolution: 1080, frameRate: 60 },
     });
     supabaseState.invoke
       .mockResolvedValueOnce(tokenResponse)
@@ -737,7 +746,10 @@ describe("useVoiceRoom join lifecycle", () => {
     await waitFor(() => expect(result.current.screenShareAvailable).toBe(true));
 
     await act(async () => {
-      await result.current.startScreenShare(true);
+      await result.current.startScreenShare(true, {
+        resolution: 1080,
+        frameRate: 60,
+      });
     });
 
     expect(supabaseState.invoke).toHaveBeenNthCalledWith(2, "livekit-token", {
@@ -747,6 +759,7 @@ describe("useVoiceRoom join lifecycle", () => {
       serverUrl: "wss://bakbak.livekit.cloud",
       token: "signed.jwt.token",
       includeAudio: true,
+      settings: { resolution: 1080, frameRate: 60 },
     });
     expect(result.current.screenShareEnabled).toBe(true);
     expect(effects).toHaveBeenCalledWith({
@@ -793,7 +806,10 @@ describe("useVoiceRoom join lifecycle", () => {
     await waitFor(() => expect(result.current.screenShareAvailable).toBe(true));
 
     await act(async () => {
-      await result.current.startScreenShare(false);
+      await result.current.startScreenShare(false, {
+        resolution: 1080,
+        frameRate: 60,
+      });
     });
 
     expect(result.current.status).toBe("connected");
@@ -801,6 +817,59 @@ describe("useVoiceRoom join lifecycle", () => {
     expect(result.current.screenShareError).toBe(
       "macOS started capture but did not deliver a video frame.",
     );
+  });
+
+  it("rolls a failed live quality change back without ending the share", async () => {
+    screenShareState.desktop = true;
+    screenShareState.getCapabilities.mockResolvedValue({
+      available: true,
+      nativeCapture: true,
+      systemAudio: true,
+      sourceKinds: ["display", "window", "application"],
+      resolutions: [480, 720, 1080],
+      frameRates: [15, 30, 60],
+      dynamicSettings: true,
+      customPicker: false,
+      reason: null,
+    });
+    screenShareState.start.mockResolvedValue({
+      sessionId: "native-share-1",
+      sourceLabel: "Demo window",
+      sourceKind: "window",
+      audioPublished: false,
+      settings: { resolution: 1080, frameRate: 60 },
+    });
+    screenShareState.update.mockRejectedValue(
+      new Error("The encoder rejected 720p."),
+    );
+    supabaseState.invoke
+      .mockResolvedValueOnce(tokenResponse)
+      .mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    await waitFor(() => expect(result.current.screenShareAvailable).toBe(true));
+    await act(async () => {
+      await result.current.startScreenShare(false, {
+        resolution: 1080,
+        frameRate: 60,
+      });
+    });
+    await act(async () => {
+      await result.current.updateScreenShareSettings({
+        resolution: 720,
+        frameRate: 30,
+      });
+    });
+
+    expect(result.current.screenShareEnabled).toBe(true);
+    expect(result.current.screenShareSettings).toEqual({
+      resolution: 1080,
+      frameRate: 60,
+    });
+    expect(result.current.screenShareError).toBe("The encoder rejected 720p.");
   });
 
   it("does not connect or publish a microphone after leaving during a pending token request", async () => {

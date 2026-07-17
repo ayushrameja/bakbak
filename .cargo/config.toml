@@ -3,3 +3,8 @@
 # keeps native ScreenCaptureKit dependencies linked to the system runtime
 # instead of embedding a second back-deployment runtime in the app.
 MACOSX_DEPLOYMENT_TARGET = "12.3"
+
+[target.x86_64-pc-windows-msvc]
+# LiveKit's prebuilt Windows WebRTC archive uses the static MSVC runtime.
+# Keep Rust and the cxx bridge on the same runtime to avoid LNK2038 at link time.
+rustflags = ["-C", "target-feature=+crt-static"]

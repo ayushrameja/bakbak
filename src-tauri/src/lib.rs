@@ -8,8 +8,10 @@ pub fn run() {
         .manage(screen_share::ScreenShareManager::default())
         .invoke_handler(tauri::generate_handler![
             screen_share::get_screen_share_capabilities,
+            screen_share::list_screen_share_sources,
             screen_share::start_screen_share,
-            screen_share::stop_screen_share
+            screen_share::stop_screen_share,
+            screen_share::update_screen_share_settings
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())

@@ -16,8 +16,6 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
-
-[target.'cfg(target_os = "macos")'.build-dependencies]
 webrtc-sys-build = "=0.3.18"
 
 [dependencies]
@@ -33,3 +31,30 @@ livekit = { version = "=0.7.51", features = ["rustls-tls-native-roots"] }
 os_info = "3.15"
 screencapturekit = { version = "=8.0.0", features = ["async", "macos_14_0"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+livekit = { version = "=0.7.51", features = ["rustls-tls-native-roots"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+wasapi = "=0.23.0"
+windows = { version = "0.62.2", features = [
+  "Foundation",
+  "Graphics",
+  "Graphics_Capture",
+  "Graphics_DirectX",
+  "Graphics_DirectX_Direct3D11",
+  "Win32_Foundation",
+  "Win32_Graphics_Direct3D",
+  "Win32_Graphics_Direct3D11",
+  "Win32_Graphics_Dwm",
+  "Win32_Graphics_Dxgi",
+  "Win32_Graphics_Dxgi_Common",
+  "Win32_Graphics_Gdi",
+  "Win32_Security",
+  "Win32_System_Com",
+  "Win32_System_Threading",
+  "Win32_System_WinRT",
+  "Win32_System_WinRT_Direct3D11",
+  "Win32_System_WinRT_Graphics_Capture",
+  "Win32_UI_WindowsAndMessaging",
+] }
+windows-version = "=0.1.7"

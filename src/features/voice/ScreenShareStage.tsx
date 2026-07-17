@@ -1,50 +1,122 @@
-import { Monitor, Volume2, VolumeX } from "lucide-react";
+import {
+  ArrowLeft,
+  Expand,
+  Monitor,
+  Shrink,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import { ParticipantVideo } from "./ParticipantVideo";
+import {
+  SCREEN_SHARE_FRAME_RATES,
+  SCREEN_SHARE_RESOLUTIONS,
+  type ScreenShareSettings,
+} from "./screen-share-preferences";
 import type { VoiceScreenShare } from "./useVoiceRoom";
 
 export function ScreenShareStage({
-  shares,
-  selectedId,
+  share,
   localSourceLabel,
-  onSelect,
+  settings,
+  settingsPending,
+  fullscreen,
+  onBack,
+  onToggleFullscreen,
+  onUpdateSettings,
 }: {
-  shares: VoiceScreenShare[];
-  selectedId: string | null;
+  share: VoiceScreenShare;
   localSourceLabel: string | null;
-  onSelect: (shareId: string) => void;
+  settings: ScreenShareSettings;
+  settingsPending: boolean;
+  fullscreen: boolean;
+  onBack: () => void;
+  onToggleFullscreen: () => void;
+  onUpdateSettings: (settings: ScreenShareSettings) => void;
 }) {
-  const selected = shares.find((share) => share.id === selectedId) ?? shares[0];
-  if (!selected) return null;
   const sourceLabel =
-    selected.isLocal && localSourceLabel ? localSourceLabel : "Shared screen";
+    share.isLocal && localSourceLabel ? localSourceLabel : "Shared screen";
 
   return (
     <section className="screen-share-stage" aria-label="Screen share stage">
       <header>
+        <button
+          className="screen-share-stage__icon-button"
+          type="button"
+          onClick={onBack}
+          aria-label="Return to gallery"
+        >
+          <ArrowLeft size={17} />
+        </button>
         <div>
           <Monitor size={17} />
           <span>
-            <strong>{selected.displayName}</strong>
+            <strong>{share.displayName}</strong>
             <small>{sourceLabel}</small>
           </span>
         </div>
         <span
-          className={`screen-share-stage__audio ${selected.audioPublished ? "is-live" : ""}`}
+          className={`screen-share-stage__audio ${share.audioPublished ? "is-live" : ""}`}
         >
-          {selected.audioPublished ? (
-            <Volume2 size={14} />
-          ) : (
-            <VolumeX size={14} />
-          )}
-          {selected.audioPublished ? "Source audio" : "Video only"}
+          {share.audioPublished ? <Volume2 size={14} /> : <VolumeX size={14} />}
+          {share.audioPublished ? "Source audio" : "Video only"}
         </span>
+        {share.isLocal ? (
+          <div className="screen-share-stage__quality">
+            <select
+              aria-label="Live screen share resolution"
+              value={settings.resolution}
+              disabled={settingsPending}
+              onChange={(event) =>
+                onUpdateSettings({
+                  ...settings,
+                  resolution: Number(
+                    event.target.value,
+                  ) as ScreenShareSettings["resolution"],
+                })
+              }
+            >
+              {SCREEN_SHARE_RESOLUTIONS.map((resolution) => (
+                <option value={resolution} key={resolution}>
+                  {resolution}p
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label="Live screen share frame rate"
+              value={settings.frameRate}
+              disabled={settingsPending}
+              onChange={(event) =>
+                onUpdateSettings({
+                  ...settings,
+                  frameRate: Number(
+                    event.target.value,
+                  ) as ScreenShareSettings["frameRate"],
+                })
+              }
+            >
+              {SCREEN_SHARE_FRAME_RATES.map((frameRate) => (
+                <option value={frameRate} key={frameRate}>
+                  {frameRate} fps
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+        <button
+          className="screen-share-stage__icon-button"
+          type="button"
+          onClick={onToggleFullscreen}
+          aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+        >
+          {fullscreen ? <Shrink size={17} /> : <Expand size={17} />}
+        </button>
       </header>
       <div className="screen-share-stage__media">
-        {selected.track ? (
+        {share.track ? (
           <ParticipantVideo
-            track={selected.track}
+            track={share.track}
             local={false}
-            label={selected.displayName}
+            label={share.displayName}
             kind="screen"
           />
         ) : (
@@ -53,21 +125,10 @@ export function ScreenShareStage({
             <span>Waiting for the first frame…</span>
           </div>
         )}
+        {share.paused ? (
+          <div className="screen-share-paused">Source minimized or paused</div>
+        ) : null}
       </div>
-      {shares.length > 1 ? (
-        <nav aria-label="Active screen shares">
-          {shares.map((share) => (
-            <button
-              className={share.id === selected.id ? "is-active" : ""}
-              type="button"
-              key={share.id}
-              onClick={() => onSelect(share.id)}
-            >
-              <Monitor size={14} /> {share.displayName}
-            </button>
-          ))}
-        </nav>
-      ) : null}
     </section>
   );
 }

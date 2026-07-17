@@ -124,7 +124,8 @@ plan.
 - [ ] Manually validate two-person voice, mute/deafen, device changes, and
       reconnect behavior.
 - [ ] Manually validate synchronized soundboard playback.
-- [ ] Update architecture, plan status, and the append-only progress log.
+- [x] Update architecture, plan status, and the append-only progress log for
+      plan 0010.
 
 The first friend-test build explicitly excluded screen sharing, recording,
 camera effects, user sound uploads, global push-to-talk, and advanced roles.
@@ -157,11 +158,17 @@ The fixed Signal Red visual preset, edge-safe broadcast effects, original
 generated interface sound pack, device-local sound controls, and typed
 communication event semantics are approved under
 `0009-signal-red-theme-and-interface-audio.md`.
+Cross-platform native video capture, 1080p/60 presenter controls, paused-source
+handling, gallery/focus/fullscreen call media, and soundboard ownership are
+approved under `0010-cross-platform-screen-share-and-focus.md`. Plan 0010
+supersedes plan 0003's 1080p/15 ceiling and plan 0006's always-featured share
+layout while retaining their security and least-privilege companion boundary.
 
 ### Phase 5 — Post-v1 improvements
 
 - [ ] Complete desktop screen sharing with matched system audio on macOS and
-      Windows under `0003-screen-sharing.md`.
+      Windows under plans `0003-screen-sharing.md` and
+      `0010-cross-platform-screen-share-and-focus.md`.
 - [ ] Add invite management UI.
 - [ ] Add desktop notifications and tray controls.
 - [x] Add locally persisted microphone, speaker, and camera preferences.
@@ -217,8 +224,9 @@ communication event semantics are approved under
 - [x] Add a private operator-managed sound bucket with server-member reads.
 - [x] Fetch, revision-cache, and play the hosted sound pack in the renderer.
 - [ ] Evaluate optional global push-to-talk.
-- [ ] Finish Windows process/display-matched audio and the cross-platform
-      acceptance matrix.
+- [x] Implement Windows process/display-matched audio with build gating and
+      video-only fallback.
+- [ ] Complete the cross-platform installed-client acceptance matrix.
 - [ ] Update architecture, plan status, and the append-only progress log.
 
 ### Phase 6 — Distribution

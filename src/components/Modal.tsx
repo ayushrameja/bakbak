@@ -7,6 +7,7 @@ interface ModalProps {
   description?: string;
   children: ReactNode;
   onClose: () => void;
+  overlayOwner?: string;
 }
 
 export function Modal({
@@ -15,6 +16,7 @@ export function Modal({
   description,
   children,
   onClose,
+  overlayOwner,
 }: ModalProps) {
   const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -58,10 +60,16 @@ export function Modal({
   }, []);
 
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      data-overlay-owner={overlayOwner}
+      onMouseDown={onClose}
+    >
       <section
         ref={dialogRef}
         className="modal-card"
+        data-overlay-owner={overlayOwner}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"

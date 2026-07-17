@@ -62,7 +62,8 @@ panic finds them.
       carrying minimal camera/avatar, name, mute, speaking, activity, and
       remote-volume overlays.
 - [x] Preserve the selected featured screen share and presenter switching while
-      moving participant tiles into a compact horizontal strip.
+      moving participant tiles into a compact horizontal strip. Superseded by
+      plan 0010's default gallery and click-to-focus media model.
 - [x] Keep autoplay, device, reconnect, and screen-share failures as compact
       banners. Preserve existing audio routing and screen-capture contracts.
 - [x] Anchor soundboard above the floating dock and pin the dock until it closes.

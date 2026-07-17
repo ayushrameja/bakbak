@@ -11,6 +11,10 @@ the operating-system picker, with explicitly opted-in source audio where the
 platform can match it safely. Shares use a separate, least-privilege LiveKit
 companion and appear in one featured stage above the call grid.
 
+Plan 0010 supersedes this plan's 1080p/15 ceiling, renderer-fallback Windows
+path, and always-featured stage. The token, companion, membership, and audio
+privacy boundaries below remain in force.
+
 ## Accepted behavior
 
 - Screen sharing exists only in installed macOS and Windows clients. Browser
@@ -45,7 +49,8 @@ companion and appear in one featured stage above the call grid.
 - [x] Add a macOS native LiveKit companion using the system picker,
       ScreenCaptureKit video/audio capture, video-only audio fallback, source
       termination handling, and app/voice teardown.
-- [ ] Add and validate the Windows native capture and matched-audio companion.
+- [x] Add the Windows native capture and build-gated matched-audio companion;
+      installed Windows isolation validation remains open below.
 - [x] Add renderer confirmation, call/sidebar controls, companion filtering,
       featured-stage selection, selective subscriptions, warnings, and cleanup.
 - [x] Hide all controls/stage content and unsubscribe share publications in

@@ -49,7 +49,8 @@ destructive database migration accompanies this client-only boundary.
 Voice rooms retain locally persisted microphone/speaker/camera selection,
 opt-in 720p camera calls, sidebar occupancy with elapsed timers, mute/deafen,
 per-participant volume, remote-track audio/video rendering, autoplay recovery,
-reconnect/error states, and the desktop featured screen-share stage. Selecting
+reconnect/error states, and a unified participant/screen-share media gallery.
+Selecting
 a voice channel immediately joins it; selecting another voice channel switches
 the active call without a pre-join or initial connection surface. An active call
 adds a sidebar control block with room, backend latency, normalized local
@@ -166,18 +167,26 @@ avoiding renegotiation before the next sound. The final Arc-plus-native
 voice, video, device, soundboard, reconnect, and crash-expiry rehearsal remains
 open for human observation.
 
-Installed macOS 14+ clients can now start a Tauri-owned ScreenCaptureKit
-session through Apple's system content picker. A separate native LiveKit room
-publishes at most 1080p/15 fps H.264 screen video and optional 48 kHz stereo
-source audio while excluding Bakbak's own process audio. Capture retries as
-video-only if optional audio cannot start. Source termination, terminal
-LiveKit disconnect, voice leave, explicit stop, and main-window close all tear
-down capture and the companion. Older macOS and current Windows builds use the
-renderer video-only picker when available. The Windows native
-`Windows.Graphics.Capture` plus matched application/display audio path remains
-open and therefore keeps source audio disabled rather than leaking unrelated
-system sound. Linking ScreenCaptureKit directly makes macOS 12.3 the desktop
-bundle minimum; macOS 12.3–13 retain the video-only WebView fallback.
+Installed macOS 14+ clients start a Tauri-owned ScreenCaptureKit session
+through Apple's system picker, which explicitly permits one display, window,
+or application. Windows uses a Bakbak-owned Screens/Applications picker backed
+by privacy-filtered native monitor/window handles; the renderer never guesses
+a process from a window title. A separate least-privilege LiveKit room
+publishes H.264 video with presenter-selected 480p/720p/1080p and
+15/30/60-fps ceilings. The default is 1080p/60, the last successful quality is
+device-local, and source audio is unchecked for every new share. macOS captures
+optional 48 kHz stereo matched source audio while excluding Bakbak and retries
+video-only if audio fails. Windows now has direct free-threaded
+`Windows.Graphics.Capture`, D3D11 frame delivery and staging readback,
+resize/quality frame-pool reconfiguration, temporary in-memory picker previews,
+and CPU BGRA scaling/color conversion to I420 for LiveKit. On Windows build
+20348 or newer, WASAPI process loopback includes the
+selected application's process tree or excludes Bakbak's process tree for a
+display; older builds keep video enabled and report why audio is unavailable.
+Source termination, terminal LiveKit disconnect, voice leave, explicit stop,
+and main-window close tear down capture and the companion.
+Linking ScreenCaptureKit directly makes macOS 12.3 the desktop bundle minimum;
+macOS 12.3–13 retain the video-only WebView fallback.
 
 The Tauri metadata, window sizing, Content Security Policy, minimal capability
 set, Bakbak icons, microphone/camera/screen-capture purpose strings, audio-input
@@ -289,10 +298,10 @@ The renderer uses a three-panel desktop layout plus a modal layer:
 5. Selecting a voice channel joins it immediately, and selecting another voice
    channel switches the active call. Hover/focus can prepare one candidate room
    without media or presence side effects; click consumes that work and shows a
-   compact stage loader instead of a blank canvas. After connection, one/two-
-   person tiles stay compact and larger calls use an equal responsive grid. A
-   selected screen share remains featured while participant tiles move into a
-   compact horizontal strip.
+   compact stage loader instead of a blank canvas. After connection, people
+   and active shares share one responsive gallery. Clicking either opens a
+   focused stage and compact media-target strip; target loss returns to the
+   gallery.
 6. Settings overlays the shell as a centered modal up to 1000×720 with 16–24 px
    viewport margins, left navigation, internal scrolling, focus trap/
    restoration, backdrop/X/Escape dismissal, compact call controls, a live
@@ -354,9 +363,9 @@ frame arrives. If no frame arrives within five seconds, native capture is
 stopped and the renderer receives a retryable error while voice remains
 connected. Sanitized lifecycle states and failures are printed to the Tauri
 terminal and DevTools without tokens or captured-source labels.
-The native Rust LiveKit/WebRTC and ScreenCaptureKit dependencies are macOS
-target dependencies. Current Windows builds keep the renderer fallback without
-shipping an unused native companion runtime.
+The native Rust LiveKit/WebRTC dependencies are macOS and Windows target
+dependencies. ScreenCaptureKit remains macOS-only; Windows links
+Windows.Graphics.Capture, D3D11, and WASAPI process-loopback support.
 The pinned macOS WebRTC archive stores several runtime-only bridges in
 Objective-C category objects, which the static linker would normally omit.
 The Bakbak build extracts and explicitly links the reviewed category members
@@ -635,39 +644,68 @@ An invite-management UI is deferred until post-v1.
 ### Desktop screen share
 
 1. A connected installed client opens a renderer confirmation; source audio is
-   unchecked on every start. Browser clients have no share UI and force every
-   screen publication unsubscribed.
+   unchecked on every start. The confirmation exposes independent
+   480p/720p/1080p and 15/30/60-fps controls, defaults to 1080p/60 on first
+   use, and persists only the last successful quality under
+   `bakbak.screenSharePreferences.v1`. Browser clients have no share UI and
+   force every screen publication unsubscribed.
 2. For native capture, the renderer requests `{ channelId, purpose:
 "screen_share" }`. The function repeats authentication, membership, and
    voice-channel checks, then signs a five-minute companion identity tied to
    the same room and owner.
-3. Tauri validates that the caller is the main window, opens the OS picker, and
+3. Tauri validates that the caller is the main window, opens the macOS system
+   picker or validates a privacy-filtered Windows source handle, and
    connects a second LiveKit room using only the returned public URL and token.
    It never receives a signing key.
-4. macOS publishes H.264 screen video from ScreenCaptureKit at no more than
-   1080p/15 fps. Optional 48 kHz stereo source audio excludes Bakbak; if audio
-   setup fails, capture retries video-only and the renderer shows a warning.
-5. Companion participants are merged into their owner's UI state and omitted
-   from ordinary participant cards. Only the featured companion's screen video
-   and audio are subscribed. Switching presenter switches both publications;
-   owner volume, selected output, and deafen apply to the audio track.
-6. Explicit stop, voice leave, source termination, terminal native-room
+4. macOS applies live ScreenCaptureKit configuration updates. Windows uses a
+   free-threaded D3D11 frame pool, throttles to the selected cap, recreates on
+   source-size/quality changes, reads frames back for CPU BGRA-to-I420
+   conversion, and retains the same companion identity. Moving Windows scaling
+   and color conversion fully onto the GPU remains an acceptance/performance
+   follow-up. The presenter ceiling uses 0.8–8 Mbps H.264
+   encoding limits across the nine quality combinations; LiveKit adaptive
+   layers may deliver less to a viewer.
+5. macOS optional 48 kHz stereo source audio excludes Bakbak; if setup fails,
+   capture retries video-only and the renderer shows a warning. On Windows
+   build 20348 or newer, applications include only the selected process tree
+   and displays exclude Bakbak's process tree. Older Windows builds keep video
+   available, disable audio with an explanation, and never broaden capture to
+   unrelated output.
+6. A two-second gap without a complete frame mutes the publication, keeps the
+   viewer's last frame visible, and reports “Source minimized or paused.”
+   Capture automatically unmutes when a complete frame returns.
+7. Companion participants are merged into their owner's UI state and omitted
+   from ordinary participant cards. Every gallery share subscribes to low
+   video with no source audio; the focused share receives high video and
+   source audio. Deafen, selected output, and owner volume still apply.
+8. Focused people and shares use a fixed-toolbar, `minmax(0, 1fr)` media stage
+   with `object-fit: contain`; no percentage-height subtraction can clip the
+   bottom edge. The fullscreen control uses Tauri OS fullscreen. Escape exits
+   fullscreen without clearing focus; leaving voice or losing the target exits
+   fullscreen and returns to gallery.
+9. Explicit stop, voice leave, source termination, terminal native-room
    disconnect, or main-window close releases capture immediately and closes the
    companion. Multiple app instances may present concurrently, but each app
    instance owns at most one share.
-7. Local and remote share lifecycle changes emit typed start/stop effects after
-   room baselining. Remote cues play at reduced gain, and deafen suppresses
-   remote Voice/Screen-share cues without suppressing self actions, Messages,
-   or Status.
+10. Local and remote share lifecycle changes emit typed start/stop effects after
+    room baselining. Remote cues play at reduced gain, and deafen suppresses
+    remote Voice/Screen-share cues without suppressing self actions, Messages,
+    or Status.
 
 ### Soundboard
 
-1. After workspace load, the renderer fetches the member-visible categories and
+1. The application owns drawer dismissal. Outside pointer interaction, Escape,
+   disconnect, channel switch, and unrelated modal/view opening close it.
+   Both triggers, the drawer, and an edit modal marked
+   `data-overlay-owner="soundboard"` count as inside. Escape/explicit close
+   restore opener focus; outside pointer dismissal leaves focus at the clicked
+   destination.
+2. After workspace load, the renderer fetches the member-visible categories and
    sounds. It downloads private Storage objects with the signed-in session,
    reuses IndexedDB blobs matching `{ soundId, audioRevision }`, and decodes
    ready clips into memory. Download or decode failure marks only that card as
    failed and can be retried.
-2. Voice join publishes at most one room-scoped audio track named
+3. Voice join publishes at most one room-scoped audio track named
    `bakbak-soundboard`, initially muted. The first active trigger unmutes it;
    each trigger connects its decoded buffer once to the outbound track at unity
    gain and once to the selected-speaker monitor path at the local soundboard
@@ -679,7 +717,7 @@ An invite-management UI is deferred until post-v1.
    ready. Explicit stop-all fully releases both the publication and local
    selected-speaker routing graph. The next trigger rebuilds the required graph
    and reapplies the remembered speaker before playback.
-3. The client also publishes a reliable UI-control message such as:
+4. The client also publishes a reliable UI-control message such as:
 
    ```json
    {
@@ -691,11 +729,11 @@ An invite-management UI is deferred until post-v1.
    }
    ```
 
-4. Receivers validate version, event ID, sound ID, and timestamp, deduplicate UI
+5. Receivers validate version, event ID, sound ID, and timestamp, deduplicate UI
    events, and derive the sender from the LiveKit participant callback. They
    never trust a payload sender or volume and never replay control messages
    locally; remote listeners hear only the participant's LiveKit audio track.
-5. Activity state uses the catalog duration. Participant cards show the newest
+6. Activity state uses the catalog duration. Participant cards show the newest
    emoji, an overlap count up to five, Playing status, and the speaking
    treatment. Camera-off tiles replace the avatar with that emoji; camera-on
    tiles center it over video. Upgraded senders reserve pending/active activity
@@ -705,7 +743,7 @@ An invite-management UI is deferred until post-v1.
    they can play or publish activity. A reliable `soundboard:stop-all` message
    clears that participant immediately; disconnect, leave, and track cleanup do
    the same.
-6. Remote named tracks use `soundboard volume × participant volume`. Normal
+7. Remote named tracks use `soundboard volume × participant volume`. Normal
    microphone speech keeps only participant volume. Deafen suppresses remote
    audio and the sender's local monitor branch without muting outbound
    soundboard audio.
@@ -1002,10 +1040,11 @@ that it has passed.
   `bakbak-soundboard`; speech is independently named `bakbak-microphone` so mute
   and reuse never depend on publication order.
 - macOS 14+ native video and matched source audio are implemented. Older macOS
-  and current Windows builds expose only WebView video sharing when
-  `getDisplayMedia` exists. The Windows native picker, process/display-matched
-  audio implementation, Windows CI build, cross-platform two-account matrix,
-  and before/after installer-size measurements remain required by plan 0003.
+  retains the WebView fallback. Windows native picker, WGC video, and gated
+  process/display-matched audio are implemented, but a Windows machine still
+  must complete the installed-client isolation matrix. Cross-platform
+  two-account verification and before/after installer-size measurements remain
+  required by plans 0003 and 0010.
 - The current production renderer is roughly 283 kB compressed; LiveKit and
   Supabase can be lazy-loaded in a later performance pass if startup profiling
   shows a meaningful benefit.
