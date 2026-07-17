@@ -1,6 +1,6 @@
 [package]
 name = "bakbak"
-version = "0.10.0"
+version = "0.11.0"
 description = "Private voice, text, and soundboard desktop app"
 authors = ["Bakbak contributors"]
 edition = "2024"
