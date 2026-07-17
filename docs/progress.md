@@ -2142,3 +2142,88 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
   server accounts plus one outsider to verify profile propagation, private
   media reads/denial, GIF loading, and reduced-motion behavior in the installed
   application before friend-test distribution.
+
+## 2026-07-17 — Signal Red theme and universal interface audio
+
+- **Completed:** Added the device-local `VisualPreset` boundary and migrated
+  appearance persistence/bootstrap from v3 to v4 while retaining exact
+  Standard theme, accent, intensity, and surface values. Implemented the fixed
+  Dark + Flat Signal Red tokens, locally bundled League Gothic/IBM Plex Mono
+  display typography, sharp structural treatment, mixed-case identity/content
+  exclusions, special-theme Settings card, disabled Standard controls, static
+  noise asset, edge grids/orbits/bars/timecodes, alternating ticker, recurring
+  safe-position Bakbak stamps, typed clipped communication labels, modal/
+  visibility pausing, and reduced-motion fallback. Replaced the procedural
+  message chirp with nine original deterministic 48 kHz/16-bit mono WAVs and
+  one system-output Web Audio controller. Added master/55% volume, four
+  category controls/previews, first-gesture preload, caching, three-sound
+  concurrency, message/failure cooldowns, remote roster batching, reduced
+  remote-share gain, and graceful audio failure handling. Wired typed
+  message/self/remote voice, local/remote screen-share, reconnect, and
+  interruption events through the app and voice lifecycle with explicit
+  leave-reason, direct-switch, initial-roster, companion, and deafen semantics.
+- **Decisions:** Signal Red changes effective presentation only; it never
+  rewrites the user's Standard preferences and is not composable with alternate
+  Light/accent choices. Interface sounds run under every visual theme and
+  always target the OS system output, leaving call/soundboard output selection
+  intact. Only communication lifecycle events are sonified. Bakbak phrases,
+  logo geometry, generated texture, and synthesized audio are original; no
+  Sentinels marks, slogans, footage, samples, or proprietary fonts are used.
+  Fontsource's League Gothic and IBM Plex Mono manifests declare OFL-1.1.
+- **Validation:**
+  - `pnpm exec vitest run
+src/features/settings/appearance-preferences.test.ts
+src/features/settings/theme-bootstrap.test.ts
+src/features/settings/SettingsPage.test.tsx
+src/features/settings/SignalRedEffects.test.tsx
+src/features/settings/interface-sound-preferences.test.ts
+src/features/settings/interface-sounds.test.ts
+src/features/voice/useVoiceRoom.test.tsx` — passed 7 files and 71 focused
+    tests.
+  - `node --test scripts/generate-interface-sounds.test.mjs` — passed
+    deterministic bytes, required names, WAV format, expected duration, fade,
+    peak, and total-size assertions. Committed sound assets total 276 KiB.
+  - An initial `pnpm test -- <focused files>` attempt ran and passed the full
+    40-file/205-test Vitest suite but failed overall because the package script
+    forwarded the focused TypeScript paths to Node's `.mjs` test runner. The
+    focused rerun used `pnpm exec vitest run` and passed.
+  - The first `pnpm check` stopped at lint on a test matcher, timer callbacks,
+    and component/helper co-location. Typed assertions, void timer callbacks,
+    and a separate scheduler module corrected those findings.
+  - Final `pnpm check` — passed formatting, lint, renderer/Node typechecks, 43
+    Vitest files with 223 tests, 11 Node tests, synchronized version `0.8.0`,
+    production build, and secret scan. Vite retained the existing non-blocking
+    large-chunk warning.
+  - Mock-browser QA with 1280×800 and 1024×680 viewport overrides — passed
+    Signal Red text and voice shells, Appearance and Audio & Video Settings,
+    locked Standard controls, live `VOICE LINKED` edge event, fixed tokens,
+    content/chrome case boundary, and horizontal-overflow checks with no
+    browser errors. The pass exposed profile-name uppercase inheritance; the
+    final CSS scopes identity/profile/mention content back to Inter and
+    `text-transform: none`.
+  - `pnpm tauri:build:local` — passed after the Latin-only font import
+    optimization, including strict typecheck and production build. Final output
+    was 98.81 kB CSS and 1,168.51 kB JavaScript plus six local font files; the
+    app-only Apple Silicon bundle was ad-hoc signed and notarization was skipped
+    because Apple credentials are unavailable.
+  - `codesign --verify --deep --strict --verbose=4
+src-tauri/target/release/bundle/macos/Bakbak.app` — passed. `file` identified a
+    Mach-O 64-bit arm64 executable and `lipo -archs` returned `arm64`.
+  - Final `pnpm security:scan` and `git diff --check` — passed for the renderer,
+    native bundle, and working diff.
+- **Documentation updated:** Added plan 0009, updated the active v1 plan, and
+  documented Signal Red composition, font/audio ownership and licenses,
+  storage keys, effect layering, reduced motion, interface-audio routing, and
+  voice/screen lifecycle semantics in `docs/architecture.md`.
+- **Known limitations:** Human audio cannot be proven by unit tests or the
+  in-app mock browser. The installed-app multi-client matrix for rapid
+  messages, simultaneous joins/leaves, local/remote screen sharing, reconnect,
+  deafen, preferences, and a call output different from system output remains
+  pending. The full updater-enabled `pnpm tauri build` was skipped because
+  `TAURI_SIGNING_PRIVATE_KEY` is unavailable; the local app-only build does not
+  exercise updater signing or notarization. No database checks ran because
+  this phase has no schema, RLS, Supabase, or server changes.
+- **Next:** Run two installed clients with call audio routed away from the OS
+  default, exercise the plan 0009 audio matrix, verify remote cues disappear
+  under deafen while self/Message/Status remain, and then mark installed-app
+  acceptance complete.

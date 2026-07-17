@@ -1,4 +1,5 @@
-export const APPEARANCE_PREFERENCES_KEY = "bakbak.appearancePreferences.v3";
+export const APPEARANCE_PREFERENCES_KEY = "bakbak.appearancePreferences.v4";
+export const V3_APPEARANCE_PREFERENCES_KEY = "bakbak.appearancePreferences.v3";
 export const V2_APPEARANCE_PREFERENCES_KEY = "bakbak.appearancePreferences.v2";
 export const LEGACY_APPEARANCE_PREFERENCES_KEY =
   "bakbak.appearancePreferences.v1";
@@ -7,12 +8,14 @@ export type ThemePreference = "system" | "light" | "dark";
 export type ResolvedTheme = Exclude<ThemePreference, "system">;
 export type AccentColor = "coral" | "purple" | "red" | "yellow";
 export type SurfaceStyle = "warm" | "flat";
+export type VisualPreset = "standard" | "signal-red";
 
 export interface AppearancePreferences {
   theme: ThemePreference;
   accent: AccentColor;
   intensity: number;
   surfaceStyle: SurfaceStyle;
+  visualPreset: VisualPreset;
 }
 
 interface StorageLike {
@@ -31,6 +34,7 @@ export const DEFAULT_APPEARANCE_PREFERENCES: AppearancePreferences = {
   accent: "coral",
   intensity: 100,
   surfaceStyle: "warm",
+  visualPreset: "standard",
 };
 const SYSTEM_DARK_QUERY = "(prefers-color-scheme: dark)";
 const THEME_COLORS: Record<ResolvedTheme, string> = {
@@ -69,6 +73,10 @@ function isIntensity(value: unknown): value is number {
 
 function isSurfaceStyle(value: unknown): value is SurfaceStyle {
   return value === "warm" || value === "flat";
+}
+
+function isVisualPreset(value: unknown): value is VisualPreset {
+  return value === "standard" || value === "signal-red";
 }
 
 function browserDocument(): Document | undefined {
@@ -117,16 +125,41 @@ export function loadAppearancePreferences(
       "accent" in value &&
       "intensity" in value &&
       "surfaceStyle" in value &&
+      "visualPreset" in value &&
       isThemePreference(value.theme) &&
       isAccentColor(value.accent) &&
       isIntensity(value.intensity) &&
-      isSurfaceStyle(value.surfaceStyle)
+      isSurfaceStyle(value.surfaceStyle) &&
+      isVisualPreset(value.visualPreset)
     ) {
       return {
         theme: value.theme,
         accent: value.accent,
         intensity: value.intensity,
         surfaceStyle: value.surfaceStyle,
+        visualPreset: value.visualPreset,
+      };
+    }
+
+    const v3 = readStoredPreferences(storage, V3_APPEARANCE_PREFERENCES_KEY);
+    if (
+      v3 &&
+      typeof v3 === "object" &&
+      "theme" in v3 &&
+      "accent" in v3 &&
+      "intensity" in v3 &&
+      "surfaceStyle" in v3 &&
+      isThemePreference(v3.theme) &&
+      isAccentColor(v3.accent) &&
+      isIntensity(v3.intensity) &&
+      isSurfaceStyle(v3.surfaceStyle)
+    ) {
+      return {
+        theme: v3.theme,
+        accent: v3.accent,
+        intensity: v3.intensity,
+        surfaceStyle: v3.surfaceStyle,
+        visualPreset: "standard",
       };
     }
 
@@ -146,6 +179,7 @@ export function loadAppearancePreferences(
         accent: v2.accent,
         intensity: v2.intensity,
         surfaceStyle: "warm",
+        visualPreset: "standard",
       };
     }
 
@@ -230,21 +264,31 @@ export function applyAppearancePreferences(
     preferences.theme,
     environment.matchMedia ?? browserMatchMedia(),
   );
+  const signalRed = preferences.visualPreset === "signal-red";
+  const effectiveTheme = signalRed ? "dark" : resolvedTheme;
   const targetDocument = environment.document ?? browserDocument();
-  if (!targetDocument) return resolvedTheme;
+  if (!targetDocument) return effectiveTheme;
 
   const root = targetDocument.documentElement;
-  const tokens = accentTokens(
-    preferences.accent,
-    preferences.intensity,
-    resolvedTheme,
-  );
-  root.dataset.theme = resolvedTheme;
+  const tokens = signalRed
+    ? {
+        accent: "#e5062f",
+        bright: "#ff2648",
+        soft: "rgb(229 6 47 / 0.14)",
+        border: "rgb(229 6 47 / 0.58)",
+        glow: "rgb(229 6 47 / 0.09)",
+        onAccent: "#f4f2ef",
+      }
+    : accentTokens(preferences.accent, preferences.intensity, resolvedTheme);
+  root.dataset.theme = effectiveTheme;
   root.dataset.themePreference = preferences.theme;
-  root.dataset.accent = preferences.accent;
-  root.dataset.accentIntensity = String(preferences.intensity);
-  root.dataset.surfaceStyle = preferences.surfaceStyle;
-  root.style.colorScheme = resolvedTheme;
+  root.dataset.accent = signalRed ? "red" : preferences.accent;
+  root.dataset.accentIntensity = String(
+    signalRed ? 100 : preferences.intensity,
+  );
+  root.dataset.surfaceStyle = signalRed ? "flat" : preferences.surfaceStyle;
+  root.dataset.visualPreset = preferences.visualPreset;
+  root.style.colorScheme = effectiveTheme;
   root.style.setProperty("--accent", tokens.accent);
   root.style.setProperty("--accent-bright", tokens.bright);
   root.style.setProperty("--accent-soft", tokens.soft);
@@ -260,13 +304,14 @@ export function applyAppearancePreferences(
     themeColor.name = "theme-color";
     targetDocument.head.append(themeColor);
   }
-  themeColor.content =
-    preferences.surfaceStyle === "flat"
+  themeColor.content = signalRed
+    ? "#050505"
+    : preferences.surfaceStyle === "flat"
       ? resolvedTheme === "dark"
         ? "#090909"
         : "#ffffff"
       : THEME_COLORS[resolvedTheme];
-  return resolvedTheme;
+  return effectiveTheme;
 }
 
 export function setAppearancePreferences(

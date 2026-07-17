@@ -17,6 +17,10 @@ import {
   type RemoteTrackPublication,
 } from "livekit-client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type {
+  CommunicationEffectEvent,
+  VoiceLeaveReason,
+} from "../../lib/communication-effects";
 import { appConfig } from "../../lib/env";
 import { getSupabaseClient } from "../../lib/supabase";
 import type { AppUser, Channel, DataMode } from "../../lib/types";
@@ -177,7 +181,7 @@ interface VoiceRoomState {
   maxConcurrentSounds: number;
   prepareVoiceChannel: (channel: Channel) => void;
   join: (channel: Channel) => Promise<void>;
-  leave: () => Promise<void>;
+  leave: (reason?: VoiceLeaveReason) => Promise<void>;
   toggleMute: () => Promise<void>;
   toggleDeafen: () => Promise<void>;
   resumeAudio: () => Promise<void>;
@@ -202,6 +206,7 @@ export function useVoiceRoom(
   user: AppUser,
   mode: DataMode,
   soundboard: SoundboardCatalogController = mockSoundboardController,
+  onCommunicationEffect?: (event: CommunicationEffectEvent) => void,
 ): VoiceRoomState {
   const [initialPreferences] = useState(loadDevicePreferences);
   const [status, setStatus] = useState<VoiceConnectionStatus>("disconnected");
@@ -292,8 +297,35 @@ export function useVoiceRoom(
   const participantVolumes = useRef(new Map<string, number>());
   const soundboardVolumeRef = useRef(soundboardVolume);
   const soundboardRef = useRef(soundboard);
+  const onCommunicationEffectRef = useRef(onCommunicationEffect);
+  const effectReadyRoomsRef = useRef(new WeakSet<Room>());
+  const remoteShareKeysRef = useRef(new Set<string>());
+  const localScreenShareLiveRef = useRef(false);
 
   const desktopApp = isDesktopApp();
+
+  useEffect(() => {
+    onCommunicationEffectRef.current = onCommunicationEffect;
+  }, [onCommunicationEffect]);
+
+  const emitCommunicationEffect = useCallback(
+    (event: CommunicationEffectEvent) => {
+      onCommunicationEffectRef.current?.(event);
+    },
+    [],
+  );
+
+  const markLocalScreenShareStarted = useCallback(() => {
+    if (localScreenShareLiveRef.current) return;
+    localScreenShareLiveRef.current = true;
+    emitCommunicationEffect({ type: "screen-share-started", actor: "self" });
+  }, [emitCommunicationEffect]);
+
+  const markLocalScreenShareStopped = useCallback(() => {
+    if (!localScreenShareLiveRef.current) return;
+    localScreenShareLiveRef.current = false;
+    emitCommunicationEffect({ type: "screen-share-stopped", actor: "self" });
+  }, [emitCommunicationEffect]);
 
   const refreshParticipants = useCallback(
     (room: Room) => {
@@ -491,7 +523,10 @@ export function useVoiceRoom(
       setScreenShareState(event.state);
       setScreenShareAudioPublished(event.audioPublished);
       setScreenShareSourceLabel(event.sourceLabel);
+      if (event.state === "sharing") markLocalScreenShareStarted();
       if (event.state === "error") {
+        markLocalScreenShareStopped();
+        emitCommunicationEffect({ type: "signal-interrupted" });
         screenShareSessionRef.current = null;
         setScreenShareAudioPublished(false);
         setScreenShareSourceLabel(null);
@@ -500,6 +535,7 @@ export function useVoiceRoom(
         );
       }
       if (event.state === "idle") {
+        markLocalScreenShareStopped();
         screenShareSessionRef.current = null;
         setScreenShareAudioPublished(false);
         setScreenShareSourceLabel(null);
@@ -512,7 +548,12 @@ export function useVoiceRoom(
       disposed = true;
       unlisten();
     };
-  }, [desktopApp]);
+  }, [
+    desktopApp,
+    emitCommunicationEffect,
+    markLocalScreenShareStarted,
+    markLocalScreenShareStopped,
+  ]);
 
   const discardPreparedJoin = useCallback(() => {
     if (prepareTimerRef.current !== null) {
@@ -732,12 +773,63 @@ export function useVoiceRoom(
   const bindRoomEvents = useCallback(
     (room: Room) => {
       const isCurrentRoom = () => roomRef.current === room;
+      const effectsReady = () =>
+        isCurrentRoom() && effectReadyRoomsRef.current.has(room);
       const sync = () => {
         if (isCurrentRoom()) refreshParticipants(room);
       };
+      const participantName = (participant: RemoteParticipant) =>
+        participant.name?.trim() || participant.identity;
+      const shareKey = (participant: RemoteParticipant) =>
+        readScreenShareCompanion(participant)
+          ? `companion:${participant.identity}`
+          : `participant:${participant.identity}`;
+      const emitRemoteShare = (
+        participant: RemoteParticipant,
+        active: boolean,
+      ) => {
+        if (!effectsReady()) return;
+        const key = shareKey(participant);
+        if (active) {
+          if (remoteShareKeysRef.current.has(key)) return;
+          remoteShareKeysRef.current.add(key);
+        } else {
+          if (!remoteShareKeysRef.current.delete(key)) return;
+        }
+        emitCommunicationEffect({
+          type: active ? "screen-share-started" : "screen-share-stopped",
+          actor: "remote",
+          displayName: participantName(participant),
+        });
+      };
       room
-        .on(RoomEvent.ParticipantConnected, sync)
-        .on(RoomEvent.ParticipantDisconnected, sync)
+        .on(RoomEvent.ParticipantConnected, (participant) => {
+          sync();
+          if (!effectsReady()) return;
+          if (readScreenShareCompanion(participant)) {
+            emitRemoteShare(participant, true);
+            return;
+          }
+          emitCommunicationEffect({
+            type: "voice-remote-joined",
+            participantId: participant.identity,
+            displayName: participantName(participant),
+          });
+        })
+        .on(RoomEvent.ParticipantDisconnected, (participant) => {
+          sync();
+          if (!effectsReady()) return;
+          if (readScreenShareCompanion(participant)) {
+            emitRemoteShare(participant, false);
+            return;
+          }
+          emitRemoteShare(participant, false);
+          emitCommunicationEffect({
+            type: "voice-remote-left",
+            participantId: participant.identity,
+            displayName: participantName(participant),
+          });
+        })
         .on(RoomEvent.ActiveSpeakersChanged, sync)
         .on(RoomEvent.ConnectionQualityChanged, (quality, participant) => {
           if (isCurrentRoom() && participant.isLocal) {
@@ -746,13 +838,33 @@ export function useVoiceRoom(
         })
         .on(RoomEvent.TrackMuted, sync)
         .on(RoomEvent.TrackUnmuted, sync)
-        .on(RoomEvent.TrackPublished, (publication: RemoteTrackPublication) => {
-          if (!desktopApp && isScreenShareSource(publication.source)) {
-            publication.setSubscribed(false);
-          }
-          sync();
-        })
-        .on(RoomEvent.TrackUnpublished, sync)
+        .on(
+          RoomEvent.TrackPublished,
+          (
+            publication: RemoteTrackPublication,
+            participant: RemoteParticipant,
+          ) => {
+            if (!desktopApp && isScreenShareSource(publication.source)) {
+              publication.setSubscribed(false);
+            }
+            if (publication.source === Track.Source.ScreenShare) {
+              emitRemoteShare(participant, true);
+            }
+            sync();
+          },
+        )
+        .on(
+          RoomEvent.TrackUnpublished,
+          (
+            publication: RemoteTrackPublication,
+            participant: RemoteParticipant,
+          ) => {
+            if (publication.source === Track.Source.ScreenShare) {
+              emitRemoteShare(participant, false);
+            }
+            sync();
+          },
+        )
         .on(RoomEvent.LocalTrackPublished, sync)
         .on(RoomEvent.LocalTrackUnpublished, sync)
         .on(
@@ -816,10 +928,20 @@ export function useVoiceRoom(
           sync();
         })
         .on(RoomEvent.Reconnecting, () => {
-          if (isCurrentRoom()) setStatus("reconnecting");
+          if (isCurrentRoom()) {
+            setStatus("reconnecting");
+            if (effectsReady()) {
+              emitCommunicationEffect({ type: "signal-interrupted" });
+            }
+          }
         })
         .on(RoomEvent.Reconnected, () => {
-          if (isCurrentRoom()) setStatus("connected");
+          if (isCurrentRoom()) {
+            setStatus("connected");
+            if (effectsReady()) {
+              emitCommunicationEffect({ type: "signal-restored" });
+            }
+          }
         })
         .on(RoomEvent.AudioPlaybackStatusChanged, (playing) => {
           if (isCurrentRoom()) setAudioPlaybackBlocked(!playing);
@@ -862,7 +984,11 @@ export function useVoiceRoom(
         })
         .on(RoomEvent.Disconnected, () => {
           if (roomRef.current !== room) return;
+          if (effectReadyRoomsRef.current.has(room)) {
+            emitCommunicationEffect({ type: "signal-interrupted" });
+          }
           roomRef.current = null;
+          remoteShareKeysRef.current.clear();
           void resetVoiceMedia();
           setStatus("disconnected");
           setChannel(null);
@@ -876,6 +1002,7 @@ export function useVoiceRoom(
       addParticipantSound,
       clearParticipantSounds,
       desktopApp,
+      emitCommunicationEffect,
     ],
   );
 
@@ -889,6 +1016,8 @@ export function useVoiceRoom(
     } = {}) => {
       const room = roomRef.current;
       roomRef.current = null;
+      remoteShareKeysRef.current.clear();
+      localScreenShareLiveRef.current = false;
       const screenStop = resetVoiceMedia(preserveLocalControls);
       if (!preserveJoinState) {
         setStatus("disconnected");
@@ -904,12 +1033,26 @@ export function useVoiceRoom(
     [resetVoiceMedia],
   );
 
-  const leave = useCallback(async () => {
-    joinOperationRef.current += 1;
-    discardPreparedJoin();
-    stopJoiningMicrophone(joiningMicrophoneRef);
-    await disconnectCurrentRoom();
-  }, [discardPreparedJoin, disconnectCurrentRoom]);
+  const leave = useCallback(
+    async (reason: VoiceLeaveReason = "user") => {
+      const announceLeave =
+        reason === "user" &&
+        (status === "connected" || status === "reconnecting");
+      joinOperationRef.current += 1;
+      discardPreparedJoin();
+      stopJoiningMicrophone(joiningMicrophoneRef);
+      await disconnectCurrentRoom();
+      if (announceLeave) {
+        emitCommunicationEffect({ type: "voice-self-left" });
+      }
+    },
+    [
+      discardPreparedJoin,
+      disconnectCurrentRoom,
+      emitCommunicationEffect,
+      status,
+    ],
+  );
 
   const join = useCallback(
     async (nextChannel: Channel) => {
@@ -977,6 +1120,10 @@ export function useVoiceRoom(
         setConnectionQuality("excellent");
         setStatus("connected");
         setJoinStage(null);
+        emitCommunicationEffect({
+          type: "voice-self-joined",
+          channelName: nextChannel.name,
+        });
         return;
       }
 
@@ -1046,6 +1193,7 @@ export function useVoiceRoom(
         setError(
           "Bakbak could not close the previous voice room. Try joining again.",
         );
+        emitCommunicationEffect({ type: "signal-interrupted" });
         timing.finish("error");
         return;
       }
@@ -1178,6 +1326,20 @@ export function useVoiceRoom(
         remoteAudio.setMuted(deafenedRef.current);
         soundboardAudio.setDeafened(deafenedRef.current);
         refreshParticipants(room);
+        remoteShareKeysRef.current.clear();
+        room.remoteParticipants.forEach((participant) => {
+          const companion = readScreenShareCompanion(participant);
+          if (companion) {
+            remoteShareKeysRef.current.add(`companion:${participant.identity}`);
+          } else if (
+            participant.getTrackPublication(Track.Source.ScreenShare)
+          ) {
+            remoteShareKeysRef.current.add(
+              `participant:${participant.identity}`,
+            );
+          }
+        });
+        effectReadyRoomsRef.current.add(room);
         setConnectionQuality(
           normalizeVoiceConnectionQuality(
             room.localParticipant.connectionQuality,
@@ -1186,6 +1348,10 @@ export function useVoiceRoom(
         setStatus("connected");
         setJoinStage(null);
         setAudioPlaybackBlocked(!room.canPlaybackAudio);
+        emitCommunicationEffect({
+          type: "voice-self-joined",
+          channelName: nextChannel.name,
+        });
         timing.finish("connected");
         void refreshDevices();
       } catch (caught) {
@@ -1202,6 +1368,7 @@ export function useVoiceRoom(
         setStatus("error");
         setJoinStage(null);
         setError(describeVoiceConnectionError(caught, attemptedRelay));
+        emitCommunicationEffect({ type: "signal-interrupted" });
         timing.finish("error");
       }
     },
@@ -1210,6 +1377,7 @@ export function useVoiceRoom(
       audioOutput,
       discardPreparedJoin,
       disconnectCurrentRoom,
+      emitCommunicationEffect,
       mode,
       remoteAudio,
       refreshDevices,
@@ -1544,6 +1712,7 @@ export function useVoiceRoom(
           setScreenShareSourceLabel(session.sourceLabel);
           setScreenShareAudioPublished(session.audioPublished);
           setScreenShareState("sharing");
+          markLocalScreenShareStarted();
           if (includeAudio && !session.audioPublished) {
             setScreenShareError(
               "The screen is live without audio because the selected source or system did not provide it.",
@@ -1568,6 +1737,7 @@ export function useVoiceRoom(
         if (!publication) throw new Error("Screen video did not publish.");
         setScreenShareState("sharing");
         setScreenShareSourceLabel("Shared screen");
+        markLocalScreenShareStarted();
         refreshParticipants(room);
       } catch (caught) {
         if (
@@ -1578,11 +1748,14 @@ export function useVoiceRoom(
         }
         setScreenShareState("error");
         setScreenShareError(describeScreenShareError(caught));
+        emitCommunicationEffect({ type: "signal-interrupted" });
       }
     },
     [
       channel,
       desktopApp,
+      emitCommunicationEffect,
+      markLocalScreenShareStarted,
       refreshParticipants,
       screenShareCapabilities,
       screenShareState,
@@ -1615,9 +1788,10 @@ export function useVoiceRoom(
         setScreenShareState("idle");
         setScreenShareAudioPublished(false);
         setScreenShareSourceLabel(null);
+        markLocalScreenShareStopped();
       }
     }
-  }, [refreshParticipants, screenShareState]);
+  }, [markLocalScreenShareStopped, refreshParticipants, screenShareState]);
 
   const dispatchSound = useCallback(
     async (soundId: string) => {

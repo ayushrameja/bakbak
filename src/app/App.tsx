@@ -29,10 +29,6 @@ import {
   EMPTY_MESSAGE_DRAFT,
   segmentsToFallback,
 } from "../features/chat/message-content";
-import {
-  enableIncomingMessageSound,
-  playIncomingMessageSound,
-} from "../features/chat/message-sound";
 import { MemberPanel } from "../features/server/MemberPanel";
 import {
   loadAppearancePreferences,
@@ -41,7 +37,14 @@ import {
   type AppearancePreferences,
   type SurfaceStyle,
   type ThemePreference,
+  type VisualPreset,
 } from "../features/settings/appearance-preferences";
+import {
+  loadInterfaceSoundPreferences,
+  saveInterfaceSoundPreferences,
+  type InterfaceSoundPreferences,
+} from "../features/settings/interface-sound-preferences";
+import { interfaceSoundController } from "../features/settings/interface-sounds";
 import {
   loadLayoutPreferences,
   saveLayoutPreferences,
@@ -52,6 +55,7 @@ import {
   type ProfileSaveInput,
   type SettingsSection,
 } from "../features/settings/SettingsPage";
+import { SignalRedEffects } from "../features/settings/SignalRedEffects";
 import { Soundboard } from "../features/soundboard/Soundboard";
 import { useSoundboardCatalog } from "../features/soundboard/useSoundboardCatalog";
 import { ScreenShareDialog } from "../features/voice/ScreenShareDialog";
@@ -59,6 +63,7 @@ import { VoiceControlDock } from "../features/voice/VoiceControlDock";
 import { VoiceRoom } from "../features/voice/VoiceRoom";
 import { useVoiceRoom } from "../features/voice/useVoiceRoom";
 import { sessionToAppUser, signOut } from "../lib/auth-service";
+import type { CommunicationEffectEvent } from "../lib/communication-effects";
 import {
   createLiveChannel,
   reconcileChannels,
@@ -127,6 +132,12 @@ export default function App() {
     useState<SettingsSection>("profile");
   const [appearancePreferences, setAppearancePreferences] =
     useState<AppearancePreferences>(() => loadAppearancePreferences());
+  const [interfaceSoundPreferences, setInterfaceSoundPreferences] =
+    useState<InterfaceSoundPreferences>(() => loadInterfaceSoundPreferences());
+  const [communicationEffect, setCommunicationEffect] = useState<{
+    event: CommunicationEffectEvent;
+    sequence: number;
+  } | null>(null);
   const [layoutPreferences, setLayoutPreferences] = useState<LayoutPreferences>(
     () => loadLayoutPreferences(),
   );
@@ -154,6 +165,8 @@ export default function App() {
   const avatarObjectUrlsRef = useRef(new Map<string, string>());
   const profileMediaCacheRef = useRef(new ProfileMediaCache());
   const profileUpdateSequenceRef = useRef(new Map<string, number>());
+  const voiceDeafenedRef = useRef(false);
+  const communicationSequenceRef = useRef(0);
   const signedInUserId = user?.id;
   const signedInUserEmail = user?.email ?? "";
   const workspaceServerId = workspace?.server.id;
@@ -161,11 +174,35 @@ export default function App() {
     workspaceServerId,
     appConfig.dataMode,
   );
+  const handleCommunicationEffect = useCallback(
+    (event: CommunicationEffectEvent) => {
+      if (document.documentElement.dataset.visualPreset === "signal-red") {
+        communicationSequenceRef.current += 1;
+        setCommunicationEffect({
+          event,
+          sequence: communicationSequenceRef.current,
+        });
+      }
+      interfaceSoundController.play(event, {
+        deafened: voiceDeafenedRef.current,
+      });
+    },
+    [],
+  );
   const voice = useVoiceRoom(
     user ?? mockCurrentUser,
     appConfig.dataMode,
     soundboard,
+    handleCommunicationEffect,
   );
+
+  useEffect(() => {
+    voiceDeafenedRef.current = voice.deafened;
+  }, [voice.deafened]);
+
+  useEffect(() => {
+    interfaceSoundController.setPreferences(interfaceSoundPreferences);
+  }, [interfaceSoundPreferences]);
 
   const rememberAvatarUrl = useCallback(
     (userId: string, url: string | null) => {
@@ -196,7 +233,7 @@ export default function App() {
   );
 
   useEffect(() => {
-    const enable = () => void enableIncomingMessageSound();
+    const enable = () => void interfaceSoundController.activate();
     window.addEventListener("pointerdown", enable, { once: true });
     window.addEventListener("keydown", enable, { once: true });
     return () => {
@@ -635,12 +672,12 @@ export default function App() {
           );
         }
         if (shouldPlayIncomingMessageSound(message, signedInUserId)) {
-          void playIncomingMessageSound();
+          handleCommunicationEffect({ type: "message-received" });
         }
       }),
     );
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
-  }, [channelKey, signedInUserId]);
+  }, [channelKey, handleCommunicationEffect, signedInUserId]);
 
   const selectedMessageChannelId =
     selectedChannel?.kind === "text" ? selectedChannel.id : null;
@@ -923,6 +960,21 @@ export default function App() {
     persistAppearancePreferences(next);
   }
 
+  function handleVisualPresetChange(visualPreset: VisualPreset) {
+    const next = { ...appearancePreferences, visualPreset };
+    setCommunicationEffect(null);
+    setAppearancePreferences(next);
+    persistAppearancePreferences(next);
+  }
+
+  function handleInterfaceSoundPreferencesChange(
+    preferences: InterfaceSoundPreferences,
+  ) {
+    setInterfaceSoundPreferences(preferences);
+    interfaceSoundController.setPreferences(preferences);
+    saveInterfaceSoundPreferences(preferences);
+  }
+
   function updateLayoutPreferences(
     updater: (current: LayoutPreferences) => LayoutPreferences,
   ) {
@@ -982,7 +1034,7 @@ export default function App() {
 
   async function handleSignOut() {
     setSoundboardOpen(false);
-    await voice.leave();
+    await voice.leave("sign-out");
     await presenceSubscriptionRef.current?.setVoiceChannel(null);
     if (appConfig.dataMode === "live") {
       try {
@@ -1083,6 +1135,16 @@ export default function App() {
         layoutPreferences.rightPanelVisible ? "visible" : "hidden"
       }
     >
+      <SignalRedEffects
+        active={appearancePreferences.visualPreset === "signal-red"}
+        paused={
+          activeView === "settings" ||
+          channelDialog !== null ||
+          screenShareDialogOpen ||
+          openProfile !== null
+        }
+        effect={communicationEffect}
+      />
       {layoutPreferences.leftPanelVisible ? (
         <ChannelSidebar
           server={workspace.server}
@@ -1265,6 +1327,7 @@ export default function App() {
         <SettingsPage
           user={user}
           section={settingsSection}
+          visualPreset={appearancePreferences.visualPreset}
           themePreference={appearancePreferences.theme}
           accent={appearancePreferences.accent}
           accentIntensity={appearancePreferences.intensity}
@@ -1276,6 +1339,7 @@ export default function App() {
           selectedOutputId={voice.selectedOutputId}
           selectedCameraId={voice.selectedCameraId}
           soundboardVolume={voice.soundboardVolume}
+          interfaceSoundPreferences={interfaceSoundPreferences}
           inputError={voice.inputDeviceError}
           outputError={voice.outputDeviceError}
           cameraError={voice.cameraDeviceError}
@@ -1292,6 +1356,7 @@ export default function App() {
           onLeaveVoice={() => void voice.leave()}
           onSectionChange={setSettingsSection}
           onThemeChange={handleThemeChange}
+          onVisualPresetChange={handleVisualPresetChange}
           onAccentChange={handleAccentChange}
           onSurfaceStyleChange={handleSurfaceStyleChange}
           onSaveProfile={handleSaveProfile}
@@ -1300,6 +1365,12 @@ export default function App() {
           onOutputChange={(deviceId) => void voice.setOutputDevice(deviceId)}
           onCameraChange={(deviceId) => void voice.setCameraDevice(deviceId)}
           onSoundboardVolumeChange={voice.setSoundboardVolume}
+          onInterfaceSoundPreferencesChange={
+            handleInterfaceSoundPreferencesChange
+          }
+          onPreviewInterfaceSound={(category) =>
+            void interfaceSoundController.preview(category)
+          }
           onSignOut={handleSignOut}
           onClose={() => setActiveView("channel")}
         />

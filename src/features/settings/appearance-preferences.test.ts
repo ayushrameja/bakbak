@@ -3,11 +3,13 @@ import {
   APPEARANCE_PREFERENCES_KEY,
   LEGACY_APPEARANCE_PREFERENCES_KEY,
   V2_APPEARANCE_PREFERENCES_KEY,
+  V3_APPEARANCE_PREFERENCES_KEY,
   accentTokens,
   applyAppearancePreferences,
   applyThemePreference,
   initializeAppearancePreferences,
   loadAppearancePreferences,
+  setAppearancePreferences,
   setThemePreference,
 } from "./appearance-preferences";
 
@@ -56,6 +58,7 @@ describe("appearance preferences", () => {
       accent: "coral",
       intensity: 100,
       surfaceStyle: "warm",
+      visualPreset: "standard",
     });
   });
 
@@ -69,6 +72,26 @@ describe("appearance preferences", () => {
       accent: "purple",
       intensity: 65,
       surfaceStyle: "warm",
+      visualPreset: "standard",
+    });
+  });
+
+  it("migrates v3 appearance values to the Standard visual preset", () => {
+    window.localStorage.setItem(
+      V3_APPEARANCE_PREFERENCES_KEY,
+      JSON.stringify({
+        theme: "dark",
+        accent: "yellow",
+        intensity: 55,
+        surfaceStyle: "flat",
+      }),
+    );
+    expect(loadAppearancePreferences()).toEqual({
+      theme: "dark",
+      accent: "yellow",
+      intensity: 55,
+      surfaceStyle: "flat",
+      visualPreset: "standard",
     });
   });
 
@@ -78,6 +101,7 @@ describe("appearance preferences", () => {
       accent: "coral",
       intensity: 100,
       surfaceStyle: "warm",
+      visualPreset: "standard",
     });
 
     window.localStorage.setItem(APPEARANCE_PREFERENCES_KEY, "not-json");
@@ -86,6 +110,7 @@ describe("appearance preferences", () => {
       accent: "coral",
       intensity: 100,
       surfaceStyle: "warm",
+      visualPreset: "standard",
     });
   });
 
@@ -106,6 +131,7 @@ describe("appearance preferences", () => {
       accent: "coral",
       intensity: 100,
       surfaceStyle: "warm",
+      visualPreset: "standard",
     });
 
     applyThemePreference("dark", {
@@ -170,6 +196,7 @@ describe("appearance preferences", () => {
         accent: "red",
         intensity: 75,
         surfaceStyle: "flat",
+        visualPreset: "standard",
       },
       { document },
     );
@@ -183,5 +210,71 @@ describe("appearance preferences", () => {
       document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
         ?.content,
     ).toBe("#090909");
+  });
+
+  it("applies fixed Signal Red tokens without overwriting standard choices", () => {
+    const preferences = {
+      theme: "light",
+      accent: "purple",
+      intensity: 45,
+      surfaceStyle: "warm",
+      visualPreset: "signal-red",
+    } as const;
+
+    applyAppearancePreferences(preferences, { document });
+
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    expect(document.documentElement).toHaveAttribute(
+      "data-visual-preset",
+      "signal-red",
+    );
+    expect(document.documentElement).toHaveAttribute("data-accent", "red");
+    expect(document.documentElement).toHaveAttribute(
+      "data-surface-style",
+      "flat",
+    );
+    expect(document.documentElement.style.getPropertyValue("--accent")).toBe(
+      "#e5062f",
+    );
+    expect(preferences).toMatchObject({
+      theme: "light",
+      accent: "purple",
+      intensity: 45,
+      surfaceStyle: "warm",
+    });
+  });
+
+  it("restores the exact standard choices after Signal Red is disabled", () => {
+    const signalPreferences = {
+      theme: "light",
+      accent: "purple",
+      intensity: 45,
+      surfaceStyle: "warm",
+      visualPreset: "signal-red",
+    } as const;
+    setAppearancePreferences(signalPreferences, {
+      document,
+      storage: window.localStorage,
+    });
+
+    const stored = loadAppearancePreferences();
+    setAppearancePreferences(
+      { ...stored, visualPreset: "standard" },
+      { document, storage: window.localStorage },
+    );
+
+    expect(loadAppearancePreferences()).toEqual({
+      theme: "light",
+      accent: "purple",
+      intensity: 45,
+      surfaceStyle: "warm",
+      visualPreset: "standard",
+    });
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+    expect(document.documentElement).toHaveAttribute("data-accent", "purple");
+    expect(document.documentElement).toHaveAttribute(
+      "data-surface-style",
+      "warm",
+    );
   });
 });
