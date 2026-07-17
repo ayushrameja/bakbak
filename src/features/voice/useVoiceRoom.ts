@@ -6,6 +6,7 @@ import {
   Room,
   RoomEvent,
   Track,
+  VideoQuality,
   VideoPresets,
   createLocalAudioTrack,
   supportsAudioOutputSelection,
@@ -77,10 +78,19 @@ import {
   listenForScreenShareLifecycle,
   startScreenShare as startNativeScreenShare,
   stopScreenShare as stopNativeScreenShare,
+  updateScreenShareSettings as updateNativeScreenShareSettings,
   type ScreenShareCapabilities,
   type ScreenShareLifecycleState,
+  type ScreenShareSourceKind,
 } from "./screen-share-service";
+import {
+  loadScreenShareSettings,
+  saveScreenShareSettings,
+  screenShareBitrate,
+  type ScreenShareSettings,
+} from "./screen-share-preferences";
 import { chooseFeaturedScreenShare } from "./screen-share-selection";
+import { screenShareSubscriptionPolicy } from "./screen-share-subscription";
 
 export type VoiceConnectionStatus =
   "disconnected" | "connecting" | "connected" | "reconnecting" | "error";
@@ -135,6 +145,7 @@ export interface VoiceScreenShare {
   joinedAt: string | null;
   track: VideoTrackLike | null;
   audioPublished: boolean;
+  paused: boolean;
 }
 
 export interface VideoTrackLike {
@@ -168,12 +179,16 @@ interface VoiceRoomState {
   selectedScreenShareId: string | null;
   screenShareAvailable: boolean;
   screenShareAudioAvailable: boolean;
+  screenShareCustomPicker: boolean;
   screenShareUnavailableReason: string | null;
   screenShareState: ScreenShareLifecycleState;
   screenShareEnabled: boolean;
   screenSharePending: boolean;
   screenShareAudioPublished: boolean;
   screenShareSourceLabel: string | null;
+  screenShareSourceKind: ScreenShareSourceKind | null;
+  screenShareSettings: ScreenShareSettings;
+  screenShareSettingsPending: boolean;
   screenShareError: string | null;
   soundboard: SoundboardCatalogController;
   soundboardVolume: number;
@@ -190,9 +205,14 @@ interface VoiceRoomState {
   setOutputDevice: (deviceId: string) => Promise<void>;
   setCameraDevice: (deviceId: string) => Promise<void>;
   toggleCamera: () => Promise<void>;
-  startScreenShare: (includeAudio: boolean) => Promise<void>;
+  startScreenShare: (
+    includeAudio: boolean,
+    settings: ScreenShareSettings,
+    sourceId?: string | null,
+  ) => Promise<void>;
+  updateScreenShareSettings: (settings: ScreenShareSettings) => Promise<void>;
   stopScreenShare: () => Promise<void>;
-  selectScreenShare: (shareId: string) => void;
+  selectScreenShare: (shareId: string | null) => void;
   dispatchSound: (soundId: string) => Promise<void>;
   stopLocalSounds: () => Promise<void>;
   setSoundboardVolume: (volume: number) => void;
@@ -249,6 +269,11 @@ export function useVoiceRoom(
       available: false,
       nativeCapture: false,
       systemAudio: false,
+      sourceKinds: [],
+      resolutions: [480, 720, 1080],
+      frameRates: [15, 30, 60],
+      dynamicSettings: false,
+      customPicker: false,
       reason: "Screen sharing is available in the installed desktop app.",
     });
   const [screenShareState, setScreenShareState] =
@@ -258,6 +283,12 @@ export function useVoiceRoom(
   const [screenShareSourceLabel, setScreenShareSourceLabel] = useState<
     string | null
   >(null);
+  const [screenShareSourceKind, setScreenShareSourceKind] =
+    useState<ScreenShareSourceKind | null>(null);
+  const [screenShareSettings, setScreenShareSettings] =
+    useState<ScreenShareSettings>(loadScreenShareSettings);
+  const [screenShareSettingsPending, setScreenShareSettingsPending] =
+    useState(false);
   const [screenShareError, setScreenShareError] = useState<string | null>(null);
   const [soundboardVolume, setSoundboardVolumeState] = useState(
     initialPreferences.soundboardVolume,
@@ -467,6 +498,11 @@ export function useVoiceRoom(
               typeof navigator.mediaDevices?.getDisplayMedia === "function",
             nativeCapture: false,
             systemAudio: false,
+            sourceKinds: ["display", "window"],
+            resolutions: [480, 720, 1080],
+            frameRates: [15, 30, 60],
+            dynamicSettings: false,
+            customPicker: false,
             reason:
               "Matched system audio is unavailable. Video-only sharing may still work.",
           });
@@ -490,13 +526,26 @@ export function useVoiceRoom(
       const shareId = readScreenShareCompanion(participant)
         ? participant.identity
         : `${participant.identity}:screen`;
-      const selected = shareId === selectedScreenShareId;
-      participant
-        .getTrackPublication(Track.Source.ScreenShare)
-        ?.setSubscribed(selected);
+      const policy = screenShareSubscriptionPolicy(
+        shareId,
+        selectedScreenShareId,
+      );
+      const videoPublication = participant.getTrackPublication(
+        Track.Source.ScreenShare,
+      );
+      videoPublication?.setSubscribed(policy.subscribeVideo);
+      if (
+        videoPublication &&
+        "setVideoQuality" in videoPublication &&
+        typeof videoPublication.setVideoQuality === "function"
+      ) {
+        videoPublication.setVideoQuality(
+          policy.videoQuality === "high" ? VideoQuality.HIGH : VideoQuality.LOW,
+        );
+      }
       participant
         .getTrackPublication(Track.Source.ScreenShareAudio)
-        ?.setSubscribed(selected);
+        ?.setSubscribed(policy.subscribeAudio);
     });
   }, [desktopApp, screenShares, selectedScreenShareId]);
 
@@ -523,6 +572,8 @@ export function useVoiceRoom(
       setScreenShareState(event.state);
       setScreenShareAudioPublished(event.audioPublished);
       setScreenShareSourceLabel(event.sourceLabel);
+      setScreenShareSourceKind(event.sourceKind);
+      if (event.settings) setScreenShareSettings(event.settings);
       if (event.state === "sharing") markLocalScreenShareStarted();
       if (event.state === "error") {
         markLocalScreenShareStopped();
@@ -530,6 +581,7 @@ export function useVoiceRoom(
         screenShareSessionRef.current = null;
         setScreenShareAudioPublished(false);
         setScreenShareSourceLabel(null);
+        setScreenShareSourceKind(null);
         setScreenShareError(
           event.message ?? "Bakbak could not continue the screen share.",
         );
@@ -539,6 +591,7 @@ export function useVoiceRoom(
         screenShareSessionRef.current = null;
         setScreenShareAudioPublished(false);
         setScreenShareSourceLabel(null);
+        setScreenShareSourceKind(null);
       }
     }).then((dispose) => {
       if (disposed) dispose();
@@ -678,6 +731,8 @@ export function useVoiceRoom(
       setScreenShareState("idle");
       setScreenShareAudioPublished(false);
       setScreenShareSourceLabel(null);
+      setScreenShareSourceKind(null);
+      setScreenShareSettingsPending(false);
       setScreenShareError(null);
       return screenStop;
     },
@@ -1665,7 +1720,11 @@ export function useVoiceRoom(
   ]);
 
   const startScreenShare = useCallback(
-    async (includeAudio: boolean) => {
+    async (
+      includeAudio: boolean,
+      requestedSettings: ScreenShareSettings,
+      sourceId?: string | null,
+    ) => {
       if (
         status !== "connected" ||
         !desktopApp ||
@@ -1683,6 +1742,8 @@ export function useVoiceRoom(
       setScreenShareError(null);
       setScreenShareAudioPublished(false);
       setScreenShareSourceLabel(null);
+      setScreenShareSourceKind(null);
+      setScreenShareSettingsPending(false);
 
       try {
         if (screenShareCapabilities.nativeCapture) {
@@ -1698,6 +1759,8 @@ export function useVoiceRoom(
             serverUrl: token.serverUrl,
             token: token.token,
             includeAudio: includeAudio && screenShareCapabilities.systemAudio,
+            settings: requestedSettings,
+            ...(sourceId === undefined ? {} : { sourceId }),
           });
           if (
             screenShareOperationRef.current !== operationId ||
@@ -1710,7 +1773,10 @@ export function useVoiceRoom(
           }
           screenShareSessionRef.current = session.sessionId;
           setScreenShareSourceLabel(session.sourceLabel);
+          setScreenShareSourceKind(session.sourceKind);
           setScreenShareAudioPublished(session.audioPublished);
+          setScreenShareSettings(session.settings);
+          saveScreenShareSettings(session.settings);
           setScreenShareState("sharing");
           markLocalScreenShareStarted();
           if (includeAudio && !session.audioPublished) {
@@ -1723,7 +1789,22 @@ export function useVoiceRoom(
 
         const publication = await room.localParticipant.setScreenShareEnabled(
           true,
-          { audio: false, contentHint: "detail" },
+          {
+            audio: false,
+            contentHint: "detail",
+            resolution: {
+              width: requestedSettings.resolution * (16 / 9),
+              height: requestedSettings.resolution,
+              frameRate: requestedSettings.frameRate,
+            },
+          },
+          {
+            screenShareEncoding: {
+              maxBitrate: screenShareBitrate(requestedSettings),
+              maxFramerate: requestedSettings.frameRate,
+            },
+            simulcast: true,
+          },
         );
         if (
           screenShareOperationRef.current !== operationId ||
@@ -1737,6 +1818,9 @@ export function useVoiceRoom(
         if (!publication) throw new Error("Screen video did not publish.");
         setScreenShareState("sharing");
         setScreenShareSourceLabel("Shared screen");
+        setScreenShareSourceKind("window");
+        setScreenShareSettings(requestedSettings);
+        saveScreenShareSettings(requestedSettings);
         markLocalScreenShareStarted();
         refreshParticipants(room);
       } catch (caught) {
@@ -1761,6 +1845,40 @@ export function useVoiceRoom(
       screenShareState,
       status,
     ],
+  );
+
+  const updateScreenShareSettings = useCallback(
+    async (requestedSettings: ScreenShareSettings) => {
+      if (
+        status !== "connected" ||
+        !screenShareSessionRef.current ||
+        screenShareSettingsPending ||
+        (screenShareState !== "sharing" && screenShareState !== "paused")
+      ) {
+        return;
+      }
+      const previous = screenShareSettings;
+      setScreenShareSettingsPending(true);
+      setScreenShareError(null);
+      try {
+        const updated = await updateNativeScreenShareSettings(
+          screenShareSessionRef.current,
+          requestedSettings,
+        );
+        setScreenShareSettings(updated);
+        saveScreenShareSettings(updated);
+      } catch (caught) {
+        setScreenShareSettings(previous);
+        setScreenShareError(
+          caught instanceof Error
+            ? caught.message
+            : "Bakbak could not apply the new screen quality.",
+        );
+      } finally {
+        setScreenShareSettingsPending(false);
+      }
+    },
+    [screenShareSettings, screenShareSettingsPending, screenShareState, status],
   );
 
   const stopScreenShare = useCallback(async () => {
@@ -1788,6 +1906,8 @@ export function useVoiceRoom(
         setScreenShareState("idle");
         setScreenShareAudioPublished(false);
         setScreenShareSourceLabel(null);
+        setScreenShareSourceKind(null);
+        setScreenShareSettingsPending(false);
         markLocalScreenShareStopped();
       }
     }
@@ -1927,7 +2047,7 @@ export function useVoiceRoom(
     setSoundboardVolumeState(Math.max(0, Math.min(1, volume)));
   }, []);
 
-  const selectScreenShare = useCallback((shareId: string) => {
+  const selectScreenShare = useCallback((shareId: string | null) => {
     setSelectedScreenShareId(shareId);
   }, []);
 
@@ -1986,15 +2106,20 @@ export function useVoiceRoom(
     screenShareAvailable: desktopApp && screenShareCapabilities.available,
     screenShareAudioAvailable:
       desktopApp && screenShareCapabilities.systemAudio,
+    screenShareCustomPicker: desktopApp && screenShareCapabilities.customPicker,
     screenShareUnavailableReason: screenShareCapabilities.reason,
     screenShareState,
-    screenShareEnabled: screenShareState === "sharing",
+    screenShareEnabled:
+      screenShareState === "sharing" || screenShareState === "paused",
     screenSharePending:
       screenShareState === "selecting" ||
       screenShareState === "starting" ||
       screenShareState === "stopping",
     screenShareAudioPublished,
     screenShareSourceLabel,
+    screenShareSourceKind,
+    screenShareSettings,
+    screenShareSettingsPending,
     screenShareError,
     soundboard,
     soundboardVolume,
@@ -2012,6 +2137,7 @@ export function useVoiceRoom(
     setCameraDevice,
     toggleCamera,
     startScreenShare,
+    updateScreenShareSettings,
     stopScreenShare,
     selectScreenShare,
     dispatchSound,
@@ -2219,6 +2345,7 @@ function screenShareParticipantToView(
     audioPublished: Boolean(
       participant.getTrackPublication(Track.Source.ScreenShareAudio),
     ),
+    paused: Boolean(publication?.isMuted),
   };
 }
 
@@ -2238,6 +2365,7 @@ function regularParticipantScreenShareToView(
     audioPublished: Boolean(
       participant.getTrackPublication(Track.Source.ScreenShareAudio),
     ),
+    paused: Boolean(publication.isMuted),
   };
 }
 

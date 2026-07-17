@@ -164,19 +164,6 @@ export function VoiceControlDock({
     };
   }, [moreOpen]);
 
-  useEffect(() => {
-    if (!soundboardOpen) return;
-    const closeSoundboard = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || document.querySelector('[role="dialog"]'))
-        return;
-      event.preventDefault();
-      onToggleSoundboard();
-      soundboardButtonRef.current?.focus();
-    };
-    document.addEventListener("keydown", closeSoundboard);
-    return () => document.removeEventListener("keydown", closeSoundboard);
-  }, [onToggleSoundboard, soundboardOpen]);
-
   if (!active || !voice.channel) return null;
 
   return (

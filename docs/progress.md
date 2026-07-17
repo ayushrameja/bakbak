@@ -2227,3 +2227,89 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed. `file` identified 
   default, exercise the plan 0009 audio matrix, verify remote cues disappear
   under deafen while self/Message/Status remain, and then mark installed-app
   acceptance complete.
+
+## 2026-07-17 — Cross-platform screen sharing and focused call media
+
+- **Completed:** Added plan 0010 and superseded the old 1080p/15 and
+  always-featured-share contracts. Added validated, device-local 480p/720p/1080p
+  and 15/30/60-fps presenter settings with exact 0.8–8 Mbps ceilings, 1080p/60
+  first-run defaults, pre-share controls, source-audio opt-in reset, active
+  local-share controls, and rollback to the last working profile. Extended the
+  Tauri capability/start/update contracts and paused lifecycle. macOS now
+  explicitly permits Display, Window, and Application picker modes, updates
+  ScreenCaptureKit configuration live, and freezes/mutes after two seconds
+  without a complete frame. Added the Windows Screens/Applications picker,
+  native handle revalidation and privacy filtering, in-memory WGC thumbnails,
+  free-threaded D3D11 capture, frame throttling/reconfiguration, I420 delivery,
+  and build-gated WASAPI process-loopback audio that includes an application
+  process tree or excludes Bakbak for a display. Replaced the featured stage
+  with a participant/share gallery and click-to-focus stage, low/high selective
+  subscriptions, source-audio focus policy, fixed bounded media rows,
+  `object-fit: contain`, Tauri OS fullscreen cleanup, and paused-source UI.
+  Moved soundboard dismissal to the application layer with outside-pointer,
+  Escape, channel/disconnect/modal cleanup, opener-focus restoration, and an
+  owned-modal marker.
+- **Decisions:** The existing least-privilege LiveKit companion and token
+  authorization boundary remain unchanged; no database, migration, or Edge
+  Function contract changed. Source audio is never persisted and unsupported
+  Windows builds stay video-only rather than falling back to unrelated output.
+  Gallery shares subscribe to low video/no audio, while only the focused share
+  requests high video and source audio. Windows validates renderer-provided
+  handles against current native sources before capture. Windows currently
+  uses D3D11 capture/staging readback with CPU BGRA scaling/color conversion;
+  fully GPU-side conversion remains open instead of being misreported as done.
+- **Validation:**
+  - `pnpm check` — passed Prettier, ESLint, renderer/Node typechecks, 46 Vitest
+    files with 238 tests, 12 Node tests including the bottom-edge CSS
+    regression, version synchronization, production build, and compiled secret
+    scan. Vite retained the existing non-blocking large-chunk warning; final
+    output was 104.83 kB CSS and 1,192.68 kB JavaScript.
+  - `cargo test --manifest-path src-tauri/Cargo.toml --locked screen_share
+--lib` — passed all 10 macOS/shared screen-share tests, including picker
+    modes, all nine quality/bitrate profiles, aspect fitting, first-frame
+    timeout, and pause handling.
+  - `cargo check --manifest-path src-tauri/Cargo.toml --locked` and `cargo fmt
+--manifest-path src-tauri/Cargo.toml --check` — passed.
+  - `cargo xwin check --manifest-path src-tauri/Cargo.toml --locked --target
+x86_64-pc-windows-msvc --tests` — passed, including compilation of the
+    Windows-only source-filter, process-audio mode/build gate, throttle,
+    resize, pause, sample conversion, preview, and cleanup paths.
+  - `cargo xwin test --manifest-path src-tauri/Cargo.toml --locked --target
+x86_64-pc-windows-msvc --no-run` — failed at the cross-host clang linker
+    after the MSVC runtime was aligned: upstream LiveKit/WebRTC `PeerContext`
+    symbols use incompatible class/struct mangling in this cargo-xwin link.
+    This does not prove a native MSVC failure, so a real Windows runner remains
+    required.
+  - `deno task --config supabase/deno.json check` and `deno task --config
+supabase/deno.json test` — passed lint/typecheck and all 15 unchanged token
+    regression tests.
+  - `pnpm tauri:build:local` — passed the Apple Silicon app-only release build,
+    renderer build, ad-hoc signing, and bundle creation. Notarization was
+    skipped because Apple credentials are unavailable.
+  - `codesign --verify --deep --strict --verbose=2
+src-tauri/target/release/bundle/macos/Bakbak.app`, `file`, and `lipo -info`
+    — passed; the bundle contains a valid arm64 Mach-O. The pre-existing local
+    app artifact was 36,812 KiB and the rebuilt artifact is 36,976 KiB, an
+    increase of 164 KiB (about 0.45%). These are app-bundle measurements, not
+    the still-pending cross-platform installer comparison.
+  - Final `pnpm security:scan` and `git diff --check` — passed for the
+    renderer, native bundle, and working diff.
+- **Documentation updated:** Added plan 0010; updated plans 0001, 0003, and
+  0006; documented the source picker, quality, pause, Windows capture/audio,
+  gallery/focus/fullscreen, subscription, and soundboard ownership contracts in
+  `docs/architecture.md`; and updated README compatibility/setup notes.
+- **Known limitations:** A native Windows MSVC/Tauri build and runtime test were
+  not available on this macOS host; cargo-xwin type-checks the Windows code but
+  its LiveKit C++ cross-link fails as recorded above. Windows frame scaling and
+  color conversion are CPU-side after D3D11 staging readback, not yet the
+  requested GPU pipeline. The full updater-enabled `pnpm tauri build` was
+  skipped because `TAURI_SIGNING_PRIVATE_KEY` is absent. The macOS/Windows
+  installed-client matrix remains pending for every source kind, matched audio
+  isolation, minimize/pause/resume, live quality changes, multiple presenters,
+  member/share focus, fullscreen/Escape, 1024×680 and 1280×800 bottom-edge
+  visibility, deafen/output/volume behavior, soundboard focus behavior, sender
+  statistics, and installer-size comparison.
+- **Next:** Run a native Windows x64 CI or workstation build, finish GPU-side
+  Windows scaling/color conversion, then execute the bidirectional macOS
+  14+/Windows installed-client matrix and record sender resolution/FPS stats
+  plus signed installer sizes before marking plans 0003/0010 complete.

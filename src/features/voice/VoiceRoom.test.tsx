@@ -6,6 +6,19 @@ import { mockSoundboardController } from "../soundboard/mock-catalog";
 import { VoiceRoom } from "./VoiceRoom";
 import type { useVoiceRoom } from "./useVoiceRoom";
 
+const tauriWindow = vi.hoisted(() => ({
+  isFullscreen: vi.fn().mockResolvedValue(false),
+  setFullscreen: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({
+  isTauri: () => true,
+}));
+
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => tauriWindow,
+}));
+
 const user: AppUser = {
   id: "user-1",
   displayName: "Ayu",
@@ -69,12 +82,16 @@ function createVoice(
     selectedScreenShareId: null,
     screenShareAvailable: false,
     screenShareAudioAvailable: false,
+    screenShareCustomPicker: false,
     screenShareUnavailableReason: null,
     screenShareState: "idle",
     screenShareEnabled: false,
     screenSharePending: false,
     screenShareAudioPublished: false,
     screenShareSourceLabel: null,
+    screenShareSourceKind: null,
+    screenShareSettings: { resolution: 1080, frameRate: 60 },
+    screenShareSettingsPending: false,
     screenShareError: null,
     soundboard: mockSoundboardController,
     soundboardVolume: 0.7,
@@ -92,6 +109,7 @@ function createVoice(
     setCameraDevice: vi.fn().mockResolvedValue(undefined),
     toggleCamera: vi.fn().mockResolvedValue(undefined),
     startScreenShare: vi.fn().mockResolvedValue(undefined),
+    updateScreenShareSettings: vi.fn().mockResolvedValue(undefined),
     stopScreenShare: vi.fn().mockResolvedValue(undefined),
     selectScreenShare: vi.fn(),
     dispatchSound: vi.fn().mockResolvedValue(undefined),
@@ -103,6 +121,80 @@ function createVoice(
 }
 
 describe("VoiceRoom", () => {
+  it("focuses any share, toggles OS fullscreen, and keeps focus after Escape", async () => {
+    const screenShare = {
+      id: "share-1",
+      ownerId: friend.id,
+      displayName: friend.displayName,
+      isLocal: false,
+      joinedAt: null,
+      track: { attach: vi.fn(), detach: vi.fn() },
+      audioPublished: true,
+      paused: false,
+    };
+    const voice = createVoice({ screenShares: [screenShare] });
+    const { rerender } = render(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={voice}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: `Focus ${friend.displayName}'s screen share`,
+      }),
+    );
+    expect(voice.selectScreenShare).toHaveBeenCalledWith(screenShare.id);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Enter fullscreen" }),
+    );
+    expect(tauriWindow.setFullscreen).toHaveBeenCalledWith(true);
+    await userEvent.keyboard("{Escape}");
+    expect(tauriWindow.setFullscreen).toHaveBeenCalledWith(false);
+    expect(screen.getByLabelText("Screen share stage")).toBeVisible();
+
+    rerender(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={createVoice({ screenShares: [] })}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+    expect(
+      screen.queryByText("Source minimized or paused"),
+    ).not.toBeInTheDocument();
+    expect(document.querySelector(".voice-media-gallery")).toBeVisible();
+  });
+
+  it("retains the last share frame under a paused-source label", () => {
+    const screenShare = {
+      id: "share-1",
+      ownerId: friend.id,
+      displayName: friend.displayName,
+      isLocal: false,
+      joinedAt: null,
+      track: { attach: vi.fn(), detach: vi.fn() },
+      audioPublished: false,
+      paused: true,
+    };
+    render(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={createVoice({ screenShares: [screenShare] })}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText(`${friend.displayName} screen`)).toBeVisible();
+    expect(screen.getByText("Source minimized or paused")).toBeVisible();
+  });
+
   it("does not render a manual pre-join or initial connection surface", () => {
     const { container } = render(
       <VoiceRoom
@@ -168,6 +260,7 @@ describe("VoiceRoom", () => {
       joinedAt: null,
       track: { attach: vi.fn(), detach: vi.fn() },
       audioPublished: false,
+      paused: false,
     };
     const voice = createVoice({
       screenShares: [screenShare],
@@ -189,9 +282,7 @@ describe("VoiceRoom", () => {
       "is-connected",
       "has-screen-share",
     );
-    expect(container.querySelector(".participant-grid")).toHaveClass(
-      "is-strip",
-    );
+    expect(container.querySelector(".voice-media-gallery")).toBeVisible();
   });
 
   it("waits for the persistent control bar to undeafen before audio recovery", () => {
@@ -260,7 +351,7 @@ describe("VoiceRoom", () => {
       />,
     );
 
-    expect(container.querySelector(".participant-grid")).toHaveClass("is-solo");
+    expect(container.querySelector(".voice-media-gallery")).toBeVisible();
     expect(container.querySelector(".participant-card .avatar")).toBeNull();
     expect(
       screen.getByRole("img", { name: "Ayu is playing Latest" }),

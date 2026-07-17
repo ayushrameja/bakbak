@@ -72,10 +72,15 @@ LiveKit secret or Supabase service-role key there.
   audio when the checkbox is explicitly enabled. Grant Bakbak access under
   **System Settings → Privacy & Security → Screen & System Audio Recording** and
   relaunch after changing permission.
-- macOS 12.3–13 and the current Windows build use a
-  video-only WebView picker when available. Matched Windows process/display
-  audio remains disabled until its native implementation and Windows CI matrix
-  are complete.
+- macOS 12.3–13 use the video-only WebView picker when available.
+- Windows uses Bakbak's native Screens/Applications picker and
+  `Windows.Graphics.Capture` video path with temporary in-memory previews.
+  Windows build 20348 or newer can include only the selected application's
+  process tree, or display audio with Bakbak's process tree excluded. Older
+  builds keep video sharing available and disable the audio checkbox; Bakbak
+  never substitutes unrelated system output.
+- Presenters can choose 480p, 720p, or 1080p and 15, 30, or 60 fps before
+  sharing and change those caps while a native share is live.
 - Browser and Linux clients do not publish or view shares in this phase.
 - Protected or DRM-controlled content can be black or silent by operating
   system policy.

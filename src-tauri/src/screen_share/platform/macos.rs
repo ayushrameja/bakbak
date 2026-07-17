@@ -2,10 +2,10 @@ use std::{
     borrow::Cow,
     mem,
     sync::{
-        Arc,
+        Arc, Mutex as StdMutex,
         atomic::{AtomicBool, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use livekit::webrtc::{
@@ -16,38 +16,64 @@ use livekit::webrtc::{
 };
 use screencapturekit::{
     async_api::AsyncSCContentSharingPicker,
+    cm::{CMSampleBufferSCExt, SCFrameStatus},
     content_sharing_picker::{
-        SCContentSharingPickerConfiguration, SCPickedSource, SCPickerOutcome,
+        SCContentSharingPickerConfiguration, SCContentSharingPickerMode, SCPickedSource,
+        SCPickerOutcome,
     },
     prelude::*,
     stream::delegate_trait::SCStreamDelegateTrait,
 };
 use tokio::{sync::mpsc, task::JoinHandle, time::timeout};
 
-use super::super::ScreenShareCapabilities;
+use super::super::{
+    SCREEN_SHARE_FRAME_RATES, SCREEN_SHARE_RESOLUTIONS, ScreenShareCapabilities,
+    ScreenShareSettings, ScreenShareSourceKind,
+};
 
 const FIRST_FRAME_TIMEOUT: Duration = Duration::from_secs(5);
+const PAUSED_SOURCE_TIMEOUT: Duration = Duration::from_secs(2);
 
 pub struct PreparedCapture {
     pub source_label: String,
+    pub source_kind: ScreenShareSourceKind,
     pub width: u32,
     pub height: u32,
     pub include_audio: bool,
+    settings: ScreenShareSettings,
+    source_width: u32,
+    source_height: u32,
     filter: SCContentFilter,
     termination_sender: mpsc::UnboundedSender<String>,
+    pause_sender: mpsc::UnboundedSender<bool>,
 }
 
 pub struct CaptureSession {
     stream: SCStream,
     audio_task: Option<JoinHandle<()>>,
+    pause_task: JoinHandle<()>,
+    source_width: u32,
+    source_height: u32,
+    capture_audio: bool,
 }
 
 impl CaptureSession {
     pub async fn stop(mut self) {
         let _ = self.stream.stop_capture();
+        self.pause_task.abort();
         if let Some(task) = self.audio_task.take() {
             task.abort();
         }
+    }
+
+    pub async fn update_settings(&self, settings: ScreenShareSettings) -> Result<(), String> {
+        let (width, height) =
+            fit_to_resolution(self.source_width, self.source_height, settings.resolution);
+        let configuration =
+            stream_configuration(width, height, settings.frame_rate, self.capture_audio);
+        self.stream
+            .update_configuration(&configuration)
+            .map_err(|error| format!("macOS could not apply the new screen quality: {error}"))
     }
 }
 
@@ -58,6 +84,15 @@ pub fn capabilities() -> ScreenShareCapabilities {
         available: true,
         native_capture: supports_picker,
         system_audio: supports_picker,
+        source_kinds: vec![
+            ScreenShareSourceKind::Display,
+            ScreenShareSourceKind::Window,
+            ScreenShareSourceKind::Application,
+        ],
+        resolutions: SCREEN_SHARE_RESOLUTIONS.to_vec(),
+        frame_rates: SCREEN_SHARE_FRAME_RATES.to_vec(),
+        dynamic_settings: supports_picker,
+        custom_picker: false,
         reason: (!supports_picker).then(|| {
             "Matched system audio requires macOS 14 or later; Bakbak will use video-only sharing."
                 .to_string()
@@ -67,9 +102,14 @@ pub fn capabilities() -> ScreenShareCapabilities {
 
 pub async fn pick_source(
     include_audio: bool,
+    settings: ScreenShareSettings,
+    _source_id: Option<&str>,
     termination_sender: mpsc::UnboundedSender<String>,
+    pause_sender: mpsc::UnboundedSender<bool>,
 ) -> Result<PreparedCapture, String> {
-    let configuration = SCContentSharingPickerConfiguration::new();
+    let mut configuration = SCContentSharingPickerConfiguration::default_from_system();
+    configuration.set_allowed_picker_modes(&allowed_picker_modes());
+    configuration.set_allows_changing_selected_content(false);
     let picked = match AsyncSCContentSharingPicker::show(&configuration).await {
         SCPickerOutcome::Picked(result) => result,
         SCPickerOutcome::Cancelled => {
@@ -80,22 +120,35 @@ pub async fn pick_source(
         }
     };
     let (source_width, source_height) = picked.pixel_size();
-    let (width, height) = fit_1080p(source_width, source_height);
-    let source_label = match picked.source() {
-        SCPickedSource::Window(title) => title,
-        SCPickedSource::Application(name) => name,
-        SCPickedSource::Display(id) => format!("Display {id}"),
-        SCPickedSource::Unknown => "Shared screen".to_string(),
+    let (width, height) = fit_to_resolution(source_width, source_height, settings.resolution);
+    let (source_label, source_kind) = match picked.source() {
+        SCPickedSource::Window(title) => (title, ScreenShareSourceKind::Window),
+        SCPickedSource::Application(name) => (name, ScreenShareSourceKind::Application),
+        SCPickedSource::Display(id) => (format!("Display {id}"), ScreenShareSourceKind::Display),
+        SCPickedSource::Unknown => ("Shared screen".to_string(), ScreenShareSourceKind::Window),
     };
 
     Ok(PreparedCapture {
         source_label,
+        source_kind,
         width,
         height,
         include_audio,
+        settings,
+        source_width,
+        source_height,
         filter: picked.filter(),
         termination_sender,
+        pause_sender,
     })
+}
+
+fn allowed_picker_modes() -> [SCContentSharingPickerMode; 3] {
+    [
+        SCContentSharingPickerMode::SingleDisplay,
+        SCContentSharingPickerMode::SingleWindow,
+        SCContentSharingPickerMode::SingleApplication,
+    ]
 }
 
 pub async fn start_capture(
@@ -120,18 +173,12 @@ async fn start_capture_attempt(
     audio_source: Option<NativeAudioSource>,
     capture_audio: bool,
 ) -> Result<CaptureSession, String> {
-    let frame_interval = CMTime::new(1, 15);
-    let configuration = SCStreamConfiguration::new()
-        .with_width(prepared.width)
-        .with_height(prepared.height)
-        .with_pixel_format(PixelFormat::BGRA)
-        .with_shows_cursor(true)
-        .with_queue_depth(3)
-        .with_minimum_frame_interval(&frame_interval)
-        .with_captures_audio(capture_audio && audio_source.is_some())
-        .with_sample_rate(48_000)
-        .with_channel_count(2)
-        .with_excludes_current_process_audio(true);
+    let configuration = stream_configuration(
+        prepared.width,
+        prepared.height,
+        prepared.settings.frame_rate,
+        capture_audio && audio_source.is_some(),
+    );
 
     let (audio_sender, mut audio_receiver) = mpsc::channel::<OwnedAudioFrame>(8);
     let audio_task = audio_source.map(|source| {
@@ -149,12 +196,24 @@ async fn start_capture_attempt(
     });
 
     let (first_frame_sender, mut first_frame_receiver) = mpsc::unbounded_channel();
+    let first_frame_seen = Arc::new(AtomicBool::new(false));
+    let paused = Arc::new(AtomicBool::new(false));
+    let last_healthy_frame = Arc::new(StdMutex::new(Instant::now()));
+    let pause_task = start_pause_watchdog(
+        first_frame_seen.clone(),
+        paused.clone(),
+        last_healthy_frame.clone(),
+        prepared.pause_sender.clone(),
+    );
 
     let handler = CaptureHandler {
         video_source,
         audio_sender: audio_task.as_ref().map(|_| audio_sender),
         first_frame_sender,
-        first_frame_seen: Arc::new(AtomicBool::new(false)),
+        first_frame_seen,
+        paused,
+        last_healthy_frame,
+        pause_sender: prepared.pause_sender.clone(),
     };
     let delegate = CaptureDelegate {
         termination_sender: prepared.termination_sender.clone(),
@@ -164,6 +223,7 @@ async fn start_capture_attempt(
         .add_output_handler(handler.clone(), SCStreamOutputType::Screen)
         .is_none()
     {
+        pause_task.abort();
         abort_audio_task(&audio_task);
         return Err("macOS rejected Bakbak's screen video output.".to_string());
     }
@@ -172,10 +232,12 @@ async fn start_capture_attempt(
             .add_output_handler(handler, SCStreamOutputType::Audio)
             .is_none()
     {
+        pause_task.abort();
         abort_audio_task(&audio_task);
         return Err("macOS rejected the selected source's audio output.".to_string());
     }
     if let Err(error) = stream.start_capture() {
+        pause_task.abort();
         abort_audio_task(&audio_task);
         return Err(format!(
             "macOS could not start capture. Allow Bakbak under Privacy & Security > Screen & System Audio Recording, then relaunch it: {error}"
@@ -183,17 +245,79 @@ async fn start_capture_attempt(
     }
     if let Err(error) = wait_for_first_frame(&mut first_frame_receiver, FIRST_FRAME_TIMEOUT).await {
         let _ = stream.stop_capture();
+        pause_task.abort();
         abort_audio_task(&audio_task);
         return Err(error);
     }
 
-    Ok(CaptureSession { stream, audio_task })
+    let audio_active = capture_audio && audio_task.is_some();
+    Ok(CaptureSession {
+        stream,
+        audio_task,
+        pause_task,
+        source_width: prepared.source_width,
+        source_height: prepared.source_height,
+        capture_audio: audio_active,
+    })
+}
+
+fn stream_configuration(
+    width: u32,
+    height: u32,
+    frame_rate: u32,
+    capture_audio: bool,
+) -> SCStreamConfiguration {
+    let frame_interval = CMTime::new(1, frame_rate as i32);
+    SCStreamConfiguration::new()
+        .with_width(width)
+        .with_height(height)
+        .with_pixel_format(PixelFormat::BGRA)
+        .with_shows_cursor(true)
+        .with_queue_depth(3)
+        .with_minimum_frame_interval(&frame_interval)
+        .with_captures_audio(capture_audio)
+        .with_sample_rate(48_000)
+        .with_channel_count(2)
+        .with_excludes_current_process_audio(true)
 }
 
 fn abort_audio_task(audio_task: &Option<JoinHandle<()>>) {
     if let Some(task) = audio_task {
         task.abort();
     }
+}
+
+fn start_pause_watchdog(
+    first_frame_seen: Arc<AtomicBool>,
+    paused: Arc<AtomicBool>,
+    last_healthy_frame: Arc<StdMutex<Instant>>,
+    pause_sender: mpsc::UnboundedSender<bool>,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_millis(250));
+        loop {
+            interval.tick().await;
+            if !first_frame_seen.load(Ordering::Acquire) {
+                continue;
+            }
+            let elapsed = last_healthy_frame
+                .lock()
+                .map(|last| last.elapsed())
+                .unwrap_or_default();
+            if should_enter_paused(
+                first_frame_seen.load(Ordering::Acquire),
+                paused.load(Ordering::Acquire),
+                elapsed,
+            ) && !paused.swap(true, Ordering::AcqRel)
+            {
+                let _ = pause_sender.send(true);
+            }
+        }
+    })
+}
+
+fn should_enter_paused(frame_seen: bool, paused: bool, elapsed: Duration) -> bool {
+    frame_seen && !paused && elapsed >= PAUSED_SOURCE_TIMEOUT
 }
 
 async fn wait_for_first_frame(
@@ -228,12 +352,38 @@ struct CaptureHandler {
     audio_sender: Option<mpsc::Sender<OwnedAudioFrame>>,
     first_frame_sender: mpsc::UnboundedSender<()>,
     first_frame_seen: Arc<AtomicBool>,
+    paused: Arc<AtomicBool>,
+    last_healthy_frame: Arc<StdMutex<Instant>>,
+    pause_sender: mpsc::UnboundedSender<bool>,
 }
 
 impl SCStreamOutputTrait for CaptureHandler {
     fn did_output_sample_buffer(&self, sample: CMSampleBuffer, output_type: SCStreamOutputType) {
         match output_type {
             SCStreamOutputType::Screen => {
+                let frame_status = sample.frame_status();
+                if matches!(
+                    frame_status,
+                    None | Some(SCFrameStatus::Complete) | Some(SCFrameStatus::Started)
+                ) {
+                    if let Ok(mut last) = self.last_healthy_frame.lock() {
+                        *last = Instant::now();
+                    }
+                    if self.paused.swap(false, Ordering::AcqRel) {
+                        let _ = self.pause_sender.send(false);
+                    }
+                }
+                if matches!(
+                    frame_status,
+                    Some(
+                        SCFrameStatus::Idle
+                            | SCFrameStatus::Blank
+                            | SCFrameStatus::Suspended
+                            | SCFrameStatus::Stopped
+                    )
+                ) {
+                    return;
+                }
                 let Some(pixel_buffer) = sample.image_buffer() else {
                     return;
                 };
@@ -334,11 +484,14 @@ fn float_to_i16(value: f32) -> i16 {
     (value.clamp(-1.0, 1.0) * i16::MAX as f32).round() as i16
 }
 
-fn fit_1080p(width: u32, height: u32) -> (u32, u32) {
+fn fit_to_resolution(width: u32, height: u32, resolution: u32) -> (u32, u32) {
     if width == 0 || height == 0 {
-        return (1920, 1080);
+        return (resolution * 16 / 9, resolution);
     }
-    let scale = (1920.0 / width as f64).min(1080.0 / height as f64).min(1.0);
+    let max_width = resolution as f64 * 16.0 / 9.0;
+    let scale = (max_width / width as f64)
+        .min(resolution as f64 / height as f64)
+        .min(1.0);
     let even = |value: f64| ((value.round() as u32).max(2) / 2) * 2;
     (even(width as f64 * scale), even(height as f64 * scale))
 }
@@ -349,9 +502,52 @@ mod tests {
 
     #[test]
     fn caps_capture_dimensions_without_changing_aspect_ratio() {
-        assert_eq!(fit_1080p(3840, 2160), (1920, 1080));
-        assert_eq!(fit_1080p(1280, 720), (1280, 720));
-        assert_eq!(fit_1080p(2560, 1440), (1920, 1080));
+        assert_eq!(fit_to_resolution(3840, 2160, 1080), (1920, 1080));
+        assert_eq!(fit_to_resolution(1280, 720, 1080), (1280, 720));
+        assert_eq!(fit_to_resolution(2560, 1440, 720), (1280, 720));
+        assert_eq!(fit_to_resolution(1920, 1200, 480), (768, 480));
+    }
+
+    #[test]
+    fn explicitly_allows_display_window_and_application_picker_modes() {
+        let modes = allowed_picker_modes();
+        assert!(modes.contains(&SCContentSharingPickerMode::SingleDisplay));
+        assert!(modes.contains(&SCContentSharingPickerMode::SingleWindow));
+        assert!(modes.contains(&SCContentSharingPickerMode::SingleApplication));
+    }
+
+    #[test]
+    fn pauses_only_after_two_seconds_without_a_complete_frame() {
+        assert!(!should_enter_paused(false, false, Duration::from_secs(3)));
+        assert!(!should_enter_paused(
+            true,
+            false,
+            Duration::from_millis(1_999)
+        ));
+        assert!(should_enter_paused(true, false, Duration::from_secs(2)));
+        assert!(!should_enter_paused(true, true, Duration::from_secs(3)));
+    }
+
+    #[test]
+    fn idle_and_blank_statuses_are_not_forwarded_as_new_frames() {
+        assert!(matches!(
+            Some(SCFrameStatus::Idle),
+            Some(
+                SCFrameStatus::Idle
+                    | SCFrameStatus::Blank
+                    | SCFrameStatus::Suspended
+                    | SCFrameStatus::Stopped
+            )
+        ));
+        assert!(!matches!(
+            Some(SCFrameStatus::Complete),
+            Some(
+                SCFrameStatus::Idle
+                    | SCFrameStatus::Blank
+                    | SCFrameStatus::Suspended
+                    | SCFrameStatus::Stopped
+            )
+        ));
     }
 
     #[test]

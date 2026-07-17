@@ -57,6 +57,10 @@ import {
 } from "../features/settings/SettingsPage";
 import { SignalRedEffects } from "../features/settings/SignalRedEffects";
 import { Soundboard } from "../features/soundboard/Soundboard";
+import {
+  shouldDismissSoundboardForEscape,
+  shouldDismissSoundboardForPointer,
+} from "../features/soundboard/soundboard-dismissal";
 import { useSoundboardCatalog } from "../features/soundboard/useSoundboardCatalog";
 import { ScreenShareDialog } from "../features/voice/ScreenShareDialog";
 import { VoiceControlDock } from "../features/voice/VoiceControlDock";
@@ -142,6 +146,7 @@ export default function App() {
     () => loadLayoutPreferences(),
   );
   const [soundboardOpen, setSoundboardOpen] = useState(false);
+  const soundboardDrawerRef = useRef<HTMLElement>(null);
   const [channelDialog, setChannelDialog] = useState<ChannelDialogState>(null);
   const [drafts, setDrafts] = useState<Record<string, MessageDraft>>({});
   const [screenShareDialogOpen, setScreenShareDialogOpen] = useState(false);
@@ -539,6 +544,62 @@ export default function App() {
   useEffect(() => {
     if (voice.status === "disconnected") setSoundboardOpen(false);
   }, [voice.status]);
+
+  useEffect(() => {
+    if (!soundboardOpen) return;
+    const closeFromEscape = (event: KeyboardEvent) => {
+      if (
+        !shouldDismissSoundboardForEscape(
+          event.key,
+          Boolean(
+            document.querySelector(
+              '[data-overlay-owner="soundboard"][role="dialog"]',
+            ),
+          ),
+        )
+      ) {
+        return;
+      }
+      event.preventDefault();
+      const opener = document.querySelector<HTMLElement>(
+        '[aria-controls="soundboard-drawer"][aria-expanded="true"]',
+      );
+      setSoundboardOpen(false);
+      window.setTimeout(() => opener?.focus(), 0);
+    };
+    const closeFromOutsidePointer = (event: PointerEvent) => {
+      if (
+        !shouldDismissSoundboardForPointer(
+          event.target,
+          soundboardDrawerRef.current,
+        )
+      ) {
+        return;
+      }
+      setSoundboardOpen(false);
+    };
+    document.addEventListener("keydown", closeFromEscape);
+    document.addEventListener("pointerdown", closeFromOutsidePointer, true);
+    return () => {
+      document.removeEventListener("keydown", closeFromEscape);
+      document.removeEventListener(
+        "pointerdown",
+        closeFromOutsidePointer,
+        true,
+      );
+    };
+  }, [soundboardOpen]);
+
+  useEffect(() => {
+    if (
+      activeView !== "channel" ||
+      channelDialog ||
+      screenShareDialogOpen ||
+      openProfile
+    ) {
+      setSoundboardOpen(false);
+    }
+  }, [activeView, channelDialog, openProfile, screenShareDialogOpen]);
 
   const selectedChannel = useMemo(
     () =>
@@ -1051,6 +1112,7 @@ export default function App() {
 
   function handleSelectChannel(channel: Channel) {
     setOpenProfile(null);
+    setSoundboardOpen(false);
     selectedChannelIdRef.current = channel.id;
     setSelectedChannelId(channel.id);
     setActiveView("channel");
@@ -1245,6 +1307,7 @@ export default function App() {
         </div>
         {soundboardOpen && visibleVoice.status === "connected" ? (
           <aside
+            ref={soundboardDrawerRef}
             className={`soundboard-drawer ${selectedChannel.kind === "text" ? "is-over-text" : ""}`}
             id="soundboard-drawer"
             aria-label="Soundboard"
@@ -1301,7 +1364,11 @@ export default function App() {
         <ScreenShareDialog
           audioAvailable={voice.screenShareAudioAvailable}
           audioUnavailableReason={voice.screenShareUnavailableReason}
-          onStart={(includeAudio) => void voice.startScreenShare(includeAudio)}
+          customPicker={voice.screenShareCustomPicker}
+          initialSettings={voice.screenShareSettings}
+          onStart={(includeAudio, settings, sourceId) =>
+            void voice.startScreenShare(includeAudio, settings, sourceId)
+          }
           onClose={() => setScreenShareDialogOpen(false)}
         />
       ) : null}

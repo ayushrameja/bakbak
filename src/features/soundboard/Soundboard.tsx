@@ -289,6 +289,7 @@ function EditSoundModal({
     <Modal
       title="Edit sound"
       description="Everyone in this server will see the new label, emoji, and category."
+      overlayOwner="soundboard"
       onClose={onClose}
     >
       <form

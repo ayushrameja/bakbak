@@ -5,41 +5,40 @@ import { ScreenShareStage } from "./ScreenShareStage";
 import type { VoiceScreenShare } from "./useVoiceRoom";
 
 const first = share("share-1", "Mira", "2026-07-12T10:00:00.000Z");
-const second = share("share-2", "Jo", "2026-07-12T10:01:00.000Z");
-
 describe("ScreenShareStage", () => {
-  it("keeps one featured share and lets the viewer switch presenters", async () => {
-    const onSelect = vi.fn();
-    const { rerender } = render(
+  it("renders a focused share and returns to the gallery", async () => {
+    const onBack = vi.fn();
+    render(
       <ScreenShareStage
-        shares={[first, second]}
-        selectedId={first.id}
+        share={first}
         localSourceLabel={null}
-        onSelect={onSelect}
+        settings={{ resolution: 1080, frameRate: 60 }}
+        settingsPending={false}
+        fullscreen={false}
+        onBack={onBack}
+        onToggleFullscreen={vi.fn()}
+        onUpdateSettings={vi.fn()}
       />,
     );
 
     expect(screen.getByLabelText("Mira screen")).toBeVisible();
-    await userEvent.click(screen.getByRole("button", { name: /Jo/ }));
-    expect(onSelect).toHaveBeenCalledWith(second.id);
-    rerender(
-      <ScreenShareStage
-        shares={[first, second]}
-        selectedId={second.id}
-        localSourceLabel={null}
-        onSelect={onSelect}
-      />,
+    await userEvent.click(
+      screen.getByRole("button", { name: "Return to gallery" }),
     );
-    expect(screen.getByLabelText("Jo screen")).toBeVisible();
+    expect(onBack).toHaveBeenCalledOnce();
   });
 
   it("labels a share without source audio", () => {
     render(
       <ScreenShareStage
-        shares={[first]}
-        selectedId={first.id}
+        share={first}
         localSourceLabel={null}
-        onSelect={vi.fn()}
+        settings={{ resolution: 1080, frameRate: 60 }}
+        settingsPending={false}
+        fullscreen={false}
+        onBack={vi.fn()}
+        onToggleFullscreen={vi.fn()}
+        onUpdateSettings={vi.fn()}
       />,
     );
     expect(screen.getByText("Video only")).toBeVisible();
@@ -59,5 +58,6 @@ function share(
     joinedAt,
     track: { attach: vi.fn(), detach: vi.fn() },
     audioPublished: false,
+    paused: false,
   };
 }
