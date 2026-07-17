@@ -10,23 +10,33 @@ import {
   Volume2,
 } from "lucide-react";
 import { Avatar } from "../../components/Avatar";
+import {
+  ProfileTrigger,
+  type LoadProfileMedia,
+  type OpenProfile,
+} from "../../components/ProfileTrigger";
 import type {
   AppUser,
   Channel,
   ChannelKind,
   DataMode,
   Server,
+  ServerMember,
   VoiceRoomOccupant,
 } from "../../lib/types";
 import { VoiceElapsedTime } from "../voice/VoiceElapsedTime";
 import { SidebarVoicePanel } from "../voice/SidebarVoicePanel";
 import type { useVoiceRoom } from "../voice/useVoiceRoom";
 
+const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
+const ignoreProfileOpen: OpenProfile = () => undefined;
+
 interface ChannelSidebarProps {
   server: Server;
   channels: Channel[];
   selectedChannelId: string;
   user: AppUser;
+  members?: ServerMember[];
   voiceOccupants: VoiceRoomOccupant[];
   unreadChannelIds: ReadonlySet<string>;
   voice: ReturnType<typeof useVoiceRoom>;
@@ -38,6 +48,9 @@ interface ChannelSidebarProps {
   onCreateChannel: (kind: ChannelKind) => void;
   onRenameChannel: (channel: Channel) => void;
   onOpenSettings: () => void;
+  loadProfileMedia?: LoadProfileMedia;
+  onOpenProfile?: OpenProfile;
+  openProfileId?: string | null;
   onToggleSoundboard: () => void;
   onOpenScreenShare: () => void;
 }
@@ -47,6 +60,7 @@ export function ChannelSidebar({
   channels,
   selectedChannelId,
   user,
+  members = [],
   voiceOccupants,
   unreadChannelIds,
   voice,
@@ -58,11 +72,35 @@ export function ChannelSidebar({
   onCreateChannel,
   onRenameChannel,
   onOpenSettings,
+  loadProfileMedia = emptyProfileMediaLoader,
+  onOpenProfile = ignoreProfileOpen,
+  openProfileId = null,
   onToggleSoundboard,
   onOpenScreenShare,
 }: ChannelSidebarProps) {
   const textChannels = channels.filter((channel) => channel.kind === "text");
   const voiceChannels = channels.filter((channel) => channel.kind === "voice");
+  const membersById = new Map(members.map((member) => [member.id, member]));
+  const currentMember = membersById.get(user.id) ?? { ...user, role: "member" };
+  const profileForOccupant = (occupant: VoiceRoomOccupant): ServerMember =>
+    membersById.get(occupant.userId) ?? {
+      id: occupant.userId,
+      displayName: occupant.displayName,
+      email: "",
+      avatarUrl: occupant.avatarUrl,
+      avatarAnimationUrl: null,
+      avatarPath: null,
+      avatarAnimationPath: null,
+      coverUrl: null,
+      coverAnimationUrl: null,
+      coverPath: null,
+      coverAnimationPath: null,
+      coverPositionX: 50,
+      coverPositionY: 50,
+      description: "",
+      status: "online",
+      role: "member",
+    };
 
   return (
     <aside className="channel-sidebar" id="channel-sidebar">
@@ -136,14 +174,28 @@ export function ChannelSidebar({
                     {occupants.length > 0 ? (
                       <div className="channel-voice-people">
                         {occupants.map((occupant) => (
-                          <span key={occupant.userId}>
-                            <i />
-                            <b>
-                              {occupant.displayName}
-                              {occupant.userId === user.id ? " (you)" : ""}
-                            </b>
-                            <VoiceElapsedTime joinedAt={occupant.joinedAt} />
-                          </span>
+                          <ProfileTrigger
+                            className="channel-voice-person"
+                            key={occupant.userId}
+                            member={profileForOccupant(occupant)}
+                            loadMedia={loadProfileMedia}
+                            onOpenProfile={onOpenProfile}
+                            expanded={openProfileId === occupant.userId}
+                            aria-label={`View ${occupant.displayName}'s profile`}
+                          >
+                            {() => (
+                              <>
+                                <i />
+                                <b>
+                                  {occupant.displayName}
+                                  {occupant.userId === user.id ? " (you)" : ""}
+                                </b>
+                                <VoiceElapsedTime
+                                  joinedAt={occupant.joinedAt}
+                                />
+                              </>
+                            )}
+                          </ProfileTrigger>
                         ))}
                       </div>
                     ) : null}
@@ -166,11 +218,32 @@ export function ChannelSidebar({
       />
 
       <div className="user-dock">
-        <Avatar user={user} size="small" showStatus />
-        <div className="user-dock__identity">
-          <strong>{user.displayName}</strong>
-          <span>{voice.status === "connected" ? "In voice" : "Available"}</span>
-        </div>
+        <ProfileTrigger
+          className="user-dock__profile"
+          member={currentMember}
+          loadMedia={loadProfileMedia}
+          onOpenProfile={onOpenProfile}
+          expanded={openProfileId === currentMember.id}
+          aria-label={`View ${user.displayName}'s profile`}
+        >
+          {({ animationUrl, animated }) => (
+            <>
+              <Avatar
+                user={user}
+                size="small"
+                showStatus
+                animationUrl={animationUrl}
+                animated={animated}
+              />
+              <span className="user-dock__identity">
+                <strong>{user.displayName}</strong>
+                <span>
+                  {voice.status === "connected" ? "In voice" : "Available"}
+                </span>
+              </span>
+            </>
+          )}
+        </ProfileTrigger>
         {voice.status !== "disconnected" ? (
           <>
             <button

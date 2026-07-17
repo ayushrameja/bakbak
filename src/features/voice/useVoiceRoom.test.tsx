@@ -321,6 +321,16 @@ const user: AppUser = {
   displayName: "Ayu",
   email: "ayu@example.test",
   avatarUrl: null,
+  avatarAnimationUrl: null,
+  avatarPath: null,
+  avatarAnimationPath: null,
+  coverUrl: null,
+  coverAnimationUrl: null,
+  coverPath: null,
+  coverAnimationPath: null,
+  coverPositionX: 50,
+  coverPositionY: 50,
+  description: "",
   status: "online",
 };
 

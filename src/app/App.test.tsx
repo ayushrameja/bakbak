@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -135,5 +135,42 @@ describe("App navigation state", () => {
     await waitFor(() =>
       expect(callRegion).toHaveTextContent("Voice connected"),
     );
+  });
+
+  it("opens one private profile card from the member panel", async () => {
+    render(<App />);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Enter the preview" }),
+    );
+
+    const memberPanel = screen.getByRole("complementary", { name: "Members" });
+    await userEvent.click(
+      within(memberPanel).getByRole("button", {
+        name: "View Mira's profile",
+      }),
+    );
+    expect(
+      await screen.findByRole("dialog", { name: "Mira" }),
+    ).toHaveTextContent("Makes things");
+    expect(screen.queryByText("mira@bakbak.local")).not.toBeInTheDocument();
+
+    await userEvent.click(
+      within(memberPanel).getByRole("button", {
+        name: "View Jo's profile",
+      }),
+    );
+    expect(await screen.findByRole("dialog", { name: "Jo" })).toHaveTextContent(
+      "suspiciously specific",
+    );
+    expect(
+      screen.queryByRole("dialog", { name: "Mira" }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Close profile" }),
+    );
+    expect(
+      screen.queryByRole("dialog", { name: "Jo" }),
+    ).not.toBeInTheDocument();
   });
 });

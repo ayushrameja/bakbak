@@ -7,7 +7,16 @@ export interface AppUser {
   displayName: string;
   email: string;
   avatarUrl: string | null;
-  avatarPath?: string | null;
+  avatarAnimationUrl: string | null;
+  avatarPath: string | null;
+  avatarAnimationPath: string | null;
+  coverUrl: string | null;
+  coverAnimationUrl: string | null;
+  coverPath: string | null;
+  coverAnimationPath: string | null;
+  coverPositionX: number;
+  coverPositionY: number;
+  description: string;
   status: "online" | "idle" | "offline";
 }
 

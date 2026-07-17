@@ -150,6 +150,9 @@ Prepared voice joins, verified-claims token authorization, microphone reuse,
 compact participant sizing, animated sound activity, and the five-sound safety
 limit are approved under
 `0007-voice-join-acceleration-and-soundboard-polish.md`.
+The Settings focus repair, animated GIF avatar/cover pipeline, plain-text
+descriptions, cover focal points, and anchored private profile cards are
+approved under `0008-rich-animated-profiles.md`.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -194,6 +197,12 @@ limit are approved under
       frontend/database tests under plan 0004.
 - [x] Deploy the plan 0004 avatar/channel migration to hosted Supabase.
 - [ ] Complete the plan 0004 browser-plus-native two-client acceptance run.
+- [x] Add rich global profiles with GIF avatar/cover pairs, descriptions,
+      cover focal positioning, and an accessible anchored profile card under
+      plan 0008.
+- [x] Deploy the plan 0008 rich-profile migration to hosted Supabase.
+- [ ] Complete plan 0008's local pgTAP and live two-account profile/media
+      acceptance matrix.
 - [x] Add a private operator-managed sound bucket with server-member reads.
 - [x] Fetch, revision-cache, and play the hosted sound pack in the renderer.
 - [ ] Evaluate optional global push-to-talk.

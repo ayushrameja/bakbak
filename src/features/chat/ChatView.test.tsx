@@ -14,6 +14,16 @@ const user: AppUser = {
   displayName: "Ayu",
   email: "ayu@example.test",
   avatarUrl: null,
+  avatarAnimationUrl: null,
+  avatarPath: null,
+  avatarAnimationPath: null,
+  coverUrl: null,
+  coverAnimationUrl: null,
+  coverPath: null,
+  coverAnimationPath: null,
+  coverPositionX: 50,
+  coverPositionY: 50,
+  description: "",
   status: "online",
 };
 const member: ServerMember = { ...user, role: "admin" };
@@ -53,6 +63,7 @@ describe("ChatView controlled drafts", () => {
   });
 
   it("inserts a stable mention and renders its current profile name", async () => {
+    const onOpenProfile = vi.fn();
     const renamedMember: ServerMember = {
       ...member,
       id: "user-2",
@@ -79,11 +90,23 @@ describe("ChatView controlled drafts", () => {
         draft={{ text: "@New", mentions: [] }}
         onDraftChange={vi.fn()}
         onSend={vi.fn().mockResolvedValue(undefined)}
+        onOpenProfile={onOpenProfile}
       />,
     );
     expect(screen.getByText("@New Mira")).toHaveAttribute(
       "data-user-id",
       renamedMember.id,
+    );
+    const authorAvatar = screen.getByRole("button", {
+      name: "View Ayu's profile",
+    });
+    await userEvent.click(authorAvatar);
+    expect(onOpenProfile).toHaveBeenLastCalledWith(member, authorAvatar);
+
+    await userEvent.click(screen.getByText("@New Mira"));
+    expect(onOpenProfile).toHaveBeenLastCalledWith(
+      renamedMember,
+      expect.any(HTMLElement),
     );
 
     const composer = screen.getByRole("combobox");

@@ -2048,3 +2048,97 @@ src-tauri/target/release/bundle/macos/Bakbak.app/Contents/MacOS/bakbak` —
   the sidebar, floating dock, and Settings; confirm remote speech stops,
   soundboard playback remains audible, unmute restores speech, and switching
   rooms preserves mute before completing the manual acceptance checkbox.
+
+## 2026-07-17 — Rich animated profiles and Settings focus repair
+
+- **Completed:** Fixed the Settings display-name field losing focus by keeping
+  modal focus setup mount-scoped and reading the latest close callback through
+  a ref. Rebuilt Profile Settings around one live preview and Save action with
+  a 190-character plain-text description, PNG/JPEG/WebP/GIF avatar and cover
+  selection, independent removals, 3:1 cover framing, pointer/keyboard focal
+  positioning, failed-save retry retention, draft discard, and safe preview URL
+  cleanup. Added bounded poster generation with GIF-original retention,
+  transactional multi-object uploads/cleanup, a deduplicated private media
+  cache, Realtime rich-profile reconciliation, and reduced-motion-aware lazy
+  animation loading. Added one accessible anchored view-only profile card to
+  member rows, message authors and mentions, voice identities, and the user
+  dock, with flip/clamp positioning, profile switching, focus containment/
+  restoration, privacy-safe fields, and Warm motion. Added and deployed
+  `202607170001_rich_profiles.sql`, expanding private avatars to 5 MiB/GIF and
+  adding the private 10 MiB `profile-covers` bucket plus description, animation,
+  cover, focal, grants, checks, and Storage policies.
+- **Decisions:** Kept profiles global while deriving presence and role from the
+  current server. Preserved `avatar_path` as the canonical static poster and
+  the legacy `avatar_url` fallback for older clients. Only original GIFs remain
+  animated; every format receives a bounded static poster and animated WebP is
+  intentionally flattened. Compact GIFs load only on hover/focus, cover media
+  only for an open card/editor, and reduced-motion clients never request GIFs.
+  The profile card remains view-only and excludes email, UUID, notes, DMs, and
+  administrative actions.
+- **Validation:**
+  - `pnpm exec vitest run
+src/features/settings/SettingsPage.test.tsx
+src/components/ProfilePopover.test.tsx src/lib/profile-service.test.ts
+src/lib/profile-media-cache.test.ts src/app/App.test.tsx
+src/features/chat/ChatView.test.tsx
+src/features/server/MemberPanel.test.tsx
+src/features/channels/ChannelSidebar.test.tsx
+src/features/voice/VoiceRoom.test.tsx` — passed 9 files and 47 focused
+    tests.
+  - Follow-up `pnpm exec vitest run
+src/features/settings/SettingsPage.test.tsx` — passed all 19 Settings tests
+    after adding dirty-state, failed-save retry, independent removal, pointer
+    focal reset, and staged object-URL cleanup coverage.
+  - Follow-up profile-trigger integration run across App, profile popover,
+    channel sidebar, chat, and voice-room tests — passed 5 files and 25 tests,
+    covering card switching, outside/Escape dismissal, message authors,
+    mentions, voice occupancy, voice participants, and the signed-in user dock.
+  - Initial `pnpm typecheck` after final formatting — failed on two test-only
+    duplicate/tuple annotations; corrected both. Final `pnpm typecheck` passed.
+  - A pre-final `pnpm check` rerun stopped at `format:check` after this progress
+    entry changed; formatted the documentation before the final rerun.
+  - Final `pnpm check` — passed formatting, lint, renderer/Node typechecks, 40
+    Vitest files with 203 tests, 10 release-script tests, synchronized version `0.8.0`,
+    production build, and secret scan. Vite retained the existing non-blocking
+    large-chunk warning; output was 82.82 kB CSS and 1,153.88 kB JavaScript.
+  - Mock-browser QA at 1280×800 and 1024×680 — passed display-name multi-key
+    focus retention, draft discard, responsive editor layout, corrected avatar/
+    cover overlap, right/left card placement and viewport clamping, empty
+    description fallback, Escape dismissal, and exact-trigger focus
+    restoration.
+  - `pnpm dlx supabase@latest status` and `colima status` — local database
+    validation blocked because Docker/Colima is not running. The new 28-assertion
+    pgTAP file is present but was not executed.
+  - Pre-deploy `pnpm dlx supabase@latest migration list` — passed and showed
+    only local `202607170001` missing remotely.
+  - `pnpm dlx supabase@latest db push --dry-run` — passed and reported exactly
+    `202607170001_rich_profiles.sql`.
+  - `pnpm dlx supabase@latest db push` — passed and applied the rich-profile
+    migration to the linked hosted project.
+  - `pnpm dlx supabase@latest db lint --linked` — passed with no schema errors.
+    A concurrent post-deploy migration-list call stalled after initializing and
+    was canceled; the final `db push --dry-run` passed and reported the remote
+    database is up to date.
+  - `pnpm tauri:build:local` — passed and produced the ad-hoc-signed Apple
+    Silicon `Bakbak.app`; notarization was skipped because Apple credentials are
+    unavailable.
+  - `codesign --verify --deep --strict --verbose=4
+src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
+    `file` identified a Mach-O 64-bit arm64 executable and `lipo -archs`
+    returned `arm64`.
+  - Final `pnpm security:scan` and `git diff --check` — passed.
+- **Documentation updated:** Added plan 0008, updated the active v1 plan,
+  documented rich-profile media, Storage/RLS, cache, Realtime, Settings, and
+  popover contracts in `docs/architecture.md`, updated `supabase/README.md`,
+  and appended this canonical progress entry.
+- **Known limitations:** Docker-backed reset/lint/pgTAP was not available, so
+  the new database assertions still need a local run. The live two-account
+  Realtime/media matrix, outsider read denial, slow GIF observation, and
+  installed-app Light/Dark, Warm/Flat, reduced-motion, pointer, and keyboard
+  checks remain pending. The updater-enabled `pnpm tauri build` was skipped
+  because `TAURI_SIGNING_PRIVATE_KEY` is absent; the local app-only build does
+  not exercise updater signing or notarization.
+- **Next:** Start Colima, run Supabase reset/lint/pgTAP, then use two shared-
+  server accounts plus one outsider to verify profile propagation, private
+  media reads/denial, GIF loading, and reduced-motion behavior in the installed
+  application before friend-test distribution.

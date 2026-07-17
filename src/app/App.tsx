@@ -9,6 +9,11 @@ import {
   Volume2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ProfilePopover } from "../components/ProfilePopover";
+import type {
+  LoadProfileMedia,
+  OpenProfile,
+} from "../components/ProfileTrigger";
 import { AuthScreen } from "../features/auth/AuthScreen";
 import { InviteGate } from "../features/auth/InviteGate";
 import { ChannelDialog } from "../features/channels/ChannelDialog";
@@ -64,10 +69,15 @@ import { appConfig } from "../lib/env";
 import { mockCurrentUser, mockMessages, mockWorkspace } from "../lib/mock-data";
 import { getSupabaseClient } from "../lib/supabase";
 import {
+  AVATAR_BUCKET,
+  COVER_BUCKET,
   downloadAvatarObjectUrl,
+  prepareProfileImage,
   saveLiveProfile,
   subscribeToProfileChanges,
+  type ProfileRow,
 } from "../lib/profile-service";
+import { ProfileMediaCache } from "../lib/profile-media-cache";
 import {
   subscribeToServerPresence,
   type ServerPresenceSubscription,
@@ -79,6 +89,7 @@ import type {
   ChannelKind,
   ChatMessage,
   MessageDraft,
+  ServerMember,
   WorkspaceSnapshot,
   VoiceRoomOccupant,
 } from "../lib/types";
@@ -98,6 +109,10 @@ type ChannelDialogState =
   | { mode: "create"; kind: ChannelKind }
   | { mode: "rename"; channel: Channel }
   | null;
+interface OpenProfileState {
+  memberId: string;
+  anchor: HTMLElement;
+}
 
 export default function App() {
   const [user, setUser] = useState<AppUser | null>(null);
@@ -119,6 +134,7 @@ export default function App() {
   const [channelDialog, setChannelDialog] = useState<ChannelDialogState>(null);
   const [drafts, setDrafts] = useState<Record<string, MessageDraft>>({});
   const [screenShareDialogOpen, setScreenShareDialogOpen] = useState(false);
+  const [openProfile, setOpenProfile] = useState<OpenProfileState | null>(null);
   const [needsInvite, setNeedsInvite] = useState(false);
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
   const [unreadChannelIds, setUnreadChannelIds] = useState<ReadonlySet<string>>(
@@ -136,6 +152,7 @@ export default function App() {
     null,
   );
   const avatarObjectUrlsRef = useRef(new Map<string, string>());
+  const profileMediaCacheRef = useRef(new ProfileMediaCache());
   const profileUpdateSequenceRef = useRef(new Map<string, number>());
   const signedInUserId = user?.id;
   const signedInUserEmail = user?.email ?? "";
@@ -160,11 +177,19 @@ export default function App() {
     },
     [],
   );
+  const loadProfileMedia = useCallback<LoadProfileMedia>(
+    (bucket, path) => profileMediaCacheRef.current.load(bucket, path),
+    [],
+  );
+  const handleOpenProfile = useCallback<OpenProfile>((member, anchor) => {
+    setOpenProfile({ memberId: member.id, anchor });
+  }, []);
 
   useEffect(
     () => () => {
       avatarObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
       avatarObjectUrlsRef.current.clear();
+      profileMediaCacheRef.current.clear();
       profileUpdateSequenceRef.current.clear();
     },
     [],
@@ -199,7 +224,16 @@ export default function App() {
               ...next,
               displayName: current.displayName,
               avatarUrl: current.avatarUrl,
-              avatarPath: current.avatarPath ?? null,
+              avatarAnimationUrl: current.avatarAnimationUrl,
+              avatarPath: current.avatarPath,
+              avatarAnimationPath: current.avatarAnimationPath,
+              coverUrl: current.coverUrl,
+              coverAnimationUrl: current.coverAnimationUrl,
+              coverPath: current.coverPath,
+              coverAnimationPath: current.coverAnimationPath,
+              coverPositionX: current.coverPositionX,
+              coverPositionY: current.coverPositionY,
+              description: current.description,
             }
           : next;
       });
@@ -212,6 +246,7 @@ export default function App() {
     if (!signedInUserId) {
       avatarObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
       avatarObjectUrlsRef.current.clear();
+      profileMediaCacheRef.current.clear();
       setWorkspace(null);
       setNeedsInvite(false);
       setSelectedChannelId("");
@@ -221,6 +256,7 @@ export default function App() {
       setLatestMessageIds({});
       setVoiceSessions([]);
       setActiveView("channel");
+      setOpenProfile(null);
       setSoundboardOpen(false);
       return;
     }
@@ -270,7 +306,14 @@ export default function App() {
             if (
               current.displayName === currentMember.displayName &&
               current.avatarUrl === currentMember.avatarUrl &&
-              current.avatarPath === currentMember.avatarPath
+              current.avatarPath === currentMember.avatarPath &&
+              current.avatarAnimationPath ===
+                currentMember.avatarAnimationPath &&
+              current.coverPath === currentMember.coverPath &&
+              current.coverAnimationPath === currentMember.coverAnimationPath &&
+              current.coverPositionX === currentMember.coverPositionX &&
+              current.coverPositionY === currentMember.coverPositionY &&
+              current.description === currentMember.description
             ) {
               return current;
             }
@@ -278,7 +321,13 @@ export default function App() {
               ...current,
               displayName: currentMember.displayName,
               avatarUrl: currentMember.avatarUrl,
-              avatarPath: currentMember.avatarPath ?? null,
+              avatarPath: currentMember.avatarPath,
+              avatarAnimationPath: currentMember.avatarAnimationPath,
+              coverPath: currentMember.coverPath,
+              coverAnimationPath: currentMember.coverAnimationPath,
+              coverPositionX: currentMember.coverPositionX,
+              coverPositionY: currentMember.coverPositionY,
+              description: currentMember.description,
             };
           });
         }
@@ -380,14 +429,11 @@ export default function App() {
                 ...current,
                 members: current.members.map((member) =>
                   member.id === profile.id
-                    ? {
-                        ...member,
-                        displayName: profile.display_name,
-                        avatarPath: profile.avatar_path,
-                        avatarUrl: avatarResolved
-                          ? avatarUrl
-                          : member.avatarUrl,
-                      }
+                    ? richMemberFromProfile(member, profile, {
+                        avatarUrl,
+                        avatarResolved,
+                        mediaCache: profileMediaCacheRef.current,
+                      })
                     : member,
                 ),
               }
@@ -399,6 +445,24 @@ export default function App() {
                 ...current,
                 displayName: profile.display_name,
                 avatarPath: profile.avatar_path,
+                avatarAnimationPath: profile.avatar_animation_path,
+                avatarAnimationUrl:
+                  current.avatarAnimationPath === profile.avatar_animation_path
+                    ? current.avatarAnimationUrl
+                    : null,
+                coverPath: profile.cover_path,
+                coverUrl:
+                  current.coverPath === profile.cover_path
+                    ? current.coverUrl
+                    : null,
+                coverAnimationPath: profile.cover_animation_path,
+                coverAnimationUrl:
+                  current.coverAnimationPath === profile.cover_animation_path
+                    ? current.coverAnimationUrl
+                    : null,
+                coverPositionX: profile.cover_position_x,
+                coverPositionY: profile.cover_position_y,
+                description: profile.description,
                 avatarUrl: avatarResolved ? avatarUrl : current.avatarUrl,
               }
             : current,
@@ -445,6 +509,13 @@ export default function App() {
       null,
     [selectedChannelId, workspace],
   );
+  const openedProfileMember =
+    workspace?.members.find((member) => member.id === openProfile?.memberId) ??
+    null;
+
+  useEffect(() => {
+    if (openProfile && !openedProfileMember) setOpenProfile(null);
+  }, [openProfile, openedProfileMember]);
 
   const visibleVoice = useMemo(() => {
     if (!voice.channel || !workspace) return voice;
@@ -704,6 +775,7 @@ export default function App() {
   );
 
   function openSettings(section: SettingsSection = "profile") {
+    setOpenProfile(null);
     setSettingsSection(section);
     setActiveView("settings");
   }
@@ -715,43 +787,117 @@ export default function App() {
   async function handleSaveProfile(input: ProfileSaveInput) {
     if (!user) throw new Error("Sign in before editing your profile.");
     let displayName = input.displayName.trim();
-    let avatarPath = user.avatarPath ?? null;
+    let description = input.description.trim();
+    let avatarPath = user.avatarPath;
+    let avatarAnimationPath = user.avatarAnimationPath;
     let avatarUrl = user.avatarUrl;
+    let avatarAnimationUrl = user.avatarAnimationUrl;
+    let coverPath = user.coverPath;
+    let coverAnimationPath = user.coverAnimationPath;
+    let coverUrl = user.coverUrl;
+    let coverAnimationUrl = user.coverAnimationUrl;
+    let coverPositionX = input.coverPositionX;
+    let coverPositionY = input.coverPositionY;
     let warning: string | undefined;
 
     if (appConfig.dataMode === "live") {
       const saved = await saveLiveProfile({
         userId: user.id,
         displayName,
+        description,
         currentAvatarPath: avatarPath,
+        currentAvatarAnimationPath: avatarAnimationPath,
         currentAvatarUrl: avatarUrl,
+        currentCoverPath: coverPath,
+        currentCoverAnimationPath: coverAnimationPath,
         avatarFile: input.avatarFile,
+        coverFile: input.coverFile,
         removeAvatar: input.removeAvatar,
+        removeCover: input.removeCover,
+        coverPositionX,
+        coverPositionY,
       });
+      if (avatarAnimationPath !== saved.avatarAnimationPath) {
+        profileMediaCacheRef.current.evict(AVATAR_BUCKET, avatarAnimationPath);
+      }
+      if (coverPath !== saved.coverPath) {
+        profileMediaCacheRef.current.evict(COVER_BUCKET, coverPath);
+      }
+      if (coverAnimationPath !== saved.coverAnimationPath) {
+        profileMediaCacheRef.current.evict(COVER_BUCKET, coverAnimationPath);
+      }
       displayName = saved.displayName;
+      description = saved.description;
       avatarPath = saved.avatarPath;
+      avatarAnimationPath = saved.avatarAnimationPath;
       avatarUrl = saved.avatarUrl;
+      avatarAnimationUrl = null;
+      coverPath = saved.coverPath;
+      coverAnimationPath = saved.coverAnimationPath;
+      coverUrl = null;
+      coverAnimationUrl = null;
+      coverPositionX = saved.coverPositionX;
+      coverPositionY = saved.coverPositionY;
       warning = saved.metadataWarning ?? undefined;
-    } else if (input.removeAvatar) {
-      avatarPath = null;
-      avatarUrl = null;
-    } else if (input.avatarFile) {
-      avatarPath = `mock/${crypto.randomUUID()}`;
-      avatarUrl = await fileToDataUrl(input.avatarFile);
+    } else {
+      if (input.removeAvatar) {
+        avatarPath = null;
+        avatarAnimationPath = null;
+        avatarUrl = null;
+        avatarAnimationUrl = null;
+      } else if (input.avatarFile) {
+        const prepared = await prepareProfileImage(input.avatarFile, "avatar");
+        avatarPath = `mock/${crypto.randomUUID()}`;
+        avatarAnimationPath = prepared.animation
+          ? `mock/${crypto.randomUUID()}`
+          : null;
+        avatarUrl = await fileToDataUrl(prepared.poster);
+        avatarAnimationUrl = prepared.animation
+          ? await fileToDataUrl(prepared.animation)
+          : null;
+      }
+      if (input.removeCover) {
+        coverPath = null;
+        coverAnimationPath = null;
+        coverUrl = null;
+        coverAnimationUrl = null;
+        coverPositionX = 50;
+        coverPositionY = 50;
+      } else if (input.coverFile) {
+        const prepared = await prepareProfileImage(input.coverFile, "cover");
+        coverPath = `mock/${crypto.randomUUID()}`;
+        coverAnimationPath = prepared.animation
+          ? `mock/${crypto.randomUUID()}`
+          : null;
+        coverUrl = await fileToDataUrl(prepared.poster);
+        coverAnimationUrl = prepared.animation
+          ? await fileToDataUrl(prepared.animation)
+          : null;
+      }
     }
 
     rememberAvatarUrl(user.id, avatarUrl);
-    setUser((current) =>
-      current ? { ...current, displayName, avatarPath, avatarUrl } : current,
-    );
+    const nextProfile = {
+      displayName,
+      description,
+      avatarPath,
+      avatarAnimationPath,
+      avatarUrl,
+      avatarAnimationUrl,
+      coverPath,
+      coverAnimationPath,
+      coverUrl,
+      coverAnimationUrl,
+      coverPositionX,
+      coverPositionY,
+    };
+    setUser((current) => (current ? { ...current, ...nextProfile } : current));
     setWorkspace((current) =>
       current
         ? {
             ...current,
             members: current.members.map((member) =>
-              member.id === user.id
-                ? { ...member, displayName, avatarPath, avatarUrl }
-                : member,
+              member.id === user.id ? { ...member, ...nextProfile } : member,
             ),
           }
         : current,
@@ -852,6 +998,7 @@ export default function App() {
   }
 
   function handleSelectChannel(channel: Channel) {
+    setOpenProfile(null);
     selectedChannelIdRef.current = channel.id;
     setSelectedChannelId(channel.id);
     setActiveView("channel");
@@ -942,6 +1089,7 @@ export default function App() {
           channels={workspace.channels}
           selectedChannelId={selectedChannel.id}
           user={user}
+          members={workspace.members}
           voiceOccupants={voiceOccupants}
           unreadChannelIds={unreadChannelIds}
           voice={visibleVoice}
@@ -950,13 +1098,23 @@ export default function App() {
           canManageChannels={workspace.currentUserRole === "admin"}
           onSelect={handleSelectChannel}
           onPrepareVoiceChannel={voice.prepareVoiceChannel}
-          onCreateChannel={(kind) => setChannelDialog({ mode: "create", kind })}
-          onRenameChannel={(channel) =>
-            setChannelDialog({ mode: "rename", channel })
-          }
+          onCreateChannel={(kind) => {
+            setOpenProfile(null);
+            setChannelDialog({ mode: "create", kind });
+          }}
+          onRenameChannel={(channel) => {
+            setOpenProfile(null);
+            setChannelDialog({ mode: "rename", channel });
+          }}
           onOpenSettings={() => openSettings("profile")}
+          loadProfileMedia={loadProfileMedia}
+          onOpenProfile={handleOpenProfile}
+          openProfileId={openProfile?.memberId ?? null}
           onToggleSoundboard={toggleSoundboard}
-          onOpenScreenShare={() => setScreenShareDialogOpen(true)}
+          onOpenScreenShare={() => {
+            setOpenProfile(null);
+            setScreenShareDialogOpen(true);
+          }}
         />
       ) : null}
       <main className="content-shell">
@@ -1005,6 +1163,9 @@ export default function App() {
                   }))
                 }
                 onSend={handleSend}
+                loadProfileMedia={loadProfileMedia}
+                onOpenProfile={handleOpenProfile}
+                openProfileId={openProfile?.memberId ?? null}
               />
             ) : (
               <VoiceRoom
@@ -1013,6 +1174,9 @@ export default function App() {
                 members={workspace.members}
                 voice={voice}
                 onOpenSettings={() => openSettings("audio")}
+                loadProfileMedia={loadProfileMedia}
+                onOpenProfile={handleOpenProfile}
+                openProfileId={openProfile?.memberId ?? null}
               />
             )}
           </div>
@@ -1048,12 +1212,28 @@ export default function App() {
             overTextChannel={selectedChannel.kind === "text"}
             onToggleSoundboard={toggleSoundboard}
             onOpenDevices={() => openSettings("audio")}
-            onOpenScreenShare={() => setScreenShareDialogOpen(true)}
+            onOpenScreenShare={() => {
+              setOpenProfile(null);
+              setScreenShareDialogOpen(true);
+            }}
           />
         ) : null}
       </main>
       {layoutPreferences.rightPanelVisible ? (
-        <MemberPanel members={workspace.members} />
+        <MemberPanel
+          members={workspace.members}
+          loadProfileMedia={loadProfileMedia}
+          onOpenProfile={handleOpenProfile}
+          openProfileId={openProfile?.memberId ?? null}
+        />
+      ) : null}
+      {openProfile && openedProfileMember ? (
+        <ProfilePopover
+          member={openedProfileMember}
+          anchor={openProfile.anchor}
+          loadMedia={loadProfileMedia}
+          onClose={() => setOpenProfile(null)}
+        />
       ) : null}
       {screenShareDialogOpen ? (
         <ScreenShareDialog
@@ -1115,6 +1295,7 @@ export default function App() {
           onAccentChange={handleAccentChange}
           onSurfaceStyleChange={handleSurfaceStyleChange}
           onSaveProfile={handleSaveProfile}
+          loadProfileMedia={loadProfileMedia}
           onInputChange={(deviceId) => void voice.setInputDevice(deviceId)}
           onOutputChange={(deviceId) => void voice.setOutputDevice(deviceId)}
           onCameraChange={(deviceId) => void voice.setCameraDevice(deviceId)}
@@ -1189,7 +1370,48 @@ function TopBar({
   );
 }
 
-function fileToDataUrl(file: File): Promise<string> {
+function richMemberFromProfile(
+  member: ServerMember,
+  profile: ProfileRow,
+  options: {
+    avatarUrl: string | null;
+    avatarResolved: boolean;
+    mediaCache: ProfileMediaCache;
+  },
+): ServerMember {
+  if (member.avatarAnimationPath !== profile.avatar_animation_path) {
+    options.mediaCache.evict(AVATAR_BUCKET, member.avatarAnimationPath);
+  }
+  if (member.coverPath !== profile.cover_path) {
+    options.mediaCache.evict(COVER_BUCKET, member.coverPath);
+  }
+  if (member.coverAnimationPath !== profile.cover_animation_path) {
+    options.mediaCache.evict(COVER_BUCKET, member.coverAnimationPath);
+  }
+  return {
+    ...member,
+    displayName: profile.display_name,
+    description: profile.description,
+    avatarPath: profile.avatar_path,
+    avatarAnimationPath: profile.avatar_animation_path,
+    avatarAnimationUrl:
+      member.avatarAnimationPath === profile.avatar_animation_path
+        ? member.avatarAnimationUrl
+        : null,
+    avatarUrl: options.avatarResolved ? options.avatarUrl : member.avatarUrl,
+    coverPath: profile.cover_path,
+    coverUrl: member.coverPath === profile.cover_path ? member.coverUrl : null,
+    coverAnimationPath: profile.cover_animation_path,
+    coverAnimationUrl:
+      member.coverAnimationPath === profile.cover_animation_path
+        ? member.coverAnimationUrl
+        : null,
+    coverPositionX: profile.cover_position_x,
+    coverPositionY: profile.cover_position_y,
+  };
+}
+
+function fileToDataUrl(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.addEventListener("load", () => {

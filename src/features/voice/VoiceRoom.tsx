@@ -7,11 +7,19 @@ import {
   Volume2,
 } from "lucide-react";
 import { Avatar } from "../../components/Avatar";
+import {
+  ProfileTrigger,
+  type LoadProfileMedia,
+  type OpenProfile,
+} from "../../components/ProfileTrigger";
 import type { AppUser, Channel, ServerMember } from "../../lib/types";
 import { ParticipantVideo } from "./ParticipantVideo";
 import { ScreenShareStage } from "./ScreenShareStage";
 import { VoiceElapsedTime } from "./VoiceElapsedTime";
 import type { useVoiceRoom } from "./useVoiceRoom";
+
+const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
+const ignoreProfileOpen: OpenProfile = () => undefined;
 
 interface VoiceRoomProps {
   channel: Channel;
@@ -19,6 +27,9 @@ interface VoiceRoomProps {
   members?: ServerMember[];
   voice: ReturnType<typeof useVoiceRoom>;
   onOpenSettings: () => void;
+  loadProfileMedia?: LoadProfileMedia;
+  onOpenProfile?: OpenProfile;
+  openProfileId?: string | null;
 }
 
 export function VoiceRoom({
@@ -27,6 +38,9 @@ export function VoiceRoom({
   members = [],
   voice,
   onOpenSettings,
+  loadProfileMedia = emptyProfileMediaLoader,
+  onOpenProfile = ignoreProfileOpen,
+  openProfileId = null,
 }: VoiceRoomProps) {
   const isThisRoom = voice.channel?.id === channel.id;
   const isConnected = isThisRoom && voice.status === "connected";
@@ -152,12 +166,15 @@ export function VoiceRoom({
               const avatarUser =
                 member ??
                 (participant.isLocal
-                  ? user
+                  ? { ...user, role: "member" }
                   : {
                       displayName,
                       avatarUrl: null,
                       status: "online" as const,
                     });
+              const profileMember =
+                member ??
+                (participant.isLocal ? { ...user, role: "member" } : null);
               return (
                 <article
                   className={`participant-card ${participant.isSpeaking || soundActive ? "is-speaking" : ""} ${soundActive ? "is-soundboard-active" : ""}`}
@@ -192,16 +209,50 @@ export function VoiceRoom({
                       />
                     ) : (
                       <div className="participant-card__avatar">
-                        <Avatar user={avatarUser} size="large" />
+                        {profileMember ? (
+                          <ProfileTrigger
+                            className="participant-card__profile-avatar"
+                            member={profileMember}
+                            loadMedia={loadProfileMedia}
+                            onOpenProfile={onOpenProfile}
+                            expanded={openProfileId === profileMember.id}
+                            aria-label={`View ${displayName}'s profile`}
+                          >
+                            {({ animationUrl, animated }) => (
+                              <Avatar
+                                user={profileMember}
+                                size="large"
+                                animationUrl={animationUrl}
+                                animated={animated}
+                              />
+                            )}
+                          </ProfileTrigger>
+                        ) : (
+                          <Avatar user={avatarUser} size="large" />
+                        )}
                         <span className="speaker-rings" />
                       </div>
                     )}
                   </div>
                   <div className="participant-card__identity">
-                    <strong>
-                      {displayName}
-                      {participant.isLocal ? " (you)" : ""}
-                    </strong>
+                    {profileMember ? (
+                      <ProfileTrigger
+                        className="participant-card__profile-name"
+                        member={profileMember}
+                        loadMedia={loadProfileMedia}
+                        onOpenProfile={onOpenProfile}
+                        expanded={openProfileId === profileMember.id}
+                      >
+                        {() => (
+                          <strong>
+                            {displayName}
+                            {participant.isLocal ? " (you)" : ""}
+                          </strong>
+                        )}
+                      </ProfileTrigger>
+                    ) : (
+                      <strong>{displayName}</strong>
+                    )}
                     <span>
                       {soundActive
                         ? participant.activeSounds.length > 1

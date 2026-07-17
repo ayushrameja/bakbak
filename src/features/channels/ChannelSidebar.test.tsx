@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { AppUser, Channel, Server } from "../../lib/types";
+import type { AppUser, Channel, Server, ServerMember } from "../../lib/types";
 import type { useVoiceRoom } from "../voice/useVoiceRoom";
 import { ChannelSidebar } from "./ChannelSidebar";
 
@@ -10,6 +10,16 @@ const user: AppUser = {
   displayName: "Ayu",
   email: "ayu@example.test",
   avatarUrl: null,
+  avatarAnimationUrl: null,
+  avatarPath: null,
+  avatarAnimationPath: null,
+  coverUrl: null,
+  coverAnimationUrl: null,
+  coverPath: null,
+  coverAnimationPath: null,
+  coverPositionX: 50,
+  coverPositionY: 50,
+  description: "",
   status: "online",
 };
 
@@ -26,6 +36,13 @@ const voiceChannel: Channel = {
   kind: "voice",
   position: 1,
   topic: "Talk here",
+};
+const friend: ServerMember = {
+  ...user,
+  id: "friend-1",
+  displayName: "Mira",
+  email: "mira@example.test",
+  role: "member",
 };
 
 function renderSidebar(
@@ -143,5 +160,37 @@ describe("ChannelSidebar room shelf", () => {
       ],
     });
     expect(screen.getByText("Mira")).toBeVisible();
+  });
+
+  it("opens voice-occupant and signed-in user profiles", async () => {
+    const onOpenProfile = vi.fn();
+    renderSidebar([voiceChannel], {
+      members: [{ ...user, role: "admin" }, friend],
+      voiceOccupants: [
+        {
+          userId: friend.id,
+          displayName: friend.displayName,
+          avatarUrl: null,
+          channelId: voiceChannel.id,
+          joinedAt: new Date().toISOString(),
+        },
+      ],
+      onOpenProfile,
+    });
+
+    const occupantTrigger = screen.getByRole("button", {
+      name: "View Mira's profile",
+    });
+    await userEvent.click(occupantTrigger);
+    expect(onOpenProfile).toHaveBeenCalledWith(friend, occupantTrigger);
+
+    const userTrigger = screen.getByRole("button", {
+      name: "View Ayu's profile",
+    });
+    await userEvent.click(userTrigger);
+    expect(onOpenProfile).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: user.id }),
+      userTrigger,
+    );
   });
 });

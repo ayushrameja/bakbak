@@ -9,7 +9,16 @@ const user: AppUser = {
   displayName: "Ayu",
   email: "ayu@example.test",
   avatarUrl: null,
+  avatarAnimationUrl: null,
   avatarPath: null,
+  avatarAnimationPath: null,
+  coverUrl: null,
+  coverAnimationUrl: null,
+  coverPath: null,
+  coverAnimationPath: null,
+  coverPositionX: 50,
+  coverPositionY: 50,
+  description: "",
   status: "online",
 };
 
@@ -72,9 +81,186 @@ describe("SettingsPage", () => {
 
     expect(onSaveProfile).toHaveBeenCalledWith({
       displayName: "Mira",
+      description: "",
       avatarFile: null,
+      coverFile: null,
       removeAvatar: false,
+      removeCover: false,
+      coverPositionX: 50,
+      coverPositionY: 50,
     });
+  });
+
+  it("keeps the display-name field focused across parent rerenders", async () => {
+    const { props, rerender } = renderSettings("profile");
+    const input = screen.getByRole("textbox", { name: "Display name" });
+    input.focus();
+    expect(input).toHaveFocus();
+
+    rerender(
+      <SettingsPage {...props} onClose={vi.fn()} voiceStatus="connecting" />,
+    );
+    expect(input).toHaveFocus();
+    await userEvent.type(input, " keeps typing");
+    expect(input).toHaveValue("Ayu keeps typing");
+    expect(input).toHaveFocus();
+  });
+
+  it("saves a plain-text description and keyboard-adjusted cover position", async () => {
+    const onSaveProfile = vi.fn().mockResolvedValue({});
+    renderSettings("profile", {
+      user: {
+        ...user,
+        coverUrl: "data:image/png;base64,cover",
+        coverPath: "mock/cover",
+      },
+      onSaveProfile,
+    });
+
+    await userEvent.type(
+      screen.getByRole("textbox", { name: /Description/ }),
+      "Tea, code, and excellent tangents.",
+    );
+    const focalPoint = screen.getByLabelText(/Cover focal point/);
+    fireEvent.keyDown(focalPoint, { key: "ArrowRight", shiftKey: true });
+    fireEvent.keyDown(focalPoint, { key: "ArrowUp" });
+    await userEvent.click(screen.getByRole("button", { name: "Save profile" }));
+
+    expect(onSaveProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: "Tea, code, and excellent tangents.",
+        coverPositionX: 60,
+        coverPositionY: 48,
+      }),
+    );
+  });
+
+  it("keeps a failed draft for retry and reflects dirty state", async () => {
+    const onSaveProfile = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Profile storage took a tea break."))
+      .mockResolvedValueOnce({});
+    renderSettings("profile", { onSaveProfile });
+    const save = screen.getByRole("button", { name: "Save profile" });
+    const description = screen.getByRole("textbox", { name: /Description/ });
+
+    expect(save).toBeDisabled();
+    await userEvent.type(description, "Retry this excellent tangent.");
+    expect(save).toBeEnabled();
+    await userEvent.click(save);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Profile storage took a tea break.",
+    );
+    expect(description).toHaveValue("Retry this excellent tangent.");
+    expect(save).toBeEnabled();
+
+    await userEvent.click(save);
+    expect(onSaveProfile).toHaveBeenCalledTimes(2);
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      /Profile saved/,
+    );
+  });
+
+  it("stages avatar and cover removals independently", async () => {
+    const onSaveProfile = vi.fn().mockResolvedValue({});
+    renderSettings("profile", {
+      user: {
+        ...user,
+        avatarUrl: "data:image/png;base64,avatar",
+        avatarPath: "mock/avatar",
+        coverUrl: "data:image/png;base64,cover",
+        coverPath: "mock/cover",
+      },
+      onSaveProfile,
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Remove avatar" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Save profile" }));
+    expect(onSaveProfile).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        removeAvatar: true,
+        removeCover: false,
+      }),
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Remove cover" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save profile" }));
+    expect(onSaveProfile).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        removeAvatar: false,
+        removeCover: true,
+        coverPositionX: 50,
+        coverPositionY: 50,
+      }),
+    );
+  });
+
+  it("supports pointer cover framing and resetting to center", async () => {
+    renderSettings("profile", {
+      user: {
+        ...user,
+        coverUrl: "data:image/png;base64,cover",
+        coverPath: "mock/cover",
+      },
+    });
+    const focalPoint = screen.getByLabelText(/Cover focal point/);
+    Object.defineProperty(focalPoint, "setPointerCapture", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    vi.spyOn(focalPoint, "getBoundingClientRect").mockReturnValue({
+      x: 10,
+      y: 20,
+      left: 10,
+      top: 20,
+      right: 210,
+      bottom: 120,
+      width: 200,
+      height: 100,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.pointerDown(focalPoint, {
+      pointerId: 1,
+      clientX: 160,
+      clientY: 45,
+    });
+    expect(
+      screen.getByLabelText("Cover focal point, 75% horizontal, 25% vertical"),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Save profile" })).toBeEnabled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Center cover" }));
+    expect(
+      screen.getByLabelText("Cover focal point, 50% horizontal, 50% vertical"),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Save profile" })).toBeDisabled();
+  });
+
+  it("revokes decoded and staged preview URLs when settings closes", async () => {
+    const media = installProfileImagePreparationMocks();
+    try {
+      const { unmount } = renderSettings("profile");
+      const input = screen.getByLabelText("Choose avatar");
+      await userEvent.upload(
+        input,
+        new File(["avatar"], "avatar.png", { type: "image/png" }),
+      );
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "Save profile" }),
+        ).toBeEnabled(),
+      );
+      expect(media.revokeObjectURL).toHaveBeenCalledWith("blob:settings-1");
+
+      unmount();
+      expect(media.revokeObjectURL).toHaveBeenCalledWith("blob:settings-2");
+    } finally {
+      media.restore();
+    }
   });
 
   it("does not request media permission merely by opening audio settings", () => {
@@ -337,3 +523,79 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("alertdialog")).toBeVisible();
   });
 });
+
+function installProfileImagePreparationMocks() {
+  const createObjectUrlDescriptor = Object.getOwnPropertyDescriptor(
+    URL,
+    "createObjectURL",
+  );
+  const revokeObjectUrlDescriptor = Object.getOwnPropertyDescriptor(
+    URL,
+    "revokeObjectURL",
+  );
+  let urlSequence = 0;
+  const createObjectURL = vi.fn(() => `blob:settings-${++urlSequence}`);
+  const revokeObjectURL = vi.fn();
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true,
+    value: createObjectURL,
+  });
+  Object.defineProperty(URL, "revokeObjectURL", {
+    configurable: true,
+    value: revokeObjectURL,
+  });
+  class TestImage {
+    naturalWidth = 320;
+    naturalHeight = 320;
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    private value = "";
+    set src(value: string) {
+      this.value = value;
+      queueMicrotask(() => this.onload?.());
+    }
+    get src() {
+      return this.value;
+    }
+  }
+  vi.stubGlobal("Image", TestImage);
+  const createElement = document.createElement.bind(document);
+  const createElementSpy = vi
+    .spyOn(document, "createElement")
+    .mockImplementation((tagName: string, options?: ElementCreationOptions) => {
+      if (tagName !== "canvas") return createElement(tagName, options);
+      return {
+        width: 0,
+        height: 0,
+        getContext: () => ({ drawImage: vi.fn() }),
+        toBlob: (callback: BlobCallback, type?: string) =>
+          callback(new Blob(["poster"], { type: type ?? "image/png" })),
+      } as unknown as HTMLCanvasElement;
+    });
+
+  return {
+    revokeObjectURL,
+    restore() {
+      createElementSpy.mockRestore();
+      vi.unstubAllGlobals();
+      if (createObjectUrlDescriptor) {
+        Object.defineProperty(
+          URL,
+          "createObjectURL",
+          createObjectUrlDescriptor,
+        );
+      } else {
+        Reflect.deleteProperty(URL, "createObjectURL");
+      }
+      if (revokeObjectUrlDescriptor) {
+        Object.defineProperty(
+          URL,
+          "revokeObjectURL",
+          revokeObjectUrlDescriptor,
+        );
+      } else {
+        Reflect.deleteProperty(URL, "revokeObjectURL");
+      }
+    },
+  };
+}
