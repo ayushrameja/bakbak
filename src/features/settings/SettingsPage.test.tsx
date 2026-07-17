@@ -29,6 +29,7 @@ function renderSettings(
   const props: React.ComponentProps<typeof SettingsPage> = {
     user,
     section,
+    visualPreset: "standard",
     themePreference: "system",
     accent: "coral",
     accentIntensity: 100,
@@ -40,6 +41,16 @@ function renderSettings(
     selectedOutputId: "default",
     selectedCameraId: "default",
     soundboardVolume: 0.7,
+    interfaceSoundPreferences: {
+      enabled: true,
+      volume: 0.55,
+      categories: {
+        messages: true,
+        voice: true,
+        "screen-share": true,
+        status: true,
+      },
+    },
     inputError: null,
     outputError: null,
     cameraError: null,
@@ -50,6 +61,7 @@ function renderSettings(
     voiceMuted: false,
     voiceDeafened: false,
     onSectionChange: vi.fn(),
+    onVisualPresetChange: vi.fn(),
     onThemeChange: vi.fn(),
     onAccentChange: vi.fn(),
     onSurfaceStyleChange: vi.fn(),
@@ -58,6 +70,8 @@ function renderSettings(
     onOutputChange: vi.fn(),
     onCameraChange: vi.fn(),
     onSoundboardVolumeChange: vi.fn(),
+    onInterfaceSoundPreferencesChange: vi.fn(),
+    onPreviewInterfaceSound: vi.fn(),
     onToggleMute: vi.fn(),
     onToggleDeafen: vi.fn(),
     onLeaveVoice: vi.fn(),
@@ -276,6 +290,31 @@ describe("SettingsPage", () => {
     ).toBeEnabled();
   });
 
+  it("updates and previews universal interface sound categories", async () => {
+    const onInterfaceSoundPreferencesChange = vi.fn();
+    const onPreviewInterfaceSound = vi.fn();
+    renderSettings("audio", {
+      onInterfaceSoundPreferencesChange,
+      onPreviewInterfaceSound,
+    });
+
+    await userEvent.click(screen.getByRole("switch", { name: "Voice" }));
+    expect(onInterfaceSoundPreferencesChange).toHaveBeenCalledWith({
+      enabled: true,
+      volume: 0.55,
+      categories: {
+        messages: true,
+        voice: false,
+        "screen-share": true,
+        status: true,
+      },
+    });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Preview Messages sound" }),
+    );
+    expect(onPreviewInterfaceSound).toHaveBeenCalledWith("messages");
+  });
+
   it("releases the temporary microphone stream when settings unmount", async () => {
     const stop = vi.fn();
     const close = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
@@ -436,6 +475,36 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("radio", { name: /System/ })).toBeChecked();
     await userEvent.click(screen.getByRole("radio", { name: /Light/ }));
     expect(onThemeChange).toHaveBeenCalledWith("light");
+  });
+
+  it("activates Signal Red and locks standard controls without losing them", async () => {
+    const onVisualPresetChange = vi.fn();
+    const { rerender, props } = renderSettings("appearance", {
+      onVisualPresetChange,
+    });
+    const activate = screen.getByRole("button", {
+      name: "Activate Signal Red",
+    });
+    activate.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(onVisualPresetChange).toHaveBeenCalledWith("signal-red");
+
+    rerender(
+      <SettingsPage
+        {...props}
+        visualPreset="signal-red"
+        onVisualPresetChange={onVisualPresetChange}
+      />,
+    );
+    expect(
+      screen.getByText(/temporarily locks Dark, Flat/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /System/ })).toBeDisabled();
+    expect(
+      screen.getByRole("slider", { name: /Accent intensity/i }),
+    ).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Use standard" }));
+    expect(onVisualPresetChange).toHaveBeenLastCalledWith("standard");
   });
 
   it("changes accent colour and intensity", async () => {

@@ -24,8 +24,23 @@ focal points, and an accessible Discord-style anchored card. Admin-only
 controls create or rename text and voice channels, while Realtime reconciles
 changes for every member.
 
+Signal Red is a fixed device-local special preset layered over those retained
+standard choices. Its first paint resolves to Dark + Flat with a `#050505`
+canvas, near-black panels, `#e5062f` primary red, `#ff2648` hot red, and
+`#f4f2ef` off-white. League Gothic is restricted to display/UI chrome, IBM Plex
+Mono to signal metadata, and Inter remains the content/form/profile face. One
+pointer-transparent layer adds low-opacity static noise, edge grids, bars,
+timecodes, a slow ticker, scheduled Bakbak stamps, and typed communication
+labels without covering the center reading area. Reduced motion freezes the
+texture, removes marquees/glitches/random stamps, and keeps only a static event
+label.
+
 Upgraded clients expose chat, structured individual mentions, account-synced
 unread emphasis, incoming-message sounds, and drafts only for text channels.
+Message alerts now use the same original generated interface-sound controller
+as voice join/leave, screen-share start/stop, reconnect success, and actionable
+communication failure. These cues run under every visual theme through the
+system output, independently of the selected call/soundboard output.
 Voice-channel message rows, RPC permissions, and read-state data remain intact
 for installed-client compatibility, but the upgraded renderer neither loads,
 subscribes to, sends, drafts, notifies, nor shows unread state for them. No
@@ -221,11 +236,14 @@ bakbak/
 │       ├── 0005-voice-chat-mentions-settings-accents.md
 │       ├── 0006-discord-shaped-bakbak-hearted-ui.md
 │       ├── 0007-voice-join-acceleration-and-soundboard-polish.md
-│       └── 0008-rich-animated-profiles.md
+│       ├── 0008-rich-animated-profiles.md
+│       └── 0009-signal-red-theme-and-interface-audio.md
 ├── public/
 │   ├── bakbak.svg                 # renderer favicon/source logo
+│   ├── interface-sounds/          # generated original 48 kHz mono WAV cues
+│   ├── signal-noise.svg           # Bakbak-owned tiled texture source
 │   └── theme-init.js              # parser-blocking, CSP-safe first-paint theme bootstrap
-├── scripts/                       # Secret scan, SemVer, and release verification
+├── scripts/                       # Secret scan, SemVer, release, and interface-audio generation
 ├── src/
 │   ├── app/                       # application shell, routing, providers
 │   ├── components/                # reusable presentation components
@@ -285,6 +303,10 @@ The renderer uses a three-panel desktop layout plus a modal layer:
    authors, mentions, voice identities, or the user dock. It prefers the
    trigger's right side, flips/clamps inside the viewport, contains focus, and
    shows only current-server role/presence plus global profile fields.
+8. Signal Red adds one fixed, non-interactive effects layer above normal shell
+   content (`z-index: 50`) and below profile/dialog/settings surfaces
+   (`z-index: 90+`). Ambient stamps use only four safe edge positions and pause
+   while the document is hidden or an interactive overlay is open.
 
 The reusable backend health poll measures a Supabase Auth round trip every 30
 seconds and labels the result as backend latency. LiveKit
@@ -449,12 +471,14 @@ An invite-management UI is deferred until post-v1.
 
 ### Profile, appearance, and modal settings
 
-1. The renderer validates and applies `bakbak.appearancePreferences.v3`
+1. The renderer validates and applies `bakbak.appearancePreferences.v4`
    synchronously before mounting React. A local parser-blocking bootstrap sets
-   theme, accent, intensity, surface style, and theme-specific CSS tokens before
-   the production stylesheet loads; React then installs the System media-query
-   listener. Explicit Light or Dark choices ignore OS changes. Valid v1/v2
-   values migrate to Warm while preserving their supported fields.
+   visual preset, theme, accent, intensity, surface style, and theme-specific
+   CSS tokens before the production stylesheet loads; React then installs the
+   System media-query listener. Explicit Light or Dark choices ignore OS
+   changes. Valid v1/v2/v3 values migrate while preserving supported standard
+   fields. Signal Red changes only the effective presentation, so disabling it
+   restores the user's exact standard values.
 2. Profile edits validate a trimmed 1–50 character display name, a
    190-character plain-text description, integer 0–100 cover coordinates, and
    optional PNG/JPEG/WebP/GIF media. Avatars are limited to 5 MiB, covers to 10
@@ -477,9 +501,11 @@ An invite-management UI is deferred until post-v1.
    update integer focal coordinates; Shift moves by a larger step and Reset
    returns to 50/50.
 7. Audio settings retain the existing persisted device selectors and
-   soundboard volume. Opening settings does not request media; microphone and
-   output tests acquire only the temporary resources required by the explicit
-   test action and release them when stopped or unmounted.
+   soundboard volume plus interface-sound master/volume/category preferences.
+   Opening settings does not request media; microphone and output tests acquire
+   only the temporary resources required by the explicit test action and
+   release them when stopped or unmounted. Preview buttons activate and play
+   one category representative through the system output.
 8. Settings is a modal overlay over the current canvas. It traps focus, restores
    the opener on close, exposes compact active-call controls, and confirms
    logout. Closing discards staged profile edits and revokes preview URLs; a
@@ -597,6 +623,14 @@ An invite-management UI is deferred until post-v1.
     network-policy problem rather than token/authentication failure.
 11. Development builds record preparation, authorization, connection,
     microphone, soundboard, and total timing without identifiers or tokens.
+12. `CommunicationEffectEvent` is emitted only after lifecycle truth: self join
+    follows the complete connected gate; normal self leave requires an explicit
+    user leave; switches emit only the destination join; sign-out, teardown,
+    canceled joins, and unexpected disconnects never imitate a normal leave.
+    The initial remote roster and share publications are baselined before later
+    remote participant/share events become eligible. Native share companions
+    are excluded from voice-person events. Reconnect and actionable failure use
+    Status events rather than leave.
 
 ### Desktop screen share
 
@@ -621,6 +655,10 @@ An invite-management UI is deferred until post-v1.
    disconnect, or main-window close releases capture immediately and closes the
    companion. Multiple app instances may present concurrently, but each app
    instance owns at most one share.
+7. Local and remote share lifecycle changes emit typed start/stop effects after
+   room baselining. Remote cues play at reduced gain, and deafen suppresses
+   remote Voice/Screen-share cues without suppressing self actions, Messages,
+   or Status.
 
 ### Soundboard
 
@@ -684,13 +722,26 @@ The renderer validates and stores only `{ inputDeviceId, outputDeviceId,
 cameraDeviceId, soundboardVolume }` under the versioned local-storage key
 `bakbak.devicePreferences.v1`. These identifiers never sync to Supabase. If a
 remembered device is absent, the selector returns to the runtime's default
-device. Chat notification audio deliberately bypasses the selected call output.
-The renderer stores `{ theme, accent, intensity, surfaceStyle }` separately
-under `bakbak.appearancePreferences.v3`. Theme is System/Light/Dark, accent is
-Coral/Purple/Red/Yellow, intensity is a validated 25–100% five-point step, and
-surface style is Warm/Flat. It also stores independent panel visibility under
-`bakbak.layoutPreferences.v1`; malformed values restore both panels. These
+device. Interface cues deliberately bypass the selected call output.
+The renderer stores `{ theme, accent, intensity, surfaceStyle, visualPreset }`
+separately under `bakbak.appearancePreferences.v4`. Theme is System/Light/Dark,
+accent is Coral/Purple/Red/Yellow, intensity is a validated 25–100% five-point
+step, surface style is Warm/Flat, and the visual preset is Standard/Signal Red.
+It stores `{ enabled, volume, categories }` under
+`bakbak.interfaceSoundPreferences.v1`; the default is enabled at 55% with
+Messages, Voice, Screen share, and Status enabled. Interface sounds lazily
+preload after the first pointer/keyboard interaction, use the Web Audio system
+destination, never queue blocked pre-gesture events, cap concurrency at three,
+throttle messages to 350 ms, batch remote roster churn for 250 ms, and cool
+failure alerts for two seconds. Independent panel visibility remains under
+`bakbak.layoutPreferences.v1`; malformed values restore defaults. All of these
 preferences are device-local and never part of the profile or Supabase schema.
+
+League Gothic `5.2.8` and IBM Plex Mono `5.2.7` are installed from Fontsource;
+both package manifests declare SIL Open Font License 1.1 (`OFL-1.1`). Every WAV
+under `public/interface-sounds` is original Bakbak project output from the
+checked-in deterministic oscillator/filter/envelope/seeded-noise generator.
+The assets contain no recordings or third-party samples.
 
 ### Desktop release and update
 
@@ -924,6 +975,13 @@ that it has passed.
   hosted additive migration is deployed and linted. Docker-backed pgTAP,
   installed-app theme/reduced-motion observation, and the live two-account
   media/Realtime/outsider matrix remain required before distribution.
+- Plan 0009's Signal Red preset, first-paint migration, edge effects,
+  reduced-motion behavior, generated sound pack, sound controller, preferences,
+  and typed lifecycle routing pass automated and mock-browser validation at
+  both supported viewport sizes. Installed-app multi-client audio observation
+  remains required for rapid messages, simultaneous joins/leaves, screen
+  sharing, reconnect, deafen, and a call output different from the system
+  output.
 - The Warm Adda renderer, profile/avatar services, channel RPCs, and policies
   are implemented, and migration
   `202607120003_profile_avatars_and_channel_management.sql` is deployed to the

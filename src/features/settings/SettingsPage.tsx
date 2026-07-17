@@ -10,6 +10,7 @@ import {
   Moon,
   Palette,
   Play,
+  RadioTower,
   Square,
   Sun,
   UserRound,
@@ -44,7 +45,12 @@ import type {
   AccentColor,
   SurfaceStyle,
   ThemePreference,
+  VisualPreset,
 } from "./appearance-preferences";
+import type {
+  InterfaceSoundCategory,
+  InterfaceSoundPreferences,
+} from "./interface-sound-preferences";
 
 const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
 
@@ -64,6 +70,7 @@ export interface ProfileSaveInput {
 interface SettingsPageProps {
   user: AppUser;
   section: SettingsSection;
+  visualPreset: VisualPreset;
   themePreference: ThemePreference;
   accent: AccentColor;
   accentIntensity: number;
@@ -75,6 +82,7 @@ interface SettingsPageProps {
   selectedOutputId: string;
   selectedCameraId: string;
   soundboardVolume: number;
+  interfaceSoundPreferences: InterfaceSoundPreferences;
   inputError: string | null;
   outputError: string | null;
   cameraError: string | null;
@@ -85,6 +93,7 @@ interface SettingsPageProps {
   voiceMuted: boolean;
   voiceDeafened: boolean;
   onSectionChange: (section: SettingsSection) => void;
+  onVisualPresetChange: (preset: VisualPreset) => void;
   onThemeChange: (preference: ThemePreference) => void;
   onAccentChange: (accent: AccentColor, intensity: number) => void;
   onSurfaceStyleChange: (surfaceStyle: SurfaceStyle) => void;
@@ -94,6 +103,10 @@ interface SettingsPageProps {
   onOutputChange: (deviceId: string) => void;
   onCameraChange: (deviceId: string) => void;
   onSoundboardVolumeChange: (volume: number) => void;
+  onInterfaceSoundPreferencesChange: (
+    preferences: InterfaceSoundPreferences,
+  ) => void;
+  onPreviewInterfaceSound: (category: InterfaceSoundCategory) => void;
   onToggleMute: () => void;
   onToggleDeafen: () => void;
   onLeaveVoice: () => void;
@@ -286,11 +299,13 @@ export function SettingsPage(props: SettingsPageProps) {
             {props.section === "audio" ? <AudioSettings {...props} /> : null}
             {props.section === "appearance" ? (
               <AppearanceSettings
+                visualPreset={props.visualPreset}
                 preference={props.themePreference}
                 accent={props.accent}
                 intensity={props.accentIntensity}
                 surfaceStyle={props.surfaceStyle}
                 onChange={props.onThemeChange}
+                onVisualPresetChange={props.onVisualPresetChange}
                 onAccentChange={props.onAccentChange}
                 onSurfaceStyleChange={props.onSurfaceStyleChange}
               />
@@ -995,6 +1010,109 @@ function AudioSettings(props: SettingsPageProps) {
           room.
         </p>
       </div>
+      <section
+        className="interface-sound-settings"
+        aria-labelledby="interface-sounds-title"
+      >
+        <div className="interface-sound-settings__heading">
+          <div>
+            <span className="eyebrow">Every visual theme</span>
+            <h3 id="interface-sounds-title">Interface sounds</h3>
+            <p>
+              Original industrial-digital cues play through the system output,
+              separately from call audio.
+            </p>
+          </div>
+          <button
+            className="interface-sound-master"
+            type="button"
+            role="switch"
+            aria-checked={props.interfaceSoundPreferences.enabled}
+            onClick={() =>
+              props.onInterfaceSoundPreferencesChange({
+                ...props.interfaceSoundPreferences,
+                enabled: !props.interfaceSoundPreferences.enabled,
+              })
+            }
+          >
+            {props.interfaceSoundPreferences.enabled ? (
+              <Volume2 size={17} />
+            ) : (
+              <VolumeX size={17} />
+            )}
+            {props.interfaceSoundPreferences.enabled ? "On" : "Muted"}
+          </button>
+        </div>
+        <label className="interface-sound-volume">
+          <span>
+            Master volume —{" "}
+            {Math.round(props.interfaceSoundPreferences.volume * 100)}%
+          </span>
+          <input
+            aria-label="Interface sound volume"
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            value={props.interfaceSoundPreferences.volume}
+            disabled={!props.interfaceSoundPreferences.enabled}
+            onChange={(event) =>
+              props.onInterfaceSoundPreferencesChange({
+                ...props.interfaceSoundPreferences,
+                volume: Number(event.target.value),
+              })
+            }
+          />
+        </label>
+        <div className="interface-sound-categories">
+          {(
+            [
+              ["messages", "Messages"],
+              ["voice", "Voice"],
+              ["screen-share", "Screen share"],
+              ["status", "Status"],
+            ] as const satisfies ReadonlyArray<
+              readonly [InterfaceSoundCategory, string]
+            >
+          ).map(([category, label]) => (
+            <div key={category}>
+              <button
+                className="interface-sound-category"
+                type="button"
+                role="switch"
+                aria-checked={
+                  props.interfaceSoundPreferences.categories[category]
+                }
+                onClick={() =>
+                  props.onInterfaceSoundPreferencesChange({
+                    ...props.interfaceSoundPreferences,
+                    categories: {
+                      ...props.interfaceSoundPreferences.categories,
+                      [category]:
+                        !props.interfaceSoundPreferences.categories[category],
+                    },
+                  })
+                }
+              >
+                <span>{label}</span>
+                <i aria-hidden="true" />
+              </button>
+              <button
+                className="interface-sound-preview"
+                type="button"
+                aria-label={`Preview ${label} sound`}
+                disabled={
+                  !props.interfaceSoundPreferences.enabled ||
+                  !props.interfaceSoundPreferences.categories[category]
+                }
+                onClick={() => props.onPreviewInterfaceSound(category)}
+              >
+                <Play size={13} /> Preview
+              </button>
+            </div>
+          ))}
+        </div>
+      </section>
       <div className="settings-two-column">
         <section>
           <h3>
@@ -1093,7 +1211,7 @@ function AudioSettings(props: SettingsPageProps) {
             />
           </label>
           <p className="settings-note">
-            Call audio and soundboard use this output. Message alerts keep using
+            Call audio and soundboard use this output. Interface cues keep using
             the system output.
           </p>
         </section>
@@ -1144,22 +1262,27 @@ function DeviceSelect({
 }
 
 function AppearanceSettings({
+  visualPreset,
   preference,
   accent,
   intensity,
   surfaceStyle,
   onChange,
+  onVisualPresetChange,
   onAccentChange,
   onSurfaceStyleChange,
 }: {
+  visualPreset: VisualPreset;
   preference: ThemePreference;
   accent: AccentColor;
   intensity: number;
   surfaceStyle: SurfaceStyle;
   onChange: (preference: ThemePreference) => void;
+  onVisualPresetChange: (preset: VisualPreset) => void;
   onAccentChange: (accent: AccentColor, intensity: number) => void;
   onSurfaceStyleChange: (surfaceStyle: SurfaceStyle) => void;
 }) {
+  const signalRedActive = visualPreset === "signal-red";
   const options: Array<{
     value: ThemePreference;
     label: string;
@@ -1192,6 +1315,40 @@ function AppearanceSettings({
         <h2>Pick the light in the room</h2>
         <p>Your choice stays on this device and never becomes server gossip.</p>
       </div>
+      <section
+        className={`special-theme-card ${signalRedActive ? "is-active" : ""}`}
+        aria-labelledby="special-theme-title"
+      >
+        <div className="special-theme-card__mark" aria-hidden="true">
+          <RadioTower size={26} />
+          <span>BK // 01</span>
+        </div>
+        <div className="special-theme-card__copy">
+          <span className="eyebrow">Special theme</span>
+          <h3 id="special-theme-title">Signal Red</h3>
+          <p>
+            A fixed black-and-red broadcast skin with sharp type, signal
+            texture, and restrained edge animations.
+          </p>
+        </div>
+        <button
+          className={signalRedActive ? "secondary-button" : "primary-button"}
+          type="button"
+          aria-pressed={signalRedActive}
+          onClick={() =>
+            onVisualPresetChange(signalRedActive ? "standard" : "signal-red")
+          }
+        >
+          {signalRedActive ? "Use standard" : "Activate Signal Red"}
+        </button>
+      </section>
+      {signalRedActive ? (
+        <p className="special-theme-note" role="status">
+          Signal Red temporarily locks Dark, Flat, and its signature red.
+          Disable it to restore these standard appearance choices exactly as you
+          left them.
+        </p>
+      ) : null}
       <div className="theme-options" role="radiogroup" aria-label="App theme">
         {options.map((option) => (
           <button
@@ -1199,6 +1356,7 @@ function AppearanceSettings({
             type="button"
             role="radio"
             aria-checked={preference === option.value}
+            disabled={signalRedActive}
             key={option.value}
             onClick={() => onChange(option.value)}
           >
@@ -1224,6 +1382,7 @@ function AppearanceSettings({
             type="button"
             role="radio"
             aria-checked={surfaceStyle === "warm"}
+            disabled={signalRedActive}
             onClick={() => onSurfaceStyleChange("warm")}
           >
             <span>Warm</span>
@@ -1235,6 +1394,7 @@ function AppearanceSettings({
             type="button"
             role="radio"
             aria-checked={surfaceStyle === "flat"}
+            disabled={signalRedActive}
             onClick={() => onSurfaceStyleChange("flat")}
           >
             <span>Flat</span>
@@ -1266,6 +1426,7 @@ function AppearanceSettings({
               type="button"
               role="radio"
               aria-checked={accent === option}
+              disabled={signalRedActive}
               data-accent-option={option}
               key={option}
               onClick={() => onAccentChange(option, intensity)}
@@ -1285,6 +1446,7 @@ function AppearanceSettings({
             max="100"
             step="5"
             value={intensity}
+            disabled={signalRedActive}
             onChange={(event) =>
               onAccentChange(accent, Number(event.target.value))
             }
@@ -1293,7 +1455,10 @@ function AppearanceSettings({
           <small>Vivid</small>
         </label>
       </section>
-      <div className="theme-preview" aria-hidden="true">
+      <div
+        className={`theme-preview ${signalRedActive ? "is-signal-red" : ""}`}
+        aria-hidden="true"
+      >
         <div className="theme-preview__shelf">
           <i />
           <i />

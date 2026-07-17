@@ -39,6 +39,8 @@ interface RoomDouble {
   connect: ReturnType<typeof vi.fn>;
   disconnect: ReturnType<typeof vi.fn>;
   prepareConnection: ReturnType<typeof vi.fn>;
+  emit: (event: string, ...args: unknown[]) => void;
+  remoteParticipants: Map<string, unknown>;
   localParticipant: {
     getTrackPublication: Mock<
       (source: string) => PublicationDouble | undefined
@@ -109,6 +111,10 @@ vi.mock("livekit-client", () => {
 
     readonly canPlaybackAudio = true;
     readonly remoteParticipants = new Map();
+    private readonly handlers = new Map<
+      string,
+      Array<(...args: unknown[]) => void>
+    >();
     private trackPublications: PublicationDouble[] = [];
     readonly localParticipant = {
       identity: "user-1",
@@ -182,8 +188,15 @@ vi.mock("livekit-client", () => {
       });
     }
 
-    on() {
+    on(event: string, handler: (...args: unknown[]) => void) {
+      const handlers = this.handlers.get(event) ?? [];
+      handlers.push(handler);
+      this.handlers.set(event, handlers);
       return this;
+    }
+
+    emit(event: string, ...args: unknown[]) {
+      this.handlers.get(event)?.forEach((handler) => handler(...args));
     }
   }
 
@@ -350,6 +363,25 @@ const coffeeTable: Channel = {
   position: 2,
 };
 
+function remoteParticipant(
+  id: string,
+  displayName: string,
+  metadata: string | null = null,
+) {
+  return {
+    identity: id,
+    name: displayName,
+    metadata,
+    isSpeaking: false,
+    isCameraEnabled: false,
+    joinedAt: new Date("2026-07-17T12:00:00.000Z"),
+    getTrackPublication: vi.fn(),
+    getTrackPublications: vi.fn(() => []),
+    getVolume: vi.fn(() => 1),
+    setVolume: vi.fn(),
+  };
+}
+
 const tokenResponse = {
   data: {
     token: "signed.jwt.token",
@@ -384,6 +416,124 @@ describe("useVoiceRoom join lifecycle", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it("emits self join only after connection and reserves leave for explicit user exits", async () => {
+    const effects = vi.fn();
+    supabaseState.invoke
+      .mockResolvedValueOnce(tokenResponse)
+      .mockResolvedValueOnce(tokenResponse)
+      .mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() =>
+      useVoiceRoom(user, "live", mockSoundboardController, effects),
+    );
+
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    expect(effects).toHaveBeenLastCalledWith({
+      type: "voice-self-joined",
+      channelName: "Lounge",
+    });
+
+    await act(async () => {
+      await result.current.join(coffeeTable);
+    });
+    expect(effects).toHaveBeenLastCalledWith({
+      type: "voice-self-joined",
+      channelName: "Coffee table",
+    });
+    expect(effects).not.toHaveBeenCalledWith({ type: "voice-self-left" });
+
+    await act(async () => {
+      await result.current.leave("sign-out");
+    });
+    expect(effects).not.toHaveBeenCalledWith({ type: "voice-self-left" });
+
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    await act(async () => {
+      await result.current.leave();
+    });
+    expect(effects).toHaveBeenLastCalledWith({ type: "voice-self-left" });
+  });
+
+  it("baselines the initial roster, filters share companions, and reports later room events", async () => {
+    screenShareState.desktop = true;
+    screenShareState.getCapabilities.mockResolvedValue({
+      available: true,
+      nativeCapture: true,
+      systemAudio: true,
+      reason: null,
+    });
+    const effects = vi.fn();
+    const connection = deferred<void>();
+    liveKitState.connectResults.push(connection.promise);
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() =>
+      useVoiceRoom(user, "live", mockSoundboardController, effects),
+    );
+
+    let joinPromise!: Promise<void>;
+    act(() => {
+      joinPromise = result.current.join(lounge);
+    });
+    await waitFor(() => expect(liveKitState.rooms[0]).toBeDefined());
+    const room = liveKitState.rooms[0]!;
+    const initial = remoteParticipant("initial", "Already here");
+    room.remoteParticipants.set("initial", initial);
+    await act(async () => {
+      connection.resolve(undefined);
+      await joinPromise;
+    });
+    expect(effects).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "voice-remote-joined",
+        participantId: "initial",
+      }),
+    );
+
+    const mira = remoteParticipant("mira", "Mira");
+    room.remoteParticipants.set("mira", mira);
+    act(() => room.emit("participantConnected", mira));
+    expect(effects).toHaveBeenCalledWith({
+      type: "voice-remote-joined",
+      participantId: "mira",
+      displayName: "Mira",
+    });
+    act(() => room.emit("participantDisconnected", mira));
+    expect(effects).toHaveBeenCalledWith({
+      type: "voice-remote-left",
+      participantId: "mira",
+      displayName: "Mira",
+    });
+
+    const companion = remoteParticipant(
+      "mira-share",
+      "Mira screen",
+      JSON.stringify({
+        participantKind: "screen_share",
+        ownerUserId: "mira",
+      }),
+    );
+    act(() => room.emit("participantConnected", companion));
+    expect(effects).toHaveBeenCalledWith({
+      type: "screen-share-started",
+      actor: "remote",
+      displayName: "Mira screen",
+    });
+    expect(effects).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "voice-remote-joined",
+        participantId: "mira-share",
+      }),
+    );
+
+    act(() => room.emit("reconnecting"));
+    expect(effects).toHaveBeenCalledWith({ type: "signal-interrupted" });
+    act(() => room.emit("reconnected"));
+    expect(effects).toHaveBeenCalledWith({ type: "signal-restored" });
   });
 
   it("debounces preparation, prewarms without media, and consumes the cached room on click", async () => {
@@ -561,6 +711,7 @@ describe("useVoiceRoom join lifecycle", () => {
   });
 
   it("requests a companion token and stops the native share on voice leave", async () => {
+    const effects = vi.fn();
     screenShareState.desktop = true;
     screenShareState.getCapabilities.mockResolvedValue({
       available: true,
@@ -576,7 +727,9 @@ describe("useVoiceRoom join lifecycle", () => {
     supabaseState.invoke
       .mockResolvedValueOnce(tokenResponse)
       .mockResolvedValueOnce(tokenResponse);
-    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+    const { result } = renderHook(() =>
+      useVoiceRoom(user, "live", mockSoundboardController, effects),
+    );
 
     await act(async () => {
       await result.current.join(lounge);
@@ -596,11 +749,23 @@ describe("useVoiceRoom join lifecycle", () => {
       includeAudio: true,
     });
     expect(result.current.screenShareEnabled).toBe(true);
+    expect(effects).toHaveBeenCalledWith({
+      type: "screen-share-started",
+      actor: "self",
+    });
+
+    await act(async () => {
+      await result.current.stopScreenShare();
+    });
+    expect(effects).toHaveBeenCalledWith({
+      type: "screen-share-stopped",
+      actor: "self",
+    });
+    expect(screenShareState.stop).toHaveBeenCalledWith("native-share-1");
 
     await act(async () => {
       await result.current.leave();
     });
-    expect(screenShareState.stop).toHaveBeenCalledWith("native-share-1");
     expect(screenShareState.stop.mock.invocationCallOrder[0]).toBeLessThan(
       liveKitState.rooms[0]!.disconnect.mock.invocationCallOrder[0]!,
     );

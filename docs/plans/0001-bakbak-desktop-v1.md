@@ -153,6 +153,10 @@ limit are approved under
 The Settings focus repair, animated GIF avatar/cover pipeline, plain-text
 descriptions, cover focal points, and anchored private profile cards are
 approved under `0008-rich-animated-profiles.md`.
+The fixed Signal Red visual preset, edge-safe broadcast effects, original
+generated interface sound pack, device-local sound controls, and typed
+communication event semantics are approved under
+`0009-signal-red-theme-and-interface-audio.md`.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -203,6 +207,13 @@ approved under `0008-rich-animated-profiles.md`.
 - [x] Deploy the plan 0008 rich-profile migration to hosted Supabase.
 - [ ] Complete plan 0008's local pgTAP and live two-account profile/media
       acceptance matrix.
+- [x] Add the Bakbak-owned Signal Red preset, pre-render v4 appearance
+      migration, local display typography, edge-safe effects, and
+      reduced-motion behavior under plan 0009.
+- [x] Add the deterministic original interface sound pack, universal
+      device-local controls, and typed message/voice/screen/status event routing
+      under plan 0009.
+- [ ] Complete plan 0009's installed-app multi-client audio acceptance matrix.
 - [x] Add a private operator-managed sound bucket with server-member reads.
 - [x] Fetch, revision-cache, and play the hosted sound pack in the renderer.
 - [ ] Evaluate optional global push-to-talk.

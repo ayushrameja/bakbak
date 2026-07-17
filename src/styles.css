@@ -5139,6 +5139,350 @@ button.message-mention:hover {
   }
 }
 
+@keyframes signal-noise-step {
+  0% {
+    background-position: 0 0;
+  }
+  25% {
+    background-position: -37px 19px;
+  }
+  50% {
+    background-position: 23px -41px;
+  }
+  75% {
+    background-position: 61px 27px;
+  }
+  100% {
+    background-position: -18px -53px;
+  }
+}
+
+@keyframes signal-strip-travel {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes signal-stamp-flash {
+  0% {
+    opacity: 0;
+    transform: translateX(-8px) skewX(-5deg);
+    clip-path: inset(0 100% 0 0);
+  }
+  18% {
+    opacity: 0.95;
+    clip-path: inset(0);
+  }
+  76% {
+    opacity: 0.82;
+    transform: translateX(0) skewX(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(5px);
+    clip-path: inset(0 0 0 100%);
+  }
+}
+
+@keyframes signal-event-wipe {
+  0% {
+    opacity: 0;
+    transform: translateX(18px);
+    clip-path: inset(0 0 0 100%);
+  }
+  24% {
+    opacity: 1;
+    transform: translateX(0);
+    clip-path: inset(0);
+  }
+  68% {
+    opacity: 1;
+    transform: translateX(0);
+    clip-path: inset(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-10px);
+    clip-path: inset(0 100% 0 0);
+  }
+}
+
+@keyframes signal-type-shift {
+  0%,
+  100% {
+    text-shadow: none;
+  }
+  28% {
+    text-shadow:
+      -3px 0 rgb(229 6 47 / 0.65),
+      3px 0 rgb(244 242 239 / 0.2);
+  }
+  32% {
+    text-shadow: 2px 0 rgb(229 6 47 / 0.45);
+  }
+  40% {
+    text-shadow: none;
+  }
+}
+
+.signal-effects {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+
+.signal-effects__noise {
+  position: absolute;
+  inset: -70px;
+  background: url("/signal-noise.svg") repeat;
+  opacity: 0.03;
+  animation: signal-noise-step 840ms steps(1, end) infinite;
+}
+
+.signal-effects__grid {
+  position: absolute;
+  inset: 11px;
+  border: 1px solid rgb(229 6 47 / 0.13);
+  background:
+    linear-gradient(90deg, rgb(229 6 47 / 0.1) 1px, transparent 1px) top left /
+      72px 14px no-repeat,
+    linear-gradient(rgb(229 6 47 / 0.1) 1px, transparent 1px) top left / 14px
+      72px no-repeat,
+    linear-gradient(-90deg, rgb(229 6 47 / 0.1) 1px, transparent 1px) bottom
+      right / 72px 14px no-repeat,
+    linear-gradient(0deg, rgb(229 6 47 / 0.1) 1px, transparent 1px) bottom
+      right / 14px 72px no-repeat;
+}
+
+.signal-effects__grid::before,
+.signal-effects__grid::after {
+  content: "";
+  position: absolute;
+  width: min(22vw, 280px);
+  height: min(22vw, 280px);
+  border: 1px solid rgb(229 6 47 / 0.13);
+  border-radius: 50%;
+}
+
+.signal-effects__grid::before {
+  top: -15%;
+  right: -8%;
+}
+
+.signal-effects__grid::after {
+  bottom: -19%;
+  left: -6%;
+}
+
+.signal-effects__bars::before,
+.signal-effects__bars::after {
+  content: "";
+  position: absolute;
+  width: 4px;
+  height: 96px;
+  background: repeating-linear-gradient(
+    -35deg,
+    var(--accent) 0 9px,
+    transparent 9px 15px
+  );
+  opacity: 0.58;
+}
+
+.signal-effects__bars::before {
+  top: 17%;
+  left: 9px;
+}
+
+.signal-effects__bars::after {
+  right: 9px;
+  bottom: 19%;
+}
+
+.signal-effects__timecode {
+  position: absolute;
+  color: rgb(244 242 239 / 0.34);
+  font: 500 7px/1 var(--signal-mono, "IBM Plex Mono", monospace);
+  letter-spacing: 0.16em;
+}
+
+.signal-effects__timecode--top {
+  top: 17px;
+  left: clamp(92px, 22vw, 330px);
+}
+
+.signal-effects__timecode--side {
+  top: 34%;
+  right: 15px;
+  writing-mode: vertical-rl;
+}
+
+.signal-effects__strip {
+  position: absolute;
+  right: 12px;
+  bottom: 11px;
+  left: 12px;
+  height: 17px;
+  display: flex;
+  overflow: hidden;
+  color: rgb(244 242 239 / 0.54);
+  border-top: 1px solid rgb(229 6 47 / 0.3);
+  border-bottom: 1px solid rgb(229 6 47 / 0.16);
+  background: rgb(5 5 5 / 0.86);
+  font: 600 7px/15px var(--signal-mono, "IBM Plex Mono", monospace);
+  letter-spacing: 0.17em;
+  white-space: nowrap;
+}
+
+.signal-effects__strip span {
+  min-width: 100%;
+  padding-right: 40px;
+  animation: signal-strip-travel 22s linear infinite alternate;
+}
+
+.signal-effects__stamp {
+  position: absolute;
+  width: 126px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 0 9px;
+  padding: 9px;
+  color: #f4f2ef;
+  border: 1px solid rgb(229 6 47 / 0.62);
+  background: rgb(5 5 5 / 0.9);
+  animation: signal-stamp-flash 650ms steps(5, end) both;
+}
+
+.signal-effects__stamp i {
+  grid-row: 1 / -1;
+  width: 34px;
+  height: 34px;
+  background: #e5062f;
+  -webkit-mask: url("/bakbak.svg") center / contain no-repeat;
+  mask: url("/bakbak.svg") center / contain no-repeat;
+}
+
+.signal-effects__stamp strong {
+  font: 400 22px/0.9 var(--signal-display, "League Gothic", sans-serif);
+  letter-spacing: 0.08em;
+}
+
+.signal-effects__stamp span {
+  color: rgb(244 242 239 / 0.5);
+  font: 500 5px/1 var(--signal-mono, "IBM Plex Mono", monospace);
+  letter-spacing: 0.09em;
+}
+
+.signal-effects__stamp.is-top-left {
+  top: 82px;
+  left: 18px;
+}
+
+.signal-effects__stamp.is-top-right {
+  top: 82px;
+  right: 18px;
+}
+
+.signal-effects__stamp.is-bottom-left {
+  bottom: 44px;
+  left: 18px;
+}
+
+.signal-effects__stamp.is-bottom-right {
+  right: 18px;
+  bottom: 44px;
+}
+
+.signal-effects__event {
+  position: absolute;
+  right: 18px;
+  bottom: 42px;
+  min-width: 230px;
+  max-width: min(380px, calc(100vw - 36px));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 5px;
+  padding: 9px 11px 10px 13px;
+  overflow: hidden;
+  color: #f4f2ef;
+  border-top: 1px solid #ff2648;
+  border-bottom: 1px solid rgb(229 6 47 / 0.48);
+  background:
+    linear-gradient(90deg, rgb(229 6 47 / 0.18), transparent 72%),
+    rgb(5 5 5 / 0.94);
+  animation: signal-event-wipe 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.signal-effects__event > span {
+  color: #ff2648;
+  font: 600 6px/1 var(--signal-mono, "IBM Plex Mono", monospace);
+  letter-spacing: 0.14em;
+}
+
+.signal-effects__event strong {
+  grid-column: 1;
+  margin-top: 4px;
+  overflow: hidden;
+  font: 400 23px/1 var(--signal-display, "League Gothic", sans-serif);
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: signal-type-shift 700ms steps(2, end) both;
+}
+
+.signal-effects__event i {
+  grid-column: 2;
+  grid-row: 1 / -1;
+  background: repeating-linear-gradient(
+    -35deg,
+    #e5062f 0 7px,
+    transparent 7px 11px
+  );
+}
+
+.signal-effects__event--voice-self-joined,
+.signal-effects__event--voice-remote-joined,
+.signal-effects__event--screen-share-started,
+.signal-effects__event--signal-restored {
+  top: 82px;
+  bottom: auto;
+}
+
+.signal-effects.is-paused .signal-effects__stamp {
+  display: none;
+}
+
+.signal-effects.is-paused .signal-effects__noise,
+.signal-effects.is-paused .signal-effects__strip span {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signal-effects__noise {
+    animation: none;
+  }
+
+  .signal-effects__strip,
+  .signal-effects__stamp,
+  .signal-effects__bars {
+    display: none;
+  }
+
+  .signal-effects__event,
+  .signal-effects__event strong {
+    animation: none;
+    transform: none;
+    clip-path: none;
+    text-shadow: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .avatar__poster,
   .avatar__animation,
@@ -5151,5 +5495,437 @@ button.message-mention:hover {
     animation: none;
     transition: none;
     transform: none;
+  }
+}
+
+/* 0009 — Signal Red */
+:root[data-visual-preset="signal-red"] {
+  color: #f4f2ef;
+  background: #050505;
+  --bg-deep: #050505;
+  --bg-rail: #050505;
+  --bg-sidebar: #0b0b0d;
+  --bg-main: #050505;
+  --panel: #0b0b0d;
+  --panel-soft: #111114;
+  --panel-hover: #19191d;
+  --line: rgba(244, 242, 239, 0.1);
+  --line-bright: rgba(244, 242, 239, 0.18);
+  --text: #f4f2ef;
+  --muted: #aaa6a4;
+  --faint: #747174;
+  --accent: #e5062f;
+  --accent-bright: #ff2648;
+  --accent-soft: rgb(229 6 47 / 0.14);
+  --accent-border: rgb(229 6 47 / 0.58);
+  --on-accent: #f4f2ef;
+  --green: #55d6a0;
+  --green-soft: rgb(85 214 160 / 0.12);
+  --green-border: rgb(85 214 160 / 0.3);
+  --green-surface: rgb(85 214 160 / 0.1);
+  --green-ring: rgb(85 214 160 / 0.15);
+  --amber: #ffc857;
+  --amber-soft: rgb(255 200 87 / 0.11);
+  --amber-border: rgb(255 200 87 / 0.3);
+  --danger: #ff667d;
+  --danger-soft: rgb(255 102 125 / 0.13);
+  --media-surface: #020202;
+  --overlay: rgb(0 0 0 / 0.76);
+  --canvas-glow: rgb(229 6 47 / 0.09);
+  --control-surface: #111114;
+  --panel-glass: #0b0b0d;
+  --sidebar-dock: #0b0b0d;
+  --main-glass: #050505;
+  --panel-translucent: #0b0b0d;
+  --panel-soft-translucent: #111114;
+  --sidebar-translucent: #0b0b0d;
+  --shadow: 0 24px 70px rgb(0 0 0 / 0.58);
+  --signal-display: "League Gothic", Impact, sans-serif;
+  --signal-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+:root[data-visual-preset="signal-red"] body,
+:root[data-visual-preset="signal-red"] #root {
+  background: #050505;
+}
+
+:root[data-visual-preset="signal-red"] h1,
+:root[data-visual-preset="signal-red"] h2,
+:root[data-visual-preset="signal-red"] h3,
+:root[data-visual-preset="signal-red"] button,
+:root[data-visual-preset="signal-red"] .channel-row,
+:root[data-visual-preset="signal-red"] .channel-group > header,
+:root[data-visual-preset="signal-red"] .top-bar__channel strong,
+:root[data-visual-preset="signal-red"] .settings-nav,
+:root[data-visual-preset="signal-red"] .settings-call-strip,
+:root[data-visual-preset="signal-red"] .voice-control-dock {
+  font-family: var(--signal-display);
+  font-weight: 400;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+}
+
+:root[data-visual-preset="signal-red"] .eyebrow,
+:root[data-visual-preset="signal-red"] .server-switcher span,
+:root[data-visual-preset="signal-red"] .channel-group > header,
+:root[data-visual-preset="signal-red"] .member-panel__section > h3,
+:root[data-visual-preset="signal-red"] .settings-field > span {
+  font-family: var(--signal-mono);
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+:root[data-visual-preset="signal-red"] .member-panel__person,
+:root[data-visual-preset="signal-red"] .channel-voice-person,
+:root[data-visual-preset="signal-red"] .user-dock__profile,
+:root[data-visual-preset="signal-red"] .message__profile-avatar,
+:root[data-visual-preset="signal-red"] .message__profile-name,
+:root[data-visual-preset="signal-red"] .participant-card__profile-avatar,
+:root[data-visual-preset="signal-red"] .participant-card__profile-name,
+:root[data-visual-preset="signal-red"] button.message-mention,
+:root[data-visual-preset="signal-red"] .profile-popover__identity h2 {
+  font-family:
+    Inter,
+    ui-sans-serif,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-weight: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+:root[data-visual-preset="signal-red"] .desktop-shell {
+  background: #050505;
+  animation-duration: 220ms;
+}
+
+:root[data-visual-preset="signal-red"] .channel-sidebar,
+:root[data-visual-preset="signal-red"] .member-panel,
+:root[data-visual-preset="signal-red"] .top-bar,
+:root[data-visual-preset="signal-red"] .voice-control-dock,
+:root[data-visual-preset="signal-red"] .soundboard-drawer {
+  border-color: rgb(229 6 47 / 0.28);
+}
+
+:root[data-visual-preset="signal-red"] .brand-mark,
+:root[data-visual-preset="signal-red"] .primary-button,
+:root[data-visual-preset="signal-red"] .secondary-button,
+:root[data-visual-preset="signal-red"] .danger-button,
+:root[data-visual-preset="signal-red"] .icon-button,
+:root[data-visual-preset="signal-red"] .channel-row,
+:root[data-visual-preset="signal-red"] .channel-row-edit,
+:root[data-visual-preset="signal-red"] .composer,
+:root[data-visual-preset="signal-red"] .channel-intro,
+:root[data-visual-preset="signal-red"] .channel-intro__icon,
+:root[data-visual-preset="signal-red"] .message,
+:root[data-visual-preset="signal-red"] .voice-room-hero,
+:root[data-visual-preset="signal-red"] .participant-card,
+:root[data-visual-preset="signal-red"] .join-voice-card,
+:root[data-visual-preset="signal-red"] .voice-loading,
+:root[data-visual-preset="signal-red"] .voice-error,
+:root[data-visual-preset="signal-red"] .soundboard-drawer,
+:root[data-visual-preset="signal-red"] .sound-button,
+:root[data-visual-preset="signal-red"] .settings-page,
+:root[data-visual-preset="signal-red"] .settings-panel,
+:root[data-visual-preset="signal-red"] .settings-nav button,
+:root[data-visual-preset="signal-red"] .settings-two-column > section,
+:root[data-visual-preset="signal-red"] .theme-options button,
+:root[data-visual-preset="signal-red"] .theme-preview,
+:root[data-visual-preset="signal-red"] .surface-options button,
+:root[data-visual-preset="signal-red"] .accent-options button,
+:root[data-visual-preset="signal-red"] .modal-card,
+:root[data-visual-preset="signal-red"] .channel-dialog {
+  border-radius: 2px;
+}
+
+.special-theme-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 14px;
+  padding: 16px;
+  overflow: hidden;
+  border: 1px solid var(--line-bright);
+  border-radius: 8px;
+  background:
+    linear-gradient(105deg, rgb(229 6 47 / 0.13), transparent 48%), #08080a;
+}
+
+.special-theme-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: url("/signal-noise.svg") repeat;
+  opacity: 0.035;
+}
+
+.special-theme-card.is-active {
+  border-color: var(--accent-border);
+  box-shadow: inset 3px 0 var(--accent);
+}
+
+.special-theme-card__mark {
+  width: 84px;
+  height: 72px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 6px;
+  color: #ff2648;
+  border: 1px solid rgb(229 6 47 / 0.48);
+  background:
+    linear-gradient(
+      135deg,
+      transparent 46%,
+      rgb(229 6 47 / 0.16) 47% 53%,
+      transparent 54%
+    ),
+    #050505;
+}
+
+.special-theme-card__mark span {
+  font: 600 8px/1 var(--signal-mono, "IBM Plex Mono", monospace);
+  letter-spacing: 0.12em;
+}
+
+.special-theme-card__copy {
+  min-width: 0;
+}
+
+.special-theme-card__copy h3,
+.special-theme-card__copy p {
+  margin: 0;
+}
+
+.special-theme-card__copy h3 {
+  margin-top: 3px;
+  color: #f4f2ef;
+  font:
+    400 28px/0.95 "League Gothic",
+    Impact,
+    sans-serif;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.special-theme-card__copy p,
+.special-theme-note {
+  color: #aaa6a4;
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.special-theme-card__copy p {
+  max-width: 440px;
+  margin-top: 7px;
+}
+
+.special-theme-note {
+  margin: -3px 0 14px;
+  padding: 9px 11px;
+  border-left: 2px solid var(--accent);
+  background: var(--accent-soft);
+}
+
+.interface-sound-settings {
+  margin-bottom: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(112deg, var(--accent-soft), transparent 45%),
+    var(--panel-soft);
+}
+
+.interface-sound-settings__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.interface-sound-settings__heading h3,
+.interface-sound-settings__heading p {
+  margin: 0;
+}
+
+.interface-sound-settings__heading h3 {
+  margin-top: 4px;
+  font-size: 14px;
+}
+
+.interface-sound-settings__heading p {
+  max-width: 520px;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.interface-sound-master,
+.interface-sound-category,
+.interface-sound-preview {
+  border: 1px solid var(--line-bright);
+  color: var(--text);
+  background: var(--bg-main);
+  cursor: pointer;
+}
+
+.interface-sound-master {
+  min-width: 86px;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 5px;
+}
+
+.interface-sound-master[aria-checked="true"] {
+  color: var(--accent-bright);
+  border-color: var(--accent-border);
+}
+
+.interface-sound-volume {
+  display: grid;
+  grid-template-columns: 142px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin-top: 15px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.interface-sound-volume input {
+  width: 100%;
+}
+
+.interface-sound-categories {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 13px;
+}
+
+.interface-sound-categories > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.interface-sound-category {
+  min-width: 0;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+  padding: 0 10px;
+  border-radius: 4px 0 0 4px;
+  text-align: left;
+}
+
+.interface-sound-category i {
+  width: 22px;
+  height: 12px;
+  flex: none;
+  position: relative;
+  border-radius: 999px;
+  background: var(--faint);
+}
+
+.interface-sound-category i::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text);
+  transition: transform 130ms ease;
+}
+
+.interface-sound-category[aria-checked="true"] {
+  border-color: var(--accent-border);
+}
+
+.interface-sound-category[aria-checked="true"] i {
+  background: var(--accent);
+}
+
+.interface-sound-category[aria-checked="true"] i::after {
+  transform: translateX(10px);
+}
+
+.interface-sound-preview {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border-left: 0;
+  border-radius: 0 4px 4px 0;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.interface-sound-preview:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+:root[data-visual-preset="signal-red"] .interface-sound-settings,
+:root[data-visual-preset="signal-red"] .interface-sound-master,
+:root[data-visual-preset="signal-red"] .interface-sound-category,
+:root[data-visual-preset="signal-red"] .interface-sound-preview {
+  border-radius: 1px;
+}
+
+.theme-options button:disabled,
+.surface-options button:disabled,
+.accent-options button:disabled,
+.accent-intensity input:disabled {
+  cursor: not-allowed;
+  filter: saturate(0.25);
+  opacity: 0.42;
+}
+
+.theme-preview.is-signal-red {
+  border-color: rgb(229 6 47 / 0.5);
+  border-radius: 2px;
+  background: #050505;
+}
+
+.theme-preview.is-signal-red > div {
+  border-radius: 1px;
+  background: #0b0b0d;
+}
+
+.theme-preview.is-signal-red i,
+.theme-preview.is-signal-red span {
+  border-radius: 0;
+}
+
+@media (max-width: 720px) {
+  .special-theme-card {
+    grid-template-columns: 68px minmax(0, 1fr);
+  }
+
+  .special-theme-card__mark {
+    width: 68px;
+  }
+
+  .special-theme-card > button {
+    grid-column: 1 / -1;
+  }
+
+  .interface-sound-categories {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

@@ -27,6 +27,7 @@ describe("pre-React appearance bootstrap", () => {
       accent: "purple",
       accentIntensity: "70",
       surfaceStyle: "flat",
+      visualPreset: "standard",
     });
     expect(root.style.colorScheme).toBe("dark");
     expect(themeColor.setAttribute).toHaveBeenCalledWith("content", "#090909");
@@ -55,7 +56,40 @@ describe("pre-React appearance bootstrap", () => {
       accent: "yellow",
       accentIntensity: "55",
       surfaceStyle: "warm",
+      visualPreset: "standard",
     });
+  });
+
+  it("applies fixed Signal Red values before React mounts", () => {
+    const root = createRoot();
+    const themeColor = { setAttribute: vi.fn() };
+
+    executeBootstrap(themeBootstrap, {
+      document: {
+        documentElement: root,
+        querySelector: () => themeColor,
+      },
+      localStorage: storageWith({
+        "bakbak.appearancePreferences.v4": JSON.stringify({
+          theme: "light",
+          accent: "purple",
+          intensity: 35,
+          surfaceStyle: "warm",
+          visualPreset: "signal-red",
+        }),
+      }),
+      matchMedia: () => ({ matches: false }),
+    });
+
+    expect(root.dataset).toMatchObject({
+      theme: "dark",
+      accent: "red",
+      accentIntensity: "100",
+      surfaceStyle: "flat",
+      visualPreset: "signal-red",
+    });
+    expect(root.style.setProperty).toHaveBeenCalledWith("--accent", "#e5062f");
+    expect(themeColor.setAttribute).toHaveBeenCalledWith("content", "#050505");
   });
 });
 
