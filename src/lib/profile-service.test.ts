@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   MAX_AVATAR_BYTES,
   saveLiveProfile,
   type ProfileRow,
   validateAvatarFile,
+  validateDescription,
   validateDisplayName,
 } from "./profile-service";
 
@@ -37,6 +38,7 @@ vi.mock("./supabase", () => ({
 
 describe("profile validation", () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     vi.clearAllMocks();
     profileState.storageFrom.mockReturnValue({
       upload: profileState.upload,
@@ -49,6 +51,10 @@ describe("profile validation", () => {
     profileState.select.mockReturnValue({ single: profileState.single });
     profileState.upload.mockResolvedValue({ error: null });
     profileState.remove.mockResolvedValue({ error: null });
+    profileState.download.mockResolvedValue({
+      data: new Blob(["poster"], { type: "image/webp" }),
+      error: null,
+    });
     profileState.updateUser.mockResolvedValue({ error: null });
     profileState.realtimeChannel.on.mockReturnValue(
       profileState.realtimeChannel,
@@ -61,6 +67,8 @@ describe("profile validation", () => {
       returns: profileState.snapshotReturns,
     });
   });
+
+  afterEach(() => vi.unstubAllGlobals());
 
   it("trims a valid display name and rejects empty or oversized names", () => {
     expect(validateDisplayName("  Mira  ")).toBe("Mira");
@@ -78,17 +86,24 @@ describe("profile validation", () => {
     ).not.toThrow();
     expect(() =>
       validateAvatarFile(new File(["gif"], "mira.gif", { type: "image/gif" })),
-    ).toThrow(/PNG, JPEG, or WebP/);
+    ).not.toThrow();
     expect(() =>
       validateAvatarFile(
         new File([new Uint8Array(MAX_AVATAR_BYTES + 1)], "large.png", {
           type: "image/png",
         }),
       ),
-    ).toThrow(/smaller than 2 MiB/);
+    ).toThrow(/smaller than 5 MiB/);
+    expect(validateDescription("  tea and tiny experiments  ")).toBe(
+      "tea and tiny experiments",
+    );
+    expect(() => validateDescription("x".repeat(191))).toThrow(
+      /190 characters/,
+    );
   });
 
   it("removes a new avatar upload when the canonical profile update fails", async () => {
+    installImagePreparationMocks();
     profileState.single.mockResolvedValue({
       data: null,
       error: new Error("profile update failed"),
@@ -99,7 +114,13 @@ describe("profile validation", () => {
       saveLiveProfile({
         userId: "50000000-0000-4000-8000-000000000002",
         displayName: "Mira",
+        description: "",
         currentAvatarPath: null,
+        currentAvatarAnimationPath: null,
+        currentCoverPath: null,
+        currentCoverAnimationPath: null,
+        coverPositionX: 50,
+        coverPositionY: 50,
         avatarFile: avatar,
       }),
     ).rejects.toThrow("profile update failed");
@@ -119,6 +140,12 @@ describe("profile validation", () => {
         display_name: "Mira",
         avatar_url: null,
         avatar_path: null,
+        avatar_animation_path: null,
+        cover_path: null,
+        cover_animation_path: null,
+        cover_position_x: 50,
+        cover_position_y: 50,
+        description: "",
       },
       error: null,
     });
@@ -127,9 +154,15 @@ describe("profile validation", () => {
       saveLiveProfile({
         userId: "50000000-0000-4000-8000-000000000002",
         displayName: "Mira",
+        description: "",
         currentAvatarPath:
           "50000000-0000-4000-8000-000000000002/50000000-0000-4000-8000-00000000a001",
+        currentAvatarAnimationPath: null,
         currentAvatarUrl: "https://legacy.example/avatar.png",
+        currentCoverPath: null,
+        currentCoverAnimationPath: null,
+        coverPositionX: 50,
+        coverPositionY: 50,
         removeAvatar: true,
       }),
     ).resolves.toEqual(
@@ -138,12 +171,67 @@ describe("profile validation", () => {
 
     expect(profileState.update).toHaveBeenCalledWith({
       display_name: "Mira",
+      description: "",
       avatar_path: null,
+      avatar_animation_path: null,
+      cover_path: null,
+      cover_animation_path: null,
+      cover_position_x: 50,
+      cover_position_y: 50,
       avatar_url: null,
     });
     expect(profileState.remove).toHaveBeenCalledWith([
       "50000000-0000-4000-8000-000000000002/50000000-0000-4000-8000-00000000a001",
     ]);
+  });
+
+  it("stores static posters beside original GIF avatar and cover animations", async () => {
+    installImagePreparationMocks();
+    profileState.single.mockImplementation(() => {
+      const update = profileState.update.mock.calls.at(-1)?.[0] as Omit<
+        ProfileRow,
+        "id"
+      >;
+      return Promise.resolve({
+        data: {
+          id: "50000000-0000-4000-8000-000000000002",
+          ...update,
+        },
+        error: null,
+      });
+    });
+
+    const saved = await saveLiveProfile({
+      userId: "50000000-0000-4000-8000-000000000002",
+      displayName: "Mira",
+      description: "Tea and tiny experiments.",
+      currentAvatarPath: null,
+      currentAvatarAnimationPath: null,
+      currentCoverPath: null,
+      currentCoverAnimationPath: null,
+      avatarFile: new File(["gif"], "avatar.gif", { type: "image/gif" }),
+      coverFile: new File(["gif"], "cover.gif", { type: "image/gif" }),
+      coverPositionX: 64,
+      coverPositionY: 38,
+    });
+
+    expect(profileState.upload).toHaveBeenCalledTimes(4);
+    expect(
+      profileState.upload.mock.calls.map((call) => (call[1] as Blob).type),
+    ).toEqual(["image/webp", "image/gif", "image/webp", "image/gif"]);
+    expect(saved).toEqual(
+      expect.objectContaining({
+        description: "Tea and tiny experiments.",
+        coverPositionX: 64,
+        coverPositionY: 38,
+      }),
+    );
+    expect(saved.avatarAnimationPath).toMatch(
+      /^50000000-0000-4000-8000-000000000002\//,
+    );
+    expect(saved.coverAnimationPath).toMatch(
+      /^50000000-0000-4000-8000-000000000002\//,
+    );
   });
 
   it("subscribes before snapshot catch-up and replays a newer profile last", async () => {
@@ -154,6 +242,12 @@ describe("profile validation", () => {
             display_name: string;
             avatar_url: null;
             avatar_path: null;
+            avatar_animation_path: null;
+            cover_path: null;
+            cover_animation_path: null;
+            cover_position_x: number;
+            cover_position_y: number;
+            description: string;
           }>;
           error: null;
         }) => void)
@@ -178,6 +272,12 @@ describe("profile validation", () => {
             display_name: string;
             avatar_url: null;
             avatar_path: null;
+            avatar_animation_path: null;
+            cover_path: null;
+            cover_animation_path: null;
+            cover_position_x: number;
+            cover_position_y: number;
+            description: string;
           };
         }) => void)
       | undefined;
@@ -186,6 +286,12 @@ describe("profile validation", () => {
       display_name: "Old Mira",
       avatar_url: null,
       avatar_path: null,
+      avatar_animation_path: null,
+      cover_path: null,
+      cover_animation_path: null,
+      cover_position_x: 50,
+      cover_position_y: 50,
+      description: "",
     };
     statusHandler?.("SUBSCRIBED");
     updateHandler?.({ new: { ...stale, display_name: "New Mira" } });
@@ -201,3 +307,42 @@ describe("profile validation", () => {
     );
   });
 });
+
+function installImagePreparationMocks() {
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true,
+    value: vi.fn(() => "blob:profile-test"),
+  });
+  Object.defineProperty(URL, "revokeObjectURL", {
+    configurable: true,
+    value: vi.fn(),
+  });
+  class TestImage {
+    naturalWidth = 320;
+    naturalHeight = 320;
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    private value = "";
+    set src(value: string) {
+      this.value = value;
+      queueMicrotask(() => this.onload?.());
+    }
+    get src() {
+      return this.value;
+    }
+  }
+  vi.stubGlobal("Image", TestImage);
+  const createElement = document.createElement.bind(document);
+  vi.spyOn(document, "createElement").mockImplementation(
+    (tagName: string, options?: ElementCreationOptions) => {
+      if (tagName !== "canvas") return createElement(tagName, options);
+      return {
+        width: 0,
+        height: 0,
+        getContext: () => ({ drawImage: vi.fn() }),
+        toBlob: (callback: BlobCallback, type?: string) =>
+          callback(new Blob(["poster"], { type: type ?? "image/png" })),
+      } as unknown as HTMLCanvasElement;
+    },
+  );
+}

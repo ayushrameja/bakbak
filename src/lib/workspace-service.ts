@@ -33,6 +33,12 @@ interface ProfileRow {
   display_name: string;
   avatar_url: string | null;
   avatar_path: string | null;
+  avatar_animation_path: string | null;
+  cover_path: string | null;
+  cover_animation_path: string | null;
+  cover_position_x: number;
+  cover_position_y: number;
+  description: string;
 }
 
 interface MessageRow {
@@ -142,7 +148,9 @@ export async function loadLiveWorkspace(
   const userIds = membershipResult.data.map((membership) => membership.user_id);
   const { data: profiles, error: profileError } = await supabase
     .from("profiles")
-    .select("id,display_name,avatar_url,avatar_path")
+    .select(
+      "id,display_name,avatar_url,avatar_path,avatar_animation_path,cover_path,cover_animation_path,cover_position_x,cover_position_y,description",
+    )
     .in("id", userIds)
     .returns<ProfileRow[]>();
   if (profileError) throw profileError;
@@ -158,7 +166,16 @@ export async function loadLiveWorkspace(
       displayName: profile?.display_name ?? "Friend",
       email: isCurrent ? currentUser.email : "",
       avatarUrl: profile?.avatar_url ?? null,
+      avatarAnimationUrl: null,
       avatarPath: profile?.avatar_path ?? null,
+      avatarAnimationPath: profile?.avatar_animation_path ?? null,
+      coverUrl: null,
+      coverAnimationUrl: null,
+      coverPath: profile?.cover_path ?? null,
+      coverAnimationPath: profile?.cover_animation_path ?? null,
+      coverPositionX: profile?.cover_position_x ?? 50,
+      coverPositionY: profile?.cover_position_y ?? 50,
+      description: profile?.description ?? "",
       status: isCurrent ? "online" : "offline",
       role: membership.role,
     };

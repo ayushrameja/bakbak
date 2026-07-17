@@ -7,7 +7,7 @@ and phase completion belong in the numbered files under `docs/plans`.
 
 ## Current implementation state
 
-As of 2026-07-16, Bakbak has a complete local/mock product path and production
+As of 2026-07-17, Bakbak has a complete local/mock product path and production
 Supabase and LiveKit adapters. The renderer provides the invite-only welcome
 flow and a three-panel shell with a 232 px channel panel, flexible conversation
 canvas, and 240 px online/offline member panel. Both side panels are visible by
@@ -18,9 +18,11 @@ System/Light/Dark, Coral/Purple/Red/Yellow accent/intensity, and Warm/Flat
 surface preferences are synchronously applied before React renders. Flat uses
 crisp grayscale surfaces without decorative gradients, glow, glass blur, or
 heavy shadows while preserving semantic accent, presence, danger, and focus
-colors. Profiles support validated display names plus preview, upload, replace,
-and removal of private avatars. Admin-only controls create or rename text and
-voice channels, while Realtime reconciles changes for every member.
+colors. Profiles support validated display names, 190-character plain-text
+descriptions, static or GIF avatars, 3:1 static or GIF covers, integer cover
+focal points, and an accessible Discord-style anchored card. Admin-only
+controls create or rename text and voice channels, while Realtime reconciles
+changes for every member.
 
 Upgraded clients expose chat, structured individual mentions, account-synced
 unread emphasis, incoming-message sounds, and drafts only for text channels.
@@ -69,12 +71,23 @@ publication refreshes those edits across connected clients.
 
 The additive
 `202607120003_profile_avatars_and_channel_management.sql` migration is tracked
-and deployed to the hosted project. It adds `profiles.avatar_path`, a private 2
-MiB PNG/JPEG/WebP `avatars` bucket, owner-write/shared-server-read Storage
+and deployed to the hosted project. It originally added
+`profiles.avatar_path`, a private PNG/JPEG/WebP `avatars` bucket,
+owner-write/shared-server-read Storage
 policies, admin-only `create_channel` and `rename_channel` RPCs, and Realtime
 publication for profiles and channels. The renderer, local mock path, and hosted
 database contract are implemented; the live two-account acceptance run remains
 required before distribution.
+
+The additive `202607170001_rich_profiles.sql` migration is implemented and
+deployed. It adds the global profile description, optional avatar-animation,
+cover-poster, cover-animation, and required 0–100 cover-focal fields. It expands
+the private `avatars` bucket to 5 MiB with GIF support and creates the private
+10 MiB `profile-covers` bucket under the same owner-write/shared-server-read
+model. The renderer stores a bounded static poster for every upload and retains
+only original GIF animations, keeping `avatar_path` compatible with older
+clients. Hosted schema lint passes and no migration remains pending. The local
+pgTAP run and live two-account media/Realtime acceptance remain open.
 
 The additive
 `202607130001_voice_chat_mentions_and_read_state.sql` migration is implemented,
@@ -172,16 +185,16 @@ approved.
 
 ## Technology stack
 
-| Layer                | Technology                        | Responsibility                                                              |
-| -------------------- | --------------------------------- | --------------------------------------------------------------------------- |
-| Package/tooling      | pnpm, TypeScript                  | Dependency management and strict static types                               |
-| Renderer             | React, Vite                       | Desktop UI and local interaction state                                      |
-| Desktop shell        | Tauri 2, Rust                     | Native window, packaging, capabilities, and later tray/desktop integrations |
-| Identity/data        | Supabase Auth, Postgres, Realtime | Accounts, membership, channels, messages, invites, and realtime chat        |
-| Trusted backend      | Supabase Edge Functions           | Membership-checked LiveKit token issuance                                   |
-| Object media         | Supabase Storage                  | Private sound packs and member avatars with RLS-filtered access             |
-| Voice/data transport | LiveKit                           | Voice rooms, participant state, soundboard audio, and control data          |
-| Validation/testing   | Zod, Vitest, Testing Library      | Boundary validation and unit/component tests                                |
+| Layer                | Technology                        | Responsibility                                                                    |
+| -------------------- | --------------------------------- | --------------------------------------------------------------------------------- |
+| Package/tooling      | pnpm, TypeScript                  | Dependency management and strict static types                                     |
+| Renderer             | React, Vite                       | Desktop UI and local interaction state                                            |
+| Desktop shell        | Tauri 2, Rust                     | Native window, packaging, capabilities, and later tray/desktop integrations       |
+| Identity/data        | Supabase Auth, Postgres, Realtime | Accounts, membership, channels, messages, invites, and realtime chat              |
+| Trusted backend      | Supabase Edge Functions           | Membership-checked LiveKit token issuance                                         |
+| Object media         | Supabase Storage                  | Private sound packs, profile posters, and GIF animations with RLS-filtered access |
+| Voice/data transport | LiveKit                           | Voice rooms, participant state, soundboard audio, and control data                |
+| Validation/testing   | Zod, Vitest, Testing Library      | Boundary validation and unit/component tests                                      |
 
 There is one pnpm application, not a frontend/backend monorepo. `package.json`
 pins pnpm `11.3.0` through `packageManager` so local installs and GitHub Actions
@@ -207,7 +220,8 @@ bakbak/
 │       ├── 0004-warm-adda-ui-settings-channels-arm64.md
 │       ├── 0005-voice-chat-mentions-settings-accents.md
 │       ├── 0006-discord-shaped-bakbak-hearted-ui.md
-│       └── 0007-voice-join-acceleration-and-soundboard-polish.md
+│       ├── 0007-voice-join-acceleration-and-soundboard-polish.md
+│       └── 0008-rich-animated-profiles.md
 ├── public/
 │   ├── bakbak.svg                 # renderer favicon/source logo
 │   └── theme-init.js              # parser-blocking, CSP-safe first-paint theme bootstrap
@@ -263,8 +277,14 @@ The renderer uses a three-panel desktop layout plus a modal layer:
    compact horizontal strip.
 6. Settings overlays the shell as a centered modal up to 1000×720 with 16–24 px
    viewport margins, left navigation, internal scrolling, focus trap/
-   restoration, backdrop/X/Escape dismissal, compact call controls, and
-   confirmed logout.
+   restoration, backdrop/X/Escape dismissal, compact call controls, a live
+   rich-profile editor, and confirmed logout. Its focus lifecycle runs once per
+   mount so changing parent callbacks, presence, or voice state cannot steal
+   focus from a field.
+7. One application-owned profile popover anchors to member rows, message
+   authors, mentions, voice identities, or the user dock. It prefers the
+   trigger's right side, flips/clamps inside the viewport, contains focus, and
+   shows only current-server role/presence plus global profile fields.
 
 The reusable backend health poll measures a Supabase Auth round trip every 30
 seconds and labels the result as backend latency. LiveKit
@@ -333,11 +353,12 @@ derive the caller from `auth.uid()` and authorize against the exact server's
 admin membership; direct client channel mutations remain denied.
 
 Supabase Storage holds operator-managed sound files and user-managed private
-avatars outside the desktop bundle. Soundboard RLS derives read access from the
-server UUID path prefix and exposes no client mutation. Avatar paths begin with
-their owner's user UUID; only that owner can insert, replace, or delete an
-object, while the owner and users sharing any server with them can read it.
-Clients never receive bucket-management authority.
+profile media outside the desktop bundle. Soundboard RLS derives read access
+from the server UUID path prefix and exposes no client mutation. `avatars` and
+`profile-covers` paths begin with their owner's user UUID; only that owner can
+insert, replace, or delete an object, while the owner and users sharing any
+server with them can read it. Clients never receive bucket-management
+authority.
 
 ### LiveKit
 
@@ -357,19 +378,19 @@ soundboard volume multiplied by the existing participant volume.
 All identifiers are UUIDs unless noted otherwise. Exact migrations become
 authoritative once Phase 2 starts.
 
-| Entity                  | Key fields and constraints                                                                                               | Access intent                                                                               |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
-| `profiles`              | `id` references `auth.users`; 1–50 character display name; legacy `avatar_url`; owner-prefixed `avatar_path`; timestamps | User updates their row; shared-server members read member-facing fields                     |
-| `servers`               | owner/admin reference, name, timestamps                                                                                  | Members of the server can read it                                                           |
-| `memberships`           | unique `(server_id, user_id)`; v1 admin/member role                                                                      | A user can read memberships for servers they belong to                                      |
-| `channels`              | `server_id`, trimmed 1–80 character name, ordered position, immutable `text` or `voice` type                             | Members read; matching admins create/rename only through RPCs                               |
-| `messages`              | text/voice channel ID, author ID, plain-text body, nullable structured text/mention content, timestamps                  | Members read accessible channels; validated inserts use the message RPC                     |
-| `channel_read_states`   | private user/channel key, monotonic last-read message pointer and timestamp                                              | The owner reads through RLS; membership-checked RPCs advance/query state                    |
-| `invite_codes`          | server ID, one-way code digest, creator, expiry, redemption fields                                                       | No broad client read policy; redeemed atomically through a controlled function              |
-| `presence_heartbeats`   | unique server/user row, last seen, nullable voice channel/join time                                                      | Members can read server rows; only security-definer heartbeat RPCs can write                |
-| `soundboard_categories` | server ID, name, ordered position                                                                                        | Members can read; categories are operator managed                                           |
-| `soundboard_sounds`     | server/category, label, emoji, Storage path, duration, order, revision                                                   | Members can read and update label, emoji, or same-server category only                      |
-| `storage.objects`       | private `soundboard/<server UUID>/<file>` and `avatars/<owner UUID>/<asset UUID>` objects                                | Sound files are operator-managed; avatar owners write/delete and shared-server members read |
+| Entity                  | Key fields and constraints                                                                                                                                                                           | Access intent                                                                                |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `profiles`              | `id` references `auth.users`; 1–50 character display name; 0–190 character description; legacy `avatar_url`; owner-prefixed avatar/cover poster and GIF paths; integer 0–100 cover focal coordinates | User updates their row; shared-server members read member-facing fields                      |
+| `servers`               | owner/admin reference, name, timestamps                                                                                                                                                              | Members of the server can read it                                                            |
+| `memberships`           | unique `(server_id, user_id)`; v1 admin/member role                                                                                                                                                  | A user can read memberships for servers they belong to                                       |
+| `channels`              | `server_id`, trimmed 1–80 character name, ordered position, immutable `text` or `voice` type                                                                                                         | Members read; matching admins create/rename only through RPCs                                |
+| `messages`              | text/voice channel ID, author ID, plain-text body, nullable structured text/mention content, timestamps                                                                                              | Members read accessible channels; validated inserts use the message RPC                      |
+| `channel_read_states`   | private user/channel key, monotonic last-read message pointer and timestamp                                                                                                                          | The owner reads through RLS; membership-checked RPCs advance/query state                     |
+| `invite_codes`          | server ID, one-way code digest, creator, expiry, redemption fields                                                                                                                                   | No broad client read policy; redeemed atomically through a controlled function               |
+| `presence_heartbeats`   | unique server/user row, last seen, nullable voice channel/join time                                                                                                                                  | Members can read server rows; only security-definer heartbeat RPCs can write                 |
+| `soundboard_categories` | server ID, name, ordered position                                                                                                                                                                    | Members can read; categories are operator managed                                            |
+| `soundboard_sounds`     | server/category, label, emoji, Storage path, duration, order, revision                                                                                                                               | Members can read and update label, emoji, or same-server category only                       |
+| `storage.objects`       | private `soundboard/<server UUID>/<file>`, `avatars/<owner UUID>/<asset UUID>`, and `profile-covers/<owner UUID>/<asset UUID>` objects                                                               | Sound files are operator-managed; profile owners write/delete and shared-server members read |
 
 Initial admin membership and initial invite codes are managed with reviewed SQL.
 An invite-management UI is deferred until post-v1.
@@ -393,9 +414,10 @@ An invite-management UI is deferred until post-v1.
   unexpired code, create the membership, and consume the code in one
   transaction.
 - The client cannot list or inspect valid invite codes.
-- Profile display names and avatar paths remain canonical in `public.profiles`.
-  Avatar objects must use `<auth.uid()>/<generated UUID>`; only the owner writes
-  or deletes, and reads require ownership or a shared server membership.
+- Profile display names, descriptions, media paths, and cover focal points
+  remain canonical in `public.profiles`. Avatar and cover objects must use
+  `<auth.uid()>/<generated UUID>`; only the owner writes or deletes, and reads
+  require ownership or a shared server membership.
 - Direct channel insert, update, and delete privileges stay revoked. The
   `create_channel` and `rename_channel` RPCs derive the caller from
   `auth.uid()`, require admin membership in the affected server, validate names,
@@ -433,24 +455,36 @@ An invite-management UI is deferred until post-v1.
    the production stylesheet loads; React then installs the System media-query
    listener. Explicit Light or Dark choices ignore OS changes. Valid v1/v2
    values migrate to Warm while preserving their supported fields.
-2. Profile edits validate a trimmed 1–50 character display name and an optional
-   PNG, JPEG, or WebP avatar no larger than 2 MiB.
-3. A new avatar uploads first to `<user UUID>/<generated UUID>`. The renderer
-   then updates `profiles.display_name` and `profiles.avatar_path`, mirrors the
-   name into Auth metadata as a compatibility fallback, and best-effort removes
-   the replaced object. A failed profile update cleans up the new upload.
-4. Private avatars download as authenticated blobs. The application tracks and
-   revokes object URLs on replacement, sign-out, and teardown. Profile Realtime
-   subscribes before a catch-up snapshot, buffers overlapping updates, and
-   sequences avatar downloads so stale responses cannot replace newer names or
-   photos in member, chat, and voice views.
-5. Audio settings retain the existing persisted device selectors and
+2. Profile edits validate a trimmed 1–50 character display name, a
+   190-character plain-text description, integer 0–100 cover coordinates, and
+   optional PNG/JPEG/WebP/GIF media. Avatars are limited to 5 MiB, covers to 10
+   MiB, and every decoded image to 16 megapixels and 8192 px on either side.
+3. The renderer decodes each upload before storage and paints a bounded static
+   poster: at most 512 px on the avatar long edge or 1600 px on the cover long
+   edge, encoded as WebP with PNG fallback. GIF uploads retain the original
+   animation beside the poster; other animated formats are flattened.
+4. Changed poster/animation objects upload to
+   `<user UUID>/<generated UUID>` before one profile-row update. Any failure
+   removes every newly uploaded object. Success mirrors the display name into
+   Auth metadata and best-effort deletes replaced/removed objects.
+5. One bucket/path-keyed cache deduplicates authenticated downloads and revokes
+   object URLs on replacement, sign-out, and teardown. Avatar posters load
+   eagerly; compact GIFs load only on identity hover/focus, while cover media
+   loads only for an open profile card or editor. Reduced-motion mode never
+   requests GIFs. Realtime generation guards stop stale downloads from
+   replacing newer profile state.
+6. Cover framing uses a fixed 3:1 preview. Pointer drag or keyboard arrows
+   update integer focal coordinates; Shift moves by a larger step and Reset
+   returns to 50/50.
+7. Audio settings retain the existing persisted device selectors and
    soundboard volume. Opening settings does not request media; microphone and
    output tests acquire only the temporary resources required by the explicit
    test action and release them when stopped or unmounted.
-6. Settings is a modal overlay over the current canvas. It traps focus, restores
+8. Settings is a modal overlay over the current canvas. It traps focus, restores
    the opener on close, exposes compact active-call controls, and confirms
-   logout. A failed logout leaves the overlay open with an inline error.
+   logout. Closing discards staged profile edits and revokes preview URLs; a
+   failed save leaves the draft intact for retry. A failed logout leaves the
+   overlay open with an inline error.
 
 ### Channel management
 
@@ -792,8 +826,8 @@ These contracts match the current implementation.
 - **Behavior:** advances by message `(created_at, id)` order and never regresses
 
 Messages, profile updates, and private read-state events use Supabase Realtime
-under RLS. Private profile images use authenticated Storage operations; v1 does
-not require another custom service endpoint.
+under RLS. Private profile posters and GIF animations use authenticated Storage
+operations; v1 does not require another custom service endpoint.
 
 ## Environment variables
 
@@ -846,8 +880,9 @@ pnpm build
 
 Run `pnpm tauri build` when validating platform integration or a distributable
 bundle. Database phases add Supabase migration/RLS and Storage-policy tests;
-profile/channel work specifically covers avatar owner, shared-member,
-cross-server and outsider access plus admin/member channel RPC behavior. The
+profile/channel work specifically covers avatar/cover owner, shared-member,
+cross-server and outsider access, field validation, plus admin/member channel
+RPC behavior. The
 first friend-test release also requires the manual Apple Silicon macOS matrix
 in the active plans.
 Screen-sharing work additionally runs the Deno token suite, focused Rust tests,
@@ -883,6 +918,12 @@ that it has passed.
   are deployed with the JWT gate preserved. Authenticated member/non-member
   probes, real hosted warm/cold timing, and the two-account media rehearsal
   remain required before the latency targets can be claimed.
+- Plan 0008's Settings focus repair, poster/GIF pipeline, lazy media cache,
+  anchored profile card, privacy boundary, and reduced-motion behavior pass
+  automated and mock-browser validation at both supported viewport sizes. The
+  hosted additive migration is deployed and linted. Docker-backed pgTAP,
+  installed-app theme/reduced-motion observation, and the live two-account
+  media/Realtime/outsider matrix remain required before distribution.
 - The Warm Adda renderer, profile/avatar services, channel RPCs, and policies
   are implemented, and migration
   `202607120003_profile_avatars_and_channel_management.sql` is deployed to the

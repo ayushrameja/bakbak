@@ -8,6 +8,12 @@ live under a server UUID prefix; only a signed-in member of that server can list
 or download them, and renderer clients cannot upload, replace, or delete
 sounds. Members may edit a catalog sound's label, emoji, and same-server
 category; all audio fields and category administration remain operator-only.
+Private profile media uses two owner-prefixed buckets: `avatars` accepts
+PNG/JPEG/WebP/GIF objects up to 5 MiB, and `profile-covers` accepts the same
+types up to 10 MiB. Owners manage their objects; authenticated users may read
+another person's objects only when both share a server. `avatar_path` remains
+the canonical static poster for older clients, while optional animation and
+cover paths live in the additive rich-profile fields.
 
 ## Local validation
 
@@ -66,6 +72,10 @@ same 404 used for a missing or text channel.
   emoji, and category metadata updates, while a composite foreign key rejects
   categories from another server. Clients cannot insert or delete sounds or
   categories.
+- Profile descriptions are plain text limited to 190 characters. Cover focal
+  coordinates are required integers from 0–100. Every avatar and cover path is
+  either null or begins with the authenticated owner's UUID; owner writes and
+  shared-server reads are enforced independently for both private buckets.
 
 ## Hosted deployment
 
@@ -94,8 +104,15 @@ missing, text, outsider, and cross-server requests return the same absent
 result. After deployment, repeat the unauthenticated 401 probe and authenticated
 member/non-member voice-token probes before distribution.
 
-The bucket is private, accepts only `audio/mpeg`, and rejects objects larger
-than 1 MiB. Migration `202607120002_soundboard_catalog.sql` seeds the four
+Rich profiles add migration `202607170001_rich_profiles.sql`. Push it before
+distributing a renderer that selects the new profile fields. The migration is
+additive, expands the existing avatar bucket, and creates `profile-covers`
+without making either bucket public. After deployment, run linked schema lint,
+confirm no migration remains pending, then use two authenticated accounts plus
+an outsider to verify shared-server reads and cross-server denial.
+
+The soundboard bucket is private, accepts only `audio/mpeg`, and rejects objects
+larger than 1 MiB. Migration `202607120002_soundboard_catalog.sql` seeds the four
 ordered categories and 23 sound rows whose `storage_path` values match these
 objects. The repository intentionally does not retain a second local copy of
 the MP3s; the hosted bucket is the source of truth. Keep an operator-controlled

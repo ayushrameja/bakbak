@@ -26,13 +26,13 @@ select is(
 );
 select is(
   (select file_size_limit from storage.buckets where id = 'avatars'),
-  2097152::bigint,
-  'avatar objects are limited to two MiB'
+  5242880::bigint,
+  'avatar objects are limited to five MiB'
 );
 select is(
   (select allowed_mime_types from storage.buckets where id = 'avatars'),
-  array['image/png', 'image/jpeg', 'image/webp']::text[],
-  'avatars accept only PNG, JPEG, and WebP images'
+  array['image/png', 'image/jpeg', 'image/webp', 'image/gif']::text[],
+  'avatars accept PNG, JPEG, WebP, and GIF images'
 );
 select ok(
   exists (

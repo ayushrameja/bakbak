@@ -8,6 +8,11 @@ import {
   type KeyboardEvent,
 } from "react";
 import { Avatar } from "../../components/Avatar";
+import {
+  ProfileTrigger,
+  type LoadProfileMedia,
+  type OpenProfile,
+} from "../../components/ProfileTrigger";
 import type {
   AppUser,
   Channel,
@@ -22,6 +27,9 @@ import {
   updateDraftText,
 } from "./message-content";
 
+const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
+const ignoreProfileOpen: OpenProfile = () => undefined;
+
 interface ChatViewProps {
   channel: Channel;
   messages: ChatMessage[];
@@ -31,6 +39,9 @@ interface ChatViewProps {
   draft: MessageDraft;
   onDraftChange: (draft: MessageDraft) => void;
   onSend: (draft: MessageDraft) => Promise<void>;
+  loadProfileMedia?: LoadProfileMedia;
+  onOpenProfile?: OpenProfile;
+  openProfileId?: string | null;
 }
 
 export function ChatView({
@@ -42,6 +53,9 @@ export function ChatView({
   draft,
   onDraftChange,
   onSend,
+  loadProfileMedia = emptyProfileMediaLoader,
+  onOpenProfile = ignoreProfileOpen,
+  openProfileId = null,
 }: ChatViewProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -167,6 +181,11 @@ export function ChatView({
           const author =
             membersById.get(message.authorId) ??
             (message.authorId === currentUser.id ? currentUser : null);
+          const authorMember =
+            membersById.get(message.authorId) ??
+            (message.authorId === currentUser.id
+              ? { ...currentUser, role: "member" }
+              : null);
           const previous = messages[index - 1];
           const grouped =
             previous?.authorId === message.authorId &&
@@ -178,14 +197,46 @@ export function ChatView({
               key={message.id}
             >
               {!grouped ? (
-                <Avatar user={author ?? fallbackUser} size="medium" />
+                authorMember ? (
+                  <ProfileTrigger
+                    className="message__profile-avatar"
+                    member={authorMember}
+                    loadMedia={loadProfileMedia}
+                    onOpenProfile={onOpenProfile}
+                    expanded={openProfileId === authorMember.id}
+                    aria-label={`View ${authorMember.displayName}'s profile`}
+                  >
+                    {({ animationUrl, animated }) => (
+                      <Avatar
+                        user={authorMember}
+                        size="medium"
+                        animationUrl={animationUrl}
+                        animated={animated}
+                      />
+                    )}
+                  </ProfileTrigger>
+                ) : (
+                  <Avatar user={fallbackUser} size="medium" />
+                )
               ) : (
                 <time>{formatTime(message.createdAt)}</time>
               )}
               <div className="message__body">
                 {!grouped ? (
                   <header>
-                    <strong>{author?.displayName ?? "Former friend"}</strong>
+                    {authorMember ? (
+                      <ProfileTrigger
+                        className="message__profile-name"
+                        member={authorMember}
+                        loadMedia={loadProfileMedia}
+                        onOpenProfile={onOpenProfile}
+                        expanded={openProfileId === authorMember.id}
+                      >
+                        {() => <strong>{authorMember.displayName}</strong>}
+                      </ProfileTrigger>
+                    ) : (
+                      <strong>{author?.displayName ?? "Former friend"}</strong>
+                    )}
                     <time>{formatMessageDate(message.createdAt)}</time>
                     {message.pending ? <span>sending</span> : null}
                   </header>
@@ -195,6 +246,9 @@ export function ChatView({
                     message={message}
                     membersById={membersById}
                     currentUserId={currentUser.id}
+                    loadProfileMedia={loadProfileMedia}
+                    onOpenProfile={onOpenProfile}
+                    openProfileId={openProfileId}
                   />
                 </p>
               </div>
@@ -289,25 +343,45 @@ function MessageContent({
   message,
   membersById,
   currentUserId,
+  loadProfileMedia,
+  onOpenProfile,
+  openProfileId,
 }: {
   message: ChatMessage;
   membersById: ReadonlyMap<string, ServerMember>;
   currentUserId: string;
+  loadProfileMedia: LoadProfileMedia;
+  onOpenProfile: OpenProfile;
+  openProfileId: string | null;
 }) {
   if (!message.content) return message.body;
-  return message.content.map((segment, index) =>
-    segment.type === "text" ? (
-      segment.text
+  return message.content.map((segment, index) => {
+    if (segment.type === "text") return segment.text;
+    const member = membersById.get(segment.userId);
+    const className = `message-mention ${segment.userId === currentUserId ? "message-mention--self" : ""}`;
+    return member ? (
+      <ProfileTrigger
+        className={className}
+        data-user-id={segment.userId}
+        key={`${segment.userId}-${index}`}
+        member={member}
+        loadMedia={loadProfileMedia}
+        onOpenProfile={onOpenProfile}
+        expanded={openProfileId === member.id}
+        aria-label={`View ${member.displayName}'s profile`}
+      >
+        {() => <>@{member.displayName}</>}
+      </ProfileTrigger>
     ) : (
       <span
-        className={`message-mention ${segment.userId === currentUserId ? "message-mention--self" : ""}`}
+        className={className}
         data-user-id={segment.userId}
         key={`${segment.userId}-${index}`}
       >
-        @{membersById.get(segment.userId)?.displayName ?? segment.fallback}
+        @{segment.fallback}
       </span>
-    ),
-  );
+    );
+  });
 }
 
 const fallbackUser: AppUser = {
@@ -315,6 +389,16 @@ const fallbackUser: AppUser = {
   displayName: "Friend",
   email: "",
   avatarUrl: null,
+  avatarAnimationUrl: null,
+  avatarPath: null,
+  avatarAnimationPath: null,
+  coverUrl: null,
+  coverAnimationUrl: null,
+  coverPath: null,
+  coverAnimationPath: null,
+  coverPositionX: 50,
+  coverPositionY: 50,
+  description: "",
   status: "offline",
 };
 

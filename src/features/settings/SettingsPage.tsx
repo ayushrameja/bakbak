@@ -25,23 +25,40 @@ import {
   type FormEvent,
 } from "react";
 import { Avatar } from "../../components/Avatar";
+import type { LoadProfileMedia } from "../../components/ProfileTrigger";
 import type { AppUser } from "../../lib/types";
 import {
+  AVATAR_BUCKET,
+  COVER_BUCKET,
+  MAX_DESCRIPTION_LENGTH,
+  prepareProfileImage,
   validateAvatarFile,
+  validateCoverFile,
+  validateCoverPosition,
+  validateDescription,
   validateDisplayName,
+  type ProfileMediaKind,
 } from "../../lib/profile-service";
+import { useReducedMotion } from "../../lib/use-reduced-motion";
 import type {
   AccentColor,
   SurfaceStyle,
   ThemePreference,
 } from "./appearance-preferences";
 
+const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
+
 export type SettingsSection = "profile" | "audio" | "appearance";
 
 export interface ProfileSaveInput {
   displayName: string;
+  description: string;
   avatarFile: File | null;
+  coverFile: File | null;
   removeAvatar: boolean;
+  removeCover: boolean;
+  coverPositionX: number;
+  coverPositionY: number;
 }
 
 interface SettingsPageProps {
@@ -72,6 +89,7 @@ interface SettingsPageProps {
   onAccentChange: (accent: AccentColor, intensity: number) => void;
   onSurfaceStyleChange: (surfaceStyle: SurfaceStyle) => void;
   onSaveProfile: (input: ProfileSaveInput) => Promise<{ warning?: string }>;
+  loadProfileMedia?: LoadProfileMedia;
   onInputChange: (deviceId: string) => void;
   onOutputChange: (deviceId: string) => void;
   onCameraChange: (deviceId: string) => void;
@@ -93,6 +111,11 @@ export function SettingsPage(props: SettingsPageProps) {
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const confirmingRef = useRef(confirmingSignOut);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     confirmingRef.current = confirmingSignOut;
@@ -109,7 +132,7 @@ export function SettingsPage(props: SettingsPageProps) {
       if (event.key === "Escape") {
         event.preventDefault();
         if (confirmingRef.current) setConfirmingSignOut(false);
-        else onClose();
+        else onCloseRef.current();
         return;
       }
       if (event.key !== "Tab" || !dialogRef.current) return;
@@ -132,7 +155,7 @@ export function SettingsPage(props: SettingsPageProps) {
       document.removeEventListener("keydown", handleKeyDown);
       returnFocusTo?.focus();
     };
-  }, [onClose]);
+  }, []);
 
   async function confirmSignOut() {
     setSigningOut(true);
@@ -254,7 +277,11 @@ export function SettingsPage(props: SettingsPageProps) {
 
           <div className="settings-canvas">
             {props.section === "profile" ? (
-              <ProfileSettings user={props.user} onSave={props.onSaveProfile} />
+              <ProfileSettings
+                user={props.user}
+                onSave={props.onSaveProfile}
+                loadMedia={props.loadProfileMedia ?? emptyProfileMediaLoader}
+              />
             ) : null}
             {props.section === "audio" ? <AudioSettings {...props} /> : null}
             {props.section === "appearance" ? (
@@ -342,44 +369,153 @@ function SettingsNavButton({
   );
 }
 
+function useObjectUrlCleanup(url: string | null) {
+  useEffect(
+    () => () => {
+      if (url) URL.revokeObjectURL(url);
+    },
+    [url],
+  );
+}
+
 function ProfileSettings({
   user,
   onSave,
+  loadMedia,
 }: {
   user: AppUser;
   onSave: SettingsPageProps["onSaveProfile"];
+  loadMedia: LoadProfileMedia;
 }) {
+  const reducedMotion = useReducedMotion();
   const [displayName, setDisplayName] = useState(user.displayName);
+  const [description, setDescription] = useState(user.description);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
   const [removeAvatar, setRemoveAvatar] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [removeCover, setRemoveCover] = useState(false);
+  const [coverPositionX, setCoverPositionX] = useState(user.coverPositionX);
+  const [coverPositionY, setCoverPositionY] = useState(user.coverPositionY);
+  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
+  const [avatarAnimationPreviewUrl, setAvatarAnimationPreviewUrl] = useState<
+    string | null
+  >(null);
+  const [coverPreviewUrl, setCoverPreviewUrl] = useState<string | null>(null);
+  const [coverAnimationPreviewUrl, setCoverAnimationPreviewUrl] = useState<
+    string | null
+  >(null);
+  const [currentAvatarAnimationUrl, setCurrentAvatarAnimationUrl] = useState<
+    string | null
+  >(user.avatarAnimationUrl);
+  const [currentCoverUrl, setCurrentCoverUrl] = useState<string | null>(
+    user.coverUrl,
+  );
+  const [currentCoverAnimationUrl, setCurrentCoverAnimationUrl] = useState<
+    string | null
+  >(user.coverAnimationUrl);
+  const [preparingMedia, setPreparingMedia] = useState<ProfileMediaKind | null>(
+    null,
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const mediaRequestRef = useRef(0);
 
   useEffect(() => setDisplayName(user.displayName), [user.displayName]);
+  useEffect(() => setDescription(user.description), [user.description]);
+  useEffect(() => {
+    setCoverPositionX(user.coverPositionX);
+    setCoverPositionY(user.coverPositionY);
+  }, [user.coverPositionX, user.coverPositionY]);
+
+  useObjectUrlCleanup(avatarPreviewUrl);
+  useObjectUrlCleanup(avatarAnimationPreviewUrl);
+  useObjectUrlCleanup(coverPreviewUrl);
+  useObjectUrlCleanup(coverAnimationPreviewUrl);
+
   useEffect(
     () => () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      mediaRequestRef.current += 1;
     },
-    [previewUrl],
+    [],
   );
 
-  function chooseAvatar(event: ChangeEvent<HTMLInputElement>) {
+  useEffect(() => {
+    let current = true;
+    setCurrentAvatarAnimationUrl(user.avatarAnimationUrl);
+    setCurrentCoverUrl(user.coverUrl);
+    setCurrentCoverAnimationUrl(user.coverAnimationUrl);
+    void Promise.all([
+      !reducedMotion && !user.avatarAnimationUrl
+        ? loadMedia(AVATAR_BUCKET, user.avatarAnimationPath)
+        : Promise.resolve(user.avatarAnimationUrl),
+      !user.coverUrl
+        ? loadMedia(COVER_BUCKET, user.coverPath)
+        : Promise.resolve(user.coverUrl),
+      !reducedMotion && !user.coverAnimationUrl
+        ? loadMedia(COVER_BUCKET, user.coverAnimationPath)
+        : Promise.resolve(user.coverAnimationUrl),
+    ])
+      .then(([avatarAnimation, cover, coverAnimation]) => {
+        if (!current) return;
+        setCurrentAvatarAnimationUrl(avatarAnimation);
+        setCurrentCoverUrl(cover);
+        setCurrentCoverAnimationUrl(coverAnimation);
+      })
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, [
+    loadMedia,
+    reducedMotion,
+    user.avatarAnimationPath,
+    user.avatarAnimationUrl,
+    user.coverAnimationPath,
+    user.coverAnimationUrl,
+    user.coverPath,
+    user.coverUrl,
+  ]);
+
+  async function chooseImage(
+    event: ChangeEvent<HTMLInputElement>,
+    kind: ProfileMediaKind,
+  ) {
     const file = event.target.files?.[0] ?? null;
     if (!file) return;
+    const request = ++mediaRequestRef.current;
     setError(null);
+    setNotice(null);
+    setPreparingMedia(kind);
     try {
-      validateAvatarFile(file);
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(URL.createObjectURL(file));
-      setAvatarFile(file);
-      setRemoveAvatar(false);
+      if (kind === "avatar") validateAvatarFile(file);
+      else validateCoverFile(file);
+      const prepared = await prepareProfileImage(file, kind);
+      if (request !== mediaRequestRef.current) return;
+      const posterUrl = URL.createObjectURL(prepared.poster);
+      const animationUrl = prepared.animation
+        ? URL.createObjectURL(prepared.animation)
+        : null;
+      if (kind === "avatar") {
+        setAvatarPreviewUrl(posterUrl);
+        setAvatarAnimationPreviewUrl(animationUrl);
+        setAvatarFile(file);
+        setRemoveAvatar(false);
+      } else {
+        setCoverPreviewUrl(posterUrl);
+        setCoverAnimationPreviewUrl(animationUrl);
+        setCoverFile(file);
+        setRemoveCover(false);
+        setCoverPositionX(50);
+        setCoverPositionY(50);
+      }
     } catch (caught) {
-      event.target.value = "";
       setError(
         caught instanceof Error ? caught.message : "That image cannot be used.",
       );
+    } finally {
+      if (request === mediaRequestRef.current) setPreparingMedia(null);
+      event.target.value = "";
     }
   }
 
@@ -390,15 +526,25 @@ function ProfileSettings({
     setSaving(true);
     try {
       const normalized = validateDisplayName(displayName);
+      const normalizedDescription = validateDescription(description);
       const result = await onSave({
         displayName: normalized,
+        description: normalizedDescription,
         avatarFile,
+        coverFile,
         removeAvatar,
+        removeCover,
+        coverPositionX: validateCoverPosition(coverPositionX),
+        coverPositionY: validateCoverPosition(coverPositionY),
       });
       setAvatarFile(null);
+      setCoverFile(null);
       setRemoveAvatar(false);
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(null);
+      setRemoveCover(false);
+      setAvatarPreviewUrl(null);
+      setAvatarAnimationPreviewUrl(null);
+      setCoverPreviewUrl(null);
+      setCoverAnimationPreviewUrl(null);
       setNotice(
         result.warning ?? "Profile saved. Looking unmistakably like you.",
       );
@@ -413,8 +559,55 @@ function ProfileSettings({
 
   const avatarUser = {
     ...user,
-    avatarUrl: removeAvatar ? null : (previewUrl ?? user.avatarUrl),
+    displayName: displayName.trim() || user.displayName,
+    avatarUrl: removeAvatar
+      ? null
+      : avatarFile
+        ? avatarPreviewUrl
+        : user.avatarUrl,
   };
+  const avatarAnimationUrl = reducedMotion
+    ? null
+    : avatarFile
+      ? avatarAnimationPreviewUrl
+      : currentAvatarAnimationUrl;
+  const coverUrl = removeCover
+    ? null
+    : coverFile
+      ? coverPreviewUrl
+      : currentCoverUrl;
+  const coverAnimationUrl = reducedMotion
+    ? null
+    : coverFile
+      ? coverAnimationPreviewUrl
+      : currentCoverAnimationUrl;
+  const dirty =
+    displayName !== user.displayName ||
+    description !== user.description ||
+    avatarFile !== null ||
+    coverFile !== null ||
+    removeAvatar ||
+    removeCover ||
+    coverPositionX !== user.coverPositionX ||
+    coverPositionY !== user.coverPositionY;
+
+  function updateFocalPoint(
+    clientX: number,
+    clientY: number,
+    element: Element,
+  ) {
+    const bounds = element.getBoundingClientRect();
+    setCoverPositionX(
+      Math.round(
+        Math.min(1, Math.max(0, (clientX - bounds.left) / bounds.width)) * 100,
+      ),
+    );
+    setCoverPositionY(
+      Math.round(
+        Math.min(1, Math.max(0, (clientY - bounds.top) / bounds.height)) * 100,
+      ),
+    );
+  }
 
   return (
     <form
@@ -424,36 +617,167 @@ function ProfileSettings({
       <div className="settings-panel__heading">
         <span className="eyebrow">Profile</span>
         <h2>How friends see you</h2>
-        <p>Your photo stays inside servers you share with friends.</p>
+        <p>Your profile stays inside servers you share with friends.</p>
       </div>
-      <div className="profile-photo-row">
-        <Avatar user={avatarUser} size="large" />
-        <div>
-          <label className="secondary-button profile-upload">
-            Choose photo
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              onChange={chooseAvatar}
+      <section className="profile-editor-preview" aria-label="Profile preview">
+        <div className="profile-editor-preview__media">
+          <div
+            className={`profile-editor-preview__cover ${coverUrl ? "has-media" : ""}`}
+            tabIndex={coverUrl ? 0 : undefined}
+            aria-label={
+              coverUrl
+                ? `Cover focal point, ${coverPositionX}% horizontal, ${coverPositionY}% vertical`
+                : undefined
+            }
+            onPointerDown={(event) => {
+              if (!coverUrl) return;
+              event.currentTarget.setPointerCapture(event.pointerId);
+              updateFocalPoint(
+                event.clientX,
+                event.clientY,
+                event.currentTarget,
+              );
+            }}
+            onPointerMove={(event) => {
+              if (!event.currentTarget.hasPointerCapture(event.pointerId))
+                return;
+              updateFocalPoint(
+                event.clientX,
+                event.clientY,
+                event.currentTarget,
+              );
+            }}
+            onKeyDown={(event) => {
+              if (!coverUrl) return;
+              const step = event.shiftKey ? 10 : 2;
+              if (event.key === "ArrowLeft") {
+                event.preventDefault();
+                setCoverPositionX((value) => Math.max(0, value - step));
+              } else if (event.key === "ArrowRight") {
+                event.preventDefault();
+                setCoverPositionX((value) => Math.min(100, value + step));
+              } else if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setCoverPositionY((value) => Math.max(0, value - step));
+              } else if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setCoverPositionY((value) => Math.min(100, value + step));
+              }
+            }}
+          >
+            {coverUrl ? (
+              <img
+                src={coverUrl}
+                alt=""
+                style={{
+                  objectPosition: `${coverPositionX}% ${coverPositionY}%`,
+                }}
+              />
+            ) : null}
+            {coverAnimationUrl ? (
+              <img
+                className="profile-editor-preview__cover-animation"
+                src={coverAnimationUrl}
+                alt=""
+                style={{
+                  objectPosition: `${coverPositionX}% ${coverPositionY}%`,
+                }}
+              />
+            ) : null}
+            {coverUrl ? <span>Drag to frame your cover</span> : null}
+          </div>
+          <div className="profile-editor-preview__avatar">
+            <Avatar
+              user={avatarUser}
+              size="large"
+              animationUrl={avatarAnimationUrl}
+              animated={!reducedMotion}
             />
-          </label>
-          {(user.avatarPath || user.avatarUrl || previewUrl) &&
-          !removeAvatar ? (
-            <button
-              className="text-button"
-              type="button"
-              onClick={() => {
-                setAvatarFile(null);
-                setRemoveAvatar(true);
-                if (previewUrl) URL.revokeObjectURL(previewUrl);
-                setPreviewUrl(null);
-              }}
-            >
-              Remove photo
-            </button>
-          ) : null}
-          <span>PNG, JPEG, or WebP · up to 2 MiB</span>
+          </div>
         </div>
+        <div className="profile-editor-preview__copy">
+          <strong>{displayName.trim() || "Your name"}</strong>
+          <p>
+            {description.trim() ||
+              "Your description will make this corner feel like yours."}
+          </p>
+        </div>
+      </section>
+      <div className="profile-media-editors">
+        <section>
+          <strong>Avatar</strong>
+          <div>
+            <label className="secondary-button profile-upload">
+              {preparingMedia === "avatar" ? "Preparing…" : "Choose avatar"}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                disabled={preparingMedia !== null || saving}
+                onChange={(event) => void chooseImage(event, "avatar")}
+              />
+            </label>
+            {(user.avatarPath || user.avatarUrl || avatarPreviewUrl) &&
+            !removeAvatar ? (
+              <button
+                className="text-button"
+                type="button"
+                onClick={() => {
+                  setAvatarFile(null);
+                  setRemoveAvatar(true);
+                  setAvatarPreviewUrl(null);
+                  setAvatarAnimationPreviewUrl(null);
+                }}
+              >
+                Remove avatar
+              </button>
+            ) : null}
+          </div>
+          <span>PNG, JPEG, WebP, or GIF · up to 5 MiB</span>
+        </section>
+        <section>
+          <strong>Cover</strong>
+          <div>
+            <label className="secondary-button profile-upload">
+              {preparingMedia === "cover" ? "Preparing…" : "Choose cover"}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                disabled={preparingMedia !== null || saving}
+                onChange={(event) => void chooseImage(event, "cover")}
+              />
+            </label>
+            {(user.coverPath || user.coverUrl || coverPreviewUrl) &&
+            !removeCover ? (
+              <button
+                className="text-button"
+                type="button"
+                onClick={() => {
+                  setCoverFile(null);
+                  setRemoveCover(true);
+                  setCoverPreviewUrl(null);
+                  setCoverAnimationPreviewUrl(null);
+                  setCoverPositionX(50);
+                  setCoverPositionY(50);
+                }}
+              >
+                Remove cover
+              </button>
+            ) : null}
+            {coverUrl ? (
+              <button
+                className="text-button"
+                type="button"
+                onClick={() => {
+                  setCoverPositionX(50);
+                  setCoverPositionY(50);
+                }}
+              >
+                Center cover
+              </button>
+            ) : null}
+          </div>
+          <span>PNG, JPEG, WebP, or GIF · up to 10 MiB</span>
+        </section>
       </div>
       <div className="settings-field">
         <label htmlFor="profile-display-name">Display name</label>
@@ -471,6 +795,23 @@ function ProfileSettings({
           before databases.
         </small>
       </div>
+      <div className="settings-field">
+        <label htmlFor="profile-description">
+          Description{" "}
+          <span>
+            {description.length}/{MAX_DESCRIPTION_LENGTH}
+          </span>
+        </label>
+        <textarea
+          id="profile-description"
+          value={description}
+          maxLength={MAX_DESCRIPTION_LENGTH}
+          rows={4}
+          onChange={(event) => setDescription(event.target.value)}
+          placeholder="A tiny introduction, an excellent in-joke, or both."
+        />
+        <small>Plain text, emoji, and line breaks. No public links.</small>
+      </div>
       {error ? (
         <p className="settings-error" role="alert">
           {error}
@@ -482,7 +823,11 @@ function ProfileSettings({
         </p>
       ) : null}
       <div className="settings-actions">
-        <button className="primary-button" type="submit" disabled={saving}>
+        <button
+          className="primary-button"
+          type="submit"
+          disabled={saving || preparingMedia !== null || !dirty}
+        >
           {saving ? "Saving…" : "Save profile"}
         </button>
       </div>

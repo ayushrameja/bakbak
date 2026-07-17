@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { AppUser, Channel } from "../../lib/types";
+import type { AppUser, Channel, ServerMember } from "../../lib/types";
 import { mockSoundboardController } from "../soundboard/mock-catalog";
 import { VoiceRoom } from "./VoiceRoom";
 import type { useVoiceRoom } from "./useVoiceRoom";
@@ -11,6 +11,16 @@ const user: AppUser = {
   displayName: "Ayu",
   email: "ayu@example.test",
   avatarUrl: null,
+  avatarAnimationUrl: null,
+  avatarPath: null,
+  avatarAnimationPath: null,
+  coverUrl: null,
+  coverAnimationUrl: null,
+  coverPath: null,
+  coverAnimationPath: null,
+  coverPositionX: 50,
+  coverPositionY: 50,
+  description: "",
   status: "online",
 };
 
@@ -21,6 +31,13 @@ const channel: Channel = {
   kind: "voice",
   position: 1,
   topic: "Talk here",
+};
+const friend: ServerMember = {
+  ...user,
+  id: "user-2",
+  displayName: "Mira",
+  email: "mira@example.test",
+  role: "member",
 };
 
 function createVoice(
@@ -289,5 +306,37 @@ describe("VoiceRoom", () => {
     expect(
       screen.getByRole("img", { name: "Ayu is playing Camera sound" }),
     ).toHaveClass("is-overlay");
+  });
+
+  it("opens a participant profile from the voice grid", async () => {
+    const onOpenProfile = vi.fn();
+    const participant = {
+      id: friend.id,
+      displayName: friend.displayName,
+      isLocal: false,
+      isSpeaking: false,
+      isMuted: false,
+      volume: 1,
+      joinedAt: null,
+      cameraEnabled: false,
+      cameraTrack: null,
+      activeSounds: [],
+    };
+    render(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        members={[friend]}
+        voice={createVoice({ participants: [participant] })}
+        onOpenSettings={vi.fn()}
+        onOpenProfile={onOpenProfile}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", {
+      name: "View Mira's profile",
+    });
+    await userEvent.click(trigger);
+    expect(onOpenProfile).toHaveBeenCalledWith(friend, trigger);
   });
 });
