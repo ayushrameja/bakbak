@@ -18,6 +18,7 @@ import {
 import type {
   AppUser,
   Channel,
+  ChannelCategory,
   ChannelKind,
   DataMode,
   Server,
@@ -33,6 +34,7 @@ const ignoreProfileOpen: OpenProfile = () => undefined;
 
 interface ChannelSidebarProps {
   server: Server;
+  categories: ChannelCategory[];
   channels: Channel[];
   selectedChannelId: string;
   user: AppUser;
@@ -57,6 +59,7 @@ interface ChannelSidebarProps {
 
 export function ChannelSidebar({
   server,
+  categories,
   channels,
   selectedChannelId,
   user,
@@ -78,8 +81,26 @@ export function ChannelSidebar({
   onToggleSoundboard,
   onOpenScreenShare,
 }: ChannelSidebarProps) {
-  const textChannels = channels.filter((channel) => channel.kind === "text");
-  const voiceChannels = channels.filter((channel) => channel.kind === "voice");
+  const orderedCategories = [...categories].sort(
+    (left, right) =>
+      left.position - right.position || left.id.localeCompare(right.id),
+  );
+  const knownCategoryIds = new Set(
+    orderedCategories.map((category) => category.id),
+  );
+  const uncategorizedChannels = channels
+    .filter(
+      (channel) =>
+        channel.categoryId === null ||
+        !knownCategoryIds.has(channel.categoryId),
+    )
+    .sort(compareChannels);
+  const uncategorizedTextChannels = uncategorizedChannels.filter(
+    (channel) => channel.kind === "text",
+  );
+  const uncategorizedVoiceChannels = uncategorizedChannels.filter(
+    (channel) => channel.kind === "voice",
+  );
   const membersById = new Map(members.map((member) => [member.id, member]));
   const currentMember = membersById.get(user.id) ?? { ...user, role: "member" };
   const profileForOccupant = (occupant: VoiceRoomOccupant): ServerMember =>
@@ -101,6 +122,89 @@ export function ChannelSidebar({
       status: "online",
       role: "member",
     };
+  const renderChannel = (channel: Channel) => {
+    if (channel.kind === "text") {
+      return (
+        <div className="channel-row-wrap" key={channel.id}>
+          <button
+            className={`channel-row ${selectedChannelId === channel.id ? "active" : ""} ${unreadChannelIds.has(channel.id) ? "channel-row--unread" : ""}`}
+            type="button"
+            onClick={() => onSelect(channel)}
+          >
+            <Hash size={17} />
+            <span>{channel.name}</span>
+          </button>
+          {canManageChannels ? (
+            <button
+              className="channel-row-edit"
+              type="button"
+              aria-label={`Rename ${channel.name}`}
+              onClick={() => onRenameChannel(channel)}
+            >
+              <Pencil size={13} />
+            </button>
+          ) : null}
+        </div>
+      );
+    }
+
+    const occupants = voiceOccupants.filter(
+      (occupant) => occupant.channelId === channel.id,
+    );
+    return (
+      <div className="channel-row-wrap" key={channel.id}>
+        <div className="channel-row-stack">
+          <button
+            className={`channel-row ${selectedChannelId === channel.id ? "active" : ""}`}
+            type="button"
+            onPointerEnter={() => onPrepareVoiceChannel(channel)}
+            onFocus={() => onPrepareVoiceChannel(channel)}
+            onClick={() => onSelect(channel)}
+          >
+            <Volume2 size={17} />
+            <span>{channel.name}</span>
+            {occupants.length > 0 ? <i className="live-dot" /> : null}
+          </button>
+          {canManageChannels ? (
+            <button
+              className="channel-row-edit"
+              type="button"
+              aria-label={`Rename ${channel.name}`}
+              onClick={() => onRenameChannel(channel)}
+            >
+              <Pencil size={13} />
+            </button>
+          ) : null}
+          {occupants.length > 0 ? (
+            <div className="channel-voice-people">
+              {occupants.map((occupant) => (
+                <ProfileTrigger
+                  className="channel-voice-person"
+                  key={occupant.userId}
+                  member={profileForOccupant(occupant)}
+                  loadMedia={loadProfileMedia}
+                  onOpenProfile={onOpenProfile}
+                  expanded={openProfileId === occupant.userId}
+                  aria-label={`View ${occupant.displayName}'s profile`}
+                >
+                  {() => (
+                    <>
+                      <i />
+                      <b>
+                        {occupant.displayName}
+                        {occupant.userId === user.id ? " (you)" : ""}
+                      </b>
+                      <VoiceElapsedTime joinedAt={occupant.joinedAt} />
+                    </>
+                  )}
+                </ProfileTrigger>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <aside className="channel-sidebar" id="channel-sidebar">
@@ -111,100 +215,49 @@ export function ChannelSidebar({
         </div>
       </header>
       <nav className="channel-nav" aria-label="Channels">
-        <ChannelGroup
-          label="Conversations"
-          onAdd={canManageChannels ? () => onCreateChannel("text") : undefined}
-        >
-          {textChannels.map((channel) => (
-            <div className="channel-row-wrap" key={channel.id}>
-              <button
-                className={`channel-row ${selectedChannelId === channel.id ? "active" : ""} ${unreadChannelIds.has(channel.id) ? "channel-row--unread" : ""}`}
-                type="button"
-                onClick={() => onSelect(channel)}
-              >
-                <Hash size={17} />
-                <span>{channel.name}</span>
-              </button>
-              {canManageChannels ? (
-                <button
-                  className="channel-row-edit"
-                  type="button"
-                  aria-label={`Rename ${channel.name}`}
-                  onClick={() => onRenameChannel(channel)}
-                >
-                  <Pencil size={13} />
-                </button>
-              ) : null}
-            </div>
-          ))}
-        </ChannelGroup>
-        <ChannelGroup
-          label="Voice rooms"
-          onAdd={canManageChannels ? () => onCreateChannel("voice") : undefined}
-        >
-          {voiceChannels.map((channel) => (
-            <div className="channel-row-wrap" key={channel.id}>
-              {(() => {
-                const occupants = voiceOccupants.filter(
-                  (occupant) => occupant.channelId === channel.id,
-                );
-                return (
-                  <div className="channel-row-stack">
-                    <button
-                      className={`channel-row ${selectedChannelId === channel.id ? "active" : ""}`}
-                      type="button"
-                      onPointerEnter={() => onPrepareVoiceChannel(channel)}
-                      onFocus={() => onPrepareVoiceChannel(channel)}
-                      onClick={() => onSelect(channel)}
-                    >
-                      <Volume2 size={17} />
-                      <span>{channel.name}</span>
-                      {occupants.length > 0 ? <i className="live-dot" /> : null}
-                    </button>
-                    {canManageChannels ? (
-                      <button
-                        className="channel-row-edit"
-                        type="button"
-                        aria-label={`Rename ${channel.name}`}
-                        onClick={() => onRenameChannel(channel)}
-                      >
-                        <Pencil size={13} />
-                      </button>
-                    ) : null}
-                    {occupants.length > 0 ? (
-                      <div className="channel-voice-people">
-                        {occupants.map((occupant) => (
-                          <ProfileTrigger
-                            className="channel-voice-person"
-                            key={occupant.userId}
-                            member={profileForOccupant(occupant)}
-                            loadMedia={loadProfileMedia}
-                            onOpenProfile={onOpenProfile}
-                            expanded={openProfileId === occupant.userId}
-                            aria-label={`View ${occupant.displayName}'s profile`}
-                          >
-                            {() => (
-                              <>
-                                <i />
-                                <b>
-                                  {occupant.displayName}
-                                  {occupant.userId === user.id ? " (you)" : ""}
-                                </b>
-                                <VoiceElapsedTime
-                                  joinedAt={occupant.joinedAt}
-                                />
-                              </>
-                            )}
-                          </ProfileTrigger>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })()}
-            </div>
-          ))}
-        </ChannelGroup>
+        {canManageChannels ? (
+          <div
+            className="channel-create-actions"
+            aria-label="Channel management"
+          >
+            <button
+              type="button"
+              aria-label="Create text channel"
+              onClick={() => onCreateChannel("text")}
+            >
+              <Hash size={14} />
+              <span>Text</span>
+              <Plus size={13} />
+            </button>
+            <button
+              type="button"
+              aria-label="Create voice channel"
+              onClick={() => onCreateChannel("voice")}
+            >
+              <Volume2 size={14} />
+              <span>Voice</span>
+              <Plus size={13} />
+            </button>
+          </div>
+        ) : null}
+        {orderedCategories.map((category) => (
+          <ChannelGroup key={category.id} label={category.name}>
+            {channels
+              .filter((channel) => channel.categoryId === category.id)
+              .sort(compareChannels)
+              .map(renderChannel)}
+          </ChannelGroup>
+        ))}
+        {uncategorizedTextChannels.length > 0 ? (
+          <ChannelGroup label="Conversations">
+            {uncategorizedTextChannels.map(renderChannel)}
+          </ChannelGroup>
+        ) : null}
+        {uncategorizedVoiceChannels.length > 0 ? (
+          <ChannelGroup label="Voice rooms">
+            {uncategorizedVoiceChannels.map(renderChannel)}
+          </ChannelGroup>
+        ) : null}
       </nav>
 
       <div className="sidebar-spacer" />
@@ -280,24 +333,21 @@ export function ChannelSidebar({
 
 function ChannelGroup({
   label,
-  onAdd,
   children,
 }: {
   label: string;
-  onAdd?: (() => void) | undefined;
   children: React.ReactNode;
 }) {
   return (
-    <section className="channel-group">
+    <section className="channel-group" aria-label={label}>
       <header>
-        <span>{label}</span>
-        {onAdd ? (
-          <button type="button" aria-label={`Create ${label}`} onClick={onAdd}>
-            <Plus size={14} />
-          </button>
-        ) : null}
+        <h3>{label}</h3>
       </header>
       {children}
     </section>
   );
+}
+
+function compareChannels(left: Channel, right: Channel): number {
+  return left.position - right.position || left.id.localeCompare(right.id);
 }

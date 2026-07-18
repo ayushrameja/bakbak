@@ -2529,3 +2529,103 @@ Boys` category, and run the two-installed-client soundboard matrix for all 21
 - **Next:** Run the hosted two-account soundboard matrix, then repeat one MP3
   and one MP4 upload inside the installed desktop app before friend
   distribution.
+
+## 2026-07-18 — Mirror the Unlucky Boys channel layout
+
+- **Completed:** Added ordered channel categories and mirrored the currently
+  visible Discord structure as seven categories, 18 text channels, and six
+  voice channels. Reused the four existing channel UUIDs for `spawn`, `law`,
+  `Queue`, and `Crash`, so existing Bakbak messages, reads, presence, and voice
+  references remain attached; no Discord messages were imported or modified.
+  Updated the mock workspace, live workspace loader, channel service, desktop
+  sidebar, styling, and tests for the mixed text/voice hierarchy.
+- **Decisions:** Category rows are trusted, operator-managed structure for this
+  phase. Newly created admin channels remain uncategorized instead of silently
+  changing the mirrored layout. The five rooms that appeared lock-marked in
+  Discord (`old-edits`, `ink`, `preparation`, `meme`, and `wallpapers`) are
+  ordinary member-visible Bakbak rooms because per-channel ACLs are not yet a
+  product capability. No Discord token, scraping workflow, or history-import
+  path was introduced.
+- **Validation:**
+  - `pnpm exec vitest run src/features/channels/ChannelSidebar.test.tsx
+src/lib/channel-service.test.ts` — passed two files with 14 tests.
+  - `pnpm exec vitest run src/app/App.test.tsx` — passed four tests after
+    updating two stale assertions from the former mock room names. The first
+    full `pnpm check` correctly failed on those old `lobby` and `Coffee table`
+    labels before the assertions were corrected.
+  - `pnpm dlx supabase@latest db reset` — passed through
+    `202607180003_unlucky_boys_channel_layout.sql`.
+  - `pnpm dlx supabase@latest db lint --local` — passed with no schema errors.
+  - `pnpm dlx supabase@latest test db` — passed 11 pgTAP files with 248
+    assertions, including exact category/room order, retained UUIDs, zero
+    message import, and member/outsider RLS.
+  - Browser layout QA — passed the exact seven-category/24-room DOM order at
+    1280×720 and 1024×680. Both viewports had no document horizontal overflow;
+    the channel navigation scrolled internally (568/1433 and 528/1433
+    client/scroll heights).
+  - `pnpm check` — passed Prettier, ESLint, renderer/Node typechecks, 50 Vitest
+    files with 253 tests, 12 Node tests, synchronized version `0.11.0`,
+    production build, and secret scan. Vite retained the existing non-blocking
+    large-chunk warning; final output is 109.86 kB CSS and 1,216.19 kB main
+    JavaScript (336.82 kB gzip).
+  - `pnpm tauri:build:local` — passed for an ad-hoc-signed ARM64 `Bakbak.app`;
+    notarization was skipped because Apple credentials are unavailable.
+  - `pnpm dlx supabase@latest db push --dry-run` — passed and reported only
+    `202607180003_unlucky_boys_channel_layout.sql`; no hosted change was made.
+- **Documentation updated:** Updated `docs/architecture.md`, active plan 0001,
+  new plan 0012, `supabase/README.md`, and this canonical progress log.
+- **Known limitations:** The new migration is not yet deployed to the hosted
+  project, so the live-data renderer must not ship before it. Per-channel
+  permissions, category creation/reordering/collapse, Discord message history,
+  and a hosted two-account layout/RLS check remain out of scope or pending.
+  The updater-enabled distribution build was not run because protected signing
+  credentials are unavailable; the app-only native bundle passed.
+- **Next:** With explicit approval, push
+  `202607180003_unlucky_boys_channel_layout.sql`, repeat hosted lint/history
+  checks, and verify the exact order with an admin and a regular member. Treat
+  per-channel ACLs and any consented message-history import as separate future
+  phases.
+
+## 2026-07-18 — Deploy hosted Unlucky Boys channel layout
+
+- **Completed:** After explicit user approval, applied
+  `202607180003_unlucky_boys_channel_layout.sql` to the linked hosted Bakbak
+  project. The hosted database now has the ordered category model and mirrored
+  room structure. The migration reused the existing admin-created `gaane` text
+  room under Welcome, retaining that row and anything already attached to it.
+- **Decisions:** Amended the still-pending tracked migration to reuse any
+  same-server, same-kind room whose name matches the mirrored structure. This
+  preserves existing room identity and data while preventing duplicates. No ad
+  hoc hosted SQL, message mutation, Discord credential, or history import was
+  used.
+- **Validation:**
+  - Initial `pnpm dlx supabase@latest db push` — safely failed on the existing
+    `gaane` name uniqueness guard. `migration list` then confirmed
+    `202607180003` remained pending, so the failed transaction committed
+    nothing.
+  - `pnpm dlx supabase@latest db reset` — passed from a clean database through
+    the revised migration.
+  - `pnpm dlx supabase@latest test db` — passed 11 pgTAP files with 248
+    assertions.
+  - `pnpm dlx supabase@latest db lint --local` — passed with no schema errors.
+  - `pnpm dlx supabase@latest db push --yes` — passed and applied only
+    `202607180003_unlucky_boys_channel_layout.sql`.
+  - `pnpm dlx supabase@latest migration list` — passed; local and hosted
+    histories match through `202607180003`.
+  - `pnpm dlx supabase@latest db lint --linked` — passed with no hosted schema
+    errors. An earlier concurrent lint process was interrupted after it stalled;
+    the standalone retry completed normally.
+  - `pnpm dlx supabase@latest db push --dry-run` — passed and reported the
+    hosted database is up to date.
+  - `pnpm check` — passed Prettier, ESLint, renderer/Node typechecks, 50 Vitest
+    files with 253 tests, 12 Node tests, synchronized version `0.12.0`,
+    production build, and bundle secret scan.
+- **Documentation updated:** Updated `docs/architecture.md`, active plan 0001,
+  plan 0012, `supabase/README.md`, and this canonical progress log.
+- **Known limitations:** The authenticated hosted admin/member hierarchy and
+  RLS observation remains pending. The five Discord lock-marked room names are
+  still ordinary all-member Bakbak rooms; per-channel ACLs and Discord message
+  history remain separate future work.
+- **Next:** Open the deployed layout with one hosted admin and one regular
+  member, confirm the exact seven-category/24-room order for both, and verify
+  that an outsider cannot read the categories or rooms.

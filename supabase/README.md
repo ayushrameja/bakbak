@@ -18,6 +18,9 @@ types up to 10 MiB. Owners manage their objects; authenticated users may read
 another person's objects only when both share a server. `avatar_path` remains
 the canonical static poster for older clients, while optional animation and
 cover paths live in the additive rich-profile fields.
+Ordered `channel_categories` group the default server's 18 text and six voice
+rooms into the seven-category Unlucky Boys layout. Categories and rooms are
+member-readable, while category mutation remains operator-only.
 
 ## Local validation
 
@@ -53,6 +56,8 @@ same 404 used for a missing or text channel.
 - Unauthenticated roles receive no app-table privileges.
 - Authenticated users can read only servers they have joined, and messages only
   in member-visible text channels.
+- Channel categories follow the same server-membership read boundary. Renderer
+  sessions cannot create, update, or delete them.
 - Membership and invite mutations happen only in audited database functions or
   through an operator connection.
 - Invite plaintext is generated once and stored only as a SHA-256 hash.
@@ -121,6 +126,15 @@ additive, expands the existing avatar bucket, and creates `profile-covers`
 without making either bucket public. After deployment, run linked schema lint,
 confirm no migration remains pending, then use two authenticated accounts plus
 an outsider to verify shared-server reads and cross-server denial.
+
+The ordered channel layout adds migration
+`202607180003_unlucky_boys_channel_layout.sql`. It creates seven
+member-readable categories and the exact 24-room visible Discord hierarchy
+without importing messages. The migration reuses the four original channel
+UUIDs plus any same-name admin-created room so existing message, read-state,
+presence, and voice references survive. New admin-created rooms remain
+uncategorized. The migration is deployed to the hosted project; verify counts,
+order, and member/outsider reads with two hosted accounts before distribution.
 
 The soundboard bucket is private, accepts MPEG audio and normalized WAV, and
 rejects objects larger than 1 MiB. Migration

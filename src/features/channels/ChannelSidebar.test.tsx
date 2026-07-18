@@ -1,7 +1,13 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { AppUser, Channel, Server, ServerMember } from "../../lib/types";
+import type {
+  AppUser,
+  Channel,
+  ChannelCategory,
+  Server,
+  ServerMember,
+} from "../../lib/types";
 import type { useVoiceRoom } from "../voice/useVoiceRoom";
 import { ChannelSidebar } from "./ChannelSidebar";
 
@@ -32,6 +38,7 @@ const server: Server = {
 const voiceChannel: Channel = {
   id: "voice-1",
   serverId: server.id,
+  categoryId: null,
   name: "Lounge",
   kind: "voice",
   position: 1,
@@ -51,6 +58,7 @@ function renderSidebar(
 ) {
   const props: React.ComponentProps<typeof ChannelSidebar> = {
     server,
+    categories: [],
     channels,
     selectedChannelId: channels[0]?.id ?? "",
     user,
@@ -87,7 +95,7 @@ describe("ChannelSidebar room shelf", () => {
     });
 
     await userEvent.click(
-      screen.getByRole("button", { name: "Create Voice rooms" }),
+      screen.getByRole("button", { name: "Create voice channel" }),
     );
     await userEvent.click(
       screen.getByRole("button", { name: "Rename Lounge" }),
@@ -99,7 +107,7 @@ describe("ChannelSidebar room shelf", () => {
   it("hides management controls from ordinary members", () => {
     renderSidebar([voiceChannel]);
     expect(
-      screen.queryByRole("button", { name: "Create Voice rooms" }),
+      screen.queryByRole("button", { name: "Create voice channel" }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Rename Lounge" }),
@@ -132,6 +140,60 @@ describe("ChannelSidebar room shelf", () => {
     expect(screen.getByRole("button", { name: /Lounge/i })).not.toHaveClass(
       "channel-row--unread",
     );
+  });
+
+  it("renders mixed text and voice channels in category and room order", () => {
+    const categories: ChannelCategory[] = [
+      {
+        id: "category-gamez",
+        serverId: server.id,
+        name: "Gamez",
+        position: 20,
+      },
+      {
+        id: "category-welcome",
+        serverId: server.id,
+        name: "Welcome",
+        position: 10,
+      },
+    ];
+    const channels: Channel[] = [
+      {
+        ...voiceChannel,
+        id: "voice-queue",
+        categoryId: "category-gamez",
+        name: "Queue",
+        position: 20,
+      },
+      {
+        ...voiceChannel,
+        id: "text-clips",
+        categoryId: "category-gamez",
+        name: "clips",
+        kind: "text",
+        position: 10,
+      },
+      {
+        ...voiceChannel,
+        id: "text-spawn",
+        categoryId: "category-welcome",
+        name: "spawn",
+        kind: "text",
+        position: 10,
+      },
+    ];
+
+    renderSidebar(channels, { categories });
+
+    const categoryRegions = screen.getAllByRole("region");
+    expect(
+      categoryRegions.map((region) => region.getAttribute("aria-label")),
+    ).toEqual(["Welcome", "Gamez"]);
+    expect(
+      within(screen.getByRole("region", { name: "Gamez" }))
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["clips", "Queue"]);
   });
 
   it("prepares voice channels for pointer and keyboard discovery", () => {

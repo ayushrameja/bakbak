@@ -352,6 +352,7 @@ const user: AppUser = {
 const lounge: Channel = {
   id: "voice-lounge",
   serverId: "server-1",
+  categoryId: null,
   name: "Lounge",
   kind: "voice",
   position: 1,

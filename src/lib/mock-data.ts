@@ -1,6 +1,8 @@
 import type {
   AppUser,
   Channel,
+  ChannelCategory,
+  ChannelKind,
   ChatMessage,
   Server,
   ServerMember,
@@ -31,47 +33,41 @@ export const mockServer: Server = {
   description: "A small room for big conversations.",
 };
 
+export const mockChannelCategories: ChannelCategory[] = [
+  channelCategory("welcome", "Welcome", 10),
+  channelCategory("gamez", "Gamez", 20),
+  channelCategory("study", "Only Study", 30),
+  channelCategory("creators", "Content Creators", 40),
+  channelCategory("photos", "Photos", 50),
+  channelCategory("software", "Software", 60),
+  channelCategory("afk", "AFK", 70),
+];
+
 export const mockChannels: Channel[] = [
-  {
-    id: "channel-lobby",
-    serverId: mockServer.id,
-    name: "lobby",
-    kind: "text",
-    position: 0,
-    topic: "Daily check-ins, tiny wins, and suspiciously long tangents.",
-  },
-  {
-    id: "channel-builds",
-    serverId: mockServer.id,
-    name: "what-we-are-building",
-    kind: "text",
-    position: 1,
-    topic: "Share the thing before it becomes another forgotten browser tab.",
-  },
-  {
-    id: "channel-random",
-    serverId: mockServer.id,
-    name: "beautiful-chaos",
-    kind: "text",
-    position: 2,
-    topic: "Context is optional. Kindness is not.",
-  },
-  {
-    id: "voice-cafe",
-    serverId: mockServer.id,
-    name: "Coffee table",
-    kind: "voice",
-    position: 3,
-    topic: "Drop in, stay awhile.",
-  },
-  {
-    id: "voice-focus",
-    serverId: mockServer.id,
-    name: "Quiet co-work",
-    kind: "voice",
-    position: 4,
-    topic: "Mostly quiet, occasionally profound.",
-  },
+  mockChannel("spawn", "spawn", "text", "welcome", 10),
+  mockChannel("law", "law", "text", "welcome", 20),
+  mockChannel("ladder", "ladder", "text", "welcome", 30),
+  mockChannel("rant", "rant", "text", "welcome", 40),
+  mockChannel("gaane", "gaane", "text", "welcome", 50),
+  mockChannel("clips", "clips", "text", "gamez", 10),
+  mockChannel("portals", "portals", "text", "gamez", 20),
+  mockChannel("vault", "vault", "text", "gamez", 30),
+  mockChannel("queue", "Queue", "voice", "gamez", 40),
+  mockChannel("crash", "Crash", "voice", "gamez", 50),
+  mockChannel("songs-only", "Songs Only", "voice", "gamez", 60),
+  mockChannel("why", "why", "text", "study", 10),
+  mockChannel("how", "how", "text", "study", 20),
+  mockChannel("notes", "notes", "text", "study", 30),
+  mockChannel("deadline", "deadline", "text", "study", 40),
+  mockChannel("focus", "Focus", "voice", "study", 50),
+  mockChannel("loop", "Loop", "voice", "study", 60),
+  mockChannel("old-edits", "old-edits", "text", "creators", 10),
+  mockChannel("ink", "ink", "text", "creators", 20),
+  mockChannel("preparation", "preparation", "text", "creators", 30),
+  mockChannel("meme", "meme", "text", "photos", 10),
+  mockChannel("wallpapers", "wallpapers", "text", "photos", 20),
+  mockChannel("links", "links", "text", "software", 10),
+  mockChannel("afk", "AFK", "voice", "afk", 10),
 ];
 
 export const mockMembers: ServerMember[] = [
@@ -138,7 +134,7 @@ const now = Date.now();
 export const mockMessages: ChatMessage[] = [
   {
     id: "message-1",
-    channelId: "channel-lobby",
+    channelId: "channel-spawn",
     authorId: "user-mira",
     body: "I made tea and accidentally opened the laptop. So I guess we are working now.",
     content: null,
@@ -146,7 +142,7 @@ export const mockMessages: ChatMessage[] = [
   },
   {
     id: "message-2",
-    channelId: "channel-lobby",
+    channelId: "channel-spawn",
     authorId: "user-ayush",
     body: "That is how most startups begin. Tea, an accident, and poor boundary management.",
     content: null,
@@ -154,7 +150,7 @@ export const mockMessages: ChatMessage[] = [
   },
   {
     id: "message-3",
-    channelId: "channel-lobby",
+    channelId: "channel-spawn",
     authorId: "user-jo",
     body: "Voice room after lunch? I have gossip with a surprisingly strong architecture diagram.",
     content: null,
@@ -162,7 +158,7 @@ export const mockMessages: ChatMessage[] = [
   },
   {
     id: "message-4",
-    channelId: "channel-builds",
+    channelId: "channel-clips",
     authorId: "user-ayush",
     body: "Bakbak has a real shell now. Next milestone: making the mute button more reliable than us.",
     content: null,
@@ -172,7 +168,42 @@ export const mockMessages: ChatMessage[] = [
 
 export const mockWorkspace: WorkspaceSnapshot = {
   server: mockServer,
+  channelCategories: mockChannelCategories,
   channels: mockChannels,
   members: mockMembers,
   currentUserRole: "admin",
 };
+
+function channelCategory(
+  id: string,
+  name: string,
+  position: number,
+): ChannelCategory {
+  return {
+    id: `category-${id}`,
+    serverId: mockServer.id,
+    name,
+    position,
+  };
+}
+
+function mockChannel(
+  id: string,
+  name: string,
+  kind: ChannelKind,
+  categoryId: string,
+  position: number,
+): Channel {
+  return {
+    id: `channel-${id}`,
+    serverId: mockServer.id,
+    categoryId: `category-${categoryId}`,
+    name,
+    kind,
+    position,
+    topic:
+      kind === "voice"
+        ? "Drop in when you feel like talking."
+        : "A private conversation for server members.",
+  };
+}

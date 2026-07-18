@@ -30,6 +30,7 @@ const member: ServerMember = { ...user, role: "admin" };
 const channel: Channel = {
   id: "channel-1",
   serverId: "server-1",
+  categoryId: null,
   name: "lobby",
   kind: "text",
   position: 0,

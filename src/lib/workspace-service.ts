@@ -4,6 +4,7 @@ import type {
   AppUser,
   Channel,
   ChannelActivity,
+  ChannelCategory,
   ChatMessage,
   MessageSegment,
   ServerMember,
@@ -18,8 +19,16 @@ interface ServerRow {
 interface ChannelRow {
   id: string;
   server_id: string;
+  category_id: string | null;
   name: string;
   kind: "text" | "voice";
+  position: number;
+}
+
+interface ChannelCategoryRow {
+  id: string;
+  server_id: string;
+  name: string;
   position: number;
 }
 
@@ -129,10 +138,16 @@ export async function loadLiveWorkspace(
   const server = servers[0];
   if (!server) throw new MissingMembershipError();
 
-  const [channelResult, membershipResult] = await Promise.all([
+  const [categoryResult, channelResult, membershipResult] = await Promise.all([
+    supabase
+      .from("channel_categories")
+      .select("id,server_id,name,position")
+      .eq("server_id", server.id)
+      .order("position")
+      .returns<ChannelCategoryRow[]>(),
     supabase
       .from("channels")
-      .select("id,server_id,name,kind,position")
+      .select("id,server_id,category_id,name,kind,position")
       .eq("server_id", server.id)
       .order("position")
       .returns<ChannelRow[]>(),
@@ -142,6 +157,7 @@ export async function loadLiveWorkspace(
       .eq("server_id", server.id)
       .returns<MembershipRow[]>(),
   ]);
+  if (categoryResult.error) throw categoryResult.error;
   if (channelResult.error) throw channelResult.error;
   if (membershipResult.error) throw membershipResult.error;
 
@@ -181,9 +197,19 @@ export async function loadLiveWorkspace(
     };
   });
 
+  const channelCategories: ChannelCategory[] = categoryResult.data.map(
+    (category) => ({
+      id: category.id,
+      serverId: category.server_id,
+      name: category.name,
+      position: category.position,
+    }),
+  );
+
   const channels: Channel[] = channelResult.data.map((channel) => ({
     id: channel.id,
     serverId: channel.server_id,
+    categoryId: channel.category_id,
     name: channel.name,
     kind: channel.kind,
     position: channel.position,
@@ -199,6 +225,7 @@ export async function loadLiveWorkspace(
       name: server.name,
       description: "A private place for friends.",
     },
+    channelCategories,
     channels,
     members,
     currentUserRole:

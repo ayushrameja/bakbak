@@ -38,6 +38,7 @@ vi.mock("./supabase", () => ({
 const textRow = {
   id: "channel-2",
   server_id: "server-1",
+  category_id: null,
   name: "planning",
   kind: "text" as const,
   position: 20,
@@ -72,6 +73,7 @@ describe("channel service", () => {
     ).resolves.toEqual({
       id: "channel-2",
       serverId: "server-1",
+      categoryId: null,
       name: "planning",
       kind: "text",
       position: 20,
@@ -210,6 +212,7 @@ function makeChannel(overrides: Partial<Channel>): Channel {
   return {
     id: "channel-default",
     serverId: "server-1",
+    categoryId: null,
     name: "general",
     kind: "text",
     position: 0,

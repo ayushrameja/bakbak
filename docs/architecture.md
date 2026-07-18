@@ -22,7 +22,9 @@ colors. Profiles support validated display names, 190-character plain-text
 descriptions, static or GIF avatars, 3:1 static or GIF covers, integer cover
 focal points, and an accessible Discord-style anchored card. Admin-only
 controls create or rename text and voice channels, while Realtime reconciles
-changes for every member.
+changes for every member. Ordered channel categories reproduce the visible
+Unlucky Boys layout: 7 categories, 18 text rooms, and 6 voice rooms in the same
+mixed order. This layout imports no Discord messages or credentials.
 
 Signal Red is a fixed device-local special preset layered over those retained
 standard choices. Its first paint resolves to Dark + Flat with a `#050505`
@@ -116,6 +118,19 @@ publication for profiles and channels. The renderer, local mock path, and hosted
 database contract are implemented; the live two-account acceptance run remains
 required before distribution.
 
+The additive
+`202607180003_unlucky_boys_channel_layout.sql` migration is implemented,
+validated, and deployed. It adds member-readable, operator-managed ordered
+channel categories and assigns the exact visible Unlucky Boys hierarchy to 24
+rooms. The four original channel UUIDs become `spawn`, `law`, `Queue`, and
+`Crash`, preserving existing messages, read state, presence, and LiveKit room
+identity; matching admin-created rooms are also reused rather than duplicated.
+The hosted migration adopted the existing `gaane` text room under Welcome. No
+message row is inserted, updated, or deleted. New admin-created rooms remain
+uncategorized. All rooms retain the current server-member visibility boundary,
+including the five names that were lock-marked in Discord; channel-level ACL
+parity is deferred.
+
 The additive `202607170001_rich_profiles.sql` migration is implemented and
 deployed. It adds the global profile description, optional avatar-animation,
 cover-poster, cover-animation, and required 0–100 cover-focal fields. It expands
@@ -162,7 +177,7 @@ Voice join time comes from Postgres, remains stable across heartbeats, clears on
 graceful leave, and expires locally after 55 seconds if a client crashes. The
 clean local schema, invite, RLS, presence, Storage, catalog, structured-message,
 read-state, rich-profile, soundboard favorite, and member-upload suite passes
-224 assertions. Voice
+248 assertions. Voice
 connections retry once with relay-only ICE after a normal peer-connection
 failure, remember a successful relay fallback for ten minutes in memory, and
 report a specific TURN/TLS diagnostic if both routes fail. The
@@ -271,7 +286,8 @@ bakbak/
 │       ├── 0008-rich-animated-profiles.md
 │       ├── 0009-signal-red-theme-and-interface-audio.md
 │       ├── 0010-cross-platform-screen-share-and-focus.md
-│       └── 0011-soundboard-categories-favorites-and-uploads.md
+│       ├── 0011-soundboard-categories-favorites-and-uploads.md
+│       └── 0012-unlucky-boys-channel-layout.md
 ├── public/
 │   ├── bakbak.svg                 # renderer favicon/source logo
 │   ├── interface-sounds/          # generated original 48 kHz mono WAV cues
@@ -312,9 +328,12 @@ architectural placeholder folders are not used.
 
 The renderer uses a three-panel desktop layout plus a modal layer:
 
-1. The 232 px channel panel contains the private server's text and voice rooms,
+1. The 232 px channel panel contains seven ordered Unlucky Boys categories with
+   18 text rooms and six voice rooms in mixed source order, plus
    active-call/sidebar controls, signed-in user actions, voice occupancy, and
-   admin-only create/rename controls.
+   admin-only create/rename controls. The shelf scrolls independently; admin
+   creation adds an uncategorized room because category management is outside
+   plan 0012.
 2. The flexible center canvas contains text chat or the voice room. Header-edge
    buttons independently toggle the left and right panels, immediately
    reallocating space across all four combinations.
@@ -448,7 +467,8 @@ authoritative once Phase 2 starts.
 | `profiles`              | `id` references `auth.users`; 1–50 character display name; 0–190 character description; legacy `avatar_url`; owner-prefixed avatar/cover poster and GIF paths; integer 0–100 cover focal coordinates | User updates their row; shared-server members read member-facing fields                   |
 | `servers`               | owner/admin reference, name, timestamps                                                                                                                                                              | Members of the server can read it                                                         |
 | `memberships`           | unique `(server_id, user_id)`; v1 admin/member role                                                                                                                                                  | A user can read memberships for servers they belong to                                    |
-| `channels`              | `server_id`, trimmed 1–80 character name, ordered position, immutable `text` or `voice` type                                                                                                         | Members read; matching admins create/rename only through RPCs                             |
+| `channel_categories`    | `server_id`, trimmed 1–80 character name, unique ordered position                                                                                                                                    | Members read their server categories; trusted migrations manage them                      |
+| `channels`              | `server_id`, optional category ID, trimmed 1–80 character name, category-local or uncategorized position, immutable `text` or `voice` type                                                           | Members read; matching admins create/rename only through RPCs                             |
 | `messages`              | text/voice channel ID, author ID, plain-text body, nullable structured text/mention content, timestamps                                                                                              | Members read accessible channels; validated inserts use the message RPC                   |
 | `channel_read_states`   | private user/channel key, monotonic last-read message pointer and timestamp                                                                                                                          | The owner reads through RLS; membership-checked RPCs advance/query state                  |
 | `invite_codes`          | server ID, one-way code digest, creator, expiry, redemption fields                                                                                                                                   | No broad client read policy; redeemed atomically through a controlled function            |
@@ -466,6 +486,8 @@ An invite-management UI is deferred until post-v1.
 - Authentication alone does not grant server access.
 - Membership in the channel's server is required to read server, channel,
   membership, and message data.
+- Channel categories use the same server-membership read boundary as channels.
+  Authenticated clients cannot insert, update, or delete categories.
 - Message authorship is derived from the authenticated user, not trusted from a
   client-supplied user ID.
 - `send_message` accepts only exact text/mention segment shapes, validates the
@@ -564,15 +586,16 @@ An invite-management UI is deferred until post-v1.
 
 ### Channel management
 
-1. The workspace snapshot exposes the signed-in member's role. Only admins see
-   create and rename actions in the channel shelf.
+1. The workspace snapshot loads ordered server categories and category-linked
+   channels, and exposes the signed-in member's role. Only admins see create
+   and rename actions in the channel shelf.
 2. The client calls `create_channel` or `rename_channel`; the database derives
    identity, verifies exact-server admin membership, trims and validates the
    name, and maps uniqueness failures to a safe user-facing error.
-3. Create locks the server row, finds the maximum position for that server and
-   kind, and appends at the next increment of ten. Rename changes only the name,
-   preserving the UUID, kind, server, messages, active voice identity, and
-   ordering.
+3. Create locks the server row, finds the maximum position among uncategorized
+   rooms of that server and kind, and appends at the next increment of ten.
+   Rename changes only the name, preserving the UUID, category, kind, server,
+   messages, active voice identity, and ordering.
 4. Channel Realtime subscribes before its catch-up snapshot and replays buffered
    events after the snapshot, so an overlapping create or rename cannot be
    overwritten by stale data. Channels reconcile by stable ID and sort by
@@ -953,7 +976,7 @@ These contracts match the current implementation.
 - **Validation:** `auth.uid()` identity, matching server admin membership,
   trimmed 1–80 character name, valid kind, and case-insensitive uniqueness
 - **Behavior:** locks the server row and assigns the next position in increments
-  of ten within the requested kind
+  of ten within uncategorized rooms of the requested kind
 
 ### `POST /rest/v1/rpc/rename_channel`
 
@@ -1052,7 +1075,9 @@ Run `pnpm tauri build` when validating platform integration or a distributable
 bundle. Database phases add Supabase migration/RLS and Storage-policy tests;
 profile/channel work specifically covers avatar/cover owner, shared-member,
 cross-server and outsider access, field validation, plus admin/member channel
-RPC behavior. The
+RPC behavior. Ordered channel-layout work also covers exact category/room
+counts and source order, category RLS, stable original UUIDs, the no-message
+boundary, and sidebar scroll containment. The
 first friend-test release also requires the manual Apple Silicon macOS matrix
 in the active plans.
 Soundboard upload work additionally runs reduced-core media tests, Deno
@@ -1111,6 +1136,13 @@ that it has passed.
   `202607120003_profile_avatars_and_channel_management.sql` is deployed to the
   hosted project. Live Realtime/profile/channel behavior still requires the
   browser-plus-native two-account acceptance run in plan 0004.
+- Plan 0012's exact seven-category, 24-room Unlucky Boys layout passes local
+  migration, RLS, renderer, and 1280×720/1024×680 scroll-containment checks.
+  Migration `202607180003` is deployed, linked schema lint passes, and hosted
+  migration history matches the repository. The five Discord lock-marked
+  channel names are ordinary all-member Bakbak rooms until a separately
+  approved channel-level ACL model exists. The hosted two-account
+  hierarchy/RLS observation remains required.
 - Hosted migration `006` and the camera-capable token function are deployed,
   but the Arc-plus-installed-app voice/video/device acceptance matrix still
   requires two signed-in users and human audio/video observation.

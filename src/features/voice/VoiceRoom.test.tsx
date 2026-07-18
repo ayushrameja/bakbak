@@ -40,6 +40,7 @@ const user: AppUser = {
 const channel: Channel = {
   id: "voice-1",
   serverId: "server-1",
+  categoryId: null,
   name: "Lounge",
   kind: "voice",
   position: 1,

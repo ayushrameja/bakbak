@@ -69,7 +69,11 @@ set local "request.jwt.claim.sub" = '20000000-0000-4000-8000-000000000002';
 set local "request.jwt.claims" = '{"sub":"20000000-0000-4000-8000-000000000002","role":"authenticated"}';
 
 select is((select count(*) from public.servers), 1::bigint, 'member sees one server');
-select is((select count(*) from public.channels), 4::bigint, 'member sees its four channels');
+select is(
+  (select count(*) from public.channels),
+  24::bigint,
+  'member sees all mirrored Bakbak channels'
+);
 select is((select count(*) from public.messages), 1::bigint, 'member sees only its server messages');
 select is((select count(*) from public.profiles), 2::bigint, 'member sees only co-member profiles');
 
