@@ -2,12 +2,16 @@
 
 This directory contains Bakbak's server-authoritative data model, access rules,
 single-use invite workflow, text-chat realtime publication, and protected
-LiveKit token function. It also provisions the private, operator-managed
-`soundboard` Storage bucket and the Realtime-published sound catalog. Objects
+LiveKit token function. It also provisions the private `soundboard` Storage
+bucket, Realtime-published sound catalog, and owner-private favorites. Objects
 live under a server UUID prefix; only a signed-in member of that server can list
-or download them, and renderer clients cannot upload, replace, or delete
-sounds. Members may edit a catalog sound's label, emoji, and same-server
-category; all audio fields and category administration remain operator-only.
+or download them. Renderer clients still cannot write Storage or directly
+create/delete catalog rows. The authenticated `soundboard-manage` Edge Function
+publishes locally normalized member WAV clips into the server-managed Bakbak
+category and removes member objects after rechecking verified claims,
+membership, quotas, format, duration, and uploader/admin authority. Members
+edit only their own label/emoji metadata; server admins moderate all metadata
+and sounds. Category administration remains trusted-server-only.
 Private profile media uses two owner-prefixed buckets: `avatars` accepts
 PNG/JPEG/WebP/GIF objects up to 5 MiB, and `profile-covers` accepts the same
 types up to 10 MiB. Owners manage their objects; authenticated users may read
@@ -26,6 +30,7 @@ pnpm dlx supabase@latest db lint --local
 pnpm dlx supabase@latest test db
 pnpm dlx supabase@latest functions serve livekit-token --env-file supabase/functions/.env.local
 deno task --config supabase/deno.json test
+deno test --allow-env --config supabase/functions/soundboard-manage/deno.json supabase/functions/tests/soundboard-manage
 ```
 
 Use a git-ignored environment file copied from
@@ -68,10 +73,15 @@ same 404 used for a missing or text channel.
   use a server-generated identity plus owner metadata and permit only
   `screen_share` and `screen_share_audio`, with subscriptions, data publishing,
   and metadata updates disabled.
-- Sound catalog RLS requires server membership. Column grants allow only label,
-  emoji, and category metadata updates, while a composite foreign key rejects
-  categories from another server. Clients cannot insert or delete sounds or
-  categories.
+- Sound catalog RLS requires server membership. Column grants allow only label
+  and emoji updates; RLS further requires the creator or matching server admin.
+  Clients cannot assign categories or insert/delete sounds or categories.
+- Favorite RLS permits only the signed-in owner to select, insert, or delete a
+  row and also requires matching server membership. Same-server foreign keys
+  and cascades prevent cross-server or stale favorites.
+- The service-role-only upload RPC locks the server before enforcing 25 active
+  member sounds per uploader and 200 per server. The management function alone
+  calls it; operator sounds with null creators do not consume quota.
 - Profile descriptions are plain text limited to 190 characters. Cover focal
   coordinates are required integers from 0–100. Every avatar and cover path is
   either null or begins with the authenticated owner's UUID; owner writes and
@@ -89,6 +99,7 @@ pnpm dlx supabase@latest db push --dry-run
 pnpm dlx supabase@latest db push
 pnpm dlx supabase@latest migration list
 pnpm dlx supabase@latest functions deploy livekit-token --use-api
+pnpm dlx supabase@latest functions deploy soundboard-manage --use-api
 ```
 
 Screen sharing changes only this Edge Function; no database migration is
@@ -111,15 +122,27 @@ without making either bucket public. After deployment, run linked schema lint,
 confirm no migration remains pending, then use two authenticated accounts plus
 an outsider to verify shared-server reads and cross-server denial.
 
-The soundboard bucket is private, accepts only `audio/mpeg`, and rejects objects
-larger than 1 MiB. Migration `202607120002_soundboard_catalog.sql` seeds the four
-ordered categories and 23 sound rows whose `storage_path` values match these
-objects. The repository intentionally does not retain a second local copy of
-the MP3s; the hosted bucket is the source of truth. Keep an operator-controlled
-backup outside Git if the files need to be restored or copied to another
-project. File writes and audio-field changes remain operator deployment steps;
+The soundboard bucket is private, accepts MPEG audio and normalized WAV, and
+rejects objects larger than 1 MiB. Migration
+`202607120002_soundboard_catalog.sql` seeds the original four ordered
+categories and 23 sound rows.
+`202607180001_import_unlucky_boys_soundboard.sql` adds the `Unlucky Boys`
+category and 21 Discord imports, bringing the catalog to 44 sounds. Migration
+`202607180002_member_soundboard.sql` transactionally consolidates those rows
+into System and Bakbak, marks Bakbak as the one upload target, adds creators,
+private favorites, uploader/admin metadata RLS, Realtime publication, and the
+trusted quota-enforcing publication RPC. Imported objects retain stable
+`discord-<Discord sound ID>.mp3` names; member objects use
+`<server>/<uploader>/<uuid>.wav`.
+
+The repository intentionally does not retain a second local copy of the 44
+operator MP3s; the hosted bucket is the source of truth. Keep an
+operator-controlled backup outside Git if the files need restoration.
+Direct file writes and audio-field changes remain denied to client sessions;
 do not add client upload policies or put a service-role credential in the
-renderer.
+renderer. Deploy the migration before `soundboard-manage`, then run linked lint,
+an unauthenticated 401 probe, member/outsider upload probes, uploader/admin/
+other-member delete probes, and a final Storage/catalog cleanup check.
 
 Keep `verify_jwt = true` from `supabase/config.toml`. Set `LIVEKIT_URL`,
 `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` through the hosted Edge Function

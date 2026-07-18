@@ -1909,22 +1909,28 @@ button:disabled {
 .soundboard-error {
   color: var(--danger);
 }
-.sound-edit-form {
+.sound-edit-form,
+.sound-upload-form {
   display: grid;
   gap: 14px;
   padding: 24px;
 }
-.sound-edit-form label {
+.sound-edit-form label,
+.sound-upload-fields label,
+.sound-trim-controls label {
   display: grid;
   gap: 6px;
 }
-.sound-edit-form label > span {
+.sound-edit-form label > span,
+.sound-upload-fields label > span,
+.sound-trim-controls label > span {
   color: var(--muted);
   font-size: 10px;
   font-weight: 700;
 }
 .sound-edit-form input,
-.sound-edit-form select {
+.sound-edit-form select,
+.sound-upload-fields input {
   width: 100%;
   height: 40px;
   padding: 0 11px;
@@ -1933,11 +1939,164 @@ button:disabled {
   color: var(--text);
   background: var(--bg-main);
 }
+
+.sound-upload-picker {
+  min-height: 70px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px dashed var(--accent-border);
+  border-radius: 10px;
+  color: var(--accent-bright);
+  background: var(--accent-soft);
+  cursor: pointer;
+}
+
+.sound-upload-picker > span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.sound-upload-picker strong,
+.sound-upload-picker small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sound-upload-picker strong {
+  color: var(--text);
+  font-size: 11px;
+}
+
+.sound-upload-picker small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.sound-upload-picker input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.sound-upload-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.sound-upload-preview audio,
+.sound-upload-preview video {
+  width: 100%;
+  max-height: 190px;
+}
+
+.sound-trim-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-soft);
+}
+
+.sound-trim-controls label > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sound-trim-controls strong {
+  color: var(--text);
+}
+
+.sound-trim-controls input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.sound-upload-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(120px, 1fr);
+  gap: 12px;
+}
+
+.sound-upload-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--accent-bright);
+  font-size: 10px;
+}
+
+.sound-upload-progress svg {
+  animation: spin 900ms linear infinite;
+}
+
+@media (max-width: 620px) {
+  .sound-upload-preview,
+  .sound-trim-controls,
+  .sound-upload-fields {
+    grid-template-columns: 1fr;
+  }
+}
 .modal-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 9px;
   margin-top: 4px;
+}
+
+.sound-edit-form .modal-actions,
+.sound-upload-form .modal-actions {
+  position: sticky;
+  z-index: 1;
+  bottom: -24px;
+  margin-right: -24px;
+  margin-bottom: -24px;
+  margin-left: -24px;
+  padding: 14px 24px 24px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+
+@media (max-width: 520px), (max-height: 520px) {
+  .modal-card__header {
+    padding: 16px;
+  }
+
+  .sound-edit-form,
+  .sound-upload-form {
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .sound-edit-form .modal-actions,
+  .sound-upload-form .modal-actions {
+    bottom: -16px;
+    margin-right: -16px;
+    margin-bottom: -16px;
+    margin-left: -16px;
+    padding: 12px 16px 16px;
+  }
+}
+
+@media (max-width: 420px) {
+  .modal-actions > button {
+    width: 100%;
+  }
 }
 
 .settings-error {
@@ -1960,23 +2119,32 @@ button:disabled {
 /* Modal and loading */
 .modal-backdrop {
   position: fixed;
-  z-index: 30;
+  z-index: 140;
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 30px;
+  padding: clamp(12px, 3vw, 30px);
   background: rgba(5, 5, 8, 0.7);
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
 }
 .modal-card {
   width: min(100%, 620px);
+  max-height: calc(100dvh - clamp(24px, 6vw, 60px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
   border: 1px solid var(--line-bright);
   border-radius: 18px;
   background: #181820;
   box-shadow: 0 30px 90px rgba(0, 0, 0, 0.5);
   animation: rise-in 220ms ease both;
+}
+.modal-card--compact {
+  width: min(100%, 520px);
+}
+.modal-card--wide {
+  width: min(100%, 760px);
 }
 .modal-card__header {
   display: flex;
@@ -1985,6 +2153,11 @@ button:disabled {
   gap: 20px;
   padding: 24px;
   border-bottom: 1px solid var(--line);
+}
+.modal-card__body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .modal-card__header h2 {
   margin: 5px 0 4px;
@@ -4223,7 +4396,7 @@ body {
   height: 100%;
   max-width: none;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   gap: 8px;
   overflow: hidden;
   padding: 10px;
@@ -4249,6 +4422,21 @@ body {
   gap: 5px;
 }
 
+.soundboard-upload-button {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid var(--accent-border);
+  border-radius: 6px;
+  color: var(--accent-bright);
+  background: var(--accent-soft);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 800;
+}
+
 .soundboard-compact-header .soundboard-volume {
   gap: 4px;
 }
@@ -4269,21 +4457,59 @@ body {
   padding: 0;
 }
 
-.soundboard-drawer .soundboard-categories {
-  gap: 5px;
-  margin: 0;
-}
-
-.soundboard-drawer .soundboard-categories button {
-  padding: 5px 8px;
-}
-
-.soundboard-drawer .sound-grid {
+.soundboard-sections {
   min-height: 0;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
   overflow-y: auto;
   padding-right: 4px;
+}
+
+.soundboard-section + .soundboard-section {
+  margin-top: 5px;
+}
+
+.soundboard-section__header {
+  width: 100%;
+  min-height: 28px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.soundboard-section__header:hover,
+.soundboard-section__header:focus-visible {
+  color: var(--text);
+  background: var(--panel-hover);
+}
+
+.soundboard-section__header svg {
+  transition: transform 140ms ease;
+}
+
+.soundboard-section__header svg.is-collapsed {
+  transform: rotate(-90deg);
+}
+
+.soundboard-section__header small {
+  color: var(--faint);
+  font-size: 8px;
+}
+
+.soundboard-section .sound-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 2px 0 4px;
 }
 
 .soundboard-drawer .sound-button {
@@ -4322,17 +4548,51 @@ body {
   display: none;
 }
 
-.soundboard-drawer .sound-edit {
+.sound-card-actions {
+  position: absolute;
+  z-index: 2;
   top: 50%;
   right: 5px;
+  display: flex;
+  gap: 2px;
+  transform: translateY(-50%);
+}
+
+.soundboard-drawer .sound-edit,
+.soundboard-drawer .sound-favorite {
+  position: static;
   width: 24px;
   height: 24px;
-  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--muted);
+  background: var(--panel);
+  cursor: pointer;
+  opacity: 0;
+  transform: none;
+}
+
+.soundboard-drawer .sound-favorite.is-active {
+  color: var(--accent-bright);
+  border-color: var(--accent-border);
+  opacity: 1;
+}
+
+.sound-card:hover .sound-favorite,
+.sound-favorite:focus-visible,
+.sound-card:hover .sound-edit,
+.sound-edit:focus-visible,
+.sound-card:focus-within .sound-favorite,
+.sound-card:focus-within .sound-edit {
+  opacity: 1;
 }
 
 .soundboard-drawer .sound-card:hover .sound-button strong,
 .soundboard-drawer .sound-card:focus-within .sound-button strong {
-  padding-right: 22px;
+  padding-right: 48px;
 }
 
 .soundboard-drawer .soundboard-loading {
@@ -4406,8 +4666,12 @@ body {
     display: none;
   }
 
-  .soundboard-drawer .sound-grid {
+  .soundboard-section .sound-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .soundboard-upload-button span {
+    display: none;
   }
 }
 

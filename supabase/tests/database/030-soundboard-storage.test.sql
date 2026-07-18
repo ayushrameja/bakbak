@@ -27,8 +27,8 @@ select is(
     from storage.buckets
     where id = 'soundboard'
   ),
-  array['audio/mpeg']::text[],
-  'soundboard bucket accepts only MPEG audio'
+  array['audio/mpeg', 'audio/wav', 'audio/x-wav']::text[],
+  'soundboard bucket accepts hosted MPEG and normalized member WAV audio'
 );
 
 insert into auth.users (id, email, raw_user_meta_data)

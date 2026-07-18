@@ -177,6 +177,7 @@ export default function App() {
   const workspaceServerId = workspace?.server.id;
   const soundboard = useSoundboardCatalog(
     workspaceServerId,
+    signedInUserId,
     appConfig.dataMode,
   );
   const handleCommunicationEffect = useCallback(
@@ -1313,10 +1314,14 @@ export default function App() {
             aria-label="Soundboard"
           >
             <Soundboard
+              serverId={workspace.server.id}
+              currentUserId={user.id}
+              currentUserRole={workspace.currentUserRole}
               connected
               deafened={voice.deafened}
               categories={voice.soundboard.categories}
               sounds={voice.soundboard.sounds}
+              favoriteSoundIds={voice.soundboard.favoriteSoundIds}
               loading={voice.soundboard.loading}
               error={voice.soundboard.error}
               volume={voice.soundboardVolume}
@@ -1326,6 +1331,9 @@ export default function App() {
               onStopAll={voice.stopLocalSounds}
               onVolumeChange={voice.setSoundboardVolume}
               onRetry={voice.soundboard.retrySound}
+              onToggleFavorite={voice.soundboard.toggleFavorite}
+              onUpload={voice.soundboard.uploadSound}
+              onDelete={voice.soundboard.deleteSound}
               onUpdate={voice.updateSoundMetadata}
             />
           </aside>

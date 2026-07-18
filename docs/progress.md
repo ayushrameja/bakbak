@@ -2313,3 +2313,219 @@ src-tauri/target/release/bundle/macos/Bakbak.app`, `file`, and `lipo -info`
   Windows scaling/color conversion, then execute the bidirectional macOS
   14+/Windows installed-client matrix and record sender resolution/FPS stats
   plus signed installer sizes before marking plans 0003/0010 complete.
+
+## 2026-07-18 — Import the Unlucky Boys Discord soundboard
+
+- **Completed:** Inventoried all 21 sounds in the signed-in Unlucky Boys
+  Discord soundboard, including the eight currently playable and thirteen
+  boost-locked entries. Downloaded each clip from Discord's documented
+  soundboard CDN, converted the returned Ogg/Opus audio to 48 kHz MP3, and
+  uploaded it to the private hosted Bakbak bucket under stable
+  `discord-<Discord sound ID>.mp3` paths. Added and deployed
+  `202607180001_import_unlucky_boys_soundboard.sql`, creating the fifth
+  `Unlucky Boys` category and 21 catalog rows while preserving the original 23
+  sounds. Updated the mock catalog to the same five-category, 44-sound shape
+  and added catalog-integrity coverage.
+- **Decisions:** Preserved every source sound, including Discord's currently
+  boost-locked entries, and enabled them in Bakbak without adding Discord's
+  boost entitlement model. Preserved available Unicode emoji and used `🔊`
+  where Discord exposed only custom artwork that Bakbak's text-emoji catalog
+  cannot represent. Kept audio operator-managed and outside Git; no client
+  upload permission or renderer secret was introduced. Corrected six
+  unambiguous pgTAP column assertions and updated the rich-profile delete test
+  for Supabase's current direct-storage-delete guard after the previously
+  blocked local suite exposed those stale test assumptions.
+- **Validation:**
+  - Discord browser inventory — found exactly 21 server sounds: eight available
+    and thirteen labeled `Requires higher Server Boost Level`.
+  - `curl` plus `ffmpeg`/`ffprobe` conversion checks — passed for all 21 clips;
+    every output is MP3, durations range from 1,300–5,000 ms, and sizes range
+    from 32,876–121,580 bytes, below the private bucket's 1 MiB limit.
+  - `pnpm exec vitest run
+src/features/soundboard/Soundboard.test.tsx
+src/features/soundboard/soundboard-audio.test.ts
+src/features/soundboard/sound-events.test.ts
+src/features/soundboard/sound-cache.test.ts` — passed four files and 14 tests
+    before the final catalog-integrity test was added.
+  - `pnpm dlx supabase@latest db reset` — passed from a clean local database
+    and applied every migration through `202607180001`.
+  - `pnpm dlx supabase@latest db lint --local` — passed with no schema errors.
+  - Initial `pnpm dlx supabase@latest test db` — the soundboard catalog file
+    passed, but the full run failed seven previously unexecuted rich-profile
+    assertions: six ambiguous three-argument `has_column` calls and one direct
+    Storage-table delete now blocked by Supabase. After test-only corrections,
+    the final run passed all nine files and 205 assertions.
+  - Local Storage upload rehearsal — passed all 21 files with `audio/mpeg` and
+    the intended server-prefixed object paths.
+  - Initial concurrent hosted migration dry-run — failed because the parallel
+    migration-list command rotated the CLI's temporary login role. The
+    sequential rerun passed and reported only
+    `202607180001_import_unlucky_boys_soundboard.sql`.
+  - Hosted Storage upload — uploaded all 21 files. Because the existing
+    destination prefix caused the recursive CLI to nest the server UUID twice,
+    each new object was moved to its exact catalog path before publication.
+    Final hosted listing returned 44 total objects, 21 `discord-*` imports, and
+    zero nested leftovers; the original 23 objects remained intact.
+  - `pnpm dlx supabase@latest db push` — passed and deployed
+    `202607180001_import_unlucky_boys_soundboard.sql`.
+  - `pnpm dlx supabase@latest db lint --linked` — passed with no hosted schema
+    errors. Final `pnpm dlx supabase@latest migration list` showed local and
+    remote history matched through `202607180001`.
+  - Mock-browser QA — passed connected-call soundboard rendering, the active
+    fifth category, all 21 imported labels/emoji, internal scrolling, and the
+    existing stop footer without layout overflow.
+  - `pnpm check` — passed formatting, lint, renderer/Node typechecks, 44 Vitest
+    files with 225 tests, 11 Node tests, synchronized version `0.10.0`,
+    production build, and secret scan. Vite retained the existing non-blocking
+    large-chunk warning; output was 98.81 kB CSS and 1,172.89 kB JavaScript.
+  - `pnpm tauri:build:local` — passed and produced an ad-hoc-signed Apple
+    Silicon `Bakbak.app`; notarization was skipped because Apple credentials
+    are unavailable.
+  - `codesign --verify --deep --strict --verbose=4
+src-tauri/target/release/bundle/macos/Bakbak.app` — passed. `file` identified a
+    Mach-O 64-bit arm64 executable and `lipo -archs` returned `arm64`.
+  - Final `pnpm security:scan` and `git diff --check` — passed for the renderer,
+    native bundle, and working diff before this entry was appended.
+- **Documentation updated:** Updated `docs/architecture.md` and
+  `supabase/README.md` with the five-category, 44-sound hosted contract,
+  Discord-derived object naming/conversion, current 205-assertion database
+  status, and external-backup/licensing boundaries. Appended this canonical
+  progress entry; the active plan's soundboard playback acceptance checkbox
+  remains open because it requires two human listeners.
+- **Known limitations:** The repository intentionally retains no MP3 copies;
+  the private hosted bucket remains the runtime source of truth and still
+  requires an operator backup outside Git. Distribution rights must be
+  confirmed for all 44 clips before friend testing. Mock QA proves catalog
+  rendering but not decoded hosted audio, exact-once LiveKit playback, or
+  two-client synchronization. The updater-enabled `pnpm tauri build` was
+  skipped because the protected updater signing key is unavailable; the local
+  app-only build does not exercise updater signing or notarization.
+- **Next:** Restart or refresh a signed-in Bakbak client, open the `Unlucky
+Boys` category, and run the two-installed-client soundboard matrix for all 21
+  imports, including exact-once playback, overlap/stop-all, output routing,
+  deafen, reconnect, and cleanup; then confirm distribution rights and retain
+  an operator backup before friend testing.
+
+## 2026-07-18 — Soundboard categories, favorites, and member uploads
+
+- **Completed:** Replaced the flat soundboard filter with independently
+  collapsible Favorites, System, and Bakbak sections; added per-server local
+  collapse persistence, search-only expansion, optimistic account favorites,
+  owner/admin controls, and connected-call upload entry points. Added audio and
+  video preview, 0.1–5 second trim windows, locally normalized 48 kHz mono
+  16-bit PCM WAV output, cancellation/worker cleanup, and exact client-side WAV
+  verification. Added creator ownership, favorites, two-category consolidation,
+  uploader/server quotas, least-privilege RLS, Realtime subscriptions, and the
+  authenticated `soundboard-manage` upload/delete function. Portaled the shared
+  modal above transformed drawers and added compact/default/wide sizing, a
+  `100dvh` bound, fixed header, scrollable body, and sticky wrapping actions.
+  Added plan 0011 because plan 0010 already belongs to cross-platform screen
+  sharing; preserved the existing Discord-import changes.
+- **Decisions:** Kept members inside the single Bakbak upload target and kept
+  category assignment server-managed. Raw audio/video remains local; only the
+  normalized WAV reaches trusted server code. The custom core pins FFmpeg
+  5.1.4, ffmpeg.wasm/core 0.12.10, and Emscripten 3.1.40, disables GPL and
+  non-free components, and enables only the required audio demuxers, native
+  decoders/parsers, `aformat`/`anull`/`aresample`/`atrim`, PCM encoder, WAV
+  muxer, and file protocol. The first real MP4 run exposed the otherwise-easy
+  to miss `atrim` dependency; five seconds apparently wanted its own bouncer.
+- **Validation:**
+  - `pnpm dlx supabase@latest db reset` — passed from a clean local database
+    through `202607180002`; the chained first lint attempt timed out while the
+    reset restarted containers, then the standalone rerun succeeded.
+  - `pnpm dlx supabase@latest db lint --local` — passed with no schema errors.
+  - `pnpm dlx supabase@latest test db` — passed all 10 files and 224 pgTAP
+    assertions covering consolidation, favorites privacy/cascades,
+    creator/admin/cross-server rules, direct-mutation denial, duration, and
+    25/200 quotas.
+  - `deno task --config supabase/deno.json check` and
+    `deno task --config supabase/deno.json test` — passed lint/typecheck and all
+    32 LiveKit plus soundboard function tests. The focused soundboard run passed
+    17 tests for authentication/origin/method handling, WAV validation, quotas,
+    permissions, normalized failures, and publication cleanup.
+  - Pinned reduced-core native build — passed with FFmpeg reporting LGPL 2.1+
+    and only the intended components. Final `ffmpeg-core.js` is 84,881 bytes
+    (SHA-256
+    `04dee6d5b2ec113d83843d3ae238da11e07612adf82171937892e40ac9aa2a67`);
+    `ffmpeg-core.wasm` is 1,539,655 bytes (SHA-256
+    `2770ebbf93f43ee00b7607060d9a2b0ed0cd0f57dd6672756677166590edda1b`),
+    30,692,764 bytes smaller than the stock 32,232,419-byte WASM.
+  - Mock-browser media acceptance — passed real 7-second MP4/AAC and MP3
+    sources, a 1.25-second start with a 4-second audio window, publication into
+    Bakbak, and the exact normalized-WAV validator. Source files remained local.
+  - Browser layout QA — passed at 1280×800, 1024×680, and 527×407 with no
+    document horizontal overflow. The wide upload dialog measured 760×420.5 at
+    both desktop sizes; the short compact edit dialog measured
+    495.4×375.4 with its action row ending at 399.3 inside the 407-pixel
+    viewport. Focus/Escape/restoration tests also passed.
+  - `pnpm check` — passed Prettier, ESLint, renderer/Node typechecks, 50 Vitest
+    files with 252 tests, 12 Node tests, synchronized version `0.11.0`,
+    production build, and secret scan. Vite retained the existing non-blocking
+    large-chunk warning; final output is 109.07 kB CSS and 1,214.25 kB main
+    JavaScript (336.30 kB gzip), plus the lazy public core.
+  - `pnpm tauri:build:local` — passed for an ad-hoc-signed ARM64 `Bakbak.app`;
+    notarization was skipped because Apple credentials are unavailable.
+  - `codesign --verify --deep --strict --verbose=4`, `file`, and `lipo -archs`
+    — passed for the reduced-core app.
+  - Stock/reduced size comparison on the same macOS ARM64 tree — the stock-core
+    app was 45,184 KiB and the reduced app 37,712 KiB, saving 7,472 KiB. The
+    stock-core DMG was 23,139,696 bytes and the reduced DMG 15,491,181 bytes,
+    saving 7,648,515 bytes (33.1%). The final DMG SHA-256 is
+    `0322cea7aa0f146db9074f901ba961bf058d149852e785a04a271bdcd3879bc6`;
+    `hdiutil verify` passed. Against the pre-upload 36,976 KiB app, the final
+    feature adds 736 KiB.
+  - `pnpm dlx supabase@latest db push --dry-run` — passed and reported only
+    `202607180002_member_soundboard.sql`. `soundboard-manage` deployed through
+    the API and its unauthenticated hosted probe returned 401.
+  - Hosted `db push` — not executed: the environment safety review requires
+    explicit user approval for the shared schema/data migration. Read-only
+    hosted schema lint passed, and migration history confirms local
+    `202607180002` is the sole pending remote migration.
+  - Final `pnpm security:scan` and `git diff --check` — passed for the reduced
+    renderer, desktop artifacts, and final working tree.
+- **Documentation updated:** Updated README, `docs/architecture.md`, active plan
+  0001, new plan 0011, `supabase/README.md`, and the pinned source/build/license
+  record under `third_party/ffmpeg-soundboard`; appended this canonical entry.
+- **Known limitations:** The Docker recipe is pinned and complete, but its
+  x86-only Emscripten 3.1.40 base was impractically slow under Apple Silicon
+  emulation; the committed artifact was built with the same official pinned
+  SDK natively and the Docker build was not allowed to run to completion.
+  Hosted migration `202607180002` is still pending, so the deployed function
+  must not be used by released clients yet. The authenticated two-account
+  upload/favorite/Realtime/LiveKit/moderation/outsider/deletion matrix, a true
+  installed-client media run, Developer ID/notarization, and the Windows signed
+  installer comparison still require their respective environments. Rights
+  for all 44 operator MP3s still require confirmation.
+- **Next:** With explicit approval, push
+  `202607180002_member_soundboard.sql`, repeat hosted lint/history checks, and
+  run the two-account acceptance matrix. Then exercise representative MP3 and
+  MP4 uploads inside the installed app before friend distribution.
+
+## 2026-07-18 — Deploy hosted member soundboard migration
+
+- **Completed:** After explicit user approval, applied
+  `202607180002_member_soundboard.sql` to the linked hosted Bakbak project. The
+  hosted catalog now uses System and Bakbak, and the creator, favorite,
+  uploader/admin RLS, Realtime, quota RPC, and normalized-WAV bucket contracts
+  are available to the already deployed management function.
+- **Decisions:** Applied only the reviewed tracked migration; no production
+  rows, credentials, or policies were changed through ad hoc SQL.
+- **Validation:**
+  - `pnpm dlx supabase@latest db push` — passed and applied only
+    `202607180002_member_soundboard.sql`.
+  - `pnpm dlx supabase@latest db lint --linked` — passed with no hosted schema
+    errors.
+  - `pnpm dlx supabase@latest migration list` — passed; local and remote
+    histories match through `202607180002`.
+  - `pnpm dlx supabase@latest functions list` — passed;
+    `soundboard-manage` version 1 is ACTIVE with `verify_jwt = true`.
+  - Unauthenticated hosted `POST /functions/v1/soundboard-manage` — returned
+    HTTP 401 as required.
+- **Documentation updated:** Updated the architecture deployment status, plan
+  0011 status, and this canonical progress log.
+- **Known limitations:** Authenticated two-account upload/favorite/Realtime,
+  LiveKit playback, uploader/admin moderation, outsider denial, and deletion
+  cleanup still need the planned human acceptance session.
+- **Next:** Run the hosted two-account soundboard matrix, then repeat one MP3
+  and one MP4 upload inside the installed desktop app before friend
+  distribution.

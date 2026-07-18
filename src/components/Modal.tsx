@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 interface ModalProps {
   eyebrow?: string;
@@ -8,6 +9,7 @@ interface ModalProps {
   children: ReactNode;
   onClose: () => void;
   overlayOwner?: string;
+  size?: "compact" | "default" | "wide";
 }
 
 export function Modal({
@@ -17,10 +19,12 @@ export function Modal({
   children,
   onClose,
   overlayOwner,
+  size = "default",
 }: ModalProps) {
   const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
+  const titleId = useId();
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -59,7 +63,7 @@ export function Modal({
     };
   }, []);
 
-  return (
+  return createPortal(
     <div
       className="modal-backdrop"
       role="presentation"
@@ -68,17 +72,17 @@ export function Modal({
     >
       <section
         ref={dialogRef}
-        className="modal-card"
+        className={`modal-card modal-card--${size}`}
         data-overlay-owner={overlayOwner}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="modal-title"
+        aria-labelledby={titleId}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="modal-card__header">
           <div>
             <span className="eyebrow">{eyebrow}</span>
-            <h2 id="modal-title">{title}</h2>
+            <h2 id={titleId}>{title}</h2>
             {description ? <p>{description}</p> : null}
           </div>
           <button
@@ -91,8 +95,9 @@ export function Modal({
             <X size={18} />
           </button>
         </header>
-        {children}
+        <div className="modal-card__body">{children}</div>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }

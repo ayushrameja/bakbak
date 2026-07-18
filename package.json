@@ -13,6 +13,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "audio:generate": "node scripts/generate-interface-sounds.mjs",
+    "ffmpeg:build": "bash scripts/build-soundboard-ffmpeg-core.sh",
     "test": "vitest run && node --test scripts/*.test.mjs",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -24,6 +25,8 @@
     "tauri:build:local": "tauri build --bundles app --config src-tauri/tauri.local.conf.json"
   },
   "dependencies": {
+    "@ffmpeg/ffmpeg": "0.12.15",
+    "@ffmpeg/util": "0.12.2",
     "@fontsource/ibm-plex-mono": "^5.2.7",
     "@fontsource/league-gothic": "^5.2.8",
     "@supabase/supabase-js": "^2.110.2",
