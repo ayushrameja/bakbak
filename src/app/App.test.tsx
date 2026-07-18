@@ -24,29 +24,27 @@ describe("App navigation state", () => {
       screen.getByRole("button", { name: "Enter the preview" }),
     );
 
-    const lobbyDraft = await screen.findByRole("combobox", {
-      name: "Message #lobby",
+    const spawnDraft = await screen.findByRole("combobox", {
+      name: "Message #spawn",
     });
-    await userEvent.type(lobbyDraft, "tea-fuelled thought");
+    await userEvent.type(spawnDraft, "tea-fuelled thought");
     await userEvent.click(screen.getByRole("button", { name: "Settings" }));
     await screen.findByRole("heading", { name: "Settings" });
     await userEvent.click(
       screen.getByRole("button", { name: "Close settings" }),
     );
     expect(
-      await screen.findByRole("combobox", { name: "Message #lobby" }),
+      await screen.findByRole("combobox", { name: "Message #spawn" }),
     ).toHaveValue("tea-fuelled thought");
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "what-we-are-building" }),
-    );
-    const buildingDraft = await screen.findByRole("combobox", {
-      name: "Message #what-we-are-building",
+    await userEvent.click(screen.getByRole("button", { name: "clips" }));
+    const clipsDraft = await screen.findByRole("combobox", {
+      name: "Message #clips",
     });
-    await userEvent.type(buildingDraft, "second room, same brain");
-    await userEvent.click(screen.getByRole("button", { name: "lobby" }));
+    await userEvent.type(clipsDraft, "second room, same brain");
+    await userEvent.click(screen.getByRole("button", { name: "spawn" }));
     expect(
-      await screen.findByRole("combobox", { name: "Message #lobby" }),
+      await screen.findByRole("combobox", { name: "Message #spawn" }),
     ).toHaveValue("tea-fuelled thought");
   });
 
@@ -109,28 +107,26 @@ describe("App navigation state", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Enter the preview" }),
     );
-    await userEvent.click(screen.getByRole("button", { name: "Coffee table" }));
+    await userEvent.click(screen.getByRole("button", { name: "Queue" }));
 
     const callRegion = await screen.findByRole("region", {
       name: "Current voice call",
     });
-    expect(callRegion).toHaveTextContent("Coffee table");
+    expect(callRegion).toHaveTextContent("Queue");
     expect(
       screen.queryByRole("button", { name: "Join voice" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Joining quietly…")).not.toBeInTheDocument();
     expect(await screen.findByText("Ayush (you)")).toBeVisible();
     expect(
-      screen.queryByRole("combobox", { name: "Message #Coffee table" }),
+      screen.queryByRole("combobox", { name: "Message #Queue" }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /chat/i }),
     ).not.toBeInTheDocument();
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "Quiet co-work" }),
-    );
-    expect(callRegion).toHaveTextContent("Quiet co-work");
+    await userEvent.click(screen.getByRole("button", { name: "Crash" }));
+    expect(callRegion).toHaveTextContent("Crash");
     expect(callRegion).toHaveTextContent("Connecting");
     await waitFor(() =>
       expect(callRegion).toHaveTextContent("Voice connected"),

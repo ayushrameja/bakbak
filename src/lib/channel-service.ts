@@ -8,6 +8,7 @@ import { getSupabaseClient } from "./supabase";
 interface ChannelRow {
   id: string;
   server_id: string;
+  category_id: string | null;
   name: string;
   kind: ChannelKind;
   position: number;
@@ -98,7 +99,7 @@ export function subscribeToLiveChannels(
         try {
           const { data, error } = await supabase
             .from("channels")
-            .select("id,server_id,name,kind,position")
+            .select("id,server_id,category_id,name,kind,position")
             .eq("server_id", serverId)
             .order("position")
             .returns<ChannelRow[]>();
@@ -149,6 +150,7 @@ function channelFromRow(row: ChannelRow): Channel {
   return {
     id: row.id,
     serverId: row.server_id,
+    categoryId: row.category_id,
     name: row.name,
     kind: row.kind,
     position: row.position,

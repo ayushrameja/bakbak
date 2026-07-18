@@ -1057,13 +1057,17 @@ export default function App() {
         : {
             id: `channel-${crypto.randomUUID()}`,
             serverId: workspace.server.id,
+            categoryId: null,
             name: name.trim(),
             kind,
             position:
               Math.max(
                 -10,
                 ...workspace.channels
-                  .filter((candidate) => candidate.kind === kind)
+                  .filter(
+                    (candidate) =>
+                      candidate.kind === kind && candidate.categoryId === null,
+                  )
                   .map((candidate) => candidate.position),
               ) + 10,
             topic:
@@ -1211,6 +1215,7 @@ export default function App() {
       {layoutPreferences.leftPanelVisible ? (
         <ChannelSidebar
           server={workspace.server}
+          categories={workspace.channelCategories}
           channels={workspace.channels}
           selectedChannelId={selectedChannel.id}
           user={user}

@@ -26,9 +26,17 @@ export interface Server {
   description: string;
 }
 
+export interface ChannelCategory {
+  id: string;
+  serverId: string;
+  name: string;
+  position: number;
+}
+
 export interface Channel {
   id: string;
   serverId: string;
+  categoryId: string | null;
   name: string;
   kind: ChannelKind;
   position: number;
@@ -74,6 +82,7 @@ export interface ChannelActivity {
 
 export interface WorkspaceSnapshot {
   server: Server;
+  channelCategories: ChannelCategory[];
   channels: Channel[];
   members: ServerMember[];
   currentUserRole: MembershipRole;

@@ -513,6 +513,45 @@ button:disabled {
   letter-spacing: 0.09em;
   text-transform: uppercase;
 }
+.channel-group > header h3 {
+  margin: 0;
+  font: inherit;
+}
+.channel-create-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin: 0 4px 16px;
+}
+.channel-create-actions button {
+  min-width: 0;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+  background: var(--panel-soft);
+  cursor: pointer;
+}
+.channel-create-actions button:hover {
+  color: var(--text);
+  border-color: var(--accent-border);
+  background: var(--panel-hover);
+}
+.channel-create-actions button span {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+}
+.channel-create-actions button svg:last-child {
+  margin-left: auto;
+}
 .channel-row {
   position: relative;
   width: 100%;
@@ -4016,6 +4055,7 @@ body {
 .channel-row,
 .channel-row-edit,
 .channel-group > header button,
+.channel-create-actions button,
 .composer,
 .channel-intro,
 .channel-intro__icon,
@@ -6223,6 +6263,7 @@ button.message-mention:hover {
 :root[data-visual-preset="signal-red"] .icon-button,
 :root[data-visual-preset="signal-red"] .channel-row,
 :root[data-visual-preset="signal-red"] .channel-row-edit,
+:root[data-visual-preset="signal-red"] .channel-create-actions button,
 :root[data-visual-preset="signal-red"] .composer,
 :root[data-visual-preset="signal-red"] .channel-intro,
 :root[data-visual-preset="signal-red"] .channel-intro__icon,

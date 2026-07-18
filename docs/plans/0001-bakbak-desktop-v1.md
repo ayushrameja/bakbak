@@ -168,6 +168,9 @@ layout while retaining their security and least-privilege companion boundary.
 Collapsible System/Bakbak sections, account favorites, member-owned five-second
 uploads, the trusted management function, and responsive dialog sizing are
 approved under `0011-soundboard-categories-favorites-and-uploads.md`.
+The exact seven-category, 18-text-room, and six-voice-room Unlucky Boys layout,
+with no Discord message import or channel-level permission mapping, is approved
+under `0012-unlucky-boys-channel-layout.md`.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -234,6 +237,10 @@ approved under `0011-soundboard-categories-favorites-and-uploads.md`.
       moderation, and managed backend publication under plan 0011.
 - [ ] Complete plan 0011's installed-client and hosted two-account acceptance
       matrix.
+- [x] Add ordered channel categories and the exact visible Unlucky Boys room
+      hierarchy under plan 0012 without importing messages.
+- [x] Deploy plan 0012's additive category/layout migration.
+- [ ] Complete plan 0012's hosted two-account hierarchy check.
 - [ ] Evaluate optional global push-to-talk.
 - [x] Implement Windows process/display-matched audio with build gating and
       video-only fallback.
