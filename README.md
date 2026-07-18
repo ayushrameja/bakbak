@@ -1,10 +1,11 @@
 # Bakbak
 
 Bakbak is a private desktop room for 5–10 friends: persistent text chat,
-drop-in voice, desktop screen sharing, and a synchronized hosted soundboard. Its
-Warm Adda interface includes light/dark theming, in-app profile and media
-settings, private member avatars, and admin-managed text and voice rooms. It
-uses React, strict TypeScript, Vite, Tauri 2, Supabase, and LiveKit.
+drop-in voice, desktop screen sharing, and a synchronized hosted soundboard with
+account favorites and five-second member uploads from audio or video. Its Warm
+Adda interface includes light/dark theming, in-app profile and media settings,
+private member avatars, and admin-managed text and voice rooms. It uses React,
+strict TypeScript, Vite, Tauri 2, Supabase, and LiveKit.
 
 The default local experience is fully interactive and needs no account or
 credentials. Production integrations are present behind live mode and remain
@@ -49,17 +50,20 @@ or LiveKit.
 
 1. Create a Supabase project, link it with the current Supabase CLI, inspect
    `supabase db push --dry-run`, then run `supabase db push`. This applies the
-   tracked migrations in order and records their migration history. The latest
-   migration creates the private avatar bucket and admin channel RPCs, so apply
-   it before using profile photos or channel management in live mode.
+   tracked migrations in order and records their migration history. Apply all
+   migrations before distributing a renderer that uses rich profiles,
+   channel-management RPCs, soundboard favorites, or member uploads.
 2. Create a LiveKit Cloud project using its global endpoint. Store
    `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` only in Supabase
    Edge Function Secrets.
 3. Deploy `supabase/functions/livekit-token` from this repository with JWT
    verification enabled; never pass `--no-verify-jwt`.
-4. Follow `supabase/admin/README.md` to create and assign the first admin, then
+4. Deploy `supabase/functions/soundboard-manage` with JWT verification enabled.
+   It uses platform-managed Supabase credentials; no service-role key belongs
+   in a renderer environment file.
+5. Follow `supabase/admin/README.md` to create and assign the first admin, then
    issue an invite. Plaintext invite codes are returned once and never stored.
-5. Copy `.env.example` to an ignored `.env`, set the three public service
+6. Copy `.env.example` to an ignored `.env`, set the three public service
    values, and change `VITE_DATA_MODE` to `live`. Restart or rebuild after
    changing these values because Vite embeds them at build time.
 
@@ -104,6 +108,11 @@ pnpm tauri build
 Database policy tests run through the Supabase CLI when local Supabase is
 available. Edge Function unit tests run with Deno; see the backend README for
 the exact command.
+
+The locally bundled, reduced FFmpeg soundboard core and its reproducible Docker
+recipe/license notices live under `third_party/ffmpeg-soundboard`. Maintainers
+can rebuild the committed runtime assets with `pnpm ffmpeg:build`; ordinary app
+setup does not rebuild FFmpeg.
 
 ## Desktop releases and updates
 

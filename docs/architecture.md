@@ -7,7 +7,7 @@ and phase completion belong in the numbered files under `docs/plans`.
 
 ## Current implementation state
 
-As of 2026-07-17, Bakbak has a complete local/mock product path and production
+As of 2026-07-18, Bakbak has a complete local/mock product path and production
 Supabase and LiveKit adapters. The renderer provides the invite-only welcome
 flow and a three-panel shell with a 232 px channel panel, flexible conversation
 canvas, and 240 px online/offline member panel. Both side panels are visible by
@@ -61,12 +61,18 @@ actions across channel navigation; it reveals at connection, keyboard focus,
 or the lower canvas edge and hides after 2.5 seconds idle unless an owned
 surface is open. Settings suppresses the dock and provides compact call
 controls instead. The soundboard opens as a centered, internally scrolling
-480×380 maximum popover above the dock and pins it while retaining category
-filtering, member-editable labels, emoji and categories, persisted global
-volume, per-participant volume, overlapping activity badges, retry states, and
-stop-all. A sender reserves at most five pending/active sounds, the drawer and
-global dock expose prominent stop controls, and upgraded clients clamp remote
-activity to the newest five events. Participant tiles replace a camera-off
+480×380 maximum popover above the dock and pins it. Independently collapsible
+Favorites, System, and Bakbak sections replace category filters; Favorites and
+Bakbak open by default, System starts collapsed, and device-local state is
+stored per server. Search temporarily reveals matching sections without
+rewriting that preference. Account-synced stars duplicate a sound in Favorites
+without moving it from System or Bakbak. Uploaders and server admins may edit
+labels/emoji or delete member sounds, while only admins manage operator sounds.
+The drawer retains persisted global volume, per-participant volume, overlapping
+activity badges, retry states, and stop-all. A sender reserves at most five
+pending/active sounds, the drawer and global dock expose prominent stop
+controls, and upgraded clients clamp remote activity to the newest five events.
+Participant tiles replace a camera-off
 avatar with the newest sound emoji or overlay it on camera video, with overlap
 counting and reduced-motion behavior. Deafen suppresses remote speech and local/incoming soundboard
 monitoring without blocking outbound soundboard audio. The selected speaker
@@ -74,16 +80,31 @@ routes calls and soundboard audio; message alerts remain on system output. Mock
 mode exercises these interactions without credentials, a backend, or protected
 media.
 
-The hosted project has a private, operator-managed `soundboard` Storage bucket
-and a typed Postgres catalog for MP3 assets. Objects are partitioned by server
-UUID, limited to MPEG audio under 1 MiB, and readable only by authenticated
-members of the matching server. Client file writes are intentionally
-unsupported. The renderer downloads authenticated objects after workspace
-load, caches blobs in IndexedDB by sound ID and audio revision, and decodes
-ready clips into in-memory `AudioBuffer`s. Server members may update only a
-sound's label, emoji, and same-server category; file paths, duration, ordering,
-enabled state, and audio revision remain operator controlled. Realtime catalog
-publication refreshes those edits across connected clients.
+The hosted project has a private `soundboard` Storage bucket and a typed
+Postgres catalog with System and Bakbak categories. System contains the
+original 23 operator sounds; Bakbak contains the 21 imported Unlucky Boys clips
+and is the sole member-upload target. Existing imports retain stable
+`discord-<Discord sound ID>.mp3` names. New member objects use
+`<server>/<uploader>/<uuid>.wav`; only the authenticated
+`soundboard-manage` Edge Function can create or remove them. Direct renderer
+Storage writes and catalog insertion/deletion remain unsupported. The renderer
+downloads authenticated objects, caches blobs in IndexedDB by sound ID and
+audio revision, and decodes ready clips into memory. `created_by = null`
+identifies operator-managed sounds; uploaders and matching server admins may
+update only labels and emoji. Favorites are owner-private rows and Realtime
+publishes catalog changes plus the signed-in user's stars.
+
+Member upload sources may be common `audio/*` or `video/*` files up to 25 MiB.
+The upload modal uses native metadata/playback for preview and selection, then
+lazily loads a locally bundled single-thread FFmpeg WebAssembly worker. It
+extracts a selected 0.1–5 second window as 48 kHz mono signed 16-bit PCM WAV;
+the source file and source video never leave the device. The hosted function
+revalidates verified claims, membership, the one upload category, WAV structure
+and format, actual duration/size, and transactional 25-per-member/200-per-server
+active quotas before publication. Operator sounds do not consume quota. The
+reduced LGPL core is 1,539,655 bytes versus 32,232,419 bytes for the stock core;
+the reproducible source recipe, exact hashes, enabled codecs, and notices live
+under `third_party/ffmpeg-soundboard`.
 
 The additive
 `202607120003_profile_avatars_and_channel_management.sql` migration is tracked
@@ -102,8 +123,9 @@ the private `avatars` bucket to 5 MiB with GIF support and creates the private
 10 MiB `profile-covers` bucket under the same owner-write/shared-server-read
 model. The renderer stores a bounded static poster for every upload and retains
 only original GIF animations, keeping `avatar_path` compatible with older
-clients. Hosted schema lint passes and no migration remains pending. The local
-pgTAP run and live two-account media/Realtime acceptance remain open.
+clients. Hosted schema lint passes through the deployed rich-profile
+migration. The local pgTAP suite passes; the live two-account media/Realtime
+acceptance remains open.
 
 The additive
 `202607130001_voice_chat_mentions_and_read_state.sql` migration is implemented,
@@ -139,7 +161,8 @@ RPCs, an RLS-filtered heartbeat table, and Postgres Realtime change events.
 Voice join time comes from Postgres, remains stable across heartbeats, clears on
 graceful leave, and expires locally after 55 seconds if a client crashes. The
 clean local schema, invite, RLS, presence, Storage, catalog, structured-message,
-and read-state suite passes 167 assertions. Voice
+read-state, rich-profile, soundboard favorite, and member-upload suite passes
+224 assertions. Voice
 connections retry once with relay-only ICE after a normal peer-connection
 failure, remember a successful relay fallback for ten minutes in memory, and
 report a specific TURN/TLS diagnostic if both routes fail. The
@@ -215,7 +238,7 @@ approved.
 | Renderer             | React, Vite                       | Desktop UI and local interaction state                                            |
 | Desktop shell        | Tauri 2, Rust                     | Native window, packaging, capabilities, and later tray/desktop integrations       |
 | Identity/data        | Supabase Auth, Postgres, Realtime | Accounts, membership, channels, messages, invites, and realtime chat              |
-| Trusted backend      | Supabase Edge Functions           | Membership-checked LiveKit token issuance                                         |
+| Trusted backend      | Supabase Edge Functions           | Membership-checked LiveKit tokens and managed sound publication/deletion          |
 | Object media         | Supabase Storage                  | Private sound packs, profile posters, and GIF animations with RLS-filtered access |
 | Voice/data transport | LiveKit                           | Voice rooms, participant state, soundboard audio, and control data                |
 | Validation/testing   | Zod, Vitest, Testing Library      | Boundary validation and unit/component tests                                      |
@@ -246,13 +269,16 @@ bakbak/
 │       ├── 0006-discord-shaped-bakbak-hearted-ui.md
 │       ├── 0007-voice-join-acceleration-and-soundboard-polish.md
 │       ├── 0008-rich-animated-profiles.md
-│       └── 0009-signal-red-theme-and-interface-audio.md
+│       ├── 0009-signal-red-theme-and-interface-audio.md
+│       ├── 0010-cross-platform-screen-share-and-focus.md
+│       └── 0011-soundboard-categories-favorites-and-uploads.md
 ├── public/
 │   ├── bakbak.svg                 # renderer favicon/source logo
 │   ├── interface-sounds/          # generated original 48 kHz mono WAV cues
 │   ├── signal-noise.svg           # Bakbak-owned tiled texture source
-│   └── theme-init.js              # parser-blocking, CSP-safe first-paint theme bootstrap
-├── scripts/                       # Secret scan, SemVer, release, and interface-audio generation
+│   ├── theme-init.js              # parser-blocking, CSP-safe first-paint theme bootstrap
+│   └── vendor/ffmpeg/             # lazy reduced LGPL core and license
+├── scripts/                       # checks, release/audio generation, reduced-core build
 ├── src/
 │   ├── app/                       # application shell, routing, providers
 │   ├── components/                # reusable presentation components
@@ -268,9 +294,12 @@ bakbak/
 │   ├── styles.css                 # desktop design system and layout
 │   └── main.tsx
 ├── src-tauri/                     # Rust entrypoints, capabilities, icons, bundle config
+├── third_party/
+│   └── ffmpeg-soundboard/         # pinned reduced-core recipe and notices
 └── supabase/
     ├── functions/
-    │   └── livekit-token/
+    │   ├── livekit-token/
+    │   └── soundboard-manage/
     ├── migrations/
     ├── seed.sql
     └── tests/                     # RLS and database behavior tests
@@ -302,12 +331,15 @@ The renderer uses a three-panel desktop layout plus a modal layer:
    and active shares share one responsive gallery. Clicking either opens a
    focused stage and compact media-target strip; target loss returns to the
    gallery.
-6. Settings overlays the shell as a centered modal up to 1000×720 with 16–24 px
-   viewport margins, left navigation, internal scrolling, focus trap/
-   restoration, backdrop/X/Escape dismissal, compact call controls, a live
-   rich-profile editor, and confirmed logout. Its focus lifecycle runs once per
-   mount so changing parent callbacks, presence, or voice state cannot steal
-   focus from a field.
+6. Shared dialogs use compact/default/wide widths, responsive viewport padding,
+   and a `100dvh`-bounded grid with a fixed header, internally scrollable body,
+   and sticky wrapping footer actions. Buttons stack at narrow widths. The
+   layer stays above the soundboard and visual effects while retaining focus
+   trapping/restoration plus backdrop/X/Escape dismissal. Settings uses the
+   wide shell up to 1000×720 with left navigation, compact call controls, live
+   rich-profile editing, and confirmed logout. Its focus lifecycle runs once
+   per mount so changing parent callbacks, presence, or voice state cannot
+   steal focus from a field.
 7. One application-owned profile popover anchors to member rows, message
    authors, mentions, voice identities, or the user dock. It prefers the
    trigger's right side, flips/clamps inside the viewport, contains focus, and
@@ -383,9 +415,11 @@ sound-catalog changes to authorized subscribers. Security-definer channel RPCs
 derive the caller from `auth.uid()` and authorize against the exact server's
 admin membership; direct client channel mutations remain denied.
 
-Supabase Storage holds operator-managed sound files and user-managed private
-profile media outside the desktop bundle. Soundboard RLS derives read access
-from the server UUID path prefix and exposes no client mutation. `avatars` and
+Supabase Storage holds operator and trusted-function-managed sound files plus
+user-managed private profile media outside the desktop bundle. Soundboard RLS
+derives read access from the server UUID path prefix and exposes no direct
+client mutation. The `soundboard-manage` function alone uses the service role
+after independently verifying JWT claims and membership. `avatars` and
 `profile-covers` paths begin with their owner's user UUID; only that owner can
 insert, replace, or delete an object, while the owner and users sharing any
 server with them can read it. Clients never receive bucket-management
@@ -409,19 +443,20 @@ soundboard volume multiplied by the existing participant volume.
 All identifiers are UUIDs unless noted otherwise. Exact migrations become
 authoritative once Phase 2 starts.
 
-| Entity                  | Key fields and constraints                                                                                                                                                                           | Access intent                                                                                |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `profiles`              | `id` references `auth.users`; 1–50 character display name; 0–190 character description; legacy `avatar_url`; owner-prefixed avatar/cover poster and GIF paths; integer 0–100 cover focal coordinates | User updates their row; shared-server members read member-facing fields                      |
-| `servers`               | owner/admin reference, name, timestamps                                                                                                                                                              | Members of the server can read it                                                            |
-| `memberships`           | unique `(server_id, user_id)`; v1 admin/member role                                                                                                                                                  | A user can read memberships for servers they belong to                                       |
-| `channels`              | `server_id`, trimmed 1–80 character name, ordered position, immutable `text` or `voice` type                                                                                                         | Members read; matching admins create/rename only through RPCs                                |
-| `messages`              | text/voice channel ID, author ID, plain-text body, nullable structured text/mention content, timestamps                                                                                              | Members read accessible channels; validated inserts use the message RPC                      |
-| `channel_read_states`   | private user/channel key, monotonic last-read message pointer and timestamp                                                                                                                          | The owner reads through RLS; membership-checked RPCs advance/query state                     |
-| `invite_codes`          | server ID, one-way code digest, creator, expiry, redemption fields                                                                                                                                   | No broad client read policy; redeemed atomically through a controlled function               |
-| `presence_heartbeats`   | unique server/user row, last seen, nullable voice channel/join time                                                                                                                                  | Members can read server rows; only security-definer heartbeat RPCs can write                 |
-| `soundboard_categories` | server ID, name, ordered position                                                                                                                                                                    | Members can read; categories are operator managed                                            |
-| `soundboard_sounds`     | server/category, label, emoji, Storage path, duration, order, revision                                                                                                                               | Members can read and update label, emoji, or same-server category only                       |
-| `storage.objects`       | private `soundboard/<server UUID>/<file>`, `avatars/<owner UUID>/<asset UUID>`, and `profile-covers/<owner UUID>/<asset UUID>` objects                                                               | Sound files are operator-managed; profile owners write/delete and shared-server members read |
+| Entity                  | Key fields and constraints                                                                                                                                                                           | Access intent                                                                             |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `profiles`              | `id` references `auth.users`; 1–50 character display name; 0–190 character description; legacy `avatar_url`; owner-prefixed avatar/cover poster and GIF paths; integer 0–100 cover focal coordinates | User updates their row; shared-server members read member-facing fields                   |
+| `servers`               | owner/admin reference, name, timestamps                                                                                                                                                              | Members of the server can read it                                                         |
+| `memberships`           | unique `(server_id, user_id)`; v1 admin/member role                                                                                                                                                  | A user can read memberships for servers they belong to                                    |
+| `channels`              | `server_id`, trimmed 1–80 character name, ordered position, immutable `text` or `voice` type                                                                                                         | Members read; matching admins create/rename only through RPCs                             |
+| `messages`              | text/voice channel ID, author ID, plain-text body, nullable structured text/mention content, timestamps                                                                                              | Members read accessible channels; validated inserts use the message RPC                   |
+| `channel_read_states`   | private user/channel key, monotonic last-read message pointer and timestamp                                                                                                                          | The owner reads through RLS; membership-checked RPCs advance/query state                  |
+| `invite_codes`          | server ID, one-way code digest, creator, expiry, redemption fields                                                                                                                                   | No broad client read policy; redeemed atomically through a controlled function            |
+| `presence_heartbeats`   | unique server/user row, last seen, nullable voice channel/join time                                                                                                                                  | Members can read server rows; only security-definer heartbeat RPCs can write              |
+| `soundboard_categories` | server ID, name, ordered position, sole upload-target flag                                                                                                                                           | Members read; trusted server setup manages categories                                     |
+| `soundboard_sounds`     | server/category, label, emoji, Storage path, duration, order, revision, nullable creator, created time                                                                                               | Members read; uploader/admin label and emoji updates only                                 |
+| `soundboard_favorites`  | private user/server/sound key and created time; cascading server/sound/owner references                                                                                                              | The signed-in owner alone selects, inserts, or deletes                                    |
+| `storage.objects`       | private `soundboard/<server UUID>/<file-or-uploader/uuid.wav>`, `avatars/<owner UUID>/<asset UUID>`, and `profile-covers/<owner UUID>/<asset UUID>` objects                                          | Sound writes use trusted server code; profile owners write/delete and shared members read |
 
 Initial admin membership and initial invite codes are managed with reviewed SQL.
 An invite-management UI is deferred until post-v1.
@@ -462,9 +497,15 @@ An invite-management UI is deferred until post-v1.
   segment matches a server membership for the signed-in user. No authenticated
   client insert, update, or delete policy exists.
 - Soundboard catalog rows require matching server membership. Column grants
-  limit member updates to `label`, `emoji`, and `category_id`; a composite
-  foreign key rejects cross-server category assignment, and clients cannot
-  insert or delete sounds or categories.
+  limit updates to `label` and `emoji`; RLS further requires the creator or a
+  matching server admin. Clients cannot assign categories or insert/delete
+  sounds or categories.
+- Favorite rows require `user_id = auth.uid()`, matching server membership, and
+  a composite same-server sound reference. Their foreign keys cascade when the
+  owner, server, or sound disappears.
+- The service-role-only `create_soundboard_upload` RPC locks the server before
+  counting/inserting, preventing concurrent requests from bypassing active
+  member/server quotas. Renderer sessions cannot execute it.
 - RLS tests cover at least seeded admin, member, and non-member identities.
 
 ## Data flows
@@ -701,11 +742,25 @@ An invite-management UI is deferred until post-v1.
    restore opener focus; outside pointer dismissal leaves focus at the clicked
    destination.
 2. After workspace load, the renderer fetches the member-visible categories and
-   sounds. It downloads private Storage objects with the signed-in session,
+   sounds plus the signed-in user's favorite IDs. It downloads private Storage
+   objects with the signed-in session,
    reuses IndexedDB blobs matching `{ soundId, audioRevision }`, and decodes
    ready clips into memory. Download or decode failure marks only that card as
    failed and can be retried.
-3. Voice join publishes at most one room-scoped audio track named
+3. Favorites, System, and Bakbak render in fixed order. Each section persists
+   collapse state under `bakbak.soundboardSections.v1:<server ID>`; search
+   reveals matching collapsed sections without saving the temporary state.
+   Favorite mutations update optimistically, roll back on failure, and
+   reconcile through private Realtime events.
+4. Choosing Upload accepts a native audio/video preview, a start slider, and a
+   0.1–5 second length slider. The lazy local FFmpeg worker extracts only the
+   selected audio to normalized WAV. The renderer sends multipart
+   `{ action, serverId, label, emoji, clip }`; the trusted function stores
+   `<server>/<uploader>/<uuid>.wav`, atomically publishes the catalog row, and
+   removes the object if publication fails. Delete requests contain only
+   `{ action: "delete", soundId }`; member objects are removed and release
+   quota, while operator sounds are archived.
+5. Voice join publishes at most one room-scoped audio track named
    `bakbak-soundboard`, initially muted. The first active trigger unmutes it;
    each trigger connects its decoded buffer once to the outbound track at unity
    gain and once to the selected-speaker monitor path at the local soundboard
@@ -717,7 +772,7 @@ An invite-management UI is deferred until post-v1.
    ready. Explicit stop-all fully releases both the publication and local
    selected-speaker routing graph. The next trigger rebuilds the required graph
    and reapplies the remembered speaker before playback.
-4. The client also publishes a reliable UI-control message such as:
+6. The client also publishes a reliable UI-control message such as:
 
    ```json
    {
@@ -729,11 +784,11 @@ An invite-management UI is deferred until post-v1.
    }
    ```
 
-5. Receivers validate version, event ID, sound ID, and timestamp, deduplicate UI
+7. Receivers validate version, event ID, sound ID, and timestamp, deduplicate UI
    events, and derive the sender from the LiveKit participant callback. They
    never trust a payload sender or volume and never replay control messages
    locally; remote listeners hear only the participant's LiveKit audio track.
-6. Activity state uses the catalog duration. Participant cards show the newest
+8. Activity state uses the catalog duration. Participant cards show the newest
    emoji, an overlap count up to five, Playing status, and the speaking
    treatment. Camera-off tiles replace the avatar with that emoji; camera-on
    tiles center it over video. Upgraded senders reserve pending/active activity
@@ -743,7 +798,7 @@ An invite-management UI is deferred until post-v1.
    they can play or publish activity. A reliable `soundboard:stop-all` message
    clears that participant immediately; disconnect, leave, and track cleanup do
    the same.
-7. Remote named tracks use `soundboard volume × participant volume`. Normal
+9. Remote named tracks use `soundboard volume × participant volume`. Normal
    microphone speech keeps only participant volume. Deafen suppresses remote
    audio and the sender's local monitor branch without muting outbound
    soundboard audio.
@@ -761,6 +816,9 @@ cameraDeviceId, soundboardVolume }` under the versioned local-storage key
 `bakbak.devicePreferences.v1`. These identifiers never sync to Supabase. If a
 remembered device is absent, the selector returns to the runtime's default
 device. Interface cues deliberately bypass the selected call output.
+Soundboard section collapse state is stored independently per server under
+`bakbak.soundboardSections.v1:<server ID>` and never syncs; favorite rows sync
+through Supabase instead.
 The renderer stores `{ theme, accent, intensity, surfaceStyle, visualPreset }`
 separately under `bakbak.appearancePreferences.v4`. Theme is System/Light/Dark,
 accent is Coral/Purple/Red/Yellow, intensity is a validated 25–100% five-point
@@ -831,6 +889,28 @@ These contracts match the current implementation.
 - **Errors:** normalized unauthorized, origin/method/payload,
   not-found/invalid-channel, request-failed, and service-unavailable responses
   without secret details.
+
+### `POST /functions/v1/soundboard-manage`
+
+- **Authentication:** `Authorization: Bearer <Supabase access token>` with the
+  platform JWT gate retained and claims revalidated inside the function
+- **Upload request:** multipart
+  `{ action: "upload", serverId, label, emoji, clip }`, where `clip` is
+  normalized WAV
+- **Delete request:** JSON `{ "action": "delete", "soundId": "<uuid>" }`
+- **Upload validation:** trusted origin/method/content type, current server
+  membership, the server-managed upload category, 1–50 character label,
+  optional short Unicode emoji (default `🔊`), at most 600 KiB, RIFF/WAVE PCM,
+  48 kHz, mono, 16-bit, and actual duration from 100–5000 ms
+- **Publication:** stores
+  `<server>/<authenticated uploader>/<generated UUID>.wav`, calls the
+  service-role-only transaction for quota and catalog publication, and removes
+  the object if publication fails
+- **Deletion:** uploader or matching server admin; member objects are disabled,
+  removed from Storage, then deleted from the catalog, while operator objects
+  are archived by disabling the catalog row
+- **Errors:** normalized authorization, validation, quota, storage,
+  publication, moderation, and not-found codes without backend details
 
 ### `POST /rest/v1/rpc/get_voice_join_context`
 
@@ -914,9 +994,10 @@ These contracts match the current implementation.
 - **Validation:** current membership and a message belonging to that channel
 - **Behavior:** advances by message `(created_at, id)` order and never regresses
 
-Messages, profile updates, and private read-state events use Supabase Realtime
-under RLS. Private profile posters and GIF animations use authenticated Storage
-operations; v1 does not require another custom service endpoint.
+Messages, profile updates, private read-state, sound catalog, and private
+favorite events use Supabase Realtime under RLS. Private profile posters and
+GIF animations use authenticated Storage operations; sound mutation uses the
+trusted management function.
 
 ## Environment variables
 
@@ -974,6 +1055,10 @@ cross-server and outsider access, field validation, plus admin/member channel
 RPC behavior. The
 first friend-test release also requires the manual Apple Silicon macOS matrix
 in the active plans.
+Soundboard upload work additionally runs reduced-core media tests, Deno
+request/WAV/cleanup tests, category/favorite/creator/quota pgTAP checks, short
+viewport modal QA, installed audio/video extraction, hosted two-account
+Realtime/moderation/playback checks, and before/after installer-size recording.
 Screen-sharing work additionally runs the Deno token suite, focused Rust tests,
 `cargo check --locked`, macOS and Windows native builds, compiled secret scans,
 and the bidirectional installed-client matrix in plan 0003. Artifact sizes are
@@ -1010,9 +1095,10 @@ that it has passed.
 - Plan 0008's Settings focus repair, poster/GIF pipeline, lazy media cache,
   anchored profile card, privacy boundary, and reduced-motion behavior pass
   automated and mock-browser validation at both supported viewport sizes. The
-  hosted additive migration is deployed and linted. Docker-backed pgTAP,
-  installed-app theme/reduced-motion observation, and the live two-account
-  media/Realtime/outsider matrix remain required before distribution.
+  hosted additive migration is deployed and linted, and Docker-backed pgTAP
+  passes. Installed-app theme/reduced-motion observation and the live
+  two-account media/Realtime/outsider matrix remain required before
+  distribution.
 - Plan 0009's Signal Red preset, first-paint migration, edge effects,
   reduced-motion behavior, generated sound pack, sound controller, preferences,
   and typed lifecycle routing pass automated and mock-browser validation at
@@ -1028,11 +1114,16 @@ that it has passed.
 - Hosted migration `006` and the camera-capable token function are deployed,
   but the Arc-plus-installed-app voice/video/device acceptance matrix still
   requires two signed-in users and human audio/video observation.
-- The hosted soundboard catalog, member metadata editing, authenticated cache,
-  and named LiveKit audio track are deployed, but exact-once playback,
+- The System/Bakbak consolidation, account favorites, owner/admin policies,
+  trusted upload function, reduced local media pipeline, responsive modals,
+  authenticated cache, and named LiveKit audio track are implemented. The
+  `soundboard-manage` function and migration `202607180002` are deployed;
+  linked schema lint passes, hosted migration history matches the repository,
+  and the unauthenticated JWT probe returns 401. The two-account
+  upload/Realtime/moderation matrix remains required; exact-once playback,
   laptop-speaker acoustic echo, output switching, volume multiplication,
   reconnect, and cleanup still require the planned two-client human acceptance
-  run. Distribution rights for all 23 MP3s must be confirmed before friend
+  run. Distribution rights for all 44 MP3s must be confirmed before friend
   testing.
 - LiveKit's current server SDK throws while encoding `Track.Source.Unknown` in
   a token source allowlist. Bakbak therefore publishes the dedicated named
@@ -1045,7 +1136,7 @@ that it has passed.
   must complete the installed-client isolation matrix. Cross-platform
   two-account verification and before/after installer-size measurements remain
   required by plans 0003 and 0010.
-- The current production renderer is roughly 283 kB compressed; LiveKit and
+- The current production renderer is roughly 336 kB compressed; LiveKit and
   Supabase can be lazy-loaded in a later performance pass if startup profiling
   shows a meaningful benefit.
 - The macOS app uses an ad-hoc hardened-runtime signature with audio-input and
@@ -1059,8 +1150,8 @@ that it has passed.
   explicit macOS 26 arm64 host and an NSIS installer on Windows. The
   Apple-Silicon-only asset/manifest checks still need a hosted run; v0.4.0 is
   the preserved final Intel release.
-- Browser/Linux screen sharing, recording, camera effects, user sound uploads,
-  additional roles, global push-to-talk, notifications, tray behavior, Linux
+- Browser/Linux screen sharing, recording, camera effects, custom emoji
+  artwork, additional roles, global push-to-talk, notifications, tray behavior, Linux
   distribution, and operating-system signing/notarization remain outside the
   approved phases.
 - Protected or DRM-controlled sources may be black or silent; Bakbak does not

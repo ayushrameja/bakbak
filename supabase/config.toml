@@ -47,3 +47,7 @@ enabled = true
 verify_jwt = true
 import_map = "./functions/livekit-token/deno.json"
 
+[functions.soundboard-manage]
+enabled = true
+verify_jwt = true
+import_map = "./functions/soundboard-manage/deno.json"

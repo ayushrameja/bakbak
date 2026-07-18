@@ -3,12 +3,42 @@ begin;
 create extension if not exists pgtap with schema extensions;
 select plan(28);
 
-select has_column('public', 'profiles', 'description');
-select has_column('public', 'profiles', 'avatar_animation_path');
-select has_column('public', 'profiles', 'cover_path');
-select has_column('public', 'profiles', 'cover_animation_path');
-select has_column('public', 'profiles', 'cover_position_x');
-select has_column('public', 'profiles', 'cover_position_y');
+select has_column(
+  'public',
+  'profiles',
+  'description',
+  'profiles include a description'
+);
+select has_column(
+  'public',
+  'profiles',
+  'avatar_animation_path',
+  'profiles include an avatar animation path'
+);
+select has_column(
+  'public',
+  'profiles',
+  'cover_path',
+  'profiles include a cover path'
+);
+select has_column(
+  'public',
+  'profiles',
+  'cover_animation_path',
+  'profiles include a cover animation path'
+);
+select has_column(
+  'public',
+  'profiles',
+  'cover_position_x',
+  'profiles include a horizontal cover focal point'
+);
+select has_column(
+  'public',
+  'profiles',
+  'cover_position_y',
+  'profiles include a vertical cover focal point'
+);
 
 select ok(
   has_column_privilege(
@@ -205,10 +235,12 @@ select is(
   0::bigint,
   'a cross-server outsider cannot read the rich profile'
 );
-select lives_ok(
+select throws_ok(
   $$delete from storage.objects
     where bucket_id = 'profile-covers'$$,
-  'an outsider cover delete is safely RLS-filtered'
+  '42501',
+  'Direct deletion from storage tables is not allowed. Use the Storage API instead.',
+  'direct cover deletion is blocked in favor of the RLS-aware Storage API'
 );
 
 reset role;

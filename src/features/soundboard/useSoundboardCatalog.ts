@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DataMode } from "../../lib/types";
 import {
+  deleteSoundboardSound,
   downloadSoundboardObject,
   loadSoundboardCatalog,
+  setSoundboardFavorite,
   subscribeToSoundboardCatalog,
   updateSoundboardMetadata,
+  uploadSoundboardClip,
 } from "../../lib/soundboard-service";
 import { mockSoundboardCategories, mockSoundboardSounds } from "./mock-catalog";
 import { SoundBlobCache, soundCacheKey } from "./sound-cache";
@@ -12,16 +15,21 @@ import type {
   SoundboardCatalogController,
   SoundboardMetadataInput,
   SoundboardSound,
+  SoundboardUploadInput,
 } from "./types";
 
 export function useSoundboardCatalog(
   serverId: string | undefined,
+  userId: string | undefined,
   mode: DataMode,
 ): SoundboardCatalogController {
   const [cache] = useState(() => new SoundBlobCache());
   const [categories, setCategories] = useState(mockSoundboardCategories);
   const [sounds, setSounds] = useState<SoundboardSound[]>(
     mode === "mock" ? mockSoundboardSounds : [],
+  );
+  const [favoriteSoundIds, setFavoriteSoundIds] = useState<Set<string>>(
+    new Set(),
   );
   const [loading, setLoading] = useState(mode === "live");
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +72,7 @@ export function useSoundboardCatalog(
     if (mode === "mock") {
       setCategories(mockSoundboardCategories);
       setSounds(mockSoundboardSounds);
+      setFavoriteSoundIds(new Set());
       setLoading(false);
       setError(null);
       return;
@@ -71,6 +80,7 @@ export function useSoundboardCatalog(
     if (!serverId) {
       setCategories([]);
       setSounds([]);
+      setFavoriteSoundIds(new Set());
       setLoading(false);
       return;
     }
@@ -80,7 +90,7 @@ export function useSoundboardCatalog(
     setLoading(true);
     setError(null);
     try {
-      const snapshot = await loadSoundboardCatalog(serverId);
+      const snapshot = await loadSoundboardCatalog(serverId, userId);
       if (generation !== loadGeneration.current) return;
       const previous = new Map(
         soundsRef.current.map((sound) => [
@@ -96,6 +106,7 @@ export function useSoundboardCatalog(
       }));
       setCategories(snapshot.categories);
       setSounds(nextSounds);
+      setFavoriteSoundIds(snapshot.favoriteSoundIds);
       setLoading(false);
       const activeKeys = new Set(
         nextSounds.map((sound) => soundCacheKey(sound.id, sound.audioRevision)),
@@ -113,13 +124,13 @@ export function useSoundboardCatalog(
           : "Bakbak could not load the soundboard catalog.",
       );
     }
-  }, [cache, mode, prepareSound, serverId]);
+  }, [cache, mode, prepareSound, serverId, userId]);
 
   useEffect(() => {
     void reload();
     if (mode !== "live" || !serverId) return;
-    return subscribeToSoundboardCatalog(serverId, () => void reload());
-  }, [mode, reload, serverId]);
+    return subscribeToSoundboardCatalog(serverId, userId, () => void reload());
+  }, [mode, reload, serverId, userId]);
 
   const getBlob = useCallback(
     async (soundId: string): Promise<Blob | null> => {
@@ -179,7 +190,6 @@ export function useSoundboardCatalog(
                   ...sound,
                   label: input.label.trim(),
                   emoji: input.emoji.trim(),
-                  categoryId: input.categoryId,
                 }
               : sound,
           ),
@@ -198,13 +208,98 @@ export function useSoundboardCatalog(
     [mode],
   );
 
+  const toggleFavorite = useCallback(
+    async (soundId: string): Promise<void> => {
+      if (!serverId || !userId) return;
+      const wasFavorite = favoriteSoundIds.has(soundId);
+      setFavoriteSoundIds((current) => {
+        const next = new Set(current);
+        if (wasFavorite) next.delete(soundId);
+        else next.add(soundId);
+        return next;
+      });
+      if (mode === "mock") return;
+      try {
+        await setSoundboardFavorite({
+          serverId,
+          userId,
+          soundId,
+          favorite: !wasFavorite,
+        });
+      } catch (caught) {
+        setFavoriteSoundIds((current) => {
+          const next = new Set(current);
+          if (wasFavorite) next.add(soundId);
+          else next.delete(soundId);
+          return next;
+        });
+        throw caught;
+      }
+    },
+    [favoriteSoundIds, mode, serverId, userId],
+  );
+
+  const uploadSound = useCallback(
+    async (input: SoundboardUploadInput): Promise<void> => {
+      if (!serverId) throw new Error("Open a Bakbak server before uploading.");
+      if (mode === "mock") {
+        const category = categories.find((item) => item.acceptsUploads);
+        if (!category) throw new Error("Bakbak has no upload category.");
+        const sound: SoundboardSound = {
+          id: crypto.randomUUID(),
+          serverId,
+          categoryId: category.id,
+          label: input.label.trim(),
+          emoji: input.emoji.trim() || "🔊",
+          objectPath: `${serverId}/mock/${crypto.randomUUID()}.wav`,
+          durationMs: 5_000,
+          position: soundsRef.current.length * 10 + 10,
+          audioRevision: 1,
+          enabled: true,
+          createdBy: userId ?? null,
+          createdAt: new Date().toISOString(),
+          assetStatus: "ready",
+        };
+        setSounds((current) => [...current, sound]);
+        return;
+      }
+      const sound = await uploadSoundboardClip(serverId, input);
+      const readySound = { ...sound, assetStatus: "ready" as const };
+      const key = soundCacheKey(sound.id, sound.audioRevision);
+      blobs.current.set(key, input.clip);
+      await cache.put(key, input.clip);
+      setSounds((current) => [
+        ...current.filter((item) => item.id !== sound.id),
+        readySound,
+      ]);
+    },
+    [cache, categories, mode, serverId, userId],
+  );
+
+  const deleteSound = useCallback(
+    async (soundId: string): Promise<void> => {
+      if (mode !== "mock") await deleteSoundboardSound(soundId);
+      setSounds((current) => current.filter((sound) => sound.id !== soundId));
+      setFavoriteSoundIds((current) => {
+        const next = new Set(current);
+        next.delete(soundId);
+        return next;
+      });
+    },
+    [mode],
+  );
+
   return {
     categories,
     sounds,
+    favoriteSoundIds,
     loading,
     error,
     getBlob,
     retrySound,
+    toggleFavorite,
+    uploadSound,
+    deleteSound,
     updateSound,
   };
 }

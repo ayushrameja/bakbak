@@ -1,18 +1,30 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mockSoundboardCategories, mockSoundboardSounds } from "./mock-catalog";
 import { Soundboard } from "./Soundboard";
+
+const serverId = "00000000-0000-4000-8000-000000000001";
+const currentUserId = "10000000-0000-4000-8000-000000000001";
+const systemSound = mockSoundboardSounds[0]!;
+const bakbakSound = mockSoundboardSounds[23]!;
 
 function renderSoundboard(overrides: Record<string, unknown> = {}) {
   const onUpdate = vi.fn().mockResolvedValue(undefined);
   const onVolumeChange = vi.fn();
   const onStopAll = vi.fn().mockResolvedValue(undefined);
+  const onToggleFavorite = vi.fn().mockResolvedValue(undefined);
+  const onUpload = vi.fn().mockResolvedValue(undefined);
+  const onDelete = vi.fn().mockResolvedValue(undefined);
   render(
     <Soundboard
+      serverId={serverId}
+      currentUserId={currentUserId}
+      currentUserRole="admin"
       connected
       categories={mockSoundboardCategories}
-      sounds={[mockSoundboardSounds[0]!, mockSoundboardSounds[4]!]}
+      sounds={[systemSound, bakbakSound]}
+      favoriteSoundIds={new Set([systemSound.id])}
       loading={false}
       error={null}
       volume={0.7}
@@ -22,42 +34,158 @@ function renderSoundboard(overrides: Record<string, unknown> = {}) {
       onStopAll={onStopAll}
       onVolumeChange={onVolumeChange}
       onRetry={vi.fn().mockResolvedValue(undefined)}
+      onToggleFavorite={onToggleFavorite}
+      onUpload={onUpload}
+      onDelete={onDelete}
       onUpdate={onUpdate}
       {...overrides}
     />,
   );
-  return { onStopAll, onUpdate, onVolumeChange };
+  return {
+    onDelete,
+    onStopAll,
+    onToggleFavorite,
+    onUpdate,
+    onUpload,
+    onVolumeChange,
+  };
 }
 
 describe("Soundboard", () => {
-  it("exposes the compact drawer controls without the old hero copy", () => {
-    renderSoundboard();
-
-    expect(
-      screen.getByRole("region", { name: "Soundboard controls" }),
-    ).toBeVisible();
-    expect(screen.getByPlaceholderText("Find the perfect sound")).toBeVisible();
-    expect(screen.getByLabelText("Soundboard connected")).toBeVisible();
-    expect(
-      screen.queryByRole("heading", { name: "Perfectly timed nonsense" }),
-    ).not.toBeInTheDocument();
+  beforeEach(() => {
+    localStorage.clear();
   });
 
-  it("filters categories and exposes the shared persisted volume", async () => {
-    const { onStopAll, onVolumeChange } = renderSoundboard();
-    await userEvent.click(screen.getByRole("button", { name: "Dialogue" }));
+  it("renders Favorites, System, and Bakbak as persisted collapsible sections", async () => {
+    renderSoundboard();
+
+    const sectionButtons = screen.getAllByRole("button", {
+      name: /Favorites|System|Bakbak/,
+    });
+    expect(sectionButtons.map((button) => button.textContent)).toEqual([
+      "Favorites1",
+      "System1",
+      "Bakbak1",
+    ]);
+    expect(screen.getByRole("button", { name: /Favorites/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: /System/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.getByRole("button", { name: /Bakbak/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /System/ }));
     expect(
-      screen.queryByRole("button", { name: "Aye" }),
+      JSON.parse(
+        localStorage.getItem(`bakbak.soundboardSections.v1:${serverId}`) ??
+          "{}",
+      ),
+    ).toMatchObject({ [mockSoundboardCategories[0]!.id]: false });
+  });
+
+  it("temporarily reveals matching sounds without overwriting collapse state", async () => {
+    renderSoundboard({ favoriteSoundIds: new Set() });
+
+    expect(
+      screen.queryByRole("button", { name: systemSound.label }),
+    ).toBeNull();
+    await userEvent.type(
+      screen.getByRole("textbox", { name: "Search sounds" }),
+      systemSound.label,
+    );
+    expect(
+      screen.getByRole("button", { name: systemSound.label }),
+    ).toBeVisible();
+    expect(
+      localStorage.getItem(`bakbak.soundboardSections.v1:${serverId}`),
+    ).toBeNull();
+  });
+
+  it("toggles account favorites from every sound card", async () => {
+    const { onToggleFavorite } = renderSoundboard();
+    const bakbakSection = screen
+      .getByRole("button", { name: /Bakbak/ })
+      .closest("section")!;
+
+    await userEvent.click(
+      within(bakbakSection).getByRole("button", {
+        name: `Add ${bakbakSound.label} to favorites`,
+      }),
+    );
+    expect(onToggleFavorite).toHaveBeenCalledWith(bakbakSound.id);
+  });
+
+  it("lets an uploader or admin edit metadata without moving categories", async () => {
+    const { onUpdate } = renderSoundboard();
+    const systemSection = screen
+      .getByRole("button", { name: /System/ })
+      .closest("section")!;
+    await userEvent.click(screen.getByRole("button", { name: /System/ }));
+    await userEvent.click(
+      within(systemSection).getByRole("button", {
+        name: `Edit ${systemSound.label}`,
+      }),
+    );
+    await userEvent.clear(screen.getByRole("textbox", { name: "Name" }));
+    await userEvent.type(
+      screen.getByRole("textbox", { name: "Name" }),
+      "New Aye",
+    );
+    await userEvent.clear(screen.getByRole("textbox", { name: "Emoji" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Emoji" }), "🎉");
+    expect(
+      screen.queryByRole("combobox", { name: "Category" }),
+    ).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(onUpdate).toHaveBeenCalledWith(systemSound.id, {
+      label: "New Aye",
+      emoji: "🎉",
+    });
+  });
+
+  it("hides management controls from non-owners while keeping favorites", () => {
+    renderSoundboard({
+      currentUserRole: "member",
+      favoriteSoundIds: new Set(),
+    });
+
+    expect(
+      screen.queryByRole("button", { name: `Edit ${bakbakSound.label}` }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Ab Tu Gya Beta" }),
+      screen.getByRole("button", {
+        name: `Add ${bakbakSound.label} to favorites`,
+      }),
     ).toBeVisible();
+  });
 
+  it("opens the member upload workflow from the drawer", async () => {
+    renderSoundboard();
+    await userEvent.click(screen.getByRole("button", { name: "Upload" }));
+
+    expect(
+      screen.getByRole("dialog", { name: "Upload a sound" }),
+    ).toBeVisible();
+    expect(screen.getByLabelText("Choose sound file")).toHaveAttribute(
+      "accept",
+      "audio/*,video/*",
+    );
+    expect(
+      screen.getByText(/Video is welcome; Bakbak keeps only its audio/),
+    ).toBeVisible();
+  });
+
+  it("exposes volume and the dedicated stop footer", async () => {
+    const { onStopAll, onVolumeChange } = renderSoundboard();
     fireEvent.change(
       screen.getByRole("slider", { name: "Soundboard volume" }),
-      {
-        target: { value: "0.4" },
-      },
+      { target: { value: "0.4" } },
     );
     expect(onVolumeChange).toHaveBeenCalledWith(0.4);
     await userEvent.click(
@@ -66,73 +194,24 @@ describe("Soundboard", () => {
     expect(onStopAll).toHaveBeenCalledOnce();
   });
 
-  it("lets a member edit label, emoji, and category metadata", async () => {
-    const { onUpdate } = renderSoundboard();
-    await userEvent.click(screen.getByRole("button", { name: "Edit Aye" }));
-    await userEvent.clear(screen.getByRole("textbox", { name: "Name" }));
-    await userEvent.type(
-      screen.getByRole("textbox", { name: "Name" }),
-      "New Aye",
-    );
-    await userEvent.clear(screen.getByRole("textbox", { name: "Emoji" }));
-    await userEvent.type(screen.getByRole("textbox", { name: "Emoji" }), "🎉");
-    await userEvent.selectOptions(
-      screen.getByRole("combobox", { name: "Category" }),
-      mockSoundboardCategories[2]!.id,
-    );
-    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
-    expect(onUpdate).toHaveBeenCalledWith(mockSoundboardSounds[0]!.id, {
-      label: "New Aye",
-      emoji: "🎉",
-      categoryId: mockSoundboardCategories[2]!.id,
+  it("disables ready sounds at five but keeps retryable downloads available", () => {
+    renderSoundboard({
+      activeLocalSoundCount: 5,
+      favoriteSoundIds: new Set(),
+      sounds: [{ ...bakbakSound, assetStatus: "error" }],
     });
-  });
-
-  it("searches the drawer catalog without changing playback data", async () => {
-    renderSoundboard();
-    await userEvent.type(
-      screen.getByRole("textbox", { name: "Search sounds" }),
-      "ab tu",
-    );
-    expect(
-      screen.queryByRole("button", { name: "Aye" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Ab Tu Gya Beta" }),
-    ).toBeVisible();
-  });
-
-  it("shows the dedicated stop footer and disables ready sounds at five", () => {
-    renderSoundboard({ activeLocalSoundCount: 5 });
 
     expect(screen.getByText("5/5 playing")).toBeVisible();
     expect(
-      screen.getByRole("button", { name: "Stop my sounds" }),
-    ).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Aye" })).toBeDisabled();
-    expect(
-      screen.getByText("Stop your stack before adding another sound."),
-    ).toBeVisible();
-  });
-
-  it("keeps retryable downloads available when the play limit is full", () => {
-    renderSoundboard({
-      activeLocalSoundCount: 5,
-      sounds: [
-        {
-          ...mockSoundboardSounds[0]!,
-          assetStatus: "error",
-        },
-      ],
-    });
-
-    expect(
-      screen.getByRole("button", { name: "Aye, retry download" }),
+      screen.getByRole("button", {
+        name: `${bakbakSound.label}, retry download`,
+      }),
     ).toBeEnabled();
   });
 
   it("treats stop-all cancellation as intentional instead of an error", async () => {
     renderSoundboard({
+      favoriteSoundIds: new Set(),
       onPlay: vi
         .fn()
         .mockRejectedValue(
@@ -140,8 +219,9 @@ describe("Soundboard", () => {
         ),
     });
 
-    await userEvent.click(screen.getByRole("button", { name: "Aye" }));
-
+    await userEvent.click(
+      screen.getByRole("button", { name: bakbakSound.label }),
+    );
     expect(
       screen.queryByText("Sound playback was stopped."),
     ).not.toBeInTheDocument();

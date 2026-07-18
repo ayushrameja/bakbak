@@ -128,10 +128,12 @@ plan.
       plan 0010.
 
 The first friend-test build explicitly excluded screen sharing, recording,
-camera effects, user sound uploads, global push-to-talk, and advanced roles.
-An operator-managed private cloud sound pack was approved separately. Members
-may edit label, emoji, and category metadata, but cannot upload, replace, or
-delete audio or manage categories. Opt-in webcam video and local device
+camera effects, global push-to-talk, and advanced roles. Its operator-only
+sound-pack boundary is superseded by
+`0011-soundboard-categories-favorites-and-uploads.md`: members can upload
+locally normalized clips into the server-managed Bakbak category, manage their
+own metadata/audio, and sync private favorites. Members still cannot create,
+rename, reorder, or choose categories. Opt-in webcam video and local device
 preferences were added by the approved follow-up plan
 `0002-voice-video-and-presence.md`.
 Desktop screen sharing is now an approved Phase 5 follow-up under
@@ -163,6 +165,9 @@ handling, gallery/focus/fullscreen call media, and soundboard ownership are
 approved under `0010-cross-platform-screen-share-and-focus.md`. Plan 0010
 supersedes plan 0003's 1080p/15 ceiling and plan 0006's always-featured share
 layout while retaining their security and least-privilege companion boundary.
+Collapsible System/Bakbak sections, account favorites, member-owned five-second
+uploads, the trusted management function, and responsive dialog sizing are
+approved under `0011-soundboard-categories-favorites-and-uploads.md`.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -223,6 +228,12 @@ layout while retaining their security and least-privilege companion boundary.
 - [ ] Complete plan 0009's installed-app multi-client audio acceptance matrix.
 - [x] Add a private operator-managed sound bucket with server-member reads.
 - [x] Fetch, revision-cache, and play the hosted sound pack in the renderer.
+- [x] Add collapsible System/Bakbak sections and account-synced Favorites under
+      plan 0011.
+- [x] Add locally normalized member audio/video uploads, owner/admin
+      moderation, and managed backend publication under plan 0011.
+- [ ] Complete plan 0011's installed-client and hosted two-account acceptance
+      matrix.
 - [ ] Evaluate optional global push-to-talk.
 - [x] Implement Windows process/display-matched audio with build gating and
       video-only fallback.
@@ -294,7 +305,9 @@ After every phase:
 
 - Screen sharing, including system audio.
 - Camera recording, effects, and virtual backgrounds.
-- User-uploaded sounds and sound-management UI.
+- Member-created/reordered sound categories, uploaded custom emoji artwork, and
+  retained source video. Five-second member uploads and owner/admin management
+  are approved by plan 0011.
 - Global push-to-talk.
 - Advanced roles and permission management.
 - Invite-management UI.

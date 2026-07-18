@@ -6,3 +6,4 @@ src-tauri/gen
 .pnpm-store
 pnpm-lock.yaml
 src-tauri/Cargo.lock
+public/vendor/ffmpeg
