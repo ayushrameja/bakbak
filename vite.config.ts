@@ -10,6 +10,15 @@ export default defineConfig(async () => ({
   optimizeDeps: {
     exclude: ["@ffmpeg/ffmpeg"],
   },
+  worker: {
+    rollupOptions: {
+      output: {
+        // AudioWorkletGlobalScope has globalThis but does not consistently
+        // expose the Worker-only `self` alias used by Vite's URL shim.
+        banner: "var self = globalThis;",
+      },
+    },
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

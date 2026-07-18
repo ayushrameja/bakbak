@@ -42,6 +42,23 @@ describe("RemoteAudioRenderer", () => {
     expect(second).toHaveProperty("muted", false);
   });
 
+  it("keeps an idle soundboard track muted independently of deafen", () => {
+    const host = document.createElement("div");
+    const renderer = new RemoteAudioRenderer(() => host);
+    const { track } = createTrack();
+    const element = renderer.attach(track)!;
+
+    renderer.setTrackMuted(track, true);
+    expect(element).toHaveProperty("muted", true);
+
+    renderer.setMuted(true);
+    renderer.setTrackMuted(track, false);
+    expect(element).toHaveProperty("muted", true);
+
+    renderer.setMuted(false);
+    expect(element).toHaveProperty("muted", false);
+  });
+
   it("detaches on unsubscribe and cleans every element on room teardown", () => {
     const host = document.createElement("div");
     const renderer = new RemoteAudioRenderer(() => host);
@@ -93,5 +110,43 @@ describe("RemoteAudioRenderer", () => {
 
     expect(setVolume).toHaveBeenNthCalledWith(1, 0.35);
     expect(setVolume).toHaveBeenNthCalledWith(2, 0.2);
+  });
+
+  it("routes current and future remote tracks to the selected speaker", async () => {
+    const host = document.createElement("div");
+    const renderer = new RemoteAudioRenderer(() => host);
+    const first = renderer.attach(createTrack().track)!;
+    const firstSetSinkId = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(first, "setSinkId", {
+      configurable: true,
+      value: firstSetSinkId,
+    });
+
+    await renderer.setDevice("speaker-2");
+    expect(firstSetSinkId).toHaveBeenCalledWith("speaker-2");
+
+    const original = Object.getOwnPropertyDescriptor(
+      HTMLMediaElement.prototype,
+      "setSinkId",
+    );
+    const setSinkId = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(HTMLMediaElement.prototype, "setSinkId", {
+      configurable: true,
+      value: setSinkId,
+    });
+    try {
+      renderer.attach(createTrack().track);
+      expect(setSinkId).toHaveBeenCalledWith("speaker-2");
+    } finally {
+      if (original) {
+        Object.defineProperty(
+          HTMLMediaElement.prototype,
+          "setSinkId",
+          original,
+        );
+      } else {
+        Reflect.deleteProperty(HTMLMediaElement.prototype, "setSinkId");
+      }
+    }
   });
 });

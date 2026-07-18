@@ -52,8 +52,16 @@ Voice rooms retain locally persisted microphone/speaker/camera selection,
 opt-in 720p camera calls, sidebar occupancy with elapsed timers, mute/deafen,
 per-participant volume, remote-track audio/video rendering, autoplay recovery,
 reconnect/error states, and a unified participant/screen-share media gallery.
-Selecting
-a voice channel immediately joins it; selecting another voice channel switches
+Microphone capture keeps WebRTC echo cancellation, noise suppression, and
+automatic gain control, then defaults to a second device-local RNNoise stage in
+a 48 kHz AudioWorklet before LiveKit publication. Audio settings can disable
+that stage or select Natural, Child, Robot, or Walkie-talkie output; effects
+apply only to the named speech track and never to the soundboard. Unsupported
+or failed processing falls back to the built-in capture cleanup without
+blocking the call. The explicit microphone test plays that same processed
+preview through the selected call output while rendering its level, and
+releases the monitor, stream, processor, and analyser together on stop.
+Selecting a voice channel immediately joins it; selecting another voice channel switches
 the active call without a pre-join or initial connection surface. An active call
 adds a sidebar control block with room, backend latency, normalized local
 LiveKit quality, camera, screen-share, soundboard, and disconnect actions. The
@@ -80,7 +88,9 @@ counting and reduced-motion behavior. Deafen suppresses remote speech and local/
 monitoring without blocking outbound soundboard audio. The selected speaker
 routes calls and soundboard audio; message alerts remain on system output. Mock
 mode exercises these interactions without credentials, a backend, or protected
-media.
+media. Output fallback and speaker-switch failures appear as eight-second
+notices with immediate review and dismiss actions instead of persistent room
+banners.
 
 The hosted project has a private `soundboard` Storage bucket and a typed
 Postgres catalog with System and Bakbak categories. System contains the
@@ -196,12 +206,18 @@ track stays muted while no sound is active, unmutes for playback, and returns
 to muted after the final overlapping sound ends or stop-all runs. This prevents
 an idle synthetic microphone stream from keeping system audio in a suppressed
 communications state. Track name, rather than source, distinguishes soundboard
-audio from speech. Explicit stop-all and voice teardown also pause and detach
-the local monitor element, stop its routing stream, close its `AudioContext`,
-and recreate that graph with the remembered speaker on the next sound. Natural
-completion of the final overlapping clip performs the same monitor-stream
-flush but keeps the shared `AudioContext` and LiveKit publication alive,
-avoiding renegotiation before the next sound. The final Arc-plus-native
+audio from speech. Every clip applies a 20 ms final envelope to digital zero on
+both outbound and local paths, and manual stops zero that envelope before
+stopping the source. Explicit stop-all and voice teardown synchronously finish
+and disconnect every active source, invalidate in-flight playback/publication,
+hard-mute the local monitor element, stop its routing stream, close its
+`AudioContext`, and recreate that graph with the remembered speaker on the next
+sound. Natural completion of the final overlapping clip hard-mutes and flushes
+the same monitor stream but keeps the shared `AudioContext` and LiveKit
+publication alive, avoiding renegotiation before the next sound. Receiver-side
+soundboard elements mirror LiveKit mute/unmute state and hard-mute immediately
+on a synchronized stop event, preventing a retained final WebKit frame from
+remaining audible. The final Arc-plus-native
 voice, video, device, soundboard, reconnect, and crash-expiry rehearsal remains
 open for human observation.
 
@@ -247,16 +263,17 @@ approved.
 
 ## Technology stack
 
-| Layer                | Technology                        | Responsibility                                                                    |
-| -------------------- | --------------------------------- | --------------------------------------------------------------------------------- |
-| Package/tooling      | pnpm, TypeScript                  | Dependency management and strict static types                                     |
-| Renderer             | React, Vite                       | Desktop UI and local interaction state                                            |
-| Desktop shell        | Tauri 2, Rust                     | Native window, packaging, capabilities, and later tray/desktop integrations       |
-| Identity/data        | Supabase Auth, Postgres, Realtime | Accounts, membership, channels, messages, invites, and realtime chat              |
-| Trusted backend      | Supabase Edge Functions           | Membership-checked LiveKit tokens and managed sound publication/deletion          |
-| Object media         | Supabase Storage                  | Private sound packs, profile posters, and GIF animations with RLS-filtered access |
-| Voice/data transport | LiveKit                           | Voice rooms, participant state, soundboard audio, and control data                |
-| Validation/testing   | Zod, Vitest, Testing Library      | Boundary validation and unit/component tests                                      |
+| Layer                | Technology                        | Responsibility                                                                       |
+| -------------------- | --------------------------------- | ------------------------------------------------------------------------------------ |
+| Package/tooling      | pnpm, TypeScript                  | Dependency management and strict static types                                        |
+| Renderer             | React, Vite                       | Desktop UI and local interaction state                                               |
+| Desktop shell        | Tauri 2, Rust                     | Native window, packaging, capabilities, and later tray/desktop integrations          |
+| Identity/data        | Supabase Auth, Postgres, Realtime | Accounts, membership, channels, messages, invites, and realtime chat                 |
+| Trusted backend      | Supabase Edge Functions           | Membership-checked LiveKit tokens and managed sound publication/deletion             |
+| Object media         | Supabase Storage                  | Private sound packs, profile posters, and GIF animations with RLS-filtered access    |
+| Local microphone DSP | Web Audio, RNNoise WebAssembly    | Off-thread enhanced cleanup plus opt-in sender-side voice effects                    |
+| Voice/data transport | LiveKit                           | Voice rooms, participant state, processed speech, soundboard audio, and control data |
+| Validation/testing   | Zod, Vitest, Testing Library      | Boundary validation and unit/component tests                                         |
 
 There is one pnpm application, not a frontend/backend monorepo. `package.json`
 pins pnpm `11.3.0` through `packageManager` so local installs and GitHub Actions
@@ -287,13 +304,16 @@ bakbak/
 │       ├── 0009-signal-red-theme-and-interface-audio.md
 │       ├── 0010-cross-platform-screen-share-and-focus.md
 │       ├── 0011-soundboard-categories-favorites-and-uploads.md
-│       └── 0012-unlucky-boys-channel-layout.md
+│       ├── 0012-unlucky-boys-channel-layout.md
+│       └── 0013-local-microphone-processing-and-voice-lab.md
 ├── public/
 │   ├── bakbak.svg                 # renderer favicon/source logo
 │   ├── interface-sounds/          # generated original 48 kHz mono WAV cues
 │   ├── signal-noise.svg           # Bakbak-owned tiled texture source
 │   ├── theme-init.js              # parser-blocking, CSP-safe first-paint theme bootstrap
-│   └── vendor/ffmpeg/             # lazy reduced LGPL core and license
+│   └── vendor/
+│       ├── ffmpeg/                # lazy reduced LGPL core and license
+│       └── rnnoise/               # bundled RNNoise/Jitsi license notices
 ├── scripts/                       # checks, release/audio generation, reduced-core build
 ├── src/
 │   ├── app/                       # application shell, routing, providers
@@ -449,6 +469,10 @@ authority.
 LiveKit transports a named `bakbak-microphone` speech track, opt-in camera
 tracks, at most one named soundboard audio track, desktop screen companions,
 participant/speaking state, and small soundboard control messages.
+Before publication, the renderer may replace the speech track's source with
+the output of its device-local microphone AudioWorklet. LiveKit receives only
+that selected processed or fallback speech track; it does not configure or
+host the RNNoise stage.
 A protected Supabase Edge Function is the only component allowed to sign
 LiveKit participant tokens. Voice tokens allow microphone, camera, data, and
 video-only screen publication. Screen-companion tokens use generated identities
@@ -572,12 +596,18 @@ An invite-management UI is deferred until post-v1.
 6. Cover framing uses a fixed 3:1 preview. Pointer drag or keyboard arrows
    update integer focal coordinates; Shift moves by a larger step and Reset
    returns to 50/50.
-7. Audio settings retain the existing persisted device selectors and
-   soundboard volume plus interface-sound master/volume/category preferences.
-   Opening settings does not request media; microphone and output tests acquire
-   only the temporary resources required by the explicit test action and
-   release them when stopped or unmounted. Preview buttons activate and play
-   one category representative through the system output.
+7. Audio settings retain the persisted device selectors, soundboard volume,
+   enhanced-cleanup switch, selected voice effect, and interface-sound
+   master/volume/category preferences in four spaced Voice Input, Voice Output,
+   Video, and App Sounds categories. Opening settings does not request media.
+   The explicit microphone test uses the same selected processing path as an
+   outgoing call, plays it through the selected output, and warns headphones
+   users before live monitoring. Successful microphone permission immediately
+   refreshes device enumeration because macOS WebKit can reveal named speakers
+   only after capture permission. Microphone and output tests acquire only
+   temporary resources and release them when stopped or unmounted. Preview
+   buttons activate and play one interface-sound category representative
+   through the system output.
 8. Settings is a modal overlay over the current canvas. It traps focus, restores
    the opener on close, exposes compact active-call controls, and confirms
    logout. Closing discards staged profile edits and revokes preview URLs; a
@@ -665,38 +695,54 @@ An invite-management UI is deferred until post-v1.
    profile display name in one RLS-protected query. The function signs the same
    narrowly scoped, five-minute token and preserves indistinguishable missing,
    text-channel, and non-member responses.
-4. After LiveKit connects, the speech track publishes as `bakbak-microphone`
-   while output preparation and the existing soundboard-track preparation run
-   concurrently. Bakbak still awaits soundboard `ensurePublished` settlement
-   before reporting `connected`. Speech selection prefers that exact name and
-   falls back to an unnamed, non-soundboard microphone publication for older
-   clients.
-5. Direct channel switching unpublishes the current microphone without
-   stopping it, disconnects the old room, republishes it into the new room, and
-   preserves mute/deafen state. Leave, sign-out, a failed switch, and teardown
-   stop every retained or pending microphone immediately.
-6. The renderer generation-gates all token, connection, and microphone work so
+4. Microphone capture requests mono 48 kHz input with WebRTC echo
+   cancellation, noise suppression, and automatic gain control. When enhanced
+   cleanup or a voice effect is selected, a LiveKit `TrackProcessor` routes
+   capture through a dedicated AudioContext and AudioWorklet. The worklet
+   bridges 128-sample render quanta into 480-sample RNNoise frames, then applies
+   the selected sender-side effect. Unsupported initialization keeps the raw
+   capture track and records a non-fatal Settings warning.
+5. After LiveKit connects, the processed or fallback speech track publishes as
+   `bakbak-microphone` while output preparation and the existing
+   soundboard-track preparation run concurrently. Bakbak still awaits
+   soundboard `ensurePublished` settlement before reporting `connected`.
+   Speech selection prefers that exact name and falls back to an unnamed,
+   non-soundboard microphone publication for older clients.
+6. Direct channel switching unpublishes the current microphone without
+   stopping it, disconnects the old room, republishes it into the new room,
+   and preserves its processor plus mute/deafen state. Input-device changes
+   restart the processor on the replacement source. Leave, sign-out, a failed
+   switch, and teardown stop every retained or pending microphone and close
+   its processing context immediately.
+7. The renderer generation-gates all token, connection, and microphone work so
    a stale attempt can disconnect only its own room. A compact polite status
    loader announces authorization, connection, microphone, or soundboard work;
    reconnecting uses the same treatment.
-7. Camera remains off through join. An explicit camera action publishes an
+8. Camera remains off through join. An explicit camera action publishes an
    adaptive 720p track. Local video is mirrored; subscribed remote tracks attach
    to participant tiles, and avatar fallbacks remain visible while video is off.
-8. The current connection manages microphone, speaker, and camera switches,
+9. The current connection manages microphone, speaker, and camera switches,
    autoplay recovery, mute, deafen, participant, speaking, reconnect, and error
-   state. Output switching is capability-checked; unsupported runtimes show
-   system output only. A missing remembered device falls back to default.
-9. Unsubscription, leaving, disconnecting, and unmounting detach remote audio
-   and video, invalidate pending camera/join work, stop active local sounds,
-   pause and detach the selected-speaker monitor, stop its MediaStream tracks,
-   close its Web Audio context, disconnect the room, and release local tracks.
-10. If direct WebRTC fails and relay succeeds, later joins prefer relay for ten
+   state. Device discovery uses the browser's complete `enumerateDevices`
+   result and refreshes on `devicechange`, explicit user refresh, successful
+   mic testing, camera start, and room join. Permission-limited default-only
+   discovery does not erase a remembered device ID. Output switching is
+   capability-checked from `HTMLMediaElement.setSinkId`; a supported switch
+   updates the soundboard monitor, LiveKit room, and every current or future
+   hidden remote-audio element. Unsupported runtimes keep the selector
+   read-only and use system output. A genuinely missing remembered device
+   falls back to default after specific devices become visible.
+10. Unsubscription, leaving, disconnecting, and unmounting detach remote audio
+    and video, invalidate pending camera/join work, stop active local sounds,
+    pause and detach the selected-speaker monitor, stop its MediaStream tracks,
+    close its Web Audio context, disconnect the room, and release local tracks.
+11. If direct WebRTC fails and relay succeeds, later joins prefer relay for ten
     minutes in memory. Relay-first failure retries direct; expiry periodically
     restores direct probing. A total failure is reported as a TURN/TLS or local
     network-policy problem rather than token/authentication failure.
-11. Development builds record preparation, authorization, connection,
+12. Development builds record preparation, authorization, connection,
     microphone, soundboard, and total timing without identifiers or tokens.
-12. `CommunicationEffectEvent` is emitted only after lifecycle truth: self join
+13. `CommunicationEffectEvent` is emitted only after lifecycle truth: self join
     follows the complete connected gate; normal self leave requires an explicit
     user leave; switches emit only the destination join; sign-out, teardown,
     canceled joins, and unexpected disconnects never imitate a normal leave.
@@ -827,18 +873,20 @@ An invite-management UI is deferred until post-v1.
    soundboard audio.
 
 Unknown message types, stale duplicates, and unknown sound IDs are ignored
-safely. Microphone creation and switching explicitly request echo cancellation,
-noise suppression, and automatic gain control. These constraints reduce
-speaker-to-microphone echo but cannot guarantee acoustic isolation on every
-device, so the laptop-speaker two-client check remains required.
+safely. Built-in capture constraints plus RNNoise target echo, keyboard, and
+steady background noise, but RNNoise is not speaker separation and cannot
+guarantee acoustic isolation on every device. The laptop-speaker two-client
+check therefore remains required.
 
 ### Local preferences
 
 The renderer validates and stores only `{ inputDeviceId, outputDeviceId,
-cameraDeviceId, soundboardVolume }` under the versioned local-storage key
-`bakbak.devicePreferences.v1`. These identifiers never sync to Supabase. If a
-remembered device is absent, the selector returns to the runtime's default
-device. Interface cues deliberately bypass the selected call output.
+cameraDeviceId, soundboardVolume, enhancedNoiseSuppression, voiceEffect }`
+under the versioned local-storage key `bakbak.devicePreferences.v2`. Valid v1
+device and volume values migrate with enhanced cleanup enabled and Natural
+voice selected. These preferences never sync to Supabase. If a remembered
+device is absent, the selector returns to the runtime's default device.
+Interface cues deliberately bypass the selected call output.
 Soundboard section collapse state is stored independently per server under
 `bakbak.soundboardSections.v1:<server ID>` and never syncs; favorite rows sync
 through Supabase instead.
@@ -860,7 +908,10 @@ League Gothic `5.2.8` and IBM Plex Mono `5.2.7` are installed from Fontsource;
 both package manifests declare SIL Open Font License 1.1 (`OFL-1.1`). Every WAV
 under `public/interface-sounds` is original Bakbak project output from the
 checked-in deterministic oscillator/filter/envelope/seeded-noise generator.
-The assets contain no recordings or third-party samples.
+The assets contain no recordings or third-party samples. The microphone
+worklet bundles `@jitsi/rnnoise-wasm` `0.2.1` and its RNNoise 0.2 synchronous
+model; Jitsi's Apache/MIT notice and Xiph.Org's BSD 3-Clause notice ship under
+`public/vendor/rnnoise`.
 
 ### Desktop release and update
 
@@ -1143,6 +1194,11 @@ that it has passed.
   channel names are ordinary all-member Bakbak rooms until a separately
   approved channel-level ACL model exists. The hosted two-account
   hierarchy/RLS observation remains required.
+- Plan 0013's local RNNoise processor, preference migration, fallback path, and
+  Settings controls pass automated validation and a production renderer build.
+  Human two-client observation is still required for keyboard rejection,
+  intelligibility, Child/Robot/Walkie-talkie output, active effect changes,
+  microphone switching, and processor cleanup on macOS and Windows.
 - Hosted migration `006` and the camera-capable token function are deployed,
   but the Arc-plus-installed-app voice/video/device acceptance matrix still
   requires two signed-in users and human audio/video observation.

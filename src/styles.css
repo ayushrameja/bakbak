@@ -1431,6 +1431,25 @@ button:disabled {
   font-weight: 700;
   white-space: nowrap;
 }
+.voice-device-error__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.voice-device-error .voice-device-error__dismiss {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  border-radius: 6px;
+}
+.voice-device-error .voice-device-error__dismiss:hover {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
 .voice-occupancy-preview {
   max-width: 900px;
   margin: 20px auto 0;
@@ -3230,6 +3249,99 @@ body {
   margin-top: 13px;
 }
 
+.microphone-processing-settings {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--line-bright);
+  border-radius: 12px;
+  background: var(--bg-main);
+}
+
+.microphone-processing-settings__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.microphone-processing-settings__heading strong,
+.microphone-processing-settings__heading small {
+  display: block;
+}
+
+.microphone-processing-settings__heading strong {
+  font-size: 10px;
+}
+
+.microphone-processing-settings__heading small,
+.microphone-processing-settings fieldset > small {
+  margin-top: 4px;
+  color: var(--faint);
+  font-size: 8px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.microphone-processing-settings__heading button {
+  min-width: 52px;
+  min-height: 30px;
+  border: 1px solid var(--line-bright);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--panel-soft);
+  cursor: pointer;
+}
+
+.microphone-processing-settings__heading button[aria-checked="true"] {
+  color: var(--accent-bright);
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.microphone-processing-settings button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.microphone-processing-settings fieldset {
+  min-width: 0;
+  margin: 12px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.microphone-processing-settings legend {
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.voice-effect-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.voice-effect-options button {
+  min-height: 29px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: var(--panel-soft);
+  cursor: pointer;
+  font-size: 8px;
+}
+
+.voice-effect-options button.is-active {
+  color: var(--text);
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
 .microphone-test > div {
   height: 8px;
   margin-top: 14px;
@@ -3244,6 +3356,212 @@ body {
   border-radius: inherit;
   background: linear-gradient(90deg, var(--green), var(--amber));
   transition: width 80ms linear;
+}
+
+.audio-settings__categories {
+  display: grid;
+}
+
+.audio-settings-category {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 24px;
+  padding: 28px 0;
+  border-top: 1px solid var(--line);
+}
+
+.audio-settings-category:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.audio-settings-category:last-child {
+  padding-bottom: 0;
+}
+
+.audio-settings-category__heading {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-content: start;
+  gap: 10px;
+}
+
+.audio-settings-category__heading > span {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--accent-border);
+  border-radius: 9px;
+  color: var(--accent-bright);
+  background: var(--accent-soft);
+}
+
+.audio-settings-category__heading small,
+.audio-settings-category__heading h3,
+.audio-settings-category__heading p {
+  margin: 0;
+}
+
+.audio-settings-category__heading small {
+  display: block;
+  margin: 1px 0 5px;
+  color: var(--faint);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.audio-settings-category__heading h3 {
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.audio-settings-category__heading p {
+  grid-column: 1 / -1;
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.audio-settings-category__body {
+  min-width: 0;
+}
+
+.audio-device-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.audio-device-row--output {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.audio-device-action {
+  display: grid;
+  gap: 7px;
+}
+
+.audio-device-action > span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.audio-device-action .secondary-button {
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+.audio-device-action svg.is-spinning {
+  animation: spin 800ms linear infinite;
+}
+
+.audio-settings .microphone-test {
+  margin-top: 14px;
+}
+
+.audio-settings .microphone-test > div {
+  margin-top: 0;
+  background: var(--bg-deep);
+}
+
+.audio-settings .microphone-test p {
+  margin: 7px 0 0;
+  color: var(--faint);
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.audio-settings .microphone-processing-settings {
+  margin-top: 17px;
+  padding: 15px;
+}
+
+.audio-settings .microphone-processing-settings__heading strong {
+  font-size: 11px;
+}
+
+.audio-settings .microphone-processing-settings__heading small,
+.audio-settings .microphone-processing-settings fieldset > small {
+  max-width: 420px;
+  font-size: 9px;
+}
+
+.audio-settings .voice-effect-options button {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 9px;
+}
+
+.audio-settings-category__body > .settings-note,
+.audio-settings-category__body > .settings-error {
+  margin: 10px 0 0;
+}
+
+.audio-app-sounds {
+  display: grid;
+  gap: 12px;
+}
+
+.audio-app-sounds__block {
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.audio-app-sounds .interface-sound-settings {
+  margin: 0;
+  background: var(--panel-soft);
+}
+
+.audio-app-sounds .interface-sound-settings__heading h4 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 11px;
+}
+
+.audio-app-sounds .interface-sound-settings__heading p {
+  font-size: 8px;
+}
+
+.audio-app-sounds .interface-sound-categories {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 820px) {
+  .audio-settings-category {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .audio-settings-category__heading {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .audio-settings-category__heading p {
+    grid-column: 2;
+    margin-top: 0;
+  }
+
+  .audio-device-row--output {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .audio-device-row--output .settings-field {
+    grid-column: 1 / -1;
+  }
 }
 
 .theme-options {
@@ -4074,6 +4392,8 @@ body {
 .settings-field input:not([type="range"]),
 .settings-field select,
 .settings-two-column > section,
+.microphone-processing-settings,
+.voice-effect-options button,
 .theme-options button,
 .theme-options button > span,
 .theme-preview,

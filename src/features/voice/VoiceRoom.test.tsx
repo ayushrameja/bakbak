@@ -68,6 +68,7 @@ function createVoice(
     audioPlaybackBlocked: false,
     error: null,
     inputDeviceError: null,
+    microphoneProcessingError: null,
     outputDeviceError: null,
     cameraDeviceError: null,
     inputDevices: [],
@@ -76,6 +77,9 @@ function createVoice(
     selectedInputId: "default",
     selectedOutputId: "default",
     selectedCameraId: "default",
+    enhancedNoiseSuppression: true,
+    voiceEffect: "none",
+    microphoneProcessingSupported: true,
     outputSelectionSupported: false,
     cameraEnabled: false,
     cameraPending: false,
@@ -105,8 +109,12 @@ function createVoice(
     toggleDeafen: vi.fn().mockResolvedValue(undefined),
     resumeAudio: vi.fn().mockResolvedValue(undefined),
     setParticipantVolume: vi.fn(),
+    refreshDevices: vi.fn().mockResolvedValue(undefined),
     setInputDevice: vi.fn().mockResolvedValue(undefined),
+    setEnhancedNoiseSuppression: vi.fn().mockResolvedValue(undefined),
+    setVoiceEffect: vi.fn().mockResolvedValue(undefined),
     setOutputDevice: vi.fn().mockResolvedValue(undefined),
+    dismissOutputDeviceError: vi.fn(),
     setCameraDevice: vi.fn().mockResolvedValue(undefined),
     toggleCamera: vi.fn().mockResolvedValue(undefined),
     startScreenShare: vi.fn().mockResolvedValue(undefined),
@@ -250,6 +258,38 @@ describe("VoiceRoom", () => {
     expect(screen.getByText("Room audio needs one click")).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "Enable audio" }));
     expect(resumeAudio).toHaveBeenCalledOnce();
+  });
+
+  it("lets the user review or dismiss a temporary output warning", async () => {
+    const onOpenSettings = vi.fn();
+    const dismissOutputDeviceError = vi.fn();
+    const voice = createVoice({
+      outputDeviceError:
+        "Bakbak joined using system output because the selected speaker was unavailable.",
+      dismissOutputDeviceError,
+    });
+
+    render(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={voice}
+        onOpenSettings={onOpenSettings}
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Bakbak joined using system output",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Review output" }),
+    );
+    expect(onOpenSettings).toHaveBeenCalledOnce();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Dismiss output warning" }),
+    );
+    expect(dismissOutputDeviceError).toHaveBeenCalledOnce();
   });
 
   it("removes pre-join metadata after joining and switches to a share layout", () => {

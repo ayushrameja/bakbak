@@ -19,9 +19,15 @@ import {
   SOUNDBOARD_TRACK_NAME,
   SoundboardAudioPublisher,
 } from "../soundboard/soundboard-audio";
+import {
+  createSoundStopEvent,
+  encodeSoundEvent,
+} from "../soundboard/sound-events";
 import { AudioOutputRouter } from "./audio-output-router";
 import { SPEECH_MICROPHONE_TRACK_NAME } from "./microphone-publication";
+import { RemoteAudioRenderer } from "./remote-audio";
 import {
+  OUTPUT_DEVICE_NOTICE_DURATION_MS,
   RELAY_PREFERENCE_DURATION_MS,
   VOICE_PREPARE_DEBOUNCE_MS,
   VOICE_TOKEN_EXPIRY_BUFFER_MS,
@@ -422,6 +428,29 @@ describe("useVoiceRoom join lifecycle", () => {
     vi.restoreAllMocks();
   });
 
+  it("auto-dismisses output notices and also supports immediate dismissal", async () => {
+    vi.useFakeTimers();
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+
+    await act(async () => {
+      await result.current.setOutputDevice("speaker-that-is-not-available");
+    });
+    expect(result.current.outputDeviceError).toBe(
+      "This runtime supports only the system output device.",
+    );
+
+    act(() => result.current.dismissOutputDeviceError());
+    expect(result.current.outputDeviceError).toBeNull();
+
+    await act(async () => {
+      await result.current.setOutputDevice("speaker-that-is-not-available");
+    });
+    act(() => {
+      vi.advanceTimersByTime(OUTPUT_DEVICE_NOTICE_DURATION_MS);
+    });
+    expect(result.current.outputDeviceError).toBeNull();
+  });
+
   it("emits self join only after connection and reserves leave for explicit user exits", async () => {
     const effects = vi.fn();
     supabaseState.invoke
@@ -542,6 +571,59 @@ describe("useVoiceRoom join lifecycle", () => {
     expect(effects).toHaveBeenCalledWith({ type: "signal-interrupted" });
     act(() => room.emit("reconnected"));
     expect(effects).toHaveBeenCalledWith({ type: "signal-restored" });
+  });
+
+  it("hard-mutes remote soundboard elements when their track or stop event goes idle", async () => {
+    const setTrackMuted = vi.spyOn(
+      RemoteAudioRenderer.prototype,
+      "setTrackMuted",
+    );
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    const room = liveKitState.rooms[0]!;
+    const participant = {
+      ...remoteParticipant("mira", "Mira"),
+      isLocal: false,
+    };
+    const track = {
+      kind: "audio",
+      attach: vi.fn((element: HTMLMediaElement) => element),
+      detach: vi.fn((element: HTMLMediaElement) => element),
+      setVolume: vi.fn(),
+    };
+    const publication = {
+      isMuted: true,
+      source: "microphone",
+      trackName: SOUNDBOARD_TRACK_NAME,
+    };
+
+    act(() => room.emit("trackSubscribed", track, publication, participant));
+    expect(setTrackMuted).toHaveBeenLastCalledWith(track, true);
+
+    act(() => room.emit("trackUnmuted", publication, participant));
+    expect(setTrackMuted).toHaveBeenLastCalledWith(track, false);
+
+    act(() => room.emit("trackMuted", publication, participant));
+    expect(setTrackMuted).toHaveBeenLastCalledWith(track, true);
+
+    const stopEvent = createSoundStopEvent({
+      eventId: "remote-stop",
+      sentAt: Date.now(),
+    });
+    act(() =>
+      room.emit(
+        "dataReceived",
+        encodeSoundEvent(stopEvent),
+        participant,
+        undefined,
+        "bakbak-soundboard",
+      ),
+    );
+    expect(setTrackMuted).toHaveBeenLastCalledWith(track, true);
   });
 
   it("debounces preparation, prewarms without media, and consumes the cached room on click", async () => {

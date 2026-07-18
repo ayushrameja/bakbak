@@ -1419,6 +1419,10 @@ export default function App() {
           selectedOutputId={voice.selectedOutputId}
           selectedCameraId={voice.selectedCameraId}
           soundboardVolume={voice.soundboardVolume}
+          enhancedNoiseSuppression={voice.enhancedNoiseSuppression}
+          voiceEffect={voice.voiceEffect}
+          microphoneProcessingSupported={voice.microphoneProcessingSupported}
+          microphoneProcessingError={voice.microphoneProcessingError}
           interfaceSoundPreferences={interfaceSoundPreferences}
           inputError={voice.inputDeviceError}
           outputError={voice.outputDeviceError}
@@ -1444,7 +1448,12 @@ export default function App() {
           onInputChange={(deviceId) => void voice.setInputDevice(deviceId)}
           onOutputChange={(deviceId) => void voice.setOutputDevice(deviceId)}
           onCameraChange={(deviceId) => void voice.setCameraDevice(deviceId)}
+          onRefreshDevices={voice.refreshDevices}
           onSoundboardVolumeChange={voice.setSoundboardVolume}
+          onEnhancedNoiseSuppressionChange={(enabled) =>
+            void voice.setEnhancedNoiseSuppression(enabled)
+          }
+          onVoiceEffectChange={(effect) => void voice.setVoiceEffect(effect)}
           onInterfaceSoundPreferencesChange={
             handleInterfaceSoundPreferencesChange
           }

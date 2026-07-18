@@ -115,9 +115,13 @@ export class AudioOutputRouter {
     this.element = null;
     this.stream = null;
 
-    element?.pause();
-    if (element) element.srcObject = null;
+    if (element) {
+      element.muted = true;
+      element.volume = 0;
+      element.pause();
+    }
     stream?.getTracks().forEach((track) => track.stop());
+    if (element) element.srcObject = null;
     element?.remove();
   }
 }

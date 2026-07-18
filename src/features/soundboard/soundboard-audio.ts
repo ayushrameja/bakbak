@@ -14,8 +14,10 @@ export interface SoundAudioTarget {
 
 interface ActiveSoundSource {
   source: AudioBufferSourceNode;
+  tailGain: GainNode;
   localGain: GainNode;
   localSuppressed: boolean;
+  finish: () => void;
 }
 
 export interface SoundboardPlayback {
@@ -36,7 +38,8 @@ export class SoundboardAudioPublisher {
   private publishPromise: Promise<void> | null = null;
   private readonly decoded = new Map<string, AudioBuffer>();
   private readonly active = new Map<string, ActiveSoundSource>();
-  private pendingPlaybacks = 0;
+  private readonly pendingPlaybacks = new Set<symbol>();
+  private generation = 0;
   private volume = 0.7;
   private deafened = false;
 
@@ -50,6 +53,7 @@ export class SoundboardAudioPublisher {
     if (this.publishPromise) return await this.publishPromise;
 
     const target = this.requireTarget();
+    const generation = this.generation;
     this.participant = participant;
     this.outbound = target.context.createMediaStreamDestination();
     const track = this.outbound.stream.getAudioTracks()[0];
@@ -57,27 +61,37 @@ export class SoundboardAudioPublisher {
       throw new Error("Bakbak could not create a soundboard audio track.");
     track.enabled = false;
     this.outboundTrack = track;
-    this.publishPromise = participant
+    const publishPromise = participant
       .publishTrack(track, {
         name: SOUNDBOARD_TRACK_NAME,
         source: Track.Source.Microphone,
       })
       .then(async (publication) => {
+        if (this.generation !== generation || this.outboundTrack !== track) {
+          await participant.unpublishTrack(track).catch(() => undefined);
+          track.stop();
+          throw playbackCancelled();
+        }
         this.publication = publication;
         await publication.mute();
       })
       .catch((error: unknown) => {
-        void participant.unpublishTrack(track).catch(() => undefined);
-        this.outbound = null;
-        this.outboundTrack?.stop();
-        this.outboundTrack = null;
-        this.publication = null;
-        this.participant = null;
+        if (this.outboundTrack === track) {
+          void participant.unpublishTrack(track).catch(() => undefined);
+          this.outbound = null;
+          this.outboundTrack.stop();
+          this.outboundTrack = null;
+          this.publication = null;
+          this.participant = null;
+        }
         throw error;
       })
       .finally(() => {
-        this.publishPromise = null;
+        if (this.publishPromise === publishPromise) {
+          this.publishPromise = null;
+        }
       });
+    this.publishPromise = publishPromise;
     await this.publishPromise;
   }
 
@@ -87,27 +101,38 @@ export class SoundboardAudioPublisher {
     sound: SoundboardSound,
     blob: Blob,
   ): Promise<SoundboardPlayback> {
-    this.pendingPlaybacks += 1;
+    const generation = this.generation;
+    const pendingPlayback = Symbol(eventId);
+    const ensureCurrent = () => {
+      if (this.generation !== generation) throw playbackCancelled();
+    };
+    this.pendingPlaybacks.add(pendingPlayback);
     try {
       await this.ensurePublished(participant);
+      ensureCurrent();
       const target = this.requireTarget();
       if (!this.outbound) throw new Error("Soundboard audio is not connected.");
       if (target.context.state === "suspended") await target.context.resume();
+      ensureCurrent();
 
       const cacheKey = `${sound.id}:${sound.audioRevision}`;
       let buffer = this.decoded.get(cacheKey);
       if (!buffer) {
         buffer = await target.context.decodeAudioData(await blob.arrayBuffer());
+        ensureCurrent();
         this.decoded.set(cacheKey, buffer);
       }
 
       const source = target.context.createBufferSource();
+      const tailGain = target.context.createGain();
       const localGain = target.context.createGain();
       const localSuppressed = this.deafened;
       source.buffer = buffer;
+      tailGain.gain.value = 1;
       localGain.gain.value = localSuppressed ? 0 : this.volume;
-      source.connect(this.outbound);
-      source.connect(localGain);
+      source.connect(tailGain);
+      tailGain.connect(this.outbound);
+      tailGain.connect(localGain);
       localGain.connect(target.destination);
 
       let resolveFinished: () => void = () => {};
@@ -120,14 +145,23 @@ export class SoundboardAudioPublisher {
         stopped = true;
         this.active.delete(eventId);
         source.disconnect();
+        tailGain.disconnect();
         localGain.disconnect();
         this.settleIfIdle();
         resolveFinished();
       };
       source.onended = finish;
-      this.active.set(eventId, { source, localGain, localSuppressed });
+      this.active.set(eventId, {
+        source,
+        tailGain,
+        localGain,
+        localSuppressed,
+        finish,
+      });
       try {
         await this.unmuteOutbound();
+        ensureCurrent();
+        scheduleZeroTail(target.context, tailGain, buffer.duration);
         source.start();
       } catch (error) {
         finish();
@@ -137,15 +171,17 @@ export class SoundboardAudioPublisher {
       return {
         finished,
         stop: () => {
+          silenceImmediately(tailGain);
           try {
             source.stop();
           } catch {
-            finish();
+            // The source may already have ended; finish still owns cleanup.
           }
+          finish();
         },
       };
     } finally {
-      this.pendingPlaybacks -= 1;
+      this.pendingPlaybacks.delete(pendingPlayback);
       this.settleIfIdle();
     }
   }
@@ -167,18 +203,23 @@ export class SoundboardAudioPublisher {
   }
 
   stopAll(): void {
-    [...this.active.values()].forEach(({ source }) => {
+    [...this.active.values()].forEach(({ source, tailGain, finish }) => {
+      silenceImmediately(tailGain);
       try {
         source.stop();
       } catch {
-        // Already-ended sources are removed by their onended callback.
+        // The source may already have ended; finish still owns cleanup.
       }
+      finish();
     });
     this.muteOutbound();
   }
 
   cleanup(): void {
+    this.generation += 1;
+    this.pendingPlaybacks.clear();
     this.stopAll();
+    [...this.active.values()].forEach(({ finish }) => finish());
     if (this.participant && this.outboundTrack) {
       void this.participant
         .unpublishTrack(this.outboundTrack)
@@ -219,8 +260,45 @@ export class SoundboardAudioPublisher {
   }
 
   private settleIfIdle(): void {
-    if (this.active.size > 0 || this.pendingPlaybacks > 0) return;
+    if (this.active.size > 0 || this.pendingPlaybacks.size > 0) return;
     this.muteOutbound();
     this.onIdle();
   }
+}
+
+const ZERO_TAIL_SECONDS = 0.02;
+
+function scheduleZeroTail(
+  context: AudioContext,
+  gain: GainNode,
+  duration: number,
+): void {
+  if (
+    typeof gain.gain.setValueAtTime !== "function" ||
+    typeof gain.gain.linearRampToValueAtTime !== "function"
+  ) {
+    return;
+  }
+  const start = context.currentTime;
+  const end = start + duration;
+  const fadeStart = Math.max(start, end - ZERO_TAIL_SECONDS);
+  gain.gain.setValueAtTime(1, start);
+  gain.gain.setValueAtTime(1, fadeStart);
+  gain.gain.linearRampToValueAtTime(0, end);
+}
+
+function silenceImmediately(gain: GainNode): void {
+  const now = gain.context.currentTime;
+  if (typeof gain.gain.cancelScheduledValues === "function") {
+    gain.gain.cancelScheduledValues(now);
+  }
+  if (typeof gain.gain.setValueAtTime === "function") {
+    gain.gain.setValueAtTime(0, now);
+  } else {
+    gain.gain.value = 0;
+  }
+}
+
+function playbackCancelled(): DOMException {
+  return new DOMException("Sound playback was stopped.", "AbortError");
 }
