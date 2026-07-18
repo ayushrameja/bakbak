@@ -1,8 +1,16 @@
+import {
+  DEFAULT_MICROPHONE_PROCESSING_PREFERENCES,
+  readVoiceEffect,
+  type MicrophoneProcessingPreferences,
+} from "./microphone-preferences";
+
 export interface DevicePreferences {
   inputDeviceId: string;
   outputDeviceId: string;
   cameraDeviceId: string;
   soundboardVolume: number;
+  enhancedNoiseSuppression: boolean;
+  voiceEffect: MicrophoneProcessingPreferences["voiceEffect"];
 }
 
 export const DEFAULT_DEVICE_PREFERENCES: DevicePreferences = {
@@ -10,15 +18,19 @@ export const DEFAULT_DEVICE_PREFERENCES: DevicePreferences = {
   outputDeviceId: "default",
   cameraDeviceId: "default",
   soundboardVolume: 0.7,
+  ...DEFAULT_MICROPHONE_PROCESSING_PREFERENCES,
 };
 
-const DEVICE_PREFERENCES_KEY = "bakbak.devicePreferences.v1";
+const DEVICE_PREFERENCES_KEY = "bakbak.devicePreferences.v2";
+const LEGACY_DEVICE_PREFERENCES_KEY = "bakbak.devicePreferences.v1";
 
 export function loadDevicePreferences(
   storage: Pick<Storage, "getItem"> = window.localStorage,
 ): DevicePreferences {
   try {
-    const raw = storage.getItem(DEVICE_PREFERENCES_KEY);
+    const raw =
+      storage.getItem(DEVICE_PREFERENCES_KEY) ??
+      storage.getItem(LEGACY_DEVICE_PREFERENCES_KEY);
     if (!raw) return { ...DEFAULT_DEVICE_PREFERENCES };
     const parsed: unknown = JSON.parse(raw);
     if (!isRecord(parsed)) return { ...DEFAULT_DEVICE_PREFERENCES };
@@ -27,6 +39,11 @@ export function loadDevicePreferences(
       outputDeviceId: readDeviceId(parsed.outputDeviceId),
       cameraDeviceId: readDeviceId(parsed.cameraDeviceId),
       soundboardVolume: readVolume(parsed.soundboardVolume),
+      enhancedNoiseSuppression:
+        typeof parsed.enhancedNoiseSuppression === "boolean"
+          ? parsed.enhancedNoiseSuppression
+          : DEFAULT_DEVICE_PREFERENCES.enhancedNoiseSuppression,
+      voiceEffect: readVoiceEffect(parsed.voiceEffect),
     };
   } catch {
     return { ...DEFAULT_DEVICE_PREFERENCES };
@@ -48,10 +65,17 @@ export function availableDeviceId(
   preferredId: string,
   devices: ReadonlyArray<Pick<MediaDeviceInfo, "deviceId">>,
 ): string {
-  return preferredId === "default" ||
+  if (
+    preferredId === "default" ||
     devices.some((device) => device.deviceId === preferredId)
-    ? preferredId
-    : "default";
+  ) {
+    return preferredId;
+  }
+  const runtimeHasRevealedSpecificDevices = devices.some(
+    (device) =>
+      device.deviceId !== "default" && device.deviceId !== "communications",
+  );
+  return runtimeHasRevealedSpecificDevices ? "default" : preferredId;
 }
 
 function readDeviceId(value: unknown): string {

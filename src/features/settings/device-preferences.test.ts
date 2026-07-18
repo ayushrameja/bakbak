@@ -15,6 +15,8 @@ describe("device preferences", () => {
           outputDeviceId: "speaker-1",
           cameraDeviceId: "camera-1",
           soundboardVolume: 0.45,
+          enhancedNoiseSuppression: false,
+          voiceEffect: "robot",
         }),
       ),
     };
@@ -23,6 +25,8 @@ describe("device preferences", () => {
       outputDeviceId: "speaker-1",
       cameraDeviceId: "camera-1",
       soundboardVolume: 0.45,
+      enhancedNoiseSuppression: false,
+      voiceEffect: "robot",
     });
   });
 
@@ -35,6 +39,13 @@ describe("device preferences", () => {
     );
   });
 
+  it("keeps a saved device while permission-limited discovery shows only defaults", () => {
+    expect(availableDeviceId("speaker-1", [{ deviceId: "default" }])).toBe(
+      "speaker-1",
+    );
+    expect(availableDeviceId("speaker-1", [])).toBe("speaker-1");
+  });
+
   it("stores device ids and local soundboard volume", () => {
     const setItem = vi.fn();
     saveDevicePreferences(
@@ -43,6 +54,8 @@ describe("device preferences", () => {
         outputDeviceId: "speaker-1",
         cameraDeviceId: "camera-1",
         soundboardVolume: 0.6,
+        enhancedNoiseSuppression: true,
+        voiceEffect: "child",
       },
       { setItem },
     );
@@ -51,6 +64,33 @@ describe("device preferences", () => {
       outputDeviceId: "speaker-1",
       cameraDeviceId: "camera-1",
       soundboardVolume: 0.6,
+      enhancedNoiseSuppression: true,
+      voiceEffect: "child",
+    });
+  });
+
+  it("migrates v1 values with safe microphone-processing defaults", () => {
+    const storage = {
+      getItem: vi
+        .fn()
+        .mockReturnValueOnce(null)
+        .mockReturnValueOnce(
+          JSON.stringify({
+            inputDeviceId: "legacy-mic",
+            outputDeviceId: "default",
+            cameraDeviceId: "default",
+            soundboardVolume: 0.5,
+          }),
+        ),
+    };
+
+    expect(loadDevicePreferences(storage)).toEqual({
+      inputDeviceId: "legacy-mic",
+      outputDeviceId: "default",
+      cameraDeviceId: "default",
+      soundboardVolume: 0.5,
+      enhancedNoiseSuppression: true,
+      voiceEffect: "none",
     });
   });
 });

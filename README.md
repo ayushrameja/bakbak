@@ -4,8 +4,9 @@ Bakbak is a private desktop room for 5–10 friends: persistent text chat,
 drop-in voice, desktop screen sharing, and a synchronized hosted soundboard with
 account favorites and five-second member uploads from audio or video. Its Warm
 Adda interface includes light/dark theming, in-app profile and media settings,
-private member avatars, and admin-managed text and voice rooms. It uses React,
-strict TypeScript, Vite, Tauri 2, Supabase, and LiveKit.
+private member avatars, local RNNoise microphone cleanup, opt-in voice effects,
+and admin-managed text and voice rooms. It uses React, strict TypeScript, Vite,
+Tauri 2, Supabase, and LiveKit.
 
 The default local experience is fully interactive and needs no account or
 credentials. Production integrations are present behind live mode and remain
@@ -112,7 +113,9 @@ the exact command.
 The locally bundled, reduced FFmpeg soundboard core and its reproducible Docker
 recipe/license notices live under `third_party/ffmpeg-soundboard`. Maintainers
 can rebuild the committed runtime assets with `pnpm ffmpeg:build`; ordinary app
-setup does not rebuild FFmpeg.
+setup does not rebuild FFmpeg. The Jitsi WebAssembly wrapper and Xiph.Org
+RNNoise notices bundled with the local microphone processor live under
+`public/vendor/rnnoise`.
 
 ## Desktop releases and updates
 

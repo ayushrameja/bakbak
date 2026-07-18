@@ -116,7 +116,8 @@ plan.
 - [x] Send versioned LiveKit activity messages and a dedicated named audio track
       when a soundboard action occurs.
 - [x] Play hosted clips once through the outbound track and local monitor path,
-      with overlapping triggers, stop-all, and listener volume controls.
+      with overlapping triggers, stop-all, deterministic final-silence cleanup,
+      and listener volume controls.
 - [x] Unit-test catalog caching, sound dispatch, audio routing, activity state,
       and UI behavior.
 - [ ] Manually validate login and invite redemption on macOS.
@@ -183,6 +184,9 @@ under `0012-unlucky-boys-channel-layout.md`.
 - [x] Add System, Light, and Dark appearance preferences applied before render.
 - [x] Add Profile, Audio & Video, and Appearance settings while
       preserving per-channel chat drafts and active voice state.
+- [x] Organize Audio & Video into spaced Voice Input, Voice Output, Video, and
+      App Sounds categories with audible processed-mic monitoring, complete
+      post-permission device refresh, and selected-speaker routing.
 - [x] Add a centered, focus-trapped settings modal with active-call controls and
       move confirmed logout into its navigation.
 - [x] Add Coral, Purple, Red, and Yellow device-local accents with 25–100%
@@ -241,6 +245,9 @@ under `0012-unlucky-boys-channel-layout.md`.
       hierarchy under plan 0012 without importing messages.
 - [x] Deploy plan 0012's additive category/layout migration.
 - [ ] Complete plan 0012's hosted two-account hierarchy check.
+- [x] Add local RNNoise microphone cleanup plus Child, Robot, and
+      Walkie-talkie sender-side filters under plan 0013.
+- [ ] Complete plan 0013's macOS and Windows installed two-client audio checks.
 - [ ] Evaluate optional global push-to-talk.
 - [x] Implement Windows process/display-matched audio with build gating and
       video-only fallback.

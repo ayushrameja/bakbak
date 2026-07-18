@@ -22,6 +22,20 @@ const user: AppUser = {
   status: "online",
 };
 
+function mediaDevice(
+  kind: MediaDeviceKind,
+  deviceId: string,
+  label: string,
+): MediaDeviceInfo {
+  return {
+    kind,
+    deviceId,
+    label,
+    groupId: `${deviceId}-group`,
+    toJSON: () => ({}),
+  };
+}
+
 function renderSettings(
   section: SettingsSection,
   overrides: Partial<React.ComponentProps<typeof SettingsPage>> = {},
@@ -41,6 +55,10 @@ function renderSettings(
     selectedOutputId: "default",
     selectedCameraId: "default",
     soundboardVolume: 0.7,
+    enhancedNoiseSuppression: true,
+    voiceEffect: "none",
+    microphoneProcessingSupported: true,
+    microphoneProcessingError: null,
     interfaceSoundPreferences: {
       enabled: true,
       volume: 0.55,
@@ -69,7 +87,10 @@ function renderSettings(
     onInputChange: vi.fn(),
     onOutputChange: vi.fn(),
     onCameraChange: vi.fn(),
+    onRefreshDevices: vi.fn().mockResolvedValue(undefined),
     onSoundboardVolumeChange: vi.fn(),
+    onEnhancedNoiseSuppressionChange: vi.fn(),
+    onVoiceEffectChange: vi.fn(),
     onInterfaceSoundPreferencesChange: vi.fn(),
     onPreviewInterfaceSound: vi.fn(),
     onToggleMute: vi.fn(),
@@ -315,6 +336,72 @@ describe("SettingsPage", () => {
     expect(onPreviewInterfaceSound).toHaveBeenCalledWith("messages");
   });
 
+  it("groups audio settings and exposes every discovered output", async () => {
+    const onOutputChange = vi.fn();
+    const onRefreshDevices = vi.fn().mockResolvedValue(undefined);
+    renderSettings("audio", {
+      outputSelectionSupported: true,
+      outputDevices: [
+        mediaDevice("audiooutput", "default", "System default"),
+        mediaDevice("audiooutput", "studio", "Studio Display"),
+        mediaDevice("audiooutput", "headphones", "USB Headphones"),
+      ],
+      onOutputChange,
+      onRefreshDevices,
+    });
+
+    expect(screen.getByRole("heading", { name: "Microphone" })).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "Speakers & headphones" }),
+    ).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Camera" })).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "Soundboard & interface cues" }),
+    ).toBeVisible();
+
+    const output = screen.getByRole("combobox", { name: "Output device" });
+    expect(output).toHaveTextContent("Studio Display");
+    expect(output).toHaveTextContent("USB Headphones");
+    await userEvent.selectOptions(output, "headphones");
+    expect(onOutputChange).toHaveBeenCalledWith("headphones");
+
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(onRefreshDevices).toHaveBeenCalledOnce();
+  });
+
+  it("controls local noise cleanup and outgoing voice filters", async () => {
+    const onEnhancedNoiseSuppressionChange = vi.fn();
+    const onVoiceEffectChange = vi.fn();
+    renderSettings("audio", {
+      onEnhancedNoiseSuppressionChange,
+      onVoiceEffectChange,
+    });
+
+    await userEvent.click(
+      screen.getByRole("switch", { name: /Bakbak noise cleanup/i }),
+    );
+    expect(onEnhancedNoiseSuppressionChange).toHaveBeenCalledWith(false);
+
+    await userEvent.click(screen.getByRole("radio", { name: "Robot" }));
+    expect(onVoiceEffectChange).toHaveBeenCalledWith("robot");
+    expect(screen.getByText(/not the soundboard/i)).toBeInTheDocument();
+  });
+
+  it("disables enhanced microphone effects in unsupported runtimes", () => {
+    renderSettings("audio", {
+      microphoneProcessingSupported: false,
+    });
+
+    expect(
+      screen.getByRole("switch", { name: /Bakbak noise cleanup/i }),
+    ).toBeDisabled();
+    expect(screen.getByRole("radio", { name: "Child" })).toBeDisabled();
+    expect(screen.getByRole("radio", { name: "Natural" })).toBeEnabled();
+    expect(
+      screen.getByText(/keeps the built-in WebRTC cleanup/i),
+    ).toBeInTheDocument();
+  });
+
   it("releases the temporary microphone stream when settings unmount", async () => {
     const stop = vi.fn();
     const close = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
@@ -345,7 +432,14 @@ describe("SettingsPage", () => {
         return close();
       }
     }
+    class MockAudio {
+      autoplay = false;
+      srcObject: MediaProvider | null = null;
+      pause = vi.fn();
+      play = vi.fn().mockResolvedValue(undefined);
+    }
     vi.stubGlobal("AudioContext", MockAudioContext);
+    vi.stubGlobal("Audio", MockAudio);
 
     const { unmount } = renderSettings("audio");
     await userEvent.click(
@@ -359,6 +453,90 @@ describe("SettingsPage", () => {
     expect(stop).toHaveBeenCalledOnce();
     expect(close).toHaveBeenCalledOnce();
     vi.unstubAllGlobals();
+  });
+
+  it("plays the processed microphone back through the selected output", async () => {
+    const onRefreshDevices = vi.fn().mockResolvedValue(undefined);
+    const stop = vi.fn();
+    const pause = vi.fn();
+    const play = vi.fn().mockResolvedValue(undefined);
+    const setSinkId = vi.fn().mockResolvedValue(undefined);
+    const originalSetSinkId = Object.getOwnPropertyDescriptor(
+      HTMLMediaElement.prototype,
+      "setSinkId",
+    );
+    Object.defineProperty(HTMLMediaElement.prototype, "setSinkId", {
+      configurable: true,
+      value: setSinkId,
+    });
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockResolvedValue({
+          getTracks: () => [{ stop }],
+        }),
+      },
+    });
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn(() => 1),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    class MockAudioContext {
+      createAnalyser() {
+        return {
+          fftSize: 0,
+          frequencyBinCount: 1,
+          getByteFrequencyData: vi.fn(),
+        };
+      }
+      createMediaStreamSource() {
+        return { connect: vi.fn() };
+      }
+      close() {
+        return Promise.resolve();
+      }
+    }
+    class MockAudio {
+      autoplay = false;
+      srcObject: MediaProvider | null = null;
+      setSinkId = setSinkId;
+      pause = pause;
+      play = play;
+    }
+    vi.stubGlobal("AudioContext", MockAudioContext);
+    vi.stubGlobal("Audio", MockAudio);
+
+    try {
+      renderSettings("audio", {
+        selectedOutputId: "speaker-2",
+        outputSelectionSupported: true,
+        onRefreshDevices,
+      });
+      await userEvent.click(
+        screen.getByRole("button", { name: "Test microphone" }),
+      );
+
+      await waitFor(() => expect(play).toHaveBeenCalledOnce());
+      expect(setSinkId).toHaveBeenCalledWith("speaker-2");
+      expect(onRefreshDevices).toHaveBeenCalledOnce();
+      expect(screen.getByText(/Live monitor is on/i)).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: "Stop test" }));
+      expect(pause).toHaveBeenCalledOnce();
+      expect(stop).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+      if (originalSetSinkId) {
+        Object.defineProperty(
+          HTMLMediaElement.prototype,
+          "setSinkId",
+          originalSetSinkId,
+        );
+      } else {
+        Reflect.deleteProperty(HTMLMediaElement.prototype, "setSinkId");
+      }
+    }
   });
 
   it("stops a microphone stream that resolves after settings unmount", async () => {
@@ -386,6 +564,35 @@ describe("SettingsPage", () => {
     await waitFor(() => expect(getUserMedia).toHaveBeenCalledOnce());
     unmount();
     resolveStream?.({ getTracks: () => [{ stop }] });
+
+    await waitFor(() => expect(stop).toHaveBeenCalledOnce());
+  });
+
+  it("stops an acquired microphone while a post-permission refresh is pending", async () => {
+    const stop = vi.fn();
+    let finishRefresh: (() => void) | undefined;
+    const onRefreshDevices = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishRefresh = resolve;
+        }),
+    );
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockResolvedValue({
+          getTracks: () => [{ stop }],
+        }),
+      },
+    });
+
+    const { unmount } = renderSettings("audio", { onRefreshDevices });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Test microphone" }),
+    );
+    await waitFor(() => expect(onRefreshDevices).toHaveBeenCalledOnce());
+    unmount();
+    finishRefresh?.();
 
     await waitFor(() => expect(stop).toHaveBeenCalledOnce());
   });

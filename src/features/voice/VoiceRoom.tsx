@@ -8,6 +8,7 @@ import {
   RefreshCw,
   Shrink,
   Volume2,
+  X,
 } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauri } from "@tauri-apps/api/core";
@@ -237,9 +238,19 @@ export function VoiceRoom({
             <div className="voice-device-error" role="alert">
               <CircleAlert size={16} />
               <span>{voice.outputDeviceError}</span>
-              <button type="button" onClick={onOpenSettings}>
-                Review output
-              </button>
+              <div className="voice-device-error__actions">
+                <button type="button" onClick={onOpenSettings}>
+                  Review output
+                </button>
+                <button
+                  className="voice-device-error__dismiss"
+                  type="button"
+                  aria-label="Dismiss output warning"
+                  onClick={voice.dismissOutputDeviceError}
+                >
+                  <X size={15} />
+                </button>
+              </div>
             </div>
           ) : null}
           {voice.screenShareError ? (

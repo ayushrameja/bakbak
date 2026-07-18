@@ -11,6 +11,7 @@ import {
   Palette,
   Play,
   RadioTower,
+  RefreshCw,
   Square,
   Sun,
   UserRound,
@@ -51,6 +52,12 @@ import type {
   InterfaceSoundCategory,
   InterfaceSoundPreferences,
 } from "./interface-sound-preferences";
+import type { VoiceEffect } from "./microphone-preferences";
+import {
+  createMicrophonePreview,
+  microphoneCaptureOptions,
+} from "../voice/microphone-processing";
+import { setAudioElementOutput } from "../voice/media-devices";
 
 const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
 
@@ -82,6 +89,10 @@ interface SettingsPageProps {
   selectedOutputId: string;
   selectedCameraId: string;
   soundboardVolume: number;
+  enhancedNoiseSuppression: boolean;
+  voiceEffect: VoiceEffect;
+  microphoneProcessingSupported: boolean;
+  microphoneProcessingError: string | null;
   interfaceSoundPreferences: InterfaceSoundPreferences;
   inputError: string | null;
   outputError: string | null;
@@ -102,7 +113,10 @@ interface SettingsPageProps {
   onInputChange: (deviceId: string) => void;
   onOutputChange: (deviceId: string) => void;
   onCameraChange: (deviceId: string) => void;
+  onRefreshDevices: () => Promise<void>;
   onSoundboardVolumeChange: (volume: number) => void;
+  onEnhancedNoiseSuppressionChange: (enabled: boolean) => void;
+  onVoiceEffectChange: (effect: VoiceEffect) => void;
   onInterfaceSoundPreferencesChange: (
     preferences: InterfaceSoundPreferences,
   ) => void;
@@ -853,6 +867,7 @@ function ProfileSettings({
 function AudioSettings(props: SettingsPageProps) {
   const [meter, setMeter] = useState(0);
   const [testing, setTesting] = useState(false);
+  const [refreshingDevices, setRefreshingDevices] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
   const stopTestRef = useRef<(() => void) | null>(null);
   const stopOutputTestRef = useRef<(() => void) | null>(null);
@@ -880,29 +895,47 @@ function AudioSettings(props: SettingsPageProps) {
     setTestError(null);
     setTesting(true);
     let stream: MediaStream | null = null;
+    let previewStream: MediaStream;
+    let previewCleanup: (() => void) | null = null;
     let context: AudioContext | null = null;
+    let monitor: HTMLAudioElement | null = null;
+    let stopStartedTest: (() => void) | null = null;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          ...(props.selectedInputId === "default"
-            ? {}
-            : { deviceId: { exact: props.selectedInputId } }),
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
+        audio: microphoneCaptureOptions(props.selectedInputId),
       });
       if (!mountedRef.current || requestId !== testRequestRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      await props.onRefreshDevices().catch(() => undefined);
+      if (!mountedRef.current || requestId !== testRequestRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      const preview = await createMicrophonePreview(stream, {
+        enhancedNoiseSuppression: props.enhancedNoiseSuppression,
+        voiceEffect: props.voiceEffect,
+      });
+      previewStream = preview.stream;
+      previewCleanup = preview.cleanup;
+      if (!mountedRef.current || requestId !== testRequestRef.current) {
+        previewCleanup();
         stream.getTracks().forEach((track) => track.stop());
         return;
       }
       context = new AudioContext();
       const analyser = context.createAnalyser();
       analyser.fftSize = 256;
-      context.createMediaStreamSource(stream).connect(analyser);
+      context.createMediaStreamSource(previewStream).connect(analyser);
+      monitor = new Audio();
+      monitor.autoplay = true;
+      monitor.srcObject = previewStream;
       const values = new Uint8Array(analyser.frequencyBinCount);
       let frame = 0;
+      let stopped = false;
       const tick = () => {
+        if (stopped) return;
         analyser.getByteFrequencyData(values);
         const average =
           values.reduce((sum, value) => sum + value, 0) / values.length;
@@ -910,7 +943,13 @@ function AudioSettings(props: SettingsPageProps) {
         frame = requestAnimationFrame(tick);
       };
       const stop = () => {
+        if (stopped) return;
+        stopped = true;
         cancelAnimationFrame(frame);
+        monitor?.pause();
+        if (monitor) monitor.srcObject = null;
+        previewCleanup?.();
+        previewCleanup = null;
         stream?.getTracks().forEach((track) => track.stop());
         void context?.close();
         if (mountedRef.current) {
@@ -919,11 +958,24 @@ function AudioSettings(props: SettingsPageProps) {
         }
         stopTestRef.current = null;
       };
+      stopStartedTest = stop;
       stopTestRef.current = stop;
+      await setAudioElementOutput(monitor, props.selectedOutputId);
+      await monitor.play();
+      if (!mountedRef.current || requestId !== testRequestRef.current) {
+        stop();
+        return;
+      }
       tick();
     } catch (caught) {
-      stream?.getTracks().forEach((track) => track.stop());
-      void context?.close();
+      if (stopStartedTest) stopStartedTest();
+      else {
+        monitor?.pause();
+        if (monitor) monitor.srcObject = null;
+        previewCleanup?.();
+        stream?.getTracks().forEach((track) => track.stop());
+        void context?.close();
+      }
       stopTestRef.current = null;
       if (mountedRef.current && requestId === testRequestRef.current) {
         setTesting(false);
@@ -967,13 +1019,7 @@ function AudioSettings(props: SettingsPageProps) {
       };
       stopOutputTestRef.current = cleanup;
       oscillator.addEventListener("ended", cleanup, { once: true });
-      if (props.selectedOutputId !== "default" && "setSinkId" in audio) {
-        await (
-          audio as HTMLAudioElement & {
-            setSinkId: (id: string) => Promise<void>;
-          }
-        ).setSinkId(props.selectedOutputId);
-      }
+      await setAudioElementOutput(audio, props.selectedOutputId);
       if (!mountedRef.current) {
         cleanup();
         return;
@@ -1000,220 +1046,414 @@ function AudioSettings(props: SettingsPageProps) {
     }
   }
 
+  async function refreshDevices() {
+    setRefreshingDevices(true);
+    setTestError(null);
+    try {
+      await props.onRefreshDevices();
+    } catch (caught) {
+      setTestError(
+        caught instanceof Error
+          ? caught.message
+          : "Media devices could not be refreshed.",
+      );
+    } finally {
+      if (mountedRef.current) setRefreshingDevices(false);
+    }
+  }
+
   return (
     <div className="settings-panel audio-settings">
       <div className="settings-panel__heading">
         <span className="eyebrow">Audio & video</span>
-        <h2>Sound check, minus the awkward tapping</h2>
+        <h2>Voice, video & sounds</h2>
         <p>
-          Nothing asks for microphone access until you start the test or join a
-          room.
+          Choose how Bakbak hears and plays you. Microphone access starts only
+          when you test it or join a room.
         </p>
       </div>
-      <section
-        className="interface-sound-settings"
-        aria-labelledby="interface-sounds-title"
-      >
-        <div className="interface-sound-settings__heading">
-          <div>
-            <span className="eyebrow">Every visual theme</span>
-            <h3 id="interface-sounds-title">Interface sounds</h3>
-            <p>
-              Original industrial-digital cues play through the system output,
-              separately from call audio.
-            </p>
-          </div>
-          <button
-            className="interface-sound-master"
-            type="button"
-            role="switch"
-            aria-checked={props.interfaceSoundPreferences.enabled}
-            onClick={() =>
-              props.onInterfaceSoundPreferencesChange({
-                ...props.interfaceSoundPreferences,
-                enabled: !props.interfaceSoundPreferences.enabled,
-              })
-            }
-          >
-            {props.interfaceSoundPreferences.enabled ? (
-              <Volume2 size={17} />
-            ) : (
-              <VolumeX size={17} />
-            )}
-            {props.interfaceSoundPreferences.enabled ? "On" : "Muted"}
-          </button>
-        </div>
-        <label className="interface-sound-volume">
-          <span>
-            Master volume —{" "}
-            {Math.round(props.interfaceSoundPreferences.volume * 100)}%
-          </span>
-          <input
-            aria-label="Interface sound volume"
-            type="range"
-            min="0"
-            max="1"
-            step="0.05"
-            value={props.interfaceSoundPreferences.volume}
-            disabled={!props.interfaceSoundPreferences.enabled}
-            onChange={(event) =>
-              props.onInterfaceSoundPreferencesChange({
-                ...props.interfaceSoundPreferences,
-                volume: Number(event.target.value),
-              })
-            }
-          />
-        </label>
-        <div className="interface-sound-categories">
-          {(
-            [
-              ["messages", "Messages"],
-              ["voice", "Voice"],
-              ["screen-share", "Screen share"],
-              ["status", "Status"],
-            ] as const satisfies ReadonlyArray<
-              readonly [InterfaceSoundCategory, string]
-            >
-          ).map(([category, label]) => (
-            <div key={category}>
-              <button
-                className="interface-sound-category"
-                type="button"
-                role="switch"
-                aria-checked={
-                  props.interfaceSoundPreferences.categories[category]
-                }
-                onClick={() =>
-                  props.onInterfaceSoundPreferencesChange({
-                    ...props.interfaceSoundPreferences,
-                    categories: {
-                      ...props.interfaceSoundPreferences.categories,
-                      [category]:
-                        !props.interfaceSoundPreferences.categories[category],
-                    },
-                  })
-                }
-              >
-                <span>{label}</span>
-                <i aria-hidden="true" />
-              </button>
-              <button
-                className="interface-sound-preview"
-                type="button"
-                aria-label={`Preview ${label} sound`}
-                disabled={
-                  !props.interfaceSoundPreferences.enabled ||
-                  !props.interfaceSoundPreferences.categories[category]
-                }
-                onClick={() => props.onPreviewInterfaceSound(category)}
-              >
-                <Play size={13} /> Preview
-              </button>
-            </div>
-          ))}
-        </div>
-      </section>
-      <div className="settings-two-column">
-        <section>
-          <h3>
-            <Mic2 size={18} /> Microphone
-          </h3>
-          <DeviceSelect
-            label="Input device"
-            devices={props.inputDevices}
-            selectedId={props.selectedInputId}
-            fallbackLabel="Microphone"
-            disabled={props.inputDisabled}
-            onChange={props.onInputChange}
-          />
-          <div className="microphone-test">
-            <div aria-label="Microphone input level">
-              <i style={{ width: `${meter * 100}%` }} />
-            </div>
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() => void toggleMicTest()}
-            >
-              {testing ? <Square size={14} /> : <Play size={14} />}
-              {testing ? "Stop test" : "Test microphone"}
-            </button>
-          </div>
-          {props.inputError ? (
-            <p className="settings-error">{props.inputError}</p>
-          ) : null}
-        </section>
-        <section>
-          <h3>
-            <Headphones size={18} /> Output
-          </h3>
-          <DeviceSelect
-            label="Speaker"
-            devices={props.outputDevices}
-            selectedId={props.selectedOutputId}
-            fallbackLabel="Speaker"
-            disabled={props.inputDisabled || !props.outputSelectionSupported}
-            onChange={props.onOutputChange}
-          />
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={() => void testOutput()}
-          >
-            <Play size={14} /> Test output
-          </button>
-          {!props.outputSelectionSupported ? (
-            <p className="settings-note">
-              This runtime uses the system output.
-            </p>
-          ) : null}
-          {props.outputError ? (
-            <p className="settings-error">{props.outputError}</p>
-          ) : null}
-        </section>
-        <section>
-          <h3>
-            <Camera size={18} /> Camera
-          </h3>
-          <DeviceSelect
-            label="Video device"
-            devices={props.cameraDevices}
-            selectedId={props.selectedCameraId}
-            fallbackLabel="Camera"
-            disabled={props.inputDisabled}
-            onChange={props.onCameraChange}
-          />
-          <p className="settings-note">
-            Camera stays off until you turn it on in a voice room.
-          </p>
-          {props.cameraError ? (
-            <p className="settings-error">{props.cameraError}</p>
-          ) : null}
-        </section>
-        <section>
-          <h3>
-            <Laptop size={18} /> Soundboard
-          </h3>
-          <label className="settings-field">
-            <span>
-              Local volume — {Math.round(props.soundboardVolume * 100)}%
+      <div className="audio-settings__categories">
+        <section
+          className="audio-settings-category"
+          aria-labelledby="voice-input-title"
+        >
+          <header className="audio-settings-category__heading">
+            <span aria-hidden="true">
+              <Mic2 size={19} />
             </span>
-            <input
-              aria-label="Soundboard volume"
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={props.soundboardVolume}
-              onChange={(event) =>
-                props.onSoundboardVolumeChange(Number(event.target.value))
-              }
-            />
-          </label>
-          <p className="settings-note">
-            Call audio and soundboard use this output. Interface cues keep using
-            the system output.
-          </p>
+            <div>
+              <small>Voice input</small>
+              <h3 id="voice-input-title">Microphone</h3>
+              <p>
+                Pick your mic, clean it up, then hear exactly what others do.
+              </p>
+            </div>
+          </header>
+          <div className="audio-settings-category__body">
+            <div className="audio-device-row">
+              <DeviceSelect
+                label="Input device"
+                devices={props.inputDevices}
+                selectedId={props.selectedInputId}
+                fallbackLabel="Microphone"
+                disabled={props.inputDisabled}
+                onChange={props.onInputChange}
+              />
+              <div className="audio-device-action">
+                <span>Mic test</span>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  aria-label={testing ? "Stop test" : "Test microphone"}
+                  onClick={() => void toggleMicTest()}
+                >
+                  {testing ? <Square size={14} /> : <Play size={14} />}
+                  {testing ? "Stop test" : "Start mic test"}
+                </button>
+              </div>
+            </div>
+            <div className="microphone-test">
+              <div aria-label="Microphone input level">
+                <i style={{ width: `${meter * 100}%` }} />
+              </div>
+              <p>
+                {testing
+                  ? "Live monitor is on. You should hear your processed voice through the selected output."
+                  : "Use headphones before testing unless you would like to summon the feedback dragon."}
+              </p>
+            </div>
+            <div className="microphone-processing-settings">
+              <div className="microphone-processing-settings__heading">
+                <div>
+                  <strong>Bakbak noise cleanup</strong>
+                  <small>
+                    Local RNNoise removes keyboard and room noise before your
+                    mic leaves this device.
+                  </small>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-label="Bakbak noise cleanup"
+                  aria-checked={props.enhancedNoiseSuppression}
+                  disabled={
+                    props.inputDisabled || !props.microphoneProcessingSupported
+                  }
+                  onClick={() =>
+                    props.onEnhancedNoiseSuppressionChange(
+                      !props.enhancedNoiseSuppression,
+                    )
+                  }
+                >
+                  {props.enhancedNoiseSuppression ? "On" : "Off"}
+                </button>
+              </div>
+              <fieldset>
+                <legend>Voice lab</legend>
+                <div
+                  className="voice-effect-options"
+                  role="radiogroup"
+                  aria-label="Voice filter"
+                >
+                  {(
+                    [
+                      ["none", "Natural"],
+                      ["child", "Child"],
+                      ["robot", "Robot"],
+                      ["radio", "Walkie-talkie"],
+                    ] as const satisfies ReadonlyArray<
+                      readonly [VoiceEffect, string]
+                    >
+                  ).map(([effect, label]) => (
+                    <button
+                      key={effect}
+                      type="button"
+                      role="radio"
+                      aria-checked={props.voiceEffect === effect}
+                      className={
+                        props.voiceEffect === effect ? "is-active" : undefined
+                      }
+                      disabled={
+                        props.inputDisabled ||
+                        (!props.microphoneProcessingSupported &&
+                          effect !== "none")
+                      }
+                      onClick={() => props.onVoiceEffectChange(effect)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <small>
+                  Filters affect your outgoing microphone, not the soundboard.
+                  Comedy remains user-supplied.
+                </small>
+              </fieldset>
+            </div>
+            {!props.microphoneProcessingSupported ? (
+              <p className="settings-note">
+                This runtime keeps the built-in WebRTC cleanup but cannot run
+                the enhanced local processor.
+              </p>
+            ) : null}
+            {props.microphoneProcessingError ? (
+              <p className="settings-error" role="alert">
+                {props.microphoneProcessingError}
+              </p>
+            ) : null}
+            {props.inputError ? (
+              <p className="settings-error">{props.inputError}</p>
+            ) : null}
+          </div>
+        </section>
+
+        <section
+          className="audio-settings-category"
+          aria-labelledby="voice-output-title"
+        >
+          <header className="audio-settings-category__heading">
+            <span aria-hidden="true">
+              <Headphones size={19} />
+            </span>
+            <div>
+              <small>Voice output</small>
+              <h3 id="voice-output-title">Speakers & headphones</h3>
+              <p>
+                Call audio, soundboard clips, and mic tests use this device.
+              </p>
+            </div>
+          </header>
+          <div className="audio-settings-category__body">
+            <div className="audio-device-row audio-device-row--output">
+              <DeviceSelect
+                label="Output device"
+                devices={props.outputDevices}
+                selectedId={props.selectedOutputId}
+                fallbackLabel="Speaker"
+                disabled={
+                  props.inputDisabled || !props.outputSelectionSupported
+                }
+                onChange={props.onOutputChange}
+              />
+              <div className="audio-device-action">
+                <span>Device list</span>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={refreshingDevices}
+                  onClick={() => void refreshDevices()}
+                >
+                  <RefreshCw
+                    size={14}
+                    className={refreshingDevices ? "is-spinning" : undefined}
+                  />
+                  {refreshingDevices ? "Refreshing…" : "Refresh"}
+                </button>
+              </div>
+              <div className="audio-device-action">
+                <span>Playback</span>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => void testOutput()}
+                >
+                  <Play size={14} /> Test output
+                </button>
+              </div>
+            </div>
+            <p className="settings-note">
+              Some runtimes reveal named speakers only after microphone access.
+              Starting a mic test refreshes this list automatically.
+            </p>
+            {!props.outputSelectionSupported ? (
+              <p className="settings-note">
+                This runtime supports only the system output. Bakbak will still
+                show any devices it can discover.
+              </p>
+            ) : null}
+            {props.outputError ? (
+              <p className="settings-error">{props.outputError}</p>
+            ) : null}
+          </div>
+        </section>
+
+        <section
+          className="audio-settings-category"
+          aria-labelledby="video-title"
+        >
+          <header className="audio-settings-category__heading">
+            <span aria-hidden="true">
+              <Camera size={19} />
+            </span>
+            <div>
+              <small>Video</small>
+              <h3 id="video-title">Camera</h3>
+              <p>Your camera stays off until you enable it in a voice room.</p>
+            </div>
+          </header>
+          <div className="audio-settings-category__body">
+            <div className="audio-device-row">
+              <DeviceSelect
+                label="Video device"
+                devices={props.cameraDevices}
+                selectedId={props.selectedCameraId}
+                fallbackLabel="Camera"
+                disabled={props.inputDisabled}
+                onChange={props.onCameraChange}
+              />
+            </div>
+            {props.cameraError ? (
+              <p className="settings-error">{props.cameraError}</p>
+            ) : null}
+          </div>
+        </section>
+
+        <section
+          className="audio-settings-category"
+          aria-labelledby="app-sounds-title"
+        >
+          <header className="audio-settings-category__heading">
+            <span aria-hidden="true">
+              <Volume2 size={19} />
+            </span>
+            <div>
+              <small>App sounds</small>
+              <h3 id="app-sounds-title">Soundboard & interface cues</h3>
+              <p>Balance the useful noises and the deeply unnecessary ones.</p>
+            </div>
+          </header>
+          <div className="audio-settings-category__body audio-app-sounds">
+            <div className="audio-app-sounds__block">
+              <div className="interface-sound-settings__heading">
+                <div>
+                  <h4>
+                    <Laptop size={16} /> Soundboard
+                  </h4>
+                  <p>Clips follow the output device selected above.</p>
+                </div>
+              </div>
+              <label className="interface-sound-volume">
+                <span>
+                  Local volume — {Math.round(props.soundboardVolume * 100)}%
+                </span>
+                <input
+                  aria-label="Soundboard volume"
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={props.soundboardVolume}
+                  onChange={(event) =>
+                    props.onSoundboardVolumeChange(Number(event.target.value))
+                  }
+                />
+              </label>
+            </div>
+            <div
+              className="audio-app-sounds__block interface-sound-settings"
+              aria-labelledby="interface-sounds-title"
+            >
+              <div className="interface-sound-settings__heading">
+                <div>
+                  <h4 id="interface-sounds-title">Interface sounds</h4>
+                  <p>
+                    Original cues use the system output, separately from call
+                    audio.
+                  </p>
+                </div>
+                <button
+                  className="interface-sound-master"
+                  type="button"
+                  role="switch"
+                  aria-checked={props.interfaceSoundPreferences.enabled}
+                  onClick={() =>
+                    props.onInterfaceSoundPreferencesChange({
+                      ...props.interfaceSoundPreferences,
+                      enabled: !props.interfaceSoundPreferences.enabled,
+                    })
+                  }
+                >
+                  {props.interfaceSoundPreferences.enabled ? (
+                    <Volume2 size={17} />
+                  ) : (
+                    <VolumeX size={17} />
+                  )}
+                  {props.interfaceSoundPreferences.enabled ? "On" : "Muted"}
+                </button>
+              </div>
+              <label className="interface-sound-volume">
+                <span>
+                  Master volume —{" "}
+                  {Math.round(props.interfaceSoundPreferences.volume * 100)}%
+                </span>
+                <input
+                  aria-label="Interface sound volume"
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={props.interfaceSoundPreferences.volume}
+                  disabled={!props.interfaceSoundPreferences.enabled}
+                  onChange={(event) =>
+                    props.onInterfaceSoundPreferencesChange({
+                      ...props.interfaceSoundPreferences,
+                      volume: Number(event.target.value),
+                    })
+                  }
+                />
+              </label>
+              <div className="interface-sound-categories">
+                {(
+                  [
+                    ["messages", "Messages"],
+                    ["voice", "Voice"],
+                    ["screen-share", "Screen share"],
+                    ["status", "Status"],
+                  ] as const satisfies ReadonlyArray<
+                    readonly [InterfaceSoundCategory, string]
+                  >
+                ).map(([category, label]) => (
+                  <div key={category}>
+                    <button
+                      className="interface-sound-category"
+                      type="button"
+                      role="switch"
+                      aria-checked={
+                        props.interfaceSoundPreferences.categories[category]
+                      }
+                      onClick={() =>
+                        props.onInterfaceSoundPreferencesChange({
+                          ...props.interfaceSoundPreferences,
+                          categories: {
+                            ...props.interfaceSoundPreferences.categories,
+                            [category]:
+                              !props.interfaceSoundPreferences.categories[
+                                category
+                              ],
+                          },
+                        })
+                      }
+                    >
+                      <span>{label}</span>
+                      <i aria-hidden="true" />
+                    </button>
+                    <button
+                      className="interface-sound-preview"
+                      type="button"
+                      aria-label={`Preview ${label} sound`}
+                      disabled={
+                        !props.interfaceSoundPreferences.enabled ||
+                        !props.interfaceSoundPreferences.categories[category]
+                      }
+                      onClick={() => props.onPreviewInterfaceSound(category)}
+                    >
+                      <Play size={13} /> Preview
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </section>
       </div>
       {testError ? (
@@ -1249,6 +1489,10 @@ function DeviceSelect({
         onChange={(event) => onChange(event.target.value)}
       >
         <option value="default">System default</option>
+        {selectedId !== "default" &&
+        !devices.some((device) => device.deviceId === selectedId) ? (
+          <option value={selectedId}>Saved device (permission needed)</option>
+        ) : null}
         {devices
           .filter((device) => device.deviceId !== "default")
           .map((device, index) => (

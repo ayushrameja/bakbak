@@ -44,6 +44,8 @@ describe("AudioOutputRouter", () => {
     expect(firstElement.element.srcObject).toBe(firstContext.stream);
 
     router.cleanup();
+    expect(firstElement.element.muted).toBe(true);
+    expect(firstElement.element.volume).toBe(0);
     expect(firstElement.pause).toHaveBeenCalledOnce();
     expect(firstElement.element.srcObject).toBeNull();
     expect(firstContext.track.stop).toHaveBeenCalledOnce();
@@ -74,6 +76,8 @@ describe("AudioOutputRouter", () => {
 
     await router.setDevice("speaker-1");
     router.resetMonitor();
+    expect(firstElement.element.muted).toBe(true);
+    expect(firstElement.element.volume).toBe(0);
     expect(firstElement.pause).toHaveBeenCalledOnce();
     expect(firstElement.element.srcObject).toBeNull();
     expect(contextDouble.routes[0]?.track.stop).toHaveBeenCalledOnce();
@@ -134,6 +138,8 @@ function createElementDouble() {
   const element = {
     autoplay: false,
     hidden: false,
+    muted: false,
+    volume: 1,
     srcObject: null,
     dataset: {},
     get sinkId() {

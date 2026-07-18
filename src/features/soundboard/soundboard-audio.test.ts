@@ -17,10 +17,16 @@ describe("SoundboardAudioPublisher", () => {
     const outbound = {
       stream: { getAudioTracks: () => [track] },
     } as unknown as MediaStreamAudioDestinationNode;
-    const sources = [createSource(), createSource(), createSource()];
-    const gains = [createGain(), createGain(), createGain()];
+    const sources = [
+      createSource(),
+      createSource(),
+      createSource(),
+      createSource(),
+    ];
+    const gains = Array.from({ length: 8 }, createGain);
     const createBufferSource = vi.fn(() => sources.shift());
     const context = {
+      currentTime: 0,
       state: "running",
       createMediaStreamDestination: vi.fn(() => outbound),
       createBufferSource,
@@ -71,20 +77,26 @@ describe("SoundboardAudioPublisher", () => {
     expect(publication.unmute).toHaveBeenCalledTimes(2);
     expect(track.enabled).toBe(true);
     expect(createBufferSource).toHaveBeenCalledTimes(2);
-    expect(sourceDoubles[0]?.connect).toHaveBeenNthCalledWith(1, outbound);
-    expect(sourceDoubles[0]?.connect).toHaveBeenNthCalledWith(
-      2,
+    expect(sourceDoubles[0]?.connect).toHaveBeenCalledWith(
       gainDoubles[0]?.node,
     );
-    expect(gainDoubles[0]?.connect).toHaveBeenCalledWith(destination);
+    expect(gainDoubles[0]?.connect).toHaveBeenNthCalledWith(1, outbound);
+    expect(gainDoubles[0]?.connect).toHaveBeenNthCalledWith(
+      2,
+      gainDoubles[1]?.node,
+    );
+    expect(gainDoubles[0]?.setValueAtTime).toHaveBeenNthCalledWith(1, 1, 0);
+    expect(gainDoubles[0]?.setValueAtTime).toHaveBeenNthCalledWith(2, 1, 0.98);
+    expect(gainDoubles[0]?.linearRampToValueAtTime).toHaveBeenCalledWith(0, 1);
+    expect(gainDoubles[1]?.connect).toHaveBeenCalledWith(destination);
 
     publisher.setVolume(0.25);
-    expect(gainDoubles[0]?.node.gain.value).toBe(0.25);
+    expect(gainDoubles[1]?.node.gain.value).toBe(0.25);
     publisher.setDeafened(true);
-    expect(gainDoubles[0]?.node.gain.value).toBe(0);
+    expect(gainDoubles[1]?.node.gain.value).toBe(0);
     publisher.setDeafened(false);
     publisher.setVolume(0.5);
-    expect(gainDoubles[0]?.node.gain.value).toBe(0);
+    expect(gainDoubles[1]?.node.gain.value).toBe(0);
 
     sourceDoubles[0]?.node.onended?.(new Event("ended"));
     await first.finished;
@@ -109,10 +121,25 @@ describe("SoundboardAudioPublisher", () => {
 
     third.stop();
     expect(sourceDoubles[2]?.stop).toHaveBeenCalledOnce();
+    await third.finished;
+    expect(gainDoubles[4]?.disconnect).toHaveBeenCalledOnce();
     publisher.stopAll();
     expect(track.enabled).toBe(false);
+    expect(gainDoubles[4]?.cancelScheduledValues).toHaveBeenCalledWith(0);
+    expect(gainDoubles[4]?.setValueAtTime).toHaveBeenLastCalledWith(0, 0);
     publisher.cleanup();
     expect(participant.unpublishTrack).toHaveBeenCalledWith(track);
+
+    const idleCallsAfterCleanup = onIdle.mock.calls.length;
+    const fourth = await publisher.play(
+      participant,
+      "event-4",
+      mockSoundboardSounds[0]!,
+      blob,
+    );
+    sourceDoubles[3]?.node.onended?.(new Event("ended"));
+    await fourth.finished;
+    expect(onIdle).toHaveBeenCalledTimes(idleCallsAfterCleanup + 1);
   });
 });
 
@@ -140,15 +167,36 @@ function createSource() {
 const gainDoubles: Array<{
   node: GainNode;
   connect: ReturnType<typeof vi.fn>;
+  disconnect: ReturnType<typeof vi.fn>;
+  cancelScheduledValues: ReturnType<typeof vi.fn>;
+  linearRampToValueAtTime: ReturnType<typeof vi.fn>;
+  setValueAtTime: ReturnType<typeof vi.fn>;
 }> = [];
 
 function createGain() {
   const connect = vi.fn();
+  const cancelScheduledValues = vi.fn();
+  const disconnect = vi.fn();
+  const linearRampToValueAtTime = vi.fn();
+  const setValueAtTime = vi.fn();
   const node = {
-    gain: { value: 0 },
+    context: { currentTime: 0 },
+    gain: {
+      value: 0,
+      cancelScheduledValues,
+      linearRampToValueAtTime,
+      setValueAtTime,
+    },
     connect,
-    disconnect: vi.fn(),
+    disconnect,
   } as unknown as GainNode;
-  gainDoubles.push({ node, connect });
+  gainDoubles.push({
+    node,
+    connect,
+    disconnect,
+    cancelScheduledValues,
+    linearRampToValueAtTime,
+    setValueAtTime,
+  });
   return node;
 }

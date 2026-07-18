@@ -2629,3 +2629,217 @@ src/lib/channel-service.test.ts` — passed two files with 14 tests.
 - **Next:** Open the deployed layout with one hosted admin and one regular
   member, confirm the exact seven-category/24-room order for both, and verify
   that an outsider cannot read the categories or rooms.
+
+## 2026-07-18 — Add local microphone cleanup and voice lab
+
+- **Completed:** Added a LiveKit-compatible sender-side microphone processor
+  backed by a 48 kHz AudioWorklet and the synchronous RNNoise 0.2 WebAssembly
+  model. The processor keeps built-in echo cancellation/noise
+  suppression/automatic gain control, bridges 128-sample render quanta into
+  RNNoise's 480-sample frames without starving output, and applies optional
+  Child pitch, Robot modulation, or Walkie-talkie band-limited saturation
+  after cleanup. Wired processor init/restart/update/teardown into initial
+  microphone acquisition, live preference changes, input-device replacement,
+  and direct room reuse while preserving the named `bakbak-microphone` and
+  independent soundboard tracks. Added persisted Audio Settings controls,
+  v1-to-v2 preference migration, the selected processing path in the explicit
+  microphone meter test, unsupported/failure fallback messaging, focused
+  tests, and bundled upstream license notices.
+- **Decisions:** Enhanced cleanup defaults on and effects default to Natural.
+  Processing and the model remain on-device; only the resulting speech track
+  reaches the already-authorized LiveKit room. A missing AudioWorklet or RNNoise
+  failure never blocks voice join and instead keeps WebRTC's built-in cleanup.
+  Effects are intentionally sender-side, mutually exclusive, and excluded from
+  soundboard audio. The Jitsi wrapper is pinned at `0.2.1`; its Apache/original
+  MIT notice and Xiph.Org's BSD 3-Clause notice ship with the renderer.
+- **Validation:**
+  - `pnpm exec vitest run src/features/settings/device-preferences.test.ts
+src/features/settings/SettingsPage.test.tsx
+src/features/voice/microphone-processing.test.ts
+src/features/voice/useVoiceRoom.test.tsx` — passed four files with 56 tests.
+  - `pnpm check` — passed Prettier, ESLint, renderer/Node typechecks, 51 Vitest
+    files with 259 tests, 12 Node tests, synchronized version `0.12.0`,
+    production build, and secret scan. The build emits a 1,929.95 kB local
+    microphone-worklet asset and retains the existing non-blocking large-chunk
+    warning; main JavaScript is 1,222.88 kB (338.66 kB gzip).
+  - Mock-browser Settings QA — passed cleanup-on default, Natural/Child/Robot/
+    Walkie-talkie accessibility, Robot selection state, and a clean browser
+    error log. No real microphone permission was requested.
+  - `pnpm tauri:build:local` — passed for an ad-hoc-signed 38 MiB ARM64
+    `Bakbak.app`; RNNoise notices were present in the production renderer
+    assets. Notarization was skipped because Apple credentials are unavailable.
+  - Post-bundle `pnpm security:scan` — passed for `dist` and the native release
+    bundle.
+- **Documentation updated:** Updated `README.md`, `docs/architecture.md`, active
+  plan 0001, added plan 0013, bundled RNNoise/Jitsi notices under
+  `public/vendor/rnnoise`, and appended this canonical progress entry.
+- **Known limitations:** Real keyboard rejection, speech intelligibility, the
+  three effects, live effect changes, device switching, and processor teardown
+  still need human observation between two installed clients. Windows x64 was
+  not available for its installed-client smoke test. RNNoise targets common
+  stationary/background noise, not guaranteed speaker separation. The
+  updater-enabled `pnpm tauri build` was not run because protected updater
+  signing credentials are unavailable; the supported local app-only bundle
+  passed.
+- **Next:** Run plan 0013's installed macOS two-client matrix with keyboard,
+  fan/room noise, laptop speakers, headphones, each effect, mute, input-device
+  replacement, direct room switching, and leave/rejoin; then repeat the smoke
+  test on Windows x64 before the next friend-test build.
+
+## 2026-07-18 — Repair Audio & Video settings and device routing
+
+- **Completed:** Rebuilt Audio & Video as four spaced Voice Input, Voice
+  Output, Video, and App Sounds categories instead of the cramped two-column
+  card grid. The microphone test now plays its processed preview through the
+  selected speaker while retaining the live meter and tears down playback,
+  capture, processing, animation, and analysis resources together. Replaced
+  LiveKit-filtered discovery with the runtime's complete
+  `enumerateDevices()` result, added explicit refresh, refreshed automatically
+  after mic permission, and stopped default-only permission results from
+  erasing a saved device ID. Selected-speaker changes now route the soundboard
+  monitor, LiveKit room, and all current/future remote audio elements.
+- **Decisions:** Output capability follows the browser primitive Bakbak
+  actually uses, `HTMLMediaElement.setSinkId`, instead of requiring a second
+  LiveKit capability opinion. macOS WebKit reveals named speakers only after
+  capture permission, so opening Settings remains permission-free while the
+  user-initiated mic test becomes the automatic discovery refresh point.
+  Unsupported older runtimes truthfully retain system output rather than
+  pretending a switch succeeded. Live monitoring includes a headphone warning
+  because physics remains an enthusiastic participant in feedback loops.
+- **Validation:**
+  - `pnpm exec vitest run src/features/settings/SettingsPage.test.tsx
+src/features/voice/media-devices.test.ts src/features/voice/remote-audio.test.ts
+src/features/settings/device-preferences.test.ts
+src/features/voice/useVoiceRoom.test.tsx` — passed five files with 66 tests.
+  - Initial `pnpm test -- <focused paths>` — Vitest passed all 52 files and 265
+    tests, then the package script incorrectly forwarded the TypeScript paths
+    to its separate Node test command; the focused `pnpm exec vitest` command
+    above and the unmodified full test command below both passed.
+  - `pnpm check` — passed Prettier, ESLint, renderer/Node typechecks, 52 Vitest
+    files with 266 tests, 12 Node tests, synchronized version `0.13.0`,
+    production build, and secret scan. Vite retained the existing non-blocking
+    large-chunk warning; output is 114.80 kB CSS, 1,227.54 kB main JavaScript
+    (340.21 kB gzip), and the existing 1,929.95 kB local microphone worklet.
+  - Mock-browser Settings QA at 1000×720 — passed all four category regions,
+    954×674 dialog containment, 747/747 px canvas client/scroll width, 705/705
+    px panel client/scroll width, internal 564/1144 px vertical scrolling, zero
+    document horizontal overflow, complete upper/lower visual review, and a
+    clean browser error log. No real microphone permission was requested.
+  - `pnpm tauri:build:local` — passed for the ad-hoc-signed ARM64 `Bakbak.app`;
+    notarization was skipped because Apple credentials are unavailable.
+  - Post-bundle `pnpm security:scan` — passed for `dist` and the native release
+    bundle; `git diff --check` also passed.
+- **Documentation updated:** Updated `docs/architecture.md`, active plan 0001,
+  plan 0013, and this canonical progress log.
+- **Known limitations:** Audible microphone monitoring and physical output
+  switching still require a human installed-client check with headphones and
+  at least two real output devices. macOS versions whose bundled WebKit lacks
+  speaker selection remain system-output-only, and Windows x64 was unavailable
+  for installed-client validation. The updater-enabled `pnpm tauri build` was
+  not run because protected signing credentials are unavailable; the supported
+  local app-only bundle passed.
+- **Next:** In the installed macOS app, grant microphone permission, confirm the
+  refreshed list shows every connected speaker/headset, switch between two
+  outputs during a two-client call, and compare Natural/Child/Robot/
+  Walkie-talkie in the audible mic test before repeating the smoke test on
+  Windows x64.
+
+## 2026-07-18 — Harden soundboard final-frame silence
+
+- **Completed:** Repaired the recurring WebKit soundboard loop after natural
+  completion and mid-clip stops. Every clip now passes through a 20 ms
+  final-silence envelope on both the outbound and local paths. Manual stop and
+  stop-all first force that envelope to digital zero and then synchronously
+  disconnect and settle the source without depending on a later `ended` event.
+  Voice teardown invalidates pending playback/publication work and
+  deterministically finishes any retained sources. Local selected-output
+  monitors now hard-mute before their streams are detached. Remote soundboard
+  elements explicitly mirror LiveKit track mute/unmute state and hard-mute as
+  soon as the synchronized stop message arrives.
+- **Decisions:** Preserved the prepublished, reusable LiveKit soundboard track
+  and overlapping playback instead of renegotiating a track per clip. Protected
+  both sender and receiver because the repeated frame can be retained by either
+  hidden selected-output element. Generation checks ensure a stale async
+  publication or decode cannot revive audio after leave/rejoin.
+- **Validation:**
+  - `pnpm exec vitest run
+src/features/soundboard/soundboard-audio.test.ts
+src/features/voice/audio-output-router.test.ts
+src/features/voice/remote-audio.test.ts
+src/features/voice/useVoiceRoom.test.tsx` — passed four files with 40 tests,
+    including final-zero automation, manual stop without `ended`, teardown with
+    a retained source, per-track remote muting, and synchronized stop handling.
+    An initial focused run exposed a missing `AudioContext.currentTime` value in
+    the test double; the double was corrected before the passing rerun.
+  - `pnpm check` — passed Prettier, ESLint, renderer/Node typechecks, 52 Vitest
+    files with 268 tests, 12 Node tests, synchronized version `0.13.0`,
+    production build, and bundle secret scan. Vite retained the existing
+    non-blocking large-chunk warning; output is 114.80 kB CSS, 1,229.29 kB main
+    JavaScript (340.74 kB gzip), and the existing 1,929.95 kB local microphone
+    worklet. An intermediate rerun stopped at ESLint on a newly added unbound
+    test assertion; the assertion was corrected and the complete final gate
+    passed.
+  - `pnpm tauri:build:local` — passed for an ad-hoc-signed ARM64 `Bakbak.app`;
+    notarization was skipped because Apple credentials are unavailable.
+  - Post-bundle `pnpm security:scan` — passed for `dist` and the native release
+    bundle; `git diff --check` also passed.
+- **Documentation updated:** Updated `docs/architecture.md`, active plan 0001,
+  and this canonical progress log.
+- **Known limitations:** The retained-frequency symptom is specific to real
+  WebKit audio output and still needs human observation with two installed
+  clients. Test natural completion on a clip whose final waveform is non-zero,
+  mid-clip stop, stop-all with overlaps, sender local monitoring, and receiver
+  playback through each available output device. Windows x64 was unavailable.
+  The updater-enabled `pnpm tauri build` was not run because protected updater
+  signing credentials are unavailable; the supported local app-only bundle
+  passed.
+- **Next:** Install the rebuilt macOS bundle on two clients and repeat the
+  natural-end, mid-stop, overlapping-stop, output-switch, leave/rejoin, and
+  immediate-replay matrix while listening for any retained frame.
+
+## 2026-07-18 — Make output fallback notices temporary
+
+- **Completed:** Converted speaker fallback and output-switch errors from
+  persistent room banners into eight-second notices. Each new failure restarts
+  the timer, the new accessible close control dismisses it immediately, and
+  the existing Review output action still opens Audio & Video settings.
+  Successful switching, voice disconnect, and hook teardown clear the notice
+  and its timer.
+- **Decisions:** Kept the underlying selected-output preference unchanged so a
+  transient notice does not silently rewrite the user's device choice. The
+  notice state lives in the voice controller rather than only the visible room,
+  so it expires even while Settings or another channel is open and can be
+  reused by both join fallback and manual switch failures.
+- **Validation:**
+  - `pnpm exec vitest run src/features/voice/VoiceRoom.test.tsx
+src/features/voice/useVoiceRoom.test.tsx
+src/features/voice/VoiceControlDock.test.tsx && pnpm typecheck && pnpm lint` —
+    passed three focused files with 43 tests, both TypeScript projects, and
+    ESLint before the final timer regression test was added.
+  - `pnpm check` — passed Prettier, ESLint, renderer/Node typechecks, 52 Vitest
+    files with 270 tests, 12 Node tests, synchronized version `0.13.0`,
+    production build, and bundle secret scan. The new regressions cover
+    immediate dismissal, Review output, and eight-second automatic expiry.
+    Vite retained the existing non-blocking large-chunk warning; output is
+    115.22 kB CSS, 1,229.89 kB main JavaScript (340.84 kB gzip), and the
+    existing 1,929.95 kB local microphone worklet.
+  - Mock-browser QA — passed entering the local preview, joining Queue, opening
+    Settings, and rendering the redesigned Audio & Video categories. The
+    browser exposed only System default, so the unavailable-hardware branch was
+    covered deterministically by the component/hook regressions rather than a
+    fabricated device.
+  - `pnpm tauri:build:local` — passed for an ad-hoc-signed ARM64 `Bakbak.app`;
+    notarization was skipped because Apple credentials are unavailable.
+  - Post-bundle `pnpm security:scan` — passed for `dist` and the native release
+    bundle; `git diff --check` also passed.
+- **Documentation updated:** Updated `docs/architecture.md` and this canonical
+  progress log.
+- **Known limitations:** The natural missing-speaker presentation still needs
+  one installed-client observation with a previously selected output removed.
+  Windows x64 was unavailable. The updater-enabled `pnpm tauri build` was not
+  run because protected updater signing credentials are unavailable; the
+  supported local app-only bundle passed.
+- **Next:** In the installed app, select a removable headset, disconnect it,
+  join voice, and confirm the fallback notice disappears after eight seconds or
+  immediately through its close button while Review output still opens the
+  correct Settings category.
