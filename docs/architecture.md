@@ -221,22 +221,25 @@ remaining audible. The final Arc-plus-native
 voice, video, device, soundboard, reconnect, and crash-expiry rehearsal remains
 open for human observation.
 
-Installed macOS 14+ clients start a Tauri-owned ScreenCaptureKit session
-through Apple's system picker, which explicitly permits one display, window,
-or application. Windows uses a Bakbak-owned Screens/Applications picker backed
-by privacy-filtered native monitor/window handles; the renderer never guesses
-a process from a window title. A separate least-privilege LiveKit room
-publishes H.264 video with presenter-selected 480p/720p/1080p and
-15/30/60-fps ceilings. The default is 1080p/60, the last successful quality is
-device-local, and source audio is unchecked for every new share. macOS captures
-optional 48 kHz stereo matched source audio while excluding Bakbak and retries
-video-only if audio fails. Windows now has direct free-threaded
+Installed macOS 14+ and Windows clients share one Bakbak Entire screen /
+Application picker before capture starts. macOS enumerates displays and running
+applications asynchronously through ScreenCaptureKit with a bounded wait;
+resolved filters use ScreenCaptureKit's point-to-pixel metadata so Retina
+application capture retains its actual pixel dimensions. Windows uses
+privacy-filtered native monitor/window handles, and the renderer never guesses
+a process from a window title. A separate least-privilege LiveKit room publishes
+H.264 video with presenter-selected 480p/720p/1080p and 15/30/60-fps ceilings.
+The default is 1080p/60, the last successful quality is device-local, and source
+audio defaults on whenever matched audio is available for the selected source
+(not persisted). macOS captures optional 48 kHz stereo matched source audio
+while excluding Bakbak and retries video-only if audio fails. Windows has direct
+free-threaded
 `Windows.Graphics.Capture`, D3D11 frame delivery and staging readback,
-resize/quality frame-pool reconfiguration, temporary in-memory picker previews,
-and CPU BGRA scaling/color conversion to I420 for LiveKit. On Windows build
-20348 or newer, WASAPI process loopback includes the
-selected application's process tree or excludes Bakbak's process tree for a
-display; older builds keep video enabled and report why audio is unavailable.
+resize/quality frame-pool reconfiguration, time-bounded in-memory picker
+previews, and CPU BGRA scaling/color conversion to I420 for LiveKit. On Windows
+build 20348 or newer, WASAPI process loopback includes the selected
+application's process tree or excludes Bakbak's process tree for a display;
+older builds keep video enabled and report why audio is unavailable.
 Source termination, terminal LiveKit disconnect, voice leave, explicit stop,
 and main-window close tear down capture and the companion.
 Linking ScreenCaptureKit directly makes macOS 12.3 the desktop bundle minimum;
@@ -423,9 +426,11 @@ The main Tauri configuration always creates signed updater artifacts, while
 that do not have access to the protected release key.
 Screen-capture commands are restricted to the main Bakbak window. Native code
 receives only the public LiveKit URL and a five-minute member-authorized token,
-never an API signing secret. On macOS it owns the system picker,
+never an API signing secret. On macOS it owns shareable-content enumeration,
 ScreenCaptureKit stream, frame/audio conversion, native LiveKit companion, and
-deterministic teardown; captured source names are not logged.
+deterministic teardown; enumeration and revalidation use the asynchronous
+framework API with a five-second ceiling, and captured source names are not
+logged.
 The ScreenCaptureKit-to-LiveKit zero-copy boundary transfers its owned
 `CVPixelBuffer` retain into LiveKit's macOS native frame wrapper exactly once;
 Rust must not release that transferred retain again. A share is reported as
@@ -753,18 +758,19 @@ An invite-management UI is deferred until post-v1.
 
 ### Desktop screen share
 
-1. A connected installed client opens a renderer confirmation; source audio is
-   unchecked on every start. The confirmation exposes independent
-   480p/720p/1080p and 15/30/60-fps controls, defaults to 1080p/60 on first
-   use, and persists only the last successful quality under
-   `bakbak.screenSharePreferences.v1`. Browser clients have no share UI and
-   force every screen publication unsubscribed.
+1. A connected installed client opens a renderer confirmation with Entire
+   screen / Application tabs on macOS 14+ and Windows. Source audio defaults on
+   when matched audio is available; the presenter can turn it off with a
+   switch. The confirmation exposes independent 480p/720p/1080p and 15/30/60-fps
+   controls, defaults to 1080p/60 on first use, and persists only the last
+   successful quality under `bakbak.screenSharePreferences.v1`. Browser clients
+   have no share UI and force every screen publication unsubscribed.
 2. For native capture, the renderer requests `{ channelId, purpose:
 "screen_share" }`. The function repeats authentication, membership, and
    voice-channel checks, then signs a five-minute companion identity tied to
    the same room and owner.
-3. Tauri validates that the caller is the main window, opens the macOS system
-   picker or validates a privacy-filtered Windows source handle, and
+3. Tauri validates that the caller is the main window, resolves the selected
+   macOS display/application or privacy-filtered Windows source handle, and
    connects a second LiveKit room using only the returned public URL and token.
    It never receives a signing key.
 4. macOS applies live ScreenCaptureKit configuration updates. Windows uses a

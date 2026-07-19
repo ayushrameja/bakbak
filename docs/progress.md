@@ -2843,3 +2843,106 @@ src/features/voice/VoiceControlDock.test.tsx && pnpm typecheck && pnpm lint` —
   join voice, and confirm the fallback notice disappears after eight seconds or
   immediately through its close button while Review output still opens the
   correct Settings category.
+
+## 2026-07-19 — Unified Entire screen / Application picker and audio default
+
+- **Completed:** Replaced the macOS system picker with Bakbak's shared Entire
+  screen / Application custom picker on macOS 14+, matching Windows. macOS now
+  enumerates displays and running applications through ScreenCaptureKit and
+  starts capture from a validated `source_id`. The share dialog defaults matched
+  system audio on when available, uses a switch instead of a checkbox, shows
+  loading/empty/retry source states, and uses a Share CTA once a source is
+  selected. Windows thumbnail capture is time-budgeted so hung previews cannot
+  block the picker. Desktop capabilities failures no longer advertise a broken
+  WebView `getDisplayMedia` path on macOS/Windows.
+- **Decisions:** Keep Windows application entries as native window handles so
+  process-loopback audio matching stays exact. macOS Application capture uses
+  `SCRunningApplication` with a display-anchored including-applications filter.
+  Audio defaults on per share but is still not persisted across sessions.
+- **Validation:**
+  - `pnpm check` — passed Prettier, ESLint, typechecks, 52 Vitest files with
+    271 tests, 12 Node tests, version sync, production build, and secret scan.
+  - `cargo test --manifest-path src-tauri/Cargo.toml --locked screen_share
+--lib` — passed 10/10 screen-share tests.
+  - `cargo check --manifest-path src-tauri/Cargo.toml --locked` and
+    `cargo fmt --check` — passed after formatting the macOS picker helpers.
+  - `cargo xwin check --manifest-path src-tauri/Cargo.toml --locked --target
+x86_64-pc-windows-msvc --tests` — passed.
+  - Installed Windows friend-path observation and full `pnpm tauri build` —
+    skipped on this macOS host / missing updater signing credentials.
+- **Documentation updated:** Updated plans 0003 and 0010, `docs/architecture.md`,
+  README screen-share notes, and this progress log.
+- **Known limitations:** Native Windows MSVC runtime validation and the
+  bidirectional installed-client media matrix remain open. macOS custom-picker
+  thumbnails are not generated yet; labels remain sufficient for selection.
+- **Next:** Rebuild and ship to Windows friends; confirm Entire screen /
+  Application selection starts capture without stalling, with audio on by
+  default.
+
+## 2026-07-19 — Review and harden unified screen picker
+
+- **Completed:** Reviewed the local unified picker as renderer, macOS, and
+  Windows code rather than accepting the earlier green checks at face value.
+  Preserved native string errors so the dialog now shows macOS permission
+  guidance, kept an explicit audio-off choice stable while the presenter changes
+  sources, and guaranteed video-only sources can never forward an audio request.
+  Source buttons expose their selected state to assistive technology. macOS
+  source enumeration and start-time revalidation now use the asynchronous
+  ScreenCaptureKit API with a five-second ceiling, and application/display
+  capture dimensions come from the resolved filter's point-to-pixel metadata
+  instead of treating Retina window points as pixels. Windows enumeration runs
+  on a blocking worker while retaining the bounded best-effort preview budget.
+- **Decisions:** Audio defaults on once when a dialog opens, but a user's switch
+  choice is authoritative for the rest of that dialog. A source that cannot
+  provide matched audio stays shareable as video and forces the outgoing audio
+  flag off. ScreenCaptureKit filter metadata is authoritative for macOS capture
+  dimensions, with the selected display's pixel size as a defensive fallback.
+- **Validation:**
+  - `pnpm exec vitest run src/features/voice/ScreenShareDialog.test.tsx
+src/features/voice/screen-share-service.test.ts
+src/features/voice/useVoiceRoom.test.tsx` — passed 3 files with 41 tests,
+    including native string errors, retry, stable audio intent, video-only
+    source clamping, and accessible source selection.
+  - `cargo test --manifest-path src-tauri/Cargo.toml --locked screen_share
+--lib` — passed 11/11 screen-share tests.
+  - `cargo check --manifest-path src-tauri/Cargo.toml --locked` — passed on
+    Apple Silicon macOS.
+  - `cargo xwin check --manifest-path src-tauri/Cargo.toml --locked --target
+x86_64-pc-windows-msvc --tests` — passed; the first sandboxed attempt could not
+    update cargo-xwin's external compiler cache, and the approved rerun passed.
+  - `cargo xwin build --manifest-path src-tauri/Cargo.toml --locked --target
+x86_64-pc-windows-msvc --release` — failed at the final cross-host link on the
+    known LiveKit CXX bridge boundary: `lld-link` could not resolve the native
+    create/set SDP observers and `rust::cxxbridge1::Box<PeerContext>::drop`.
+    Windows picker code and tests had already passed the compile-only command
+    above; a Windows MSVC runner remains required for the executable.
+  - Mock-browser QA — passed a mock voice connection with browser screen sharing
+    still disabled as required and no browser console errors.
+  - `pnpm check` — passed Prettier, ESLint, renderer/Node typechecks, 52 Vitest
+    files with 273 tests, 12 Node tests, synchronized version `0.14.0`,
+    production build, and bundle secret scan. Vite retains the existing
+    non-blocking large-chunk warning; main JavaScript is 1,231.24 kB
+    (340.57 kB gzip).
+  - `pnpm tauri:build:local` — passed and produced an ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    unavailable.
+  - `codesign --verify --deep --strict --verbose=2
+src-tauri/target/release/bundle/macos/Bakbak.app` — passed; the bundle is valid
+    on disk and satisfies its designated requirement.
+  - Final `pnpm format:check`, `cargo fmt --manifest-path
+src-tauri/Cargo.toml --check`, `pnpm security:scan`, and `git diff --check` —
+    passed; the post-bundle scan found no forbidden secret material in `dist` or
+    the native release bundle.
+- **Documentation updated:** Updated `docs/architecture.md` with bounded async
+  enumeration and Retina pixel sizing, and appended this canonical review entry.
+- **Known limitations:** The macOS Tauri app launched successfully in mock mode,
+  but automated picker interaction was skipped because the host has not granted
+  assistive access to the test runner. Windows code cross-compiles, but no
+  Windows machine was available for a real source-list/start/audio observation,
+  and the full cross-host release link remains blocked by the existing LiveKit
+  CXX bridge symbol issue. The two-client LiveKit media matrix therefore remains
+  open on both platforms; macOS picker thumbnails also remain unimplemented.
+- **Next:** On an installed macOS client, grant Screen & System Audio Recording
+  and verify both tabs, audio-off persistence, Retina application resolution,
+  and actual remote playback; then ship a fresh Windows x64 build and repeat the
+  source-list/start/audio isolation matrix with a friend.

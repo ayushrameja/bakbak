@@ -20,11 +20,14 @@ and browser exclusion.
 - The first-run presenter profile is 1080p/60 fps. Resolution
   (480p/720p/1080p) and frame rate (15/30/60) are independently selectable
   before and during a share, and the last successful profile is device-local.
-- Source audio is unchecked on every start. The presenter controls the outgoing
-  ceiling; LiveKit may deliver a lower layer for bandwidth or viewport needs.
-- macOS explicitly exposes Display, Window, and Application in the system
-  picker. Windows uses a Bakbak picker backed by native display/window handles
-  so matched process-tree or display audio never relies on title guessing.
+- Source audio defaults on whenever matched audio is available for the selected
+  source; the presenter can turn it off with a switch. The choice is not
+  persisted across shares. The presenter controls the outgoing ceiling; LiveKit
+  may deliver a lower layer for bandwidth or viewport needs.
+- macOS 14+ and Windows share one Bakbak Entire screen / Application picker.
+  macOS enumerates displays and running applications through ScreenCaptureKit;
+  Windows uses privacy-filtered native monitor/window handles so matched
+  process-tree or display audio never relies on title guessing.
 - A source that stops producing complete frames freezes its last good frame,
   reports a paused state after two seconds, and resumes automatically.
 - Voice rooms open in a gallery. Clicking a participant or share opens a
@@ -41,8 +44,8 @@ and browser exclusion.
 
 - [x] Add validated and persisted quality settings plus native start/update
       contracts.
-- [x] Configure macOS picker modes, dynamic ScreenCaptureKit settings, and
-      paused-frame signaling.
+- [x] Configure macOS custom Entire screen / Application enumeration, dynamic
+      ScreenCaptureKit settings, and paused-frame signaling.
 - [x] Add Windows native source enumeration, previews, WGC video, matched
       source audio, and native LiveKit publication.
 - [x] Add gallery/focus/fullscreen UI and selective subscription behavior.
@@ -50,8 +53,8 @@ and browser exclusion.
 - [x] Pass focused TypeScript/Rust tests and repository checks.
 - [x] Pass the local macOS native app build and compiled secret scans.
 - [ ] Pass a native Windows build. Windows-only code and tests cross-compile
-      with cargo-xwin, but the cross-host LiveKit test linker remains blocked
-      and a Windows MSVC runner is still required.
+      with cargo-xwin, but the cross-host LiveKit linker remains blocked on its
+      native CXX bridge symbols and a Windows MSVC runner is still required.
 - [ ] Complete the bidirectional installed-client media matrix, including
       actual sender-resolution/FPS observation and artifact-size comparison.
 - [x] Update architecture, parent plans, setup notes, and the canonical

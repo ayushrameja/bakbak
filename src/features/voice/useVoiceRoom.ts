@@ -562,18 +562,25 @@ export function useVoiceRoom(
       })
       .catch(() => {
         if (!cancelled) {
+          // Windows and modern macOS own capture in native Rust. Do not fall
+          // back to WebView getDisplayMedia there — it strands presenters on
+          // a broken system capture sheet.
+          const allowWebViewFallback =
+            typeof navigator.mediaDevices?.getDisplayMedia === "function" &&
+            !/windows/i.test(navigator.userAgent) &&
+            !/mac os x|macintosh/i.test(navigator.userAgent);
           setScreenShareCapabilities({
-            available:
-              typeof navigator.mediaDevices?.getDisplayMedia === "function",
+            available: allowWebViewFallback,
             nativeCapture: false,
             systemAudio: false,
-            sourceKinds: ["display", "window"],
+            sourceKinds: allowWebViewFallback ? ["display", "window"] : [],
             resolutions: [480, 720, 1080],
             frameRates: [15, 30, 60],
             dynamicSettings: false,
             customPicker: false,
-            reason:
-              "Matched system audio is unavailable. Video-only sharing may still work.",
+            reason: allowWebViewFallback
+              ? "Matched system audio is unavailable. Video-only sharing may still work."
+              : "Bakbak could not start its native screen picker. Quit and reopen the app, then try again.",
           });
         }
       });

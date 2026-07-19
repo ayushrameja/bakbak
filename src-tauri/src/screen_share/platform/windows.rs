@@ -216,7 +216,13 @@ pub fn sources() -> Result<Vec<ScreenShareSource>, String> {
     initialize_winrt()?;
     let mut result = enumerate_displays();
     result.extend(enumerate_windows()?);
+    // Previews are best-effort and time-bounded so protected or hung sources
+    // never block the Entire screen / Application picker from opening.
+    let preview_budget = Instant::now();
     for source in &mut result {
+        if preview_budget.elapsed() >= Duration::from_millis(750) {
+            break;
+        }
         source.thumbnail_data_url = parse_source_id(&source.id)
             .ok()
             .and_then(|target| capture_source_thumbnail(&target).ok());

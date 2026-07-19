@@ -15,24 +15,23 @@ use livekit::webrtc::{
     video_source::native::NativeVideoSource,
 };
 use screencapturekit::{
-    async_api::AsyncSCContentSharingPicker,
+    async_api::AsyncSCShareableContent,
     cm::{CMSampleBufferSCExt, SCFrameStatus},
-    content_sharing_picker::{
-        SCContentSharingPickerConfiguration, SCContentSharingPickerMode, SCPickedSource,
-        SCPickerOutcome,
-    },
     prelude::*,
+    shareable_content::SCShareableContentInfo,
     stream::delegate_trait::SCStreamDelegateTrait,
 };
 use tokio::{sync::mpsc, task::JoinHandle, time::timeout};
 
 use super::super::{
     SCREEN_SHARE_FRAME_RATES, SCREEN_SHARE_RESOLUTIONS, ScreenShareCapabilities,
-    ScreenShareSettings, ScreenShareSourceKind,
+    ScreenShareSettings, ScreenShareSource, ScreenShareSourceKind,
 };
 
 const FIRST_FRAME_TIMEOUT: Duration = Duration::from_secs(5);
 const PAUSED_SOURCE_TIMEOUT: Duration = Duration::from_secs(2);
+const SOURCE_ENUMERATION_TIMEOUT: Duration = Duration::from_secs(5);
+const BAKBAK_BUNDLE_IDENTIFIER: &str = "com.bakbak.desktop";
 
 pub struct PreparedCapture {
     pub source_label: String,
@@ -86,13 +85,12 @@ pub fn capabilities() -> ScreenShareCapabilities {
         system_audio: supports_picker,
         source_kinds: vec![
             ScreenShareSourceKind::Display,
-            ScreenShareSourceKind::Window,
             ScreenShareSourceKind::Application,
         ],
         resolutions: SCREEN_SHARE_RESOLUTIONS.to_vec(),
         frame_rates: SCREEN_SHARE_FRAME_RATES.to_vec(),
         dynamic_settings: supports_picker,
-        custom_picker: false,
+        custom_picker: supports_picker,
         reason: (!supports_picker).then(|| {
             "Matched system audio requires macOS 14 or later; Bakbak will use video-only sharing."
                 .to_string()
@@ -100,33 +98,56 @@ pub fn capabilities() -> ScreenShareCapabilities {
     }
 }
 
+pub async fn sources() -> Result<Vec<ScreenShareSource>, String> {
+    let content = shareable_content().await?;
+    let windows = content.windows();
+    let mut result = content
+        .displays()
+        .into_iter()
+        .enumerate()
+        .map(|(index, display)| ScreenShareSource {
+            id: format!("display:{}", display.display_id()),
+            kind: ScreenShareSourceKind::Display,
+            label: format!("Screen {}", index + 1),
+            application_label: None,
+            audio_available: true,
+            thumbnail_data_url: None,
+        })
+        .collect::<Vec<_>>();
+
+    let mut applications = content
+        .applications()
+        .into_iter()
+        .filter(|application| is_shareable_application(application, &windows))
+        .map(|application| ScreenShareSource {
+            id: format!("application:{}", application.process_id()),
+            kind: ScreenShareSourceKind::Application,
+            label: application.application_name(),
+            application_label: Some(application.bundle_identifier())
+                .filter(|value| !value.trim().is_empty()),
+            audio_available: true,
+            thumbnail_data_url: None,
+        })
+        .collect::<Vec<_>>();
+    applications.sort_by(|left, right| left.label.to_lowercase().cmp(&right.label.to_lowercase()));
+    result.extend(applications);
+    Ok(result)
+}
+
 pub async fn pick_source(
     include_audio: bool,
     settings: ScreenShareSettings,
-    _source_id: Option<&str>,
+    source_id: Option<&str>,
     termination_sender: mpsc::UnboundedSender<String>,
     pause_sender: mpsc::UnboundedSender<bool>,
 ) -> Result<PreparedCapture, String> {
-    let mut configuration = SCContentSharingPickerConfiguration::default_from_system();
-    configuration.set_allowed_picker_modes(&allowed_picker_modes());
-    configuration.set_allows_changing_selected_content(false);
-    let picked = match AsyncSCContentSharingPicker::show(&configuration).await {
-        SCPickerOutcome::Picked(result) => result,
-        SCPickerOutcome::Cancelled => {
-            return Err("Screen sharing was cancelled.".to_string());
-        }
-        SCPickerOutcome::Error(error) => {
-            return Err(format!("The macOS screen picker failed: {error}"));
-        }
-    };
-    let (source_width, source_height) = picked.pixel_size();
+    let source_id = source_id.ok_or_else(|| "Choose a screen or application first.".to_string())?;
+    let content = shareable_content().await?;
+    let displays = content.displays();
+    let windows = content.windows();
+    let (source_label, source_kind, source_width, source_height, filter) =
+        resolve_source(source_id, &displays, &windows, &content.applications())?;
     let (width, height) = fit_to_resolution(source_width, source_height, settings.resolution);
-    let (source_label, source_kind) = match picked.source() {
-        SCPickedSource::Window(title) => (title, ScreenShareSourceKind::Window),
-        SCPickedSource::Application(name) => (name, ScreenShareSourceKind::Application),
-        SCPickedSource::Display(id) => (format!("Display {id}"), ScreenShareSourceKind::Display),
-        SCPickedSource::Unknown => ("Shared screen".to_string(), ScreenShareSourceKind::Window),
-    };
 
     Ok(PreparedCapture {
         source_label,
@@ -137,18 +158,169 @@ pub async fn pick_source(
         settings,
         source_width,
         source_height,
-        filter: picked.filter(),
+        filter,
         termination_sender,
         pause_sender,
     })
 }
 
-fn allowed_picker_modes() -> [SCContentSharingPickerMode; 3] {
-    [
-        SCContentSharingPickerMode::SingleDisplay,
-        SCContentSharingPickerMode::SingleWindow,
-        SCContentSharingPickerMode::SingleApplication,
-    ]
+fn resolve_source(
+    source_id: &str,
+    displays: &[SCDisplay],
+    windows: &[SCWindow],
+    applications: &[SCRunningApplication],
+) -> Result<(String, ScreenShareSourceKind, u32, u32, SCContentFilter), String> {
+    if let Some(display_id) = source_id.strip_prefix("display:") {
+        let display_id = display_id
+            .parse::<u32>()
+            .map_err(|_| "The selected screen is no longer available.".to_string())?;
+        let display = displays
+            .iter()
+            .find(|display| display.display_id() == display_id)
+            .ok_or_else(|| "The selected screen is no longer available.".to_string())?;
+        let source_width = display.width().max(2);
+        let source_height = display.height().max(2);
+        let filter = SCContentFilter::create()
+            .with_display(display)
+            .with_excluding_windows(&[])
+            .build();
+        let (source_width, source_height) =
+            filter_pixel_size(&filter, (source_width, source_height));
+        return Ok((
+            format!("Screen {}", display_index(displays, display_id)),
+            ScreenShareSourceKind::Display,
+            source_width,
+            source_height,
+            filter,
+        ));
+    }
+
+    if let Some(process_id) = source_id.strip_prefix("application:") {
+        let process_id = process_id
+            .parse::<i32>()
+            .map_err(|_| "The selected application is no longer available.".to_string())?;
+        let application = applications
+            .iter()
+            .find(|application| application.process_id() == process_id)
+            .ok_or_else(|| "The selected application is no longer available.".to_string())?;
+        if !is_shareable_application(application, windows) {
+            return Err("The selected application is no longer available.".to_string());
+        }
+        let display = application_display(application, displays, windows).ok_or_else(|| {
+            "macOS could not find a display for the selected application.".to_string()
+        })?;
+        let filter = SCContentFilter::create()
+            .with_display(display)
+            .with_including_applications(&[application], &[])
+            .build();
+        let (source_width, source_height) =
+            filter_pixel_size(&filter, (display.width(), display.height()));
+        return Ok((
+            application.application_name(),
+            ScreenShareSourceKind::Application,
+            source_width,
+            source_height,
+            filter,
+        ));
+    }
+
+    Err("Choose a screen or application first.".to_string())
+}
+
+fn is_shareable_application(application: &SCRunningApplication, windows: &[SCWindow]) -> bool {
+    let name = application.application_name();
+    if name.trim().is_empty() {
+        return false;
+    }
+    if application.bundle_identifier() == BAKBAK_BUNDLE_IDENTIFIER {
+        return false;
+    }
+    windows.iter().any(|window| {
+        window.is_on_screen()
+            && window
+                .owning_application()
+                .is_some_and(|owner| owner.process_id() == application.process_id())
+    })
+}
+
+fn application_display<'a>(
+    application: &SCRunningApplication,
+    displays: &'a [SCDisplay],
+    windows: &[SCWindow],
+) -> Option<&'a SCDisplay> {
+    let preferred = windows
+        .iter()
+        .filter(|window| {
+            window.is_on_screen()
+                && window
+                    .owning_application()
+                    .is_some_and(|owner| owner.process_id() == application.process_id())
+        })
+        .max_by(|left, right| {
+            window_area(left)
+                .partial_cmp(&window_area(right))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .and_then(|window| display_for_window(window, displays));
+    preferred.or_else(|| displays.first())
+}
+
+fn display_for_window<'a>(window: &SCWindow, displays: &'a [SCDisplay]) -> Option<&'a SCDisplay> {
+    let frame = window.frame();
+    let center_x = frame.origin.x + frame.size.width / 2.0;
+    let center_y = frame.origin.y + frame.size.height / 2.0;
+    displays.iter().find(|display| {
+        let display_frame = display.frame();
+        center_x >= display_frame.origin.x
+            && center_y >= display_frame.origin.y
+            && center_x < display_frame.origin.x + display_frame.size.width
+            && center_y < display_frame.origin.y + display_frame.size.height
+    })
+}
+
+fn filter_pixel_size(filter: &SCContentFilter, fallback: (u32, u32)) -> (u32, u32) {
+    usable_pixel_size(
+        SCShareableContentInfo::for_filter(filter).map(|info| info.pixel_size()),
+        fallback,
+    )
+}
+
+fn usable_pixel_size(measured: Option<(u32, u32)>, fallback: (u32, u32)) -> (u32, u32) {
+    measured
+        .filter(|(width, height)| *width > 0 && *height > 0)
+        .unwrap_or(fallback)
+}
+
+fn window_area(window: &SCWindow) -> f64 {
+    let frame = window.frame();
+    frame.size.width.max(0.0) * frame.size.height.max(0.0)
+}
+
+fn display_index(displays: &[SCDisplay], display_id: u32) -> usize {
+    displays
+        .iter()
+        .position(|display| display.display_id() == display_id)
+        .map(|index| index + 1)
+        .unwrap_or(1)
+}
+
+fn shareable_content_error(error: impl std::fmt::Display) -> String {
+    format!(
+        "macOS could not list shareable sources. Allow Bakbak under Privacy & Security > Screen & System Audio Recording, then relaunch it: {error}"
+    )
+}
+
+async fn shareable_content() -> Result<SCShareableContent, String> {
+    timeout(
+        SOURCE_ENUMERATION_TIMEOUT,
+        AsyncSCShareableContent::get(),
+    )
+    .await
+    .map_err(|_| {
+        "macOS took too long to list shareable sources. Check Screen & System Audio Recording permission, then try again."
+            .to_string()
+    })?
+    .map_err(shareable_content_error)
 }
 
 pub async fn start_capture(
@@ -509,11 +681,31 @@ mod tests {
     }
 
     #[test]
-    fn explicitly_allows_display_window_and_application_picker_modes() {
-        let modes = allowed_picker_modes();
-        assert!(modes.contains(&SCContentSharingPickerMode::SingleDisplay));
-        assert!(modes.contains(&SCContentSharingPickerMode::SingleWindow));
-        assert!(modes.contains(&SCContentSharingPickerMode::SingleApplication));
+    fn uses_filter_pixels_only_when_both_dimensions_are_valid() {
+        let fallback = (1920, 1080);
+        assert_eq!(
+            usable_pixel_size(Some((2560, 1440)), fallback),
+            (2560, 1440)
+        );
+        assert_eq!(usable_pixel_size(Some((0, 1080)), fallback), fallback);
+        assert_eq!(usable_pixel_size(None, fallback), fallback);
+    }
+
+    #[test]
+    fn parses_custom_picker_source_ids() {
+        assert!(
+            "display:1"
+                .strip_prefix("display:")
+                .and_then(|value| value.parse::<u32>().ok())
+                .is_some()
+        );
+        assert!(
+            "application:42"
+                .strip_prefix("application:")
+                .and_then(|value| value.parse::<i32>().ok())
+                .is_some()
+        );
+        assert!("window:1".strip_prefix("display:").is_none());
     }
 
     #[test]

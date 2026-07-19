@@ -76,7 +76,7 @@ impl ScreenShareSettings {
 #[serde(rename_all = "lowercase")]
 pub enum ScreenShareSourceKind {
     Display,
-    #[cfg_attr(target_os = "windows", allow(dead_code))]
+    #[allow(dead_code)]
     Window,
     Application,
 }
@@ -180,13 +180,21 @@ pub fn get_screen_share_capabilities(
 }
 
 #[tauri::command]
-pub fn list_screen_share_sources(window: WebviewWindow) -> Result<Vec<ScreenShareSource>, String> {
+pub async fn list_screen_share_sources(
+    window: WebviewWindow,
+) -> Result<Vec<ScreenShareSource>, String> {
     ensure_main_window(&window)?;
+    #[cfg(target_os = "macos")]
+    {
+        platform::sources().await
+    }
     #[cfg(target_os = "windows")]
     {
-        platform::sources()
+        tauri::async_runtime::spawn_blocking(platform::sources)
+            .await
+            .map_err(|error| format!("Windows source enumeration stopped unexpectedly: {error}"))?
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         Ok(Vec::new())
     }

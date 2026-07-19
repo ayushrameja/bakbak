@@ -2241,35 +2241,68 @@ button:disabled {
   background: var(--accent-soft);
 }
 .screen-share-dialog__preview > div,
-.screen-share-dialog > label span {
+.screen-share-dialog__audio > div {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 .screen-share-dialog__preview strong,
-.screen-share-dialog > label strong {
+.screen-share-dialog__audio strong {
   color: var(--text);
   font-size: 11px;
 }
 .screen-share-dialog__preview span,
-.screen-share-dialog > label small {
+.screen-share-dialog__audio small {
   color: var(--muted);
   font-size: 9px;
   line-height: 1.45;
 }
-.screen-share-dialog > label {
+.screen-share-dialog__audio {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 12px;
   margin: 14px 0 22px;
   padding: 13px 4px;
 }
-.screen-share-dialog > label input {
-  margin-top: 2px;
-  accent-color: var(--accent);
+.screen-share-dialog__audio button {
+  min-width: 52px;
+  min-height: 30px;
+  flex-shrink: 0;
+  border: 1px solid var(--line-bright);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--panel-soft);
+  cursor: pointer;
 }
-.screen-share-dialog > label.is-disabled {
+.screen-share-dialog__audio button[aria-checked="true"] {
+  color: var(--accent-bright);
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+.screen-share-dialog__audio button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+.screen-share-dialog__audio.is-disabled {
   opacity: 0.58;
+}
+.screen-share-dialog__source-status {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+.screen-share-dialog__source-status p {
+  margin: 0;
+}
+.screen-share-dialog__source-status .secondary-button {
+  justify-self: start;
+  min-height: 30px;
+  padding: 0 12px;
+  font-size: 10px;
 }
 .screen-share-dialog__quality {
   display: grid;
