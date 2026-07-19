@@ -5,6 +5,7 @@ import {
   Mic,
   MicOff,
   Pencil,
+  Play,
   Plus,
   Settings,
   Volume2,
@@ -55,6 +56,7 @@ interface ChannelSidebarProps {
   openProfileId?: string | null;
   onToggleSoundboard: () => void;
   onOpenScreenShare: () => void;
+  onWatch?: (occupant: VoiceRoomOccupant, channel: Channel) => void;
 }
 
 export function ChannelSidebar({
@@ -80,6 +82,7 @@ export function ChannelSidebar({
   openProfileId = null,
   onToggleSoundboard,
   onOpenScreenShare,
+  onWatch = () => undefined,
 }: ChannelSidebarProps) {
   const orderedCategories = [...categories].sort(
     (left, right) =>
@@ -178,26 +181,53 @@ export function ChannelSidebar({
           {occupants.length > 0 ? (
             <div className="channel-voice-people">
               {occupants.map((occupant) => (
-                <ProfileTrigger
-                  className="channel-voice-person"
-                  key={occupant.userId}
-                  member={profileForOccupant(occupant)}
-                  loadMedia={loadProfileMedia}
-                  onOpenProfile={onOpenProfile}
-                  expanded={openProfileId === occupant.userId}
-                  aria-label={`View ${occupant.displayName}'s profile`}
-                >
-                  {() => (
+                <div className="channel-voice-person" key={occupant.userId}>
+                  <ProfileTrigger
+                    className="channel-voice-person__profile"
+                    member={profileForOccupant(occupant)}
+                    loadMedia={loadProfileMedia}
+                    onOpenProfile={onOpenProfile}
+                    expanded={openProfileId === occupant.userId}
+                    aria-label={`View ${occupant.displayName}'s profile`}
+                  >
+                    {({ animationUrl, animated }) => (
+                      <>
+                        <Avatar
+                          user={profileForOccupant(occupant)}
+                          size="small"
+                          animationUrl={animationUrl}
+                          animated={animated}
+                        />
+                        <span>
+                          <b>
+                            {occupant.displayName}
+                            {occupant.userId === user.id ? " (you)" : ""}
+                          </b>
+                          <VoiceElapsedTime joinedAt={occupant.joinedAt} />
+                        </span>
+                      </>
+                    )}
+                  </ProfileTrigger>
+                  {occupant.isStreaming ? (
                     <>
-                      <i />
-                      <b>
-                        {occupant.displayName}
-                        {occupant.userId === user.id ? " (you)" : ""}
-                      </b>
-                      <VoiceElapsedTime joinedAt={occupant.joinedAt} />
+                      <span className="channel-voice-person__live">LIVE</span>
+                      {occupant.userId !== user.id ? (
+                        <button
+                          className="channel-voice-person__watch"
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onWatch(occupant, channel);
+                          }}
+                          aria-label={`Watch ${occupant.displayName}`}
+                        >
+                          <Play size={11} fill="currentColor" />
+                          Watch
+                        </button>
+                      ) : null}
                     </>
-                  )}
-                </ProfileTrigger>
+                  ) : null}
+                </div>
               ))}
             </div>
           ) : null}
@@ -207,7 +237,7 @@ export function ChannelSidebar({
   };
 
   return (
-    <aside className="channel-sidebar" id="channel-sidebar">
+    <aside className="channel-sidebar" id="context-panel">
       <header className="server-switcher">
         <div>
           <strong>{server.name}</strong>

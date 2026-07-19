@@ -180,6 +180,27 @@ pub fn get_screen_share_capabilities(
 }
 
 #[tauri::command]
+pub fn open_screen_recording_settings(window: WebviewWindow) -> Result<(), String> {
+    ensure_main_window(&window)?;
+    #[cfg(target_os = "macos")]
+    {
+        use tauri_plugin_opener::OpenerExt;
+        window
+            .app_handle()
+            .opener()
+            .open_url(
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+                None::<&str>,
+            )
+            .map_err(|error| format!("Could not open Screen Recording settings: {error}"))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("Screen Recording settings are available only on macOS.".to_string())
+    }
+}
+
+#[tauri::command]
 pub async fn list_screen_share_sources(
     window: WebviewWindow,
 ) -> Result<Vec<ScreenShareSource>, String> {

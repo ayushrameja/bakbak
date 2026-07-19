@@ -4,6 +4,8 @@ import {
   LEGACY_APPEARANCE_PREFERENCES_KEY,
   V2_APPEARANCE_PREFERENCES_KEY,
   V3_APPEARANCE_PREFERENCES_KEY,
+  V4_APPEARANCE_PREFERENCES_KEY,
+  V5_APPEARANCE_PREFERENCES_KEY,
   accentTokens,
   applyAppearancePreferences,
   applyThemePreference,
@@ -48,74 +50,95 @@ describe("appearance preferences", () => {
     document.documentElement.style.removeProperty("--accent");
   });
 
-  it("migrates the v1 theme and defaults the new accent fields", () => {
-    window.localStorage.setItem(
-      LEGACY_APPEARANCE_PREFERENCES_KEY,
-      JSON.stringify({ theme: "dark" }),
-    );
-    expect(loadAppearancePreferences()).toEqual({
-      theme: "dark",
-      accent: "coral",
-      intensity: 100,
-      surfaceStyle: "warm",
-      visualPreset: "standard",
-    });
-  });
-
-  it("migrates v2 appearance values to Warm surfaces", () => {
-    window.localStorage.setItem(
+  it.each([
+    [LEGACY_APPEARANCE_PREFERENCES_KEY, { theme: "dark" }],
+    [
       V2_APPEARANCE_PREFERENCES_KEY,
-      JSON.stringify({ theme: "light", accent: "purple", intensity: 65 }),
-    );
-    expect(loadAppearancePreferences()).toEqual({
-      theme: "light",
-      accent: "purple",
-      intensity: 65,
-      surfaceStyle: "warm",
-      visualPreset: "standard",
-    });
-  });
-
-  it("migrates v3 appearance values to the Standard visual preset", () => {
-    window.localStorage.setItem(
+      { theme: "light", accent: "yellow", intensity: 65 },
+    ],
+    [
       V3_APPEARANCE_PREFERENCES_KEY,
-      JSON.stringify({
+      {
         theme: "dark",
         accent: "yellow",
         intensity: 55,
-        surfaceStyle: "flat",
-      }),
-    );
+        surfaceStyle: "warm",
+      },
+    ],
+    [
+      V4_APPEARANCE_PREFERENCES_KEY,
+      {
+        theme: "light",
+        accent: "red",
+        intensity: 45,
+        surfaceStyle: "warm",
+        visualPreset: "signal-red",
+      },
+    ],
+    [
+      V5_APPEARANCE_PREFERENCES_KEY,
+      {
+        theme: "dark",
+        accent: "coral",
+        intensity: 80,
+        surfaceStyle: "warm",
+        visualPreset: "signature",
+      },
+    ],
+  ])("resets the older %s choice once during the v6 update", (key, value) => {
+    window.localStorage.setItem(key, JSON.stringify(value));
+
     expect(loadAppearancePreferences()).toEqual({
-      theme: "dark",
-      accent: "yellow",
-      intensity: 55,
+      theme: "system",
+      accent: "purple",
+      intensity: 100,
+      surfaceStyle: "flat",
+      visualPreset: "standard",
+    });
+    expect(
+      JSON.parse(
+        window.localStorage.getItem(APPEARANCE_PREFERENCES_KEY) ?? "null",
+      ),
+    ).toEqual({
+      theme: "system",
+      accent: "purple",
+      intensity: 100,
       surfaceStyle: "flat",
       visualPreset: "standard",
     });
   });
 
-  it("falls back to System when persisted data is missing or invalid", () => {
+  it("defaults missing or invalid preferences to Flat Purple Classic", () => {
     expect(loadAppearancePreferences()).toEqual({
       theme: "system",
-      accent: "coral",
+      accent: "purple",
       intensity: 100,
-      surfaceStyle: "warm",
+      surfaceStyle: "flat",
       visualPreset: "standard",
     });
 
     window.localStorage.setItem(APPEARANCE_PREFERENCES_KEY, "not-json");
     expect(loadAppearancePreferences()).toEqual({
       theme: "system",
-      accent: "coral",
+      accent: "purple",
       intensity: 100,
-      surfaceStyle: "warm",
+      surfaceStyle: "flat",
       visualPreset: "standard",
     });
   });
 
   it("persists and applies explicit Light and Dark choices", () => {
     const systemTheme = createSystemTheme(true);
+    window.localStorage.setItem(
+      APPEARANCE_PREFERENCES_KEY,
+      JSON.stringify({
+        theme: "system",
+        accent: "coral",
+        intensity: 100,
+        surfaceStyle: "warm",
+        visualPreset: "standard",
+      }),
+    );
 
     expect(
       setThemePreference("light", {
@@ -149,7 +172,13 @@ describe("appearance preferences", () => {
     const systemTheme = createSystemTheme(false);
     window.localStorage.setItem(
       APPEARANCE_PREFERENCES_KEY,
-      JSON.stringify({ theme: "system" }),
+      JSON.stringify({
+        theme: "system",
+        accent: "coral",
+        intensity: 100,
+        surfaceStyle: "warm",
+        visualPreset: "standard",
+      }),
     );
 
     const dispose = initializeAppearancePreferences({
@@ -187,6 +216,13 @@ describe("appearance preferences", () => {
       expect(vivid.bright).toMatch(/^hsl\(/);
       expect(vivid.onAccent).toBe(accent === "yellow" ? "#211e1b" : "#fffaf2");
     }
+  });
+
+  it("keeps Signature body and secondary text above WCAG AA contrast", () => {
+    expect(contrastRatio("#f2ece2", "#171310")).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio("#b9aea2", "#211a15")).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio("#d1b06e", "#211a15")).toBeGreaterThanOrEqual(3);
+    expect(contrastRatio("#62b7a4", "#171310")).toBeGreaterThanOrEqual(3);
   });
 
   it("applies Flat surfaces before render without dropping the accent", () => {
@@ -278,3 +314,20 @@ describe("appearance preferences", () => {
     );
   });
 });
+
+function contrastRatio(foreground: string, background: string): number {
+  const luminance = (hex: string) => {
+    const channels = [1, 3, 5].map((offset) => {
+      const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+      return value <= 0.04045
+        ? value / 12.92
+        : ((value + 0.055) / 1.055) ** 2.4;
+    });
+    return (
+      channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722
+    );
+  };
+  const first = luminance(foreground);
+  const second = luminance(background);
+  return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+}

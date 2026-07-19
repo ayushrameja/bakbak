@@ -17,6 +17,8 @@ import type {
   AppUser,
   Channel,
   ChatMessage,
+  ConversationMessage,
+  ConversationTarget,
   MessageDraft,
   ServerMember,
 } from "../../lib/types";
@@ -57,6 +59,55 @@ export function ChatView({
   onOpenProfile = ignoreProfileOpen,
   openProfileId = null,
 }: ChatViewProps) {
+  return (
+    <ConversationView
+      target={{
+        kind: "channel",
+        id: channel.id,
+        name: channel.name,
+        topic: channel.topic,
+      }}
+      messages={messages}
+      members={members}
+      currentUser={currentUser}
+      sending={sending}
+      draft={draft}
+      onDraftChange={onDraftChange}
+      onSend={onSend}
+      loadProfileMedia={loadProfileMedia}
+      onOpenProfile={onOpenProfile}
+      openProfileId={openProfileId}
+    />
+  );
+}
+
+interface ConversationViewProps {
+  target: ConversationTarget;
+  messages: ConversationMessage[];
+  members: ServerMember[];
+  currentUser: AppUser;
+  sending: boolean;
+  draft: MessageDraft;
+  onDraftChange: (draft: MessageDraft) => void;
+  onSend: (draft: MessageDraft) => Promise<void>;
+  loadProfileMedia?: LoadProfileMedia;
+  onOpenProfile?: OpenProfile;
+  openProfileId?: string | null;
+}
+
+export function ConversationView({
+  target,
+  messages,
+  members,
+  currentUser,
+  sending,
+  draft,
+  onDraftChange,
+  onSend,
+  loadProfileMedia = emptyProfileMediaLoader,
+  onOpenProfile = ignoreProfileOpen,
+  openProfileId = null,
+}: ConversationViewProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [mentionQuery, setMentionQuery] =
@@ -97,7 +148,7 @@ export function ChatView({
     } else {
       list.scrollTop = list.scrollHeight;
     }
-  }, [messages, channel.id]);
+  }, [messages, target.id]);
 
   useEffect(() => setActiveSuggestion(0), [mentionQuery?.query]);
 
@@ -162,11 +213,24 @@ export function ChatView({
     <section className="chat-view">
       <div className="message-list" ref={listRef}>
         <div className="channel-intro">
-          <span className="channel-intro__icon">#</span>
-          <h2>Welcome to #{channel.name}</h2>
-          <p>{channel.topic || "This is where the conversation begins."}</p>
+          <span className="channel-intro__icon">
+            {target.kind === "channel" ? "#" : "@"}
+          </span>
+          <h2>
+            {target.kind === "channel"
+              ? `Welcome to #${target.name}`
+              : `Your conversation with ${target.member.displayName}`}
+          </h2>
+          <p>
+            {target.kind === "channel"
+              ? target.topic || "This is where the conversation begins."
+              : "A private conversation between the two of you."}
+          </p>
           <span className="channel-intro__meta">
-            <Sparkles size={15} /> Private room · friends only
+            <Sparkles size={15} />{" "}
+            {target.kind === "channel"
+              ? "Private room · friends only"
+              : "Direct message · participants only"}
           </span>
         </div>
 
@@ -261,7 +325,7 @@ export function ChatView({
         {mentionQuery && suggestions.length > 0 ? (
           <div
             className="mention-suggestions"
-            id={`mention-suggestions-${channel.id}`}
+            id={`mention-suggestions-${target.id}`}
             role="listbox"
             aria-label="Mention a friend"
           >
@@ -271,7 +335,7 @@ export function ChatView({
                 role="option"
                 aria-selected={index === activeSuggestion}
                 className={index === activeSuggestion ? "is-active" : ""}
-                id={`mention-option-${channel.id}-${member.id}`}
+                id={`mention-option-${target.id}-${member.id}`}
                 key={member.id}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => chooseMention(member)}
@@ -288,15 +352,19 @@ export function ChatView({
         <form className="composer" onSubmit={handleSubmit}>
           <input
             ref={inputRef}
-            aria-label={`Message #${channel.name}`}
+            aria-label={
+              target.kind === "channel"
+                ? `Message #${target.name}`
+                : `Message ${target.member.displayName}`
+            }
             aria-controls={
               mentionQuery && suggestions.length > 0
-                ? `mention-suggestions-${channel.id}`
+                ? `mention-suggestions-${target.id}`
                 : undefined
             }
             aria-activedescendant={
               mentionQuery && suggestions[activeSuggestion]
-                ? `mention-option-${channel.id}-${suggestions[activeSuggestion].id}`
+                ? `mention-option-${target.id}-${suggestions[activeSuggestion].id}`
                 : undefined
             }
             aria-expanded={Boolean(mentionQuery && suggestions.length)}
@@ -322,7 +390,11 @@ export function ChatView({
               }
             }}
             onKeyDown={handleComposerKeyDown}
-            placeholder={`Message #${channel.name}`}
+            placeholder={
+              target.kind === "channel"
+                ? `Message #${target.name}`
+                : `Message ${target.member.displayName}`
+            }
             maxLength={4000}
           />
           <button
@@ -347,7 +419,7 @@ function MessageContent({
   onOpenProfile,
   openProfileId,
 }: {
-  message: ChatMessage;
+  message: ConversationMessage;
   membersById: ReadonlyMap<string, ServerMember>;
   currentUserId: string;
   loadProfileMedia: LoadProfileMedia;

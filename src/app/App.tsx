@@ -8,8 +8,16 @@ import {
   PanelRightOpen,
   Volume2,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { ProfilePopover } from "../components/ProfilePopover";
+import { PanelResizer } from "../components/PanelResizer";
 import type {
   LoadProfileMedia,
   OpenProfile,
@@ -23,13 +31,19 @@ import {
   shouldPlayIncomingMessageSound,
   unreadChannelsAfterMessage,
 } from "../features/chat/channel-activity";
-import { ChatView } from "../features/chat/ChatView";
+import { ChatView, ConversationView } from "../features/chat/ChatView";
+import { DirectPersonPanel } from "../features/chat/DirectPersonPanel";
+import { PersonalSidebar } from "../features/chat/PersonalSidebar";
 import {
   draftToSegments,
   EMPTY_MESSAGE_DRAFT,
   segmentsToFallback,
 } from "../features/chat/message-content";
 import { MemberPanel } from "../features/server/MemberPanel";
+import {
+  DestinationRail,
+  type AppSpace,
+} from "../features/server/DestinationRail";
 import {
   loadAppearancePreferences,
   setAppearancePreferences as persistAppearancePreferences,
@@ -47,6 +61,12 @@ import {
 import { interfaceSoundController } from "../features/settings/interface-sounds";
 import {
   loadLayoutPreferences,
+  DEFAULT_CONTEXT_PANEL_WIDTH,
+  DEFAULT_RIGHT_PANEL_WIDTH,
+  DESTINATION_RAIL_WIDTH,
+  MAX_SIDE_PANEL_WIDTH,
+  MIN_CONTENT_WIDTH,
+  MIN_SIDE_PANEL_WIDTH,
   saveLayoutPreferences,
   type LayoutPreferences,
 } from "../features/settings/layout-preferences";
@@ -75,6 +95,15 @@ import {
   subscribeToLiveChannels,
 } from "../lib/channel-service";
 import { appConfig } from "../lib/env";
+import {
+  getOrCreateDirectConversation,
+  loadDirectConversations,
+  loadDirectMessages,
+  markDirectConversationRead,
+  sendDirectMessage,
+  subscribeToDirectMessages,
+  subscribeToDirectReadStates,
+} from "../lib/direct-message-service";
 import { mockCurrentUser, mockMessages, mockWorkspace } from "../lib/mock-data";
 import { getSupabaseClient } from "../lib/supabase";
 import {
@@ -97,6 +126,8 @@ import type {
   Channel,
   ChannelKind,
   ChatMessage,
+  DirectConversation,
+  DirectMessage,
   MessageDraft,
   ServerMember,
   WorkspaceSnapshot,
@@ -128,6 +159,23 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(appConfig.dataMode === "live");
   const [workspace, setWorkspace] = useState<WorkspaceSnapshot | null>(null);
   const [selectedChannelId, setSelectedChannelId] = useState("");
+  const [activeSpace, setActiveSpace] = useState<AppSpace>("server");
+  const [directConversations, setDirectConversations] = useState<
+    DirectConversation[]
+  >([]);
+  const [selectedConversationId, setSelectedConversationId] = useState<
+    string | null
+  >(null);
+  const [directMessages, setDirectMessages] = useState<DirectMessage[]>([]);
+  const [directDrafts, setDirectDrafts] = useState<
+    Record<string, MessageDraft>
+  >({});
+  const [directSending, setDirectSending] = useState(false);
+  const [directHistoryLoading, setDirectHistoryLoading] = useState(true);
+  const [inviteGateOpen, setInviteGateOpen] = useState(false);
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window === "undefined" ? 1280 : window.innerWidth,
+  );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sending, setSending] = useState(false);
   const [appError, setAppError] = useState<string | null>(null);
@@ -162,8 +210,15 @@ export default function App() {
   const [voiceSessions, setVoiceSessions] = useState<VoicePresenceSession[]>(
     [],
   );
+  const [pendingWatch, setPendingWatch] = useState<{
+    ownerId: string;
+    channelId: string;
+    startedAt: number;
+  } | null>(null);
   const selectedChannelIdRef = useRef(selectedChannelId);
+  const selectedConversationIdRef = useRef(selectedConversationId);
   const activeViewRef = useRef(activeView);
+  const activeSpaceRef = useRef(activeSpace);
   const presenceSubscriptionRef = useRef<ServerPresenceSubscription | null>(
     null,
   );
@@ -201,6 +256,12 @@ export default function App() {
     soundboard,
     handleCommunicationEffect,
   );
+
+  useEffect(() => {
+    const update = () => setViewportWidth(window.innerWidth);
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
 
   useEffect(() => {
     voiceDeafenedRef.current = voice.deafened;
@@ -293,6 +354,13 @@ export default function App() {
       setWorkspace(null);
       setNeedsInvite(false);
       setSelectedChannelId("");
+      setActiveSpace("server");
+      setDirectConversations([]);
+      setDirectHistoryLoading(true);
+      setInviteGateOpen(false);
+      setSelectedConversationId(null);
+      setDirectMessages([]);
+      setDirectDrafts({});
       setMessages([]);
       setDrafts({});
       setUnreadChannelIds(new Set());
@@ -384,7 +452,12 @@ export default function App() {
         );
       } catch (caught) {
         if (!cancelled) {
-          setNeedsInvite(caught instanceof MissingMembershipError);
+          const missingMembership = caught instanceof MissingMembershipError;
+          setNeedsInvite(missingMembership);
+          if (missingMembership) {
+            setWorkspace(null);
+            setSelectedChannelId("");
+          }
           setAppError(
             caught instanceof Error
               ? caught.message
@@ -399,6 +472,94 @@ export default function App() {
     };
   }, [rememberAvatarUrl, signedInUserEmail, signedInUserId, workspaceRevision]);
 
+  const refreshDirectConversations = useCallback(async () => {
+    if (!signedInUserId) return;
+    try {
+      const conversations =
+        appConfig.dataMode === "mock" ? [] : await loadDirectConversations();
+      setDirectConversations((current) => {
+        const statuses = new Map(
+          current.map((conversation) => [
+            conversation.otherMember.id,
+            conversation.otherMember.status,
+          ]),
+        );
+        return conversations.map((conversation) => ({
+          ...conversation,
+          otherMember: {
+            ...conversation.otherMember,
+            status:
+              workspace?.members.find(
+                (member) => member.id === conversation.otherMember.id,
+              )?.status ??
+              statuses.get(conversation.otherMember.id) ??
+              conversation.otherMember.status,
+            role:
+              workspace?.members.find(
+                (member) => member.id === conversation.otherMember.id,
+              )?.role ?? conversation.otherMember.role,
+          },
+        }));
+      });
+      setSelectedConversationId((current) =>
+        conversations.some((conversation) => conversation.id === current)
+          ? current
+          : (conversations[0]?.id ?? null),
+      );
+    } finally {
+      setDirectHistoryLoading(false);
+    }
+  }, [signedInUserId, workspace]);
+
+  useEffect(() => {
+    if (!signedInUserId) return;
+    void refreshDirectConversations().catch(() => undefined);
+  }, [refreshDirectConversations, signedInUserId, workspaceRevision]);
+
+  useEffect(() => {
+    if (needsInvite && directConversations.length > 0) {
+      setActiveSpace("personal");
+      setAppError(null);
+    }
+  }, [directConversations.length, needsInvite]);
+
+  useEffect(() => {
+    if (appConfig.dataMode !== "live" || !signedInUserId) return;
+    const unsubscribeMessages = subscribeToDirectMessages((message) => {
+      const selected =
+        message.conversationId === selectedConversationIdRef.current;
+      const visible =
+        selected &&
+        activeSpaceRef.current === "personal" &&
+        activeViewRef.current === "channel";
+      if (selected) {
+        setDirectMessages((current) =>
+          current.some((item) => item.id === message.id)
+            ? current
+            : [...current, message],
+        );
+      }
+      if (visible) {
+        void markDirectConversationRead(
+          message.conversationId,
+          message.id,
+        ).catch(() => undefined);
+      }
+      if (message.authorId !== signedInUserId) {
+        handleCommunicationEffect({ type: "message-received" });
+      }
+      void refreshDirectConversations().catch(() => undefined);
+    });
+    const unsubscribeReads = subscribeToDirectReadStates(
+      signedInUserId,
+      () => void refreshDirectConversations().catch(() => undefined),
+    );
+    return () => {
+      unsubscribeMessages();
+      unsubscribeReads();
+    };
+  }, [handleCommunicationEffect, refreshDirectConversations, signedInUserId]);
+
   useEffect(() => {
     if (
       appConfig.dataMode !== "live" ||
@@ -412,7 +573,25 @@ export default function App() {
       serverId: workspaceServerId,
       userId: signedInUserId,
       onSync: ({ onlineUserIds, voiceSessions: nextVoiceSessions }) => {
+        setAppError((current) =>
+          current?.startsWith("Online status") ||
+          current?.startsWith("Voice-room activity") ||
+          current?.startsWith("Live online-status")
+            ? null
+            : current,
+        );
         setVoiceSessions([...nextVoiceSessions]);
+        setDirectConversations((current) =>
+          current.map((conversation) => ({
+            ...conversation,
+            otherMember: {
+              ...conversation.otherMember,
+              status: onlineUserIds.has(conversation.otherMember.id)
+                ? "online"
+                : "offline",
+            },
+          })),
+        );
         setWorkspace((current) => {
           if (!current || current.server.id !== workspaceServerId)
             return current;
@@ -539,8 +718,11 @@ export default function App() {
       : null;
 
   useEffect(() => {
-    void presenceSubscriptionRef.current?.setVoiceChannel(activeVoiceChannelId);
-  }, [activeVoiceChannelId]);
+    void presenceSubscriptionRef.current?.setVoiceState(
+      activeVoiceChannelId,
+      voice.screenShareEnabled,
+    );
+  }, [activeVoiceChannelId, voice.screenShareEnabled]);
 
   useEffect(() => {
     if (voice.status === "disconnected") setSoundboardOpen(false);
@@ -608,8 +790,18 @@ export default function App() {
       null,
     [selectedChannelId, workspace],
   );
+  const selectedConversation = useMemo(
+    () =>
+      directConversations.find(
+        (conversation) => conversation.id === selectedConversationId,
+      ) ?? null,
+    [directConversations, selectedConversationId],
+  );
   const openedProfileMember =
     workspace?.members.find((member) => member.id === openProfile?.memberId) ??
+    directConversations.find(
+      (conversation) => conversation.otherMember.id === openProfile?.memberId,
+    )?.otherMember ??
     null;
 
   useEffect(() => {
@@ -623,6 +815,52 @@ export default function App() {
     );
     return latestChannel ? { ...voice, channel: latestChannel } : voice;
   }, [voice, workspace]);
+  const voiceChannelId = voice.channel?.id;
+  const voiceScreenShares = voice.screenShares;
+  const voiceStatus = voice.status;
+  const watchScreenShare = voice.watchScreenShare;
+
+  useEffect(() => {
+    if (!pendingWatch) return;
+    if (voiceStatus === "error" && voiceChannelId === pendingWatch.channelId) {
+      setPendingWatch(null);
+      setAppError(
+        "Bakbak joined the applause but not the room. The stream was not watched.",
+      );
+      return;
+    }
+    if (
+      voiceStatus === "connected" &&
+      voiceChannelId === pendingWatch.channelId
+    ) {
+      const share = voiceScreenShares.find(
+        (candidate) =>
+          candidate.ownerId === pendingWatch.ownerId && !candidate.isLocal,
+      );
+      if (share) {
+        watchScreenShare(share.id);
+        setPendingWatch(null);
+        return;
+      }
+    }
+    const remaining = Math.max(0, pendingWatch.startedAt + 12_000 - Date.now());
+    const timer = window.setTimeout(() => {
+      setPendingWatch((current) => {
+        if (current !== pendingWatch) return current;
+        setAppError(
+          "That LIVE share ended before Bakbak could tune in. Excellent timing, universe.",
+        );
+        return null;
+      });
+    }, remaining);
+    return () => window.clearTimeout(timer);
+  }, [
+    pendingWatch,
+    voiceChannelId,
+    voiceScreenShares,
+    voiceStatus,
+    watchScreenShare,
+  ]);
 
   const messageChannelIds = useMemo(
     () =>
@@ -652,6 +890,7 @@ export default function App() {
               avatarUrl: member.avatarUrl,
               channelId: session.channelId,
               joinedAt: session.joinedAt,
+              isStreaming: session.isStreaming,
             },
           ]
         : [];
@@ -661,6 +900,14 @@ export default function App() {
   useEffect(() => {
     selectedChannelIdRef.current = selectedChannelId;
   }, [selectedChannelId]);
+
+  useEffect(() => {
+    selectedConversationIdRef.current = selectedConversationId;
+  }, [selectedConversationId]);
+
+  useEffect(() => {
+    activeSpaceRef.current = activeSpace;
+  }, [activeSpace]);
 
   useEffect(() => {
     activeViewRef.current = activeView;
@@ -805,6 +1052,134 @@ export default function App() {
       );
     }
   }, [activeView, latestMessageIds, selectedChannel]);
+
+  useEffect(() => {
+    if (!signedInUserId || !selectedConversationId) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const nextMessages =
+          appConfig.dataMode === "mock"
+            ? directMessages.filter(
+                (message) => message.conversationId === selectedConversationId,
+              )
+            : await loadDirectMessages(selectedConversationId);
+        if (!cancelled) setDirectMessages(nextMessages);
+      } catch (caught) {
+        if (!cancelled) {
+          setAppError(
+            caught instanceof Error
+              ? caught.message
+              : "Direct messages could not be loaded.",
+          );
+        }
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+    // Mock messages already live in local state and must not retrigger the load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedConversationId, signedInUserId]);
+
+  useEffect(() => {
+    if (
+      activeSpace !== "personal" ||
+      activeView !== "channel" ||
+      !selectedConversation?.latestMessageId
+    ) {
+      return;
+    }
+    setDirectConversations((current) => {
+      const target = current.find(
+        (conversation) => conversation.id === selectedConversation.id,
+      );
+      if (!target?.hasUnread) return current;
+      return current.map((conversation) =>
+        conversation.id === selectedConversation.id
+          ? { ...conversation, hasUnread: false }
+          : conversation,
+      );
+    });
+    if (appConfig.dataMode === "live") {
+      void markDirectConversationRead(
+        selectedConversation.id,
+        selectedConversation.latestMessageId,
+      ).catch(() => undefined);
+    }
+  }, [activeSpace, activeView, selectedConversation]);
+
+  const handleDirectSend = useCallback(
+    async (draft: MessageDraft) => {
+      if (!user || !selectedConversation) return;
+      const content = draftToSegments(draft);
+      const body = segmentsToFallback(content);
+      if (!body) return;
+      setDirectSending(true);
+      setAppError(null);
+      const optimisticId = `pending-${crypto.randomUUID()}`;
+      const optimistic: DirectMessage = {
+        id: optimisticId,
+        conversationId: selectedConversation.id,
+        authorId: user.id,
+        body,
+        content,
+        createdAt: new Date().toISOString(),
+        pending: true,
+      };
+      setDirectMessages((current) => [...current, optimistic]);
+      try {
+        const saved =
+          appConfig.dataMode === "mock"
+            ? {
+                ...optimistic,
+                id: `direct-${crypto.randomUUID()}`,
+                pending: false,
+              }
+            : await sendDirectMessage(selectedConversation.id, content);
+        setDirectMessages((current) => [
+          ...current.filter(
+            (message) => message.id !== optimisticId && message.id !== saved.id,
+          ),
+          saved,
+        ]);
+        setDirectConversations((current) =>
+          current
+            .map((conversation) =>
+              conversation.id === selectedConversation.id
+                ? {
+                    ...conversation,
+                    latestMessageId: saved.id,
+                    latestMessageAuthorId: saved.authorId,
+                    latestMessageBody: saved.body,
+                    latestMessageCreatedAt: saved.createdAt,
+                    updatedAt: saved.createdAt,
+                    hasUnread: false,
+                  }
+                : conversation,
+            )
+            .sort(
+              (left, right) =>
+                Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
+            ),
+        );
+      } catch (caught) {
+        setDirectMessages((current) =>
+          current.filter((message) => message.id !== optimisticId),
+        );
+        setAppError(
+          caught instanceof Error
+            ? caught.message
+            : "The direct message did not send.",
+        );
+        throw caught;
+      } finally {
+        setDirectSending(false);
+      }
+    },
+    [selectedConversation, user],
+  );
 
   const handleSend = useCallback(
     async (draft: MessageDraft) => {
@@ -1101,7 +1476,7 @@ export default function App() {
   async function handleSignOut() {
     setSoundboardOpen(false);
     await voice.leave("sign-out");
-    await presenceSubscriptionRef.current?.setVoiceChannel(null);
+    await presenceSubscriptionRef.current?.setVoiceState(null);
     if (appConfig.dataMode === "live") {
       try {
         await signOut();
@@ -1118,6 +1493,7 @@ export default function App() {
   function handleSelectChannel(channel: Channel) {
     setOpenProfile(null);
     setSoundboardOpen(false);
+    setActiveSpace("server");
     selectedChannelIdRef.current = channel.id;
     setSelectedChannelId(channel.id);
     setActiveView("channel");
@@ -1130,6 +1506,90 @@ export default function App() {
       setSoundboardOpen(false);
       void voice.join(channel);
     }
+  }
+
+  function handleWatchVoiceOccupant(
+    occupant: VoiceRoomOccupant,
+    channel: Channel,
+  ) {
+    setAppError(null);
+    setOpenProfile(null);
+    setSoundboardOpen(false);
+    setActiveSpace("server");
+    setActiveView("channel");
+    selectedChannelIdRef.current = channel.id;
+    setSelectedChannelId(channel.id);
+    setPendingWatch({
+      ownerId: occupant.userId,
+      channelId: channel.id,
+      startedAt: Date.now(),
+    });
+    if (
+      voice.channel?.id !== channel.id ||
+      voice.status === "disconnected" ||
+      voice.status === "error"
+    ) {
+      void voice.join(channel);
+    }
+  }
+
+  function handleSelectConversation(conversation: DirectConversation) {
+    setOpenProfile(null);
+    setSoundboardOpen(false);
+    selectedConversationIdRef.current = conversation.id;
+    setSelectedConversationId(conversation.id);
+    setActiveSpace("personal");
+    setActiveView("channel");
+  }
+
+  async function handleStartConversation(member: ServerMember) {
+    setAppError(null);
+    if (appConfig.dataMode === "mock") {
+      const existing = directConversations.find(
+        (conversation) => conversation.otherMember.id === member.id,
+      );
+      const conversation =
+        existing ??
+        ({
+          id: `direct-${member.id}`,
+          otherMember: member,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          latestMessageId: null,
+          latestMessageAuthorId: null,
+          latestMessageBody: null,
+          latestMessageCreatedAt: null,
+          hasUnread: false,
+        } satisfies DirectConversation);
+      if (!existing) {
+        setDirectConversations((current) => [conversation, ...current]);
+      }
+      handleSelectConversation(conversation);
+      return;
+    }
+    try {
+      const conversationId = await getOrCreateDirectConversation(member.id);
+      await refreshDirectConversations();
+      selectedConversationIdRef.current = conversationId;
+      setSelectedConversationId(conversationId);
+      setActiveSpace("personal");
+      setActiveView("channel");
+    } catch (caught) {
+      setAppError(
+        caught instanceof Error
+          ? caught.message
+          : "The direct conversation could not be opened.",
+      );
+      throw caught;
+    }
+  }
+
+  function handleSelectSpace(space: AppSpace) {
+    if (space === "server" && !workspace) return;
+    setOpenProfile(null);
+    setSoundboardOpen(false);
+    setActiveSpace(space);
+    setActiveView("channel");
   }
 
   if (authLoading) {
@@ -1155,20 +1615,32 @@ export default function App() {
     );
   }
 
-  if (needsInvite && appConfig.dataMode === "live") {
+  if (
+    (inviteGateOpen ||
+      (needsInvite &&
+        !directHistoryLoading &&
+        directConversations.length === 0)) &&
+    appConfig.dataMode === "live"
+  ) {
     return (
       <InviteGate
         user={user}
         onRedeemed={() => {
           setNeedsInvite(false);
+          setInviteGateOpen(false);
           setWorkspaceRevision((current) => current + 1);
         }}
         onSignOut={() => void handleSignOut().catch(() => undefined)}
+        onBack={
+          directConversations.length > 0
+            ? () => setInviteGateOpen(false)
+            : undefined
+        }
       />
     );
   }
 
-  if (!workspace || !selectedChannel) {
+  if (activeSpace === "server" && (!workspace || !selectedChannel)) {
     return (
       <main className="app-loading">
         <span className="brand-mark">
@@ -1192,9 +1664,54 @@ export default function App() {
     );
   }
 
+  const personalMembers = Array.from(
+    new Map(
+      [
+        ...(workspace?.members ?? [{ ...user, role: "member" as const }]),
+        ...directConversations.map((conversation) => conversation.otherMember),
+      ].map((member) => [member.id, member]),
+    ).values(),
+  );
+  const reservedShellWidth = DESTINATION_RAIL_WIDTH + MIN_CONTENT_WIDTH + 30;
+  const contextMaximum = Math.max(
+    MIN_SIDE_PANEL_WIDTH,
+    Math.min(
+      MAX_SIDE_PANEL_WIDTH,
+      viewportWidth -
+        reservedShellWidth -
+        (layoutPreferences.rightPanelVisible
+          ? layoutPreferences.rightPanelWidth
+          : 0),
+    ),
+  );
+  const rightMaximum = Math.max(
+    MIN_SIDE_PANEL_WIDTH,
+    Math.min(
+      MAX_SIDE_PANEL_WIDTH,
+      viewportWidth -
+        reservedShellWidth -
+        (layoutPreferences.leftPanelVisible
+          ? layoutPreferences.contextPanelWidth
+          : 0),
+    ),
+  );
+  const contextPanelWidth = Math.min(
+    layoutPreferences.contextPanelWidth,
+    contextMaximum,
+  );
+  const rightPanelWidth = Math.min(
+    layoutPreferences.rightPanelWidth,
+    rightMaximum,
+  );
+  const shellStyle = {
+    "--context-panel-width": `${contextPanelWidth}px`,
+    "--right-panel-width": `${rightPanelWidth}px`,
+  } as CSSProperties;
+
   return (
     <div
       className="desktop-shell"
+      style={shellStyle}
       data-left-panel={
         layoutPreferences.leftPanelVisible ? "visible" : "hidden"
       }
@@ -1212,44 +1729,101 @@ export default function App() {
         }
         effect={communicationEffect}
       />
+      <DestinationRail
+        activeSpace={activeSpace}
+        personalUnread={directConversations.some(
+          (conversation) => conversation.hasUnread,
+        )}
+        serverUnread={unreadChannelIds.size > 0}
+        callActive={voice.status !== "disconnected"}
+        serverAvailable={Boolean(workspace)}
+        onSelect={handleSelectSpace}
+      />
       {layoutPreferences.leftPanelVisible ? (
-        <ChannelSidebar
-          server={workspace.server}
-          categories={workspace.channelCategories}
-          channels={workspace.channels}
-          selectedChannelId={selectedChannel.id}
-          user={user}
-          members={workspace.members}
-          voiceOccupants={voiceOccupants}
-          unreadChannelIds={unreadChannelIds}
-          voice={visibleVoice}
-          mode={appConfig.dataMode}
-          soundboardOpen={soundboardOpen}
-          canManageChannels={workspace.currentUserRole === "admin"}
-          onSelect={handleSelectChannel}
-          onPrepareVoiceChannel={voice.prepareVoiceChannel}
-          onCreateChannel={(kind) => {
-            setOpenProfile(null);
-            setChannelDialog({ mode: "create", kind });
-          }}
-          onRenameChannel={(channel) => {
-            setOpenProfile(null);
-            setChannelDialog({ mode: "rename", channel });
-          }}
-          onOpenSettings={() => openSettings("profile")}
-          loadProfileMedia={loadProfileMedia}
-          onOpenProfile={handleOpenProfile}
-          openProfileId={openProfile?.memberId ?? null}
-          onToggleSoundboard={toggleSoundboard}
-          onOpenScreenShare={() => {
-            setOpenProfile(null);
-            setScreenShareDialogOpen(true);
-          }}
+        activeSpace === "server" && workspace && selectedChannel ? (
+          <ChannelSidebar
+            server={workspace.server}
+            categories={workspace.channelCategories}
+            channels={workspace.channels}
+            selectedChannelId={selectedChannel.id}
+            user={user}
+            members={workspace.members}
+            voiceOccupants={voiceOccupants}
+            unreadChannelIds={unreadChannelIds}
+            voice={visibleVoice}
+            mode={appConfig.dataMode}
+            soundboardOpen={soundboardOpen}
+            canManageChannels={workspace.currentUserRole === "admin"}
+            onSelect={handleSelectChannel}
+            onPrepareVoiceChannel={voice.prepareVoiceChannel}
+            onCreateChannel={(kind) => {
+              setOpenProfile(null);
+              setChannelDialog({ mode: "create", kind });
+            }}
+            onRenameChannel={(channel) => {
+              setOpenProfile(null);
+              setChannelDialog({ mode: "rename", channel });
+            }}
+            onOpenSettings={() => openSettings("profile")}
+            loadProfileMedia={loadProfileMedia}
+            onOpenProfile={handleOpenProfile}
+            openProfileId={openProfile?.memberId ?? null}
+            onToggleSoundboard={toggleSoundboard}
+            onOpenScreenShare={() => {
+              setOpenProfile(null);
+              setScreenShareDialogOpen(true);
+            }}
+            onWatch={handleWatchVoiceOccupant}
+          />
+        ) : (
+          <PersonalSidebar
+            user={user}
+            members={personalMembers}
+            conversations={directConversations}
+            selectedConversationId={selectedConversationId}
+            voice={visibleVoice}
+            mode={appConfig.dataMode}
+            soundboardOpen={soundboardOpen}
+            onSelect={handleSelectConversation}
+            onStartConversation={handleStartConversation}
+            onOpenSettings={() => openSettings("profile")}
+            onToggleSoundboard={toggleSoundboard}
+            onOpenScreenShare={() => {
+              setOpenProfile(null);
+              setScreenShareDialogOpen(true);
+            }}
+            loadProfileMedia={loadProfileMedia}
+            onOpenProfile={handleOpenProfile}
+            openProfileId={openProfile?.memberId ?? null}
+            inviteAvailable={!workspace}
+            onOpenInvite={() => setInviteGateOpen(true)}
+          />
+        )
+      ) : null}
+      {layoutPreferences.leftPanelVisible ? (
+        <PanelResizer
+          label="Resize navigation panel"
+          side="left"
+          value={contextPanelWidth}
+          minimum={MIN_SIDE_PANEL_WIDTH}
+          maximum={contextMaximum}
+          defaultValue={DEFAULT_CONTEXT_PANEL_WIDTH}
+          onChange={(contextPanelWidth) =>
+            updateLayoutPreferences((current) => ({
+              ...current,
+              contextPanelWidth,
+            }))
+          }
         />
       ) : null}
       <main className="content-shell">
         <TopBar
-          channel={selectedChannel}
+          channel={activeSpace === "server" ? selectedChannel : null}
+          directMember={
+            activeSpace === "personal"
+              ? (selectedConversation?.otherMember ?? null)
+              : null
+          }
           leftPanelVisible={layoutPreferences.leftPanelVisible}
           rightPanelVisible={layoutPreferences.rightPanelVisible}
           onToggleLeftPanel={() =>
@@ -1276,7 +1850,45 @@ export default function App() {
             </div>
           ) : null}
           <div className="content-grid">
-            {selectedChannel.kind === "text" ? (
+            {activeSpace === "personal" && selectedConversation ? (
+              <ConversationView
+                target={{
+                  kind: "direct",
+                  id: selectedConversation.id,
+                  member: selectedConversation.otherMember,
+                }}
+                messages={directMessages.filter(
+                  (message) =>
+                    message.conversationId === selectedConversation.id,
+                )}
+                members={personalMembers}
+                currentUser={user}
+                sending={directSending}
+                draft={
+                  directDrafts[selectedConversation.id] ?? EMPTY_MESSAGE_DRAFT
+                }
+                onDraftChange={(draft) =>
+                  setDirectDrafts((current) => ({
+                    ...current,
+                    [selectedConversation.id]: draft,
+                  }))
+                }
+                onSend={handleDirectSend}
+                loadProfileMedia={loadProfileMedia}
+                onOpenProfile={handleOpenProfile}
+                openProfileId={openProfile?.memberId ?? null}
+              />
+            ) : activeSpace === "personal" ? (
+              <section className="personal-home">
+                <img src="/bakbak.svg" alt="" />
+                <span className="eyebrow">Personal lounge</span>
+                <h2>Your conversations live here</h2>
+                <p>
+                  Start a private message from the left panel. No meeting agenda
+                  is required, thankfully.
+                </p>
+              </section>
+            ) : selectedChannel?.kind === "text" && workspace ? (
               <ChatView
                 channel={selectedChannel}
                 messages={messages.filter(
@@ -1297,7 +1909,7 @@ export default function App() {
                 onOpenProfile={handleOpenProfile}
                 openProfileId={openProfile?.memberId ?? null}
               />
-            ) : (
+            ) : selectedChannel && workspace ? (
               <VoiceRoom
                 channel={selectedChannel}
                 user={user}
@@ -1308,13 +1920,13 @@ export default function App() {
                 onOpenProfile={handleOpenProfile}
                 openProfileId={openProfile?.memberId ?? null}
               />
-            )}
+            ) : null}
           </div>
         </div>
-        {soundboardOpen && visibleVoice.status === "connected" ? (
+        {workspace && soundboardOpen && visibleVoice.status === "connected" ? (
           <aside
             ref={soundboardDrawerRef}
-            className={`soundboard-drawer ${selectedChannel.kind === "text" ? "is-over-text" : ""}`}
+            className={`soundboard-drawer ${activeSpace === "personal" || selectedChannel?.kind === "text" ? "is-over-text" : ""}`}
             id="soundboard-drawer"
             aria-label="Soundboard"
           >
@@ -1347,7 +1959,9 @@ export default function App() {
           <VoiceControlDock
             voice={visibleVoice}
             soundboardOpen={soundboardOpen}
-            overTextChannel={selectedChannel.kind === "text"}
+            overTextChannel={
+              activeSpace === "personal" || selectedChannel?.kind === "text"
+            }
             onToggleSoundboard={toggleSoundboard}
             onOpenDevices={() => openSettings("audio")}
             onOpenScreenShare={() => {
@@ -1358,12 +1972,40 @@ export default function App() {
         ) : null}
       </main>
       {layoutPreferences.rightPanelVisible ? (
-        <MemberPanel
-          members={workspace.members}
-          loadProfileMedia={loadProfileMedia}
-          onOpenProfile={handleOpenProfile}
-          openProfileId={openProfile?.memberId ?? null}
+        <PanelResizer
+          label="Resize details panel"
+          side="right"
+          value={rightPanelWidth}
+          minimum={MIN_SIDE_PANEL_WIDTH}
+          maximum={rightMaximum}
+          defaultValue={DEFAULT_RIGHT_PANEL_WIDTH}
+          onChange={(rightPanelWidth) =>
+            updateLayoutPreferences((current) => ({
+              ...current,
+              rightPanelWidth,
+            }))
+          }
         />
+      ) : null}
+      {layoutPreferences.rightPanelVisible ? (
+        activeSpace === "personal" ? (
+          <DirectPersonPanel
+            member={selectedConversation?.otherMember ?? null}
+            loadProfileMedia={loadProfileMedia}
+            sharesServer={Boolean(
+              workspace?.members.some(
+                (member) => member.id === selectedConversation?.otherMember.id,
+              ),
+            )}
+          />
+        ) : workspace ? (
+          <MemberPanel
+            members={workspace.members}
+            loadProfileMedia={loadProfileMedia}
+            onOpenProfile={handleOpenProfile}
+            openProfileId={openProfile?.memberId ?? null}
+          />
+        ) : null
       ) : null}
       {openProfile && openedProfileMember ? (
         <ProfilePopover
@@ -1470,12 +2112,14 @@ export default function App() {
 
 function TopBar({
   channel,
+  directMember,
   leftPanelVisible,
   rightPanelVisible,
   onToggleLeftPanel,
   onToggleRightPanel,
 }: {
-  channel: Channel;
+  channel: Channel | null;
+  directMember: ServerMember | null;
   leftPanelVisible: boolean;
   rightPanelVisible: boolean;
   onToggleLeftPanel: () => void;
@@ -1490,7 +2134,7 @@ function TopBar({
           aria-label={
             leftPanelVisible ? "Hide channel panel" : "Show channel panel"
           }
-          aria-controls="channel-sidebar"
+          aria-controls="context-panel"
           aria-expanded={leftPanelVisible}
           onClick={onToggleLeftPanel}
         >
@@ -1501,10 +2145,23 @@ function TopBar({
           )}
         </button>
         <div className="top-bar__channel">
-          {channel.kind === "text" ? <Hash size={20} /> : <Volume2 size={20} />}
+          {directMember ? (
+            <MessageCircle size={20} />
+          ) : channel?.kind === "voice" ? (
+            <Volume2 size={20} />
+          ) : (
+            <Hash size={20} />
+          )}
           <div>
-            <strong>{channel.name}</strong>
-            <span>{channel.topic}</span>
+            <strong>
+              {directMember?.displayName ?? channel?.name ?? "Personal"}
+            </strong>
+            <span>
+              {directMember
+                ? `Private conversation · ${directMember.status}`
+                : (channel?.topic ??
+                  "Private conversations, minus the ceremonial paperwork")}
+            </span>
           </div>
         </div>
       </div>

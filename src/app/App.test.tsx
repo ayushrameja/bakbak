@@ -133,6 +133,68 @@ describe("App navigation state", () => {
     );
   });
 
+  it("switches Personal and Bakbak without interrupting the active call", async () => {
+    render(<App />);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Enter the preview" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Queue" }));
+    const callRegion = await screen.findByRole("region", {
+      name: "Current voice call",
+    });
+    await waitFor(() =>
+      expect(callRegion).toHaveTextContent("Voice connected"),
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Personal" }));
+    expect(
+      screen.getByRole("heading", { name: "Your conversations live here" }),
+    ).toBeVisible();
+    expect(callRegion).toHaveTextContent("Queue");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Bakbak server" }),
+    );
+    expect(callRegion).toHaveTextContent("Queue");
+    expect(
+      screen.getByRole("button", { name: "Bakbak server" }),
+    ).toHaveAttribute("aria-current", "page");
+  });
+
+  it("creates and sends a mock DM without a read-state render loop", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {
+      // React render-loop errors are asserted below.
+    });
+    try {
+      render(<App />);
+      await userEvent.click(
+        screen.getByRole("button", { name: "Enter the preview" }),
+      );
+      await userEvent.click(screen.getByRole("button", { name: "Personal" }));
+      await userEvent.click(
+        screen.getByRole("button", { name: "New message" }),
+      );
+      const picker = screen.getByRole("dialog");
+      await userEvent.click(
+        within(picker).getByRole("button", { name: /Mira/ }),
+      );
+      const composer = screen.getByRole("combobox", { name: "Message Mira" });
+      await userEvent.type(composer, "Tea at seven?");
+      await userEvent.click(
+        screen.getByRole("button", { name: "Send message" }),
+      );
+
+      expect(await screen.findAllByText("Tea at seven?")).toHaveLength(2);
+      expect(
+        consoleError.mock.calls.some(([message]) =>
+          String(message).includes("Maximum update depth exceeded"),
+        ),
+      ).toBe(false);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it("opens one private profile card from the member panel", async () => {
     render(<App />);
     await userEvent.click(

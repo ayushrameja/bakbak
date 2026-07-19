@@ -7,15 +7,31 @@ and phase completion belong in the numbered files under `docs/plans`.
 
 ## Current implementation state
 
-As of 2026-07-18, Bakbak has a complete local/mock product path and production
+As of 2026-07-19, Bakbak has a complete local/mock product path and production
 Supabase and LiveKit adapters. The renderer provides the invite-only welcome
-flow and a three-panel shell with a 232 px channel panel, flexible conversation
-canvas, and 240 px online/offline member panel. Both side panels are visible by
-default, independently optional, and persisted per device without responsive
-overlays or automatic hiding. Settings is a centered, focus-trapped in-app
-modal with internal scrolling, active-call controls, and confirmed logout.
-System/Light/Dark, Coral/Purple/Red/Yellow accent/intensity, and Warm/Flat
-surface preferences are synchronously applied before React renders. Flat uses
+flow and one shared Signature/Classic/Signal Red shell. A fixed 68 px
+destination rail switches Personal and the single Bakbak server without
+interrupting voice. The adjacent context panel defaults to 232 px, the
+conversation canvas retains at least 420 px at the 1024 px minimum window, and
+the details panel defaults to 240 px. Both side panels are independently
+optional and pointer/keyboard resizable from 200–360 px; v2 layout preferences
+persist widths and visibility per device. Settings is a centered,
+focus-trapped in-app modal with internal scrolling, active-call controls, and
+confirmed logout.
+
+Classic System + Flat + Purple is the default. The v6 preference migration
+resets every older installation to that appearance once on its first updated
+launch; choices made afterward persist normally. Appearance presents three
+complete styles first and shows theme/surface/accent customization only while
+Classic is active. Signature remains the premium fixed option with a
+high-contrast night palette based on cognac, oxblood, brass, and green
+presence; bundled
+Cormorant Garamond is reserved for plaques/display headings while Inter remains
+the message, form, and profile face. Bakbak-owned textile/leather SVG grain is
+limited to outer furniture and controls at no more than 3% effective opacity.
+Messages, inputs, dialogs, and other reading surfaces remain opaque and
+texture-free. Classic retains System/Light/Dark,
+Coral/Purple/Red/Yellow accent/intensity, and Warm/Flat controls. Flat uses
 crisp grayscale surfaces without decorative gradients, glow, glass blur, or
 heavy shadows while preserving semantic accent, presence, danger, and focus
 colors. Profiles support validated display names, 190-character plain-text
@@ -27,7 +43,7 @@ Unlucky Boys layout: 7 categories, 18 text rooms, and 6 voice rooms in the same
 mixed order. This layout imports no Discord messages or credentials.
 
 Signal Red is a fixed device-local special preset layered over those retained
-standard choices. Its first paint resolves to Dark + Flat with a `#050505`
+Classic choices. Its first paint resolves to Dark + Flat with a `#050505`
 canvas, near-black panels, `#e5062f` primary red, `#ff2648` hot red, and
 `#f4f2ef` off-white. League Gothic is restricted to display/UI chrome, IBM Plex
 Mono to signal metadata, and Inter remains the content/form/profile face. One
@@ -153,6 +169,22 @@ migration. The local pgTAP suite passes; the live two-account media/Realtime
 acceptance remains open.
 
 The additive
+`202607190001_signature_personal_dms_and_live_presence.sql` migration is
+implemented, validated locally, and deployed to the hosted project. It adds canonical
+one-to-one conversations, participant-private structured messages,
+owner-private read states, participant-preserving profile/media visibility, and
+Realtime publication for all three tables. Conversation creation requires
+current shared-server membership, but established participants retain
+read/write/profile/media access after that shared membership disappears. The
+same migration adds `presence_heartbeats.is_streaming` and
+`heartbeat_presence_v3`; older heartbeat RPCs remain executable and
+deliberately clear LIVE to prevent stale state. The renderer also falls back
+from v3 to v2 writes and legacy column reads when pointed at an older or
+rolled-back project. The clean reset, hosted schema lint, and 288-assertion
+pgTAP suite pass. Hosted admin/member/outsider and installed multi-client
+acceptance remain open.
+
+The additive
 `202607130001_voice_chat_mentions_and_read_state.sql` migration is implemented,
 validated locally, and deployed to the hosted project. It adds structured
 message content, membership-checked message/read RPCs, private monotonic channel
@@ -187,7 +219,7 @@ Voice join time comes from Postgres, remains stable across heartbeats, clears on
 graceful leave, and expires locally after 55 seconds if a client crashes. The
 clean local schema, invite, RLS, presence, Storage, catalog, structured-message,
 read-state, rich-profile, soundboard favorite, and member-upload suite passes
-248 assertions. Voice
+288 assertions. Voice
 connections retry once with relay-only ICE after a normal peer-connection
 failure, remember a successful relay fallback for ten minutes in memory, and
 report a specific TURN/TLS diagnostic if both routes fail. The
@@ -491,21 +523,24 @@ soundboard volume multiplied by the existing participant volume.
 All identifiers are UUIDs unless noted otherwise. Exact migrations become
 authoritative once Phase 2 starts.
 
-| Entity                  | Key fields and constraints                                                                                                                                                                           | Access intent                                                                             |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `profiles`              | `id` references `auth.users`; 1–50 character display name; 0–190 character description; legacy `avatar_url`; owner-prefixed avatar/cover poster and GIF paths; integer 0–100 cover focal coordinates | User updates their row; shared-server members read member-facing fields                   |
-| `servers`               | owner/admin reference, name, timestamps                                                                                                                                                              | Members of the server can read it                                                         |
-| `memberships`           | unique `(server_id, user_id)`; v1 admin/member role                                                                                                                                                  | A user can read memberships for servers they belong to                                    |
-| `channel_categories`    | `server_id`, trimmed 1–80 character name, unique ordered position                                                                                                                                    | Members read their server categories; trusted migrations manage them                      |
-| `channels`              | `server_id`, optional category ID, trimmed 1–80 character name, category-local or uncategorized position, immutable `text` or `voice` type                                                           | Members read; matching admins create/rename only through RPCs                             |
-| `messages`              | text/voice channel ID, author ID, plain-text body, nullable structured text/mention content, timestamps                                                                                              | Members read accessible channels; validated inserts use the message RPC                   |
-| `channel_read_states`   | private user/channel key, monotonic last-read message pointer and timestamp                                                                                                                          | The owner reads through RLS; membership-checked RPCs advance/query state                  |
-| `invite_codes`          | server ID, one-way code digest, creator, expiry, redemption fields                                                                                                                                   | No broad client read policy; redeemed atomically through a controlled function            |
-| `presence_heartbeats`   | unique server/user row, last seen, nullable voice channel/join time                                                                                                                                  | Members can read server rows; only security-definer heartbeat RPCs can write              |
-| `soundboard_categories` | server ID, name, ordered position, sole upload-target flag                                                                                                                                           | Members read; trusted server setup manages categories                                     |
-| `soundboard_sounds`     | server/category, label, emoji, Storage path, duration, order, revision, nullable creator, created time                                                                                               | Members read; uploader/admin label and emoji updates only                                 |
-| `soundboard_favorites`  | private user/server/sound key and created time; cascading server/sound/owner references                                                                                                              | The signed-in owner alone selects, inserts, or deletes                                    |
-| `storage.objects`       | private `soundboard/<server UUID>/<file-or-uploader/uuid.wav>`, `avatars/<owner UUID>/<asset UUID>`, and `profile-covers/<owner UUID>/<asset UUID>` objects                                          | Sound writes use trusted server code; profile owners write/delete and shared members read |
+| Entity                  | Key fields and constraints                                                                                                                                                                           | Access intent                                                                              |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `profiles`              | `id` references `auth.users`; 1–50 character display name; 0–190 character description; legacy `avatar_url`; owner-prefixed avatar/cover poster and GIF paths; integer 0–100 cover focal coordinates | User updates their row; shared-server members read member-facing fields                    |
+| `servers`               | owner/admin reference, name, timestamps                                                                                                                                                              | Members of the server can read it                                                          |
+| `memberships`           | unique `(server_id, user_id)`; v1 admin/member role                                                                                                                                                  | A user can read memberships for servers they belong to                                     |
+| `channel_categories`    | `server_id`, trimmed 1–80 character name, unique ordered position                                                                                                                                    | Members read their server categories; trusted migrations manage them                       |
+| `channels`              | `server_id`, optional category ID, trimmed 1–80 character name, category-local or uncategorized position, immutable `text` or `voice` type                                                           | Members read; matching admins create/rename only through RPCs                              |
+| `messages`              | text/voice channel ID, author ID, plain-text body, nullable structured text/mention content, timestamps                                                                                              | Members read accessible channels; validated inserts use the message RPC                    |
+| `channel_read_states`   | private user/channel key, monotonic last-read message pointer and timestamp                                                                                                                          | The owner reads through RLS; membership-checked RPCs advance/query state                   |
+| `direct_conversations`  | canonical ordered participant pair, unique pair, creation/activity timestamps                                                                                                                        | Only either established participant can select; creation uses a shared-membership RPC      |
+| `direct_messages`       | conversation ID, server-derived author, 1–4,000 character body, structured participant-only text/mentions                                                                                            | Only participants read; validated security-definer RPC writes                              |
+| `direct_read_states`    | private user/conversation key, monotonic last-read message pointer and timestamp                                                                                                                     | Only the owner selects; participant-checked RPC advances                                   |
+| `invite_codes`          | server ID, one-way code digest, creator, expiry, redemption fields                                                                                                                                   | No broad client read policy; redeemed atomically through a controlled function             |
+| `presence_heartbeats`   | unique server/user row, last seen, nullable voice channel/join time, LIVE boolean constrained to voice occupancy                                                                                     | Members can read server rows; only security-definer heartbeat RPCs can write               |
+| `soundboard_categories` | server ID, name, ordered position, sole upload-target flag                                                                                                                                           | Members read; trusted server setup manages categories                                      |
+| `soundboard_sounds`     | server/category, label, emoji, Storage path, duration, order, revision, nullable creator, created time                                                                                               | Members read; uploader/admin label and emoji updates only                                  |
+| `soundboard_favorites`  | private user/server/sound key and created time; cascading server/sound/owner references                                                                                                              | The signed-in owner alone selects, inserts, or deletes                                     |
+| `storage.objects`       | private `soundboard/<server UUID>/<file-or-uploader/uuid.wav>`, `avatars/<owner UUID>/<asset UUID>`, and `profile-covers/<owner UUID>/<asset UUID>` objects                                          | Sound writes use trusted server code; profile owners write/delete; server or DM peers read |
 
 Initial admin membership and initial invite codes are managed with reviewed SQL.
 An invite-management UI is deferred until post-v1.
@@ -527,6 +562,14 @@ An invite-management UI is deferred until post-v1.
   table directly; `mark_channel_read` requires channel membership and can only
   advance a pointer, while `get_channel_activity` exposes activity for one of
   the caller's servers.
+- Direct conversation, message, and read-state tables expose only RLS-filtered
+  selects to renderer sessions. `get_or_create_direct_conversation` derives a
+  canonical pair and requires current shared-server membership;
+  `send_direct_message` derives the author, accepts the existing exact
+  text/mention shapes, restricts mentions to the two participants, and preserves
+  the 4,000-character/25-mention bounds; `mark_direct_conversation_read`
+  advances only the caller's pointer. Once created, participant access no
+  longer depends on continued server membership.
 - Invite redemption is an atomic database operation: validate an unused,
   unexpired code, create the membership, and consume the code in one
   transaction.
@@ -534,7 +577,8 @@ An invite-management UI is deferred until post-v1.
 - Profile display names, descriptions, media paths, and cover focal points
   remain canonical in `public.profiles`. Avatar and cover objects must use
   `<auth.uid()>/<generated UUID>`; only the owner writes or deletes, and reads
-  require ownership or a shared server membership.
+  require ownership, shared server membership, or an established direct
+  conversation with that profile.
 - Direct channel insert, update, and delete privileges stay revoked. The
   `create_channel` and `rename_channel` RPCs derive the caller from
   `auth.uid()`, require admin membership in the affected server, validate names,
@@ -570,16 +614,47 @@ An invite-management UI is deferred until post-v1.
    atomically, then creates membership.
 5. The renderer refreshes membership and channel data.
 
+### Application shell and direct messages
+
+1. The 68 px destination rail switches an `AppSpace` discriminant between
+   Personal and the single server. Each space keeps its latest in-memory
+   conversation/channel selection. A cold start remains on Bakbak when
+   membership loads; missing membership plus established DM history resolves
+   to Personal; neither history nor membership resolves to InviteGate.
+2. The context panel swaps the Personal conversation list and server channel
+   shelf while retaining the shared user footer and current-call controls.
+   Settings remains an overlay and does not become a rail destination.
+3. Layout preferences v2 store visibility plus context/details widths. CSS grid
+   variables apply the same geometry to every visual preset. Pointer handles
+   use capture; keyboard separators support arrows, Shift+arrows, Home/End, and
+   double-click reset. Runtime maxima clamp the 200–360 px widths so the centre
+   retains at least 420 px; hidden panels keep their stored widths.
+4. Personal loads `get_direct_conversations()` activity ordered by the newest
+   message. Starting a row calls the canonical shared-membership creation RPC.
+   Direct messages use a true direct `ConversationTarget`, never a fabricated
+   server channel.
+5. Each direct conversation owns an in-memory draft and optimistic message.
+   Send failure removes the optimistic row and restores the submitted draft.
+   Participant-authorized Realtime inserts update an open conversation,
+   refresh ordering/unread state, and use the existing incoming-message sound.
+6. Selecting a conversation loads its RLS-filtered history and advances the
+   signed-in participant's monotonic read state when visible. Private read-state
+   Realtime refreshes Personal unread markers.
+7. The details panel resolves the other participant's profile and private media
+   through shared-server or established-DM policy. Former members may use the
+   reversible invite action while keeping established conversations.
+
 ### Profile, appearance, and modal settings
 
-1. The renderer validates and applies `bakbak.appearancePreferences.v4`
+1. The renderer validates and applies `bakbak.appearancePreferences.v6`
    synchronously before mounting React. A local parser-blocking bootstrap sets
    visual preset, theme, accent, intensity, surface style, and theme-specific
    CSS tokens before the production stylesheet loads; React then installs the
-   System media-query listener. Explicit Light or Dark choices ignore OS
-   changes. Valid v1/v2/v3 values migrate while preserving supported standard
-   fields. Signal Red changes only the effective presentation, so disabling it
-   restores the user's exact standard values.
+   System media-query listener for Classic. A missing v6 preference, including
+   every v5-or-older installation, is written once as Classic System + Flat +
+   Purple before first paint. Subsequent v6 choices persist normally. Signature
+   and Signal Red lock their fixed values without overwriting the retained v6
+   Classic fields.
 2. Profile edits validate a trimmed 1–50 character display name, a
    190-character plain-text description, integer 0–100 cover coordinates, and
    optional PNG/JPEG/WebP/GIF media. Avatars are limited to 5 MiB, covers to 10
@@ -666,23 +741,27 @@ An invite-management UI is deferred until post-v1.
 
 ### Application presence
 
-1. After loading a server, each authenticated client calls
-   `heartbeat_presence_v2(server_id, voice_channel_id)` immediately and every
-   20 seconds. The older `heartbeat_presence(server_id)` RPC remains available
-   for installed older builds and clears voice state.
+1. After loading a server, each authenticated upgraded client calls
+   `heartbeat_presence_v3(server_id, voice_channel_id, is_streaming)`
+   immediately and every 20 seconds. Local room/share transitions call
+   `setVoiceState` immediately rather than waiting for the next interval.
+   `heartbeat_presence_v2` and `heartbeat_presence` remain available for older
+   builds and always clear LIVE, preventing stale streaming state.
 2. The security-definer RPC derives the user from `auth.uid()`, verifies current
    server membership, and upserts the server/user row using database time. The
    renderer cannot insert or update heartbeat rows directly.
 3. A non-null voice channel must belong to the requested server and have kind
-   `voice`. Postgres assigns the join timestamp and preserves it while the user
-   remains in the same room.
+   `voice`. LIVE cannot be true without that voice occupancy. Postgres assigns
+   the join timestamp and preserves it while the user remains in the same room.
 4. Voice state is published only after LiveKit connects and cleared on leave or
-   connection error. Server members can read the resulting online and
-   voice-session snapshot, including occupants of rooms they have not joined.
+   connection error. Sharing and paused sharing publish LIVE; stop, failure,
+   and disconnect clear it immediately. Server members can read online,
+   voice-session, and LIVE state for every server room they have not joined.
 5. Postgres Realtime refreshes the cached rows on every client. Clients expire
    rows older than 55 seconds and re-evaluate every five seconds, so a crashed
    client disappears without a graceful leave.
-6. Presence is a UI hint only. Database RLS and Edge Function checks remain
+6. Presence is a UI hint only. The actual LiveKit screen publication is
+   authoritative for Watch; database RLS and Edge Function checks remain
    authoritative for access.
 
 ### Voice room
@@ -791,19 +870,28 @@ An invite-management UI is deferred until post-v1.
    viewer's last frame visible, and reports “Source minimized or paused.”
    Capture automatically unmutes when a complete frame returns.
 7. Companion participants are merged into their owner's UI state and omitted
-   from ordinary participant cards. Every gallery share subscribes to low
-   video with no source audio; the focused share receives high video and
-   source audio. Deafen, selected output, and owner volume still apply.
-8. Focused people and shares use a fixed-toolbar, `minmax(0, 1fr)` media stage
+   from ordinary participant cards. Every remote screen video/audio publication
+   is immediately unsubscribed. `watchedScreenShareId` is the sole subscription
+   gate: Watch unsubscribes the previous remote share first, then subscribes
+   the selected high-quality video and source audio. The presenter's own
+   companion video remains subscribed locally without source-audio feedback.
+   Deafen, selected output, and owner volume still apply to watched audio.
+8. Clicking Watch in another room uses the prepared-join/direct-switch
+   microphone-reuse path, then waits up to twelve seconds for the authoritative
+   matching owner publication before focusing it. A join error or ended share
+   clears the pending request with a notice. Database LIVE alone never creates
+   a subscription.
+9. Focused people and shares use a fixed-toolbar, `minmax(0, 1fr)` media stage
    with `object-fit: contain`; no percentage-height subtraction can clip the
    bottom edge. The fullscreen control uses Tauri OS fullscreen. Escape exits
-   fullscreen without clearing focus; leaving voice or losing the target exits
-   fullscreen and returns to gallery.
-9. Explicit stop, voice leave, source termination, terminal native-room
-   disconnect, or main-window close releases capture immediately and closes the
-   companion. Multiple app instances may present concurrently, but each app
-   instance owns at most one share.
-10. Local and remote share lifecycle changes emit typed start/stop effects after
+   fullscreen without clearing focus. Gallery/person focus, Stop Watching,
+   leaving voice, or losing the target unsubscribes the watched share and exits
+   fullscreen.
+10. Explicit stop, voice leave, source termination, terminal native-room
+    disconnect, or main-window close releases capture immediately and closes the
+    companion. Multiple app instances may present concurrently, but each app
+    instance owns at most one share.
+11. Local and remote share lifecycle changes emit typed start/stop effects after
     room baselining. Remote cues play at reduced gain, and deafen suppresses
     remote Voice/Screen-share cues without suppressing self actions, Messages,
     or Status.
@@ -897,23 +985,29 @@ Soundboard section collapse state is stored independently per server under
 `bakbak.soundboardSections.v1:<server ID>` and never syncs; favorite rows sync
 through Supabase instead.
 The renderer stores `{ theme, accent, intensity, surfaceStyle, visualPreset }`
-separately under `bakbak.appearancePreferences.v4`. Theme is System/Light/Dark,
-accent is Coral/Purple/Red/Yellow, intensity is a validated 25–100% five-point
-step, surface style is Warm/Flat, and the visual preset is Standard/Signal Red.
+separately under `bakbak.appearancePreferences.v6`. Missing v6 preferences,
+including all v5-or-older installations, reset once to Classic System + Flat +
+Purple. Theme is System/Light/Dark, accent is Coral/Purple/Red/Yellow, intensity is a
+validated 25–100% five-point step, surface style is Warm/Flat, and the visual
+preset is Signature/Standard/Signal Red. Only Standard exposes the variable
+theme, accent, intensity, and surface controls.
 It stores `{ enabled, volume, categories }` under
 `bakbak.interfaceSoundPreferences.v1`; the default is enabled at 55% with
 Messages, Voice, Screen share, and Status enabled. Interface sounds lazily
 preload after the first pointer/keyboard interaction, use the Web Audio system
 destination, never queue blocked pre-gesture events, cap concurrency at three,
 throttle messages to 350 ms, batch remote roster churn for 250 ms, and cool
-failure alerts for two seconds. Independent panel visibility remains under
-`bakbak.layoutPreferences.v1`; malformed values restore defaults. All of these
-preferences are device-local and never part of the profile or Supabase schema.
+failure alerts for two seconds. Panel visibility plus context/right widths use
+`bakbak.layoutPreferences.v2`; malformed values restore defaults and widths are
+reclamped to the viewport so at least 420 px remains for the centre canvas.
+All of these preferences are device-local and never part of the profile or
+Supabase schema.
 
-League Gothic `5.2.8` and IBM Plex Mono `5.2.7` are installed from Fontsource;
-both package manifests declare SIL Open Font License 1.1 (`OFL-1.1`). Every WAV
-under `public/interface-sounds` is original Bakbak project output from the
-checked-in deterministic oscillator/filter/envelope/seeded-noise generator.
+League Gothic `5.2.8`, IBM Plex Mono `5.2.7`, and Cormorant Garamond `5.2.11`
+are installed from Fontsource; their package manifests declare SIL Open Font
+License 1.1 (`OFL-1.1`). Every WAV under `public/interface-sounds` is original
+Bakbak project output from the checked-in deterministic
+oscillator/filter/envelope/seeded-noise generator.
 The assets contain no recordings or third-party samples. The microphone
 worklet bundles `@jitsi/rnnoise-wasm` `0.2.1` and its RNNoise 0.2 synchronous
 model; Jitsi's Apache/MIT notice and Xiph.Org's BSD 3-Clause notice ship under
@@ -1013,17 +1107,31 @@ These contracts match the current implementation.
 - **Errors:** a normalized invalid-or-unavailable response that does not reveal
   whether a guessed code once existed
 
-### `POST /rest/v1/rpc/heartbeat_presence_v2`
+### `POST /rest/v1/rpc/heartbeat_presence_v3`
 
 - **Authentication:** valid Supabase user session
-- **Request:** `{ "p_server_id": "<server-uuid>", "p_voice_channel_id": "<voice-channel-uuid-or-null>" }`
+- **Request:** `{ "p_server_id": "<server-uuid>", "p_voice_channel_id": "<voice-channel-uuid-or-null>", "p_is_streaming": true|false }`
 - **Success:** database heartbeat timestamp
 - **Validation:** `auth.uid()` identity, current server membership, and voice
-  channel ownership/kind
+  channel ownership/kind; streaming requires a non-null valid voice channel
 - **Behavior:** database-owned stable join time for an unchanged room; null
-  clears voice state; direct table writes remain denied
-- **Compatibility:** `heartbeat_presence(server_id)` remains executable by
-  older builds and records online-only presence
+  clears voice and LIVE state; direct table writes remain denied
+- **Compatibility:** `heartbeat_presence_v2` and `heartbeat_presence` remain
+  executable by older builds and always clear LIVE
+
+### Direct-message RPCs
+
+- `get_or_create_direct_conversation(target_user_id)` requires a shared server
+  to create the canonical ordered pair and rejects self-DMs.
+- `send_direct_message(conversation_id, content)` derives the author, validates
+  the same 4,000-character structured message shape, and restricts mentions to
+  the pair.
+- `mark_direct_conversation_read(conversation_id, message_id)` maintains the
+  caller's owner-private marker.
+- `get_direct_conversation_activity()` exposes only participant-authorized
+  conversations with latest-message and unread metadata.
+- Established participants keep participant-only conversation, message,
+  profile, avatar, and cover reads after shared membership disappears.
 
 ### `POST /rest/v1/rpc/create_channel`
 

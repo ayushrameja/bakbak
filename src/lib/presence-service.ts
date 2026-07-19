@@ -9,12 +9,21 @@ interface PresenceHeartbeatRow {
   last_seen_at: string;
   voice_channel_id: string | null;
   voice_joined_at: string | null;
+  is_streaming: boolean;
 }
+
+type PresenceHeartbeatDatabaseRow = Omit<
+  PresenceHeartbeatRow,
+  "is_streaming"
+> & {
+  is_streaming?: boolean;
+};
 
 export interface VoicePresenceSession {
   userId: string;
   channelId: string;
   joinedAt: string;
+  isStreaming: boolean;
 }
 
 export interface ServerPresenceSnapshot {
@@ -31,7 +40,10 @@ interface PresenceSubscriptionOptions {
 }
 
 export interface ServerPresenceSubscription {
-  setVoiceChannel: (channelId: string | null) => Promise<void>;
+  setVoiceState: (
+    channelId: string | null,
+    isStreaming?: boolean,
+  ) => Promise<void>;
   stop: () => void;
 }
 
@@ -56,6 +68,7 @@ export function presenceSnapshotFromHeartbeats(
               userId: heartbeat.user_id,
               channelId: heartbeat.voice_channel_id,
               joinedAt: heartbeat.voice_joined_at,
+              isStreaming: heartbeat.is_streaming,
             },
           ]
         : [],
@@ -74,10 +87,12 @@ export function subscribeToServerPresence({
   let channel: RealtimeChannel | null = null;
   let heartbeats: PresenceHeartbeatRow[] = [];
   let voiceChannelId = initialVoiceChannelId;
+  let isStreaming = false;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   let expiryTimer: ReturnType<typeof setInterval> | null = null;
   let stopped = false;
   let refreshInFlight: Promise<void> | null = null;
+  let heartbeatVersion: "v3" | "v2" = "v3";
 
   onSync({ onlineUserIds: new Set([userId]), voiceSessions: [] });
 
@@ -88,13 +103,27 @@ export function subscribeToServerPresence({
   const refresh = (): Promise<void> => {
     if (refreshInFlight) return refreshInFlight;
     refreshInFlight = (async () => {
-      const { data, error } = await supabase
+      const current = await supabase
         .from("presence_heartbeats")
-        .select("user_id,last_seen_at,voice_channel_id,voice_joined_at")
+        .select(
+          "user_id,last_seen_at,voice_channel_id,voice_joined_at,is_streaming",
+        )
         .eq("server_id", serverId)
-        .returns<PresenceHeartbeatRow[]>();
-      if (error) throw error;
-      heartbeats = data;
+        .returns<PresenceHeartbeatDatabaseRow[]>();
+      let rows = current.data;
+      if (current.error) {
+        const legacy = await supabase
+          .from("presence_heartbeats")
+          .select("user_id,last_seen_at,voice_channel_id,voice_joined_at")
+          .eq("server_id", serverId)
+          .returns<PresenceHeartbeatDatabaseRow[]>();
+        if (legacy.error) throw legacy.error;
+        rows = legacy.data;
+      }
+      heartbeats = (rows ?? []).map((row) => ({
+        ...row,
+        is_streaming: row.is_streaming === true,
+      }));
       emit();
     })()
       .catch(() => {
@@ -107,6 +136,18 @@ export function subscribeToServerPresence({
   };
 
   const heartbeat = async () => {
+    if (heartbeatVersion === "v3") {
+      const { error } = await supabase.rpc("heartbeat_presence_v3", {
+        p_server_id: serverId,
+        p_voice_channel_id: voiceChannelId,
+        p_is_streaming: voiceChannelId === null ? false : isStreaming,
+      });
+      if (!error) {
+        await refresh();
+        return;
+      }
+      heartbeatVersion = "v2";
+    }
     const { error } = await supabase.rpc("heartbeat_presence_v2", {
       p_server_id: serverId,
       p_voice_channel_id: voiceChannelId,
@@ -160,9 +201,18 @@ export function subscribeToServerPresence({
   });
 
   return {
-    async setVoiceChannel(nextChannelId) {
-      if (stopped || voiceChannelId === nextChannelId) return;
+    async setVoiceState(nextChannelId, nextIsStreaming = false) {
+      const normalizedStreaming =
+        nextChannelId === null ? false : nextIsStreaming;
+      if (
+        stopped ||
+        (voiceChannelId === nextChannelId &&
+          isStreaming === normalizedStreaming)
+      ) {
+        return;
+      }
       voiceChannelId = nextChannelId;
+      isStreaming = normalizedStreaming;
       await heartbeat().catch(() => {
         if (!stopped) onError?.("Voice-room activity could not be published.");
       });

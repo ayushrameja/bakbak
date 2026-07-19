@@ -6,10 +6,14 @@ import { DEFAULT_SCREEN_SHARE_SETTINGS } from "./screen-share-preferences";
 
 const sourcePicker = vi.hoisted(() => ({
   list: vi.fn(),
+  openSettings: vi.fn(),
+  restart: vi.fn(),
 }));
 
 vi.mock("./screen-share-service", () => ({
   listScreenShareSources: sourcePicker.list,
+  openScreenRecordingSettings: sourcePicker.openSettings,
+  restartDesktopApp: sourcePicker.restart,
 }));
 
 describe("ScreenShareDialog", () => {
@@ -273,5 +277,30 @@ describe("ScreenShareDialog", () => {
       expect(screen.getByRole("button", { name: /Screen 1/ })).toBeVisible(),
     );
     expect(screen.getByRole("button", { name: "Share" })).toBeEnabled();
+  });
+
+  it("offers settings and restart recovery for macOS permission failures", async () => {
+    sourcePicker.list.mockRejectedValueOnce(
+      "Screen recording permission is not active for this running copy.",
+    );
+    render(
+      <ScreenShareDialog
+        audioAvailable
+        audioUnavailableReason={null}
+        customPicker
+        initialSettings={DEFAULT_SCREEN_SHARE_SETTINGS}
+        onStart={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Open Privacy Settings" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Restart Bakbak" }),
+    );
+    expect(sourcePicker.openSettings).toHaveBeenCalledOnce();
+    expect(sourcePicker.restart).toHaveBeenCalledOnce();
   });
 });

@@ -12,6 +12,10 @@ category and removes member objects after rechecking verified claims,
 membership, quotas, format, duration, and uploader/admin authority. Members
 edit only their own label/emoji metadata; server admins moderate all metadata
 and sounds. Category administration remains trusted-server-only.
+Private one-to-one conversations use canonical participant pairs, structured
+messages, owner-private read markers, participant-only RLS, and Realtime.
+Creation requires a shared server; established participants retain their
+conversation and profile/media access if that membership later disappears.
 Private profile media uses two owner-prefixed buckets: `avatars` accepts
 PNG/JPEG/WebP/GIF objects up to 5 MiB, and `profile-covers` accepts the same
 types up to 10 MiB. Owners manage their objects; authenticated users may read
@@ -65,9 +69,12 @@ same 404 used for a missing or text channel.
 - The desktop chooses only a channel UUID. The function derives identity, room,
   TTL, and grants after rechecking verified claims and querying the
   security-invoker `get_voice_join_context` RPC under the caller's RLS session.
-- Online and voice-room status use the membership-checked
-  `heartbeat_presence_v2` RPC and an RLS-filtered `presence_heartbeats` table.
-  The original `heartbeat_presence` RPC remains for older installed builds.
+- Direct-conversation discovery, reads, sends, read states, and Realtime rows
+  are participant-only. Self-DMs are forbidden, authors come from `auth.uid()`,
+  and new pairs require a shared server.
+- Online, voice-room, and LIVE status use the membership-checked
+  `heartbeat_presence_v3` RPC and an RLS-filtered `presence_heartbeats` table.
+  The v2 and original RPCs remain for older builds and clear LIVE.
   Clients cannot forge heartbeat rows or join timestamps directly, and
   Postgres Realtime distributes row changes to server members.
 - Voice tokens permit microphone, camera, LiveKit data messages, and a
@@ -107,10 +114,9 @@ pnpm dlx supabase@latest functions deploy livekit-token --use-api
 pnpm dlx supabase@latest functions deploy soundboard-manage --use-api
 ```
 
-Screen sharing changes only this Edge Function; no database migration is
-required. Deploy the backward-compatible function before distributing a native
-screen-sharing build, then repeat an unauthenticated invocation and confirm it
-still returns HTTP 401.
+Plan 0014's additive DM/LIVE migration is deployed. Older clients continue
+using the compatible channel and heartbeat RPCs; rolling the renderer back
+leaves the new tables inert.
 
 Voice-join acceleration adds migration
 `202607140001_voice_join_context.sql` and an updated function. Push the

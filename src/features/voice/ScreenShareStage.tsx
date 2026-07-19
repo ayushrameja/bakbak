@@ -40,12 +40,19 @@ export function ScreenShareStage({
     <section className="screen-share-stage" aria-label="Screen share stage">
       <header>
         <button
-          className="screen-share-stage__icon-button"
+          className={
+            share.isLocal
+              ? "screen-share-stage__icon-button"
+              : "secondary-button"
+          }
           type="button"
           onClick={onBack}
-          aria-label="Return to gallery"
+          aria-label={
+            share.isLocal ? "Return to gallery" : "Stop watching screen share"
+          }
         >
           <ArrowLeft size={17} />
+          {!share.isLocal ? "Stop watching" : null}
         </button>
         <div>
           <Monitor size={17} />

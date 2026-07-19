@@ -684,6 +684,32 @@ describe("SettingsPage", () => {
     expect(onThemeChange).toHaveBeenCalledWith("light");
   });
 
+  it("presents Signature as a fixed preset and restores Classic controls", async () => {
+    const onVisualPresetChange = vi.fn();
+    const { rerender, props } = renderSettings("appearance", {
+      visualPreset: "signature",
+      onVisualPresetChange,
+    });
+    expect(
+      screen.getByRole("button", { name: "Signature active" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.queryByRole("radiogroup", { name: "App theme" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/fixed night, leather, and brass/i)).toBeVisible();
+
+    await userEvent.click(screen.getByRole("button", { name: "Use Classic" }));
+    expect(onVisualPresetChange).toHaveBeenCalledWith("standard");
+    rerender(
+      <SettingsPage
+        {...props}
+        visualPreset="standard"
+        onVisualPresetChange={onVisualPresetChange}
+      />,
+    );
+    expect(screen.getByRole("radio", { name: /System/ })).toBeEnabled();
+  });
+
   it("activates Signal Red and locks standard controls without losing them", async () => {
     const onVisualPresetChange = vi.fn();
     const { rerender, props } = renderSettings("appearance", {
@@ -706,10 +732,12 @@ describe("SettingsPage", () => {
     expect(
       screen.getByText(/temporarily locks Dark, Flat/i),
     ).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: /System/ })).toBeDisabled();
     expect(
-      screen.getByRole("slider", { name: /Accent intensity/i }),
-    ).toBeDisabled();
+      screen.queryByRole("radiogroup", { name: "App theme" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("slider", { name: /Accent intensity/i }),
+    ).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Use standard" }));
     expect(onVisualPresetChange).toHaveBeenLastCalledWith("standard");
   });

@@ -172,6 +172,10 @@ approved under `0011-soundboard-categories-favorites-and-uploads.md`.
 The exact seven-category, 18-text-room, and six-voice-room Unlucky Boys layout,
 with no Discord message import or channel-level permission mapping, is approved
 under `0012-unlucky-boys-channel-layout.md`.
+The Signature premium appearance, shared destination shell, Personal
+one-to-one DMs, resizable side panels, server-wide LIVE state, and explicit
+opt-in remote stream subscriptions are approved under
+`0014-bakbak-signature-shell-personal-dms-live-watching.md`.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -248,11 +252,23 @@ under `0012-unlucky-boys-channel-layout.md`.
 - [x] Add local RNNoise microphone cleanup plus Child, Robot, and
       Walkie-talkie sender-side filters under plan 0013.
 - [ ] Complete plan 0013's macOS and Windows installed two-client audio checks.
+- [x] Add the Bakbak Signature preset, fixed destination rail, and
+      accessible persisted side-panel resizing under plan 0014.
+- [x] Reset every v5-or-older installation once to Classic System + Flat +
+      Purple through the parser-blocking v6 appearance migration.
+- [x] Add participant-private one-to-one DMs with retained former-member
+      history, Realtime updates, unread/read state, and person details.
+- [x] Add server-wide LIVE presence and explicit one-share Watch subscriptions
+      that keep remote screen video/audio unsubscribed before user intent.
+- [x] Deploy plan 0014's additive migration before distributing its renderer.
+- [ ] Complete plan 0014's hosted DM and installed three-client LIVE/Watch
+      acceptance matrices.
 - [ ] Evaluate optional global push-to-talk.
 - [x] Implement Windows process/display-matched audio with build gating and
       video-only fallback.
 - [ ] Complete the cross-platform installed-client acceptance matrix.
-- [ ] Update architecture, plan status, and the append-only progress log.
+- [x] Update architecture, plan status, and the append-only progress log for
+      plan 0014.
 
 ### Phase 6 — Distribution
 

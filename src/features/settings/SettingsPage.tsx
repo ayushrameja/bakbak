@@ -1,6 +1,7 @@
 import {
   Camera,
   Check,
+  Crown,
   Headphones,
   Laptop,
   LogOut,
@@ -1527,6 +1528,8 @@ function AppearanceSettings({
   onSurfaceStyleChange: (surfaceStyle: SurfaceStyle) => void;
 }) {
   const signalRedActive = visualPreset === "signal-red";
+  const signatureActive = visualPreset === "signature";
+  const fixedPresetActive = signalRedActive || signatureActive;
   const options: Array<{
     value: ThemePreference;
     label: string;
@@ -1556,9 +1559,64 @@ function AppearanceSettings({
     <div className="settings-panel appearance-settings">
       <div className="settings-panel__heading">
         <span className="eyebrow">Appearance</span>
-        <h2>Pick the light in the room</h2>
-        <p>Your choice stays on this device and never becomes server gossip.</p>
+        <h2>Choose a style</h2>
+        <p>
+          Start with a complete look. Classic can then be adjusted below; the
+          two special themes are intentionally fixed.
+        </p>
       </div>
+      <section
+        className={`special-theme-card special-theme-card--classic ${visualPreset === "standard" ? "is-active" : ""}`}
+        aria-labelledby="classic-theme-title"
+      >
+        <div className="special-theme-card__mark" aria-hidden="true">
+          <Palette size={26} />
+          <span>FLAT // PURPLE</span>
+        </div>
+        <div className="special-theme-card__copy">
+          <span className="eyebrow">Recommended · customizable</span>
+          <h3 id="classic-theme-title">Classic</h3>
+          <p>
+            Calm flat surfaces with a purple accent by default. Choose the
+            system theme, colour, and intensity below.
+          </p>
+        </div>
+        <button
+          className={
+            visualPreset === "standard" ? "secondary-button" : "primary-button"
+          }
+          type="button"
+          aria-pressed={visualPreset === "standard"}
+          onClick={() => onVisualPresetChange("standard")}
+        >
+          {visualPreset === "standard" ? "Classic active" : "Use Classic"}
+        </button>
+      </section>
+      <section
+        className={`special-theme-card special-theme-card--signature ${signatureActive ? "is-active" : ""}`}
+        aria-labelledby="signature-theme-title"
+      >
+        <div className="special-theme-card__mark" aria-hidden="true">
+          <Crown size={26} />
+          <span>BB // CLUB</span>
+        </div>
+        <div className="special-theme-card__copy">
+          <span className="eyebrow">Premium fixed theme</span>
+          <h3 id="signature-theme-title">Bakbak Signature</h3>
+          <p>
+            A fixed private-club skin with dark textile, cognac leather,
+            restrained brass, and clean conversation surfaces.
+          </p>
+        </div>
+        <button
+          className={signatureActive ? "secondary-button" : "primary-button"}
+          type="button"
+          aria-pressed={signatureActive}
+          onClick={() => onVisualPresetChange("signature")}
+        >
+          {signatureActive ? "Signature active" : "Use Signature"}
+        </button>
+      </section>
       <section
         className={`special-theme-card ${signalRedActive ? "is-active" : ""}`}
         aria-labelledby="special-theme-title"
@@ -1586,121 +1644,131 @@ function AppearanceSettings({
           {signalRedActive ? "Use standard" : "Activate Signal Red"}
         </button>
       </section>
-      {signalRedActive ? (
+      {fixedPresetActive ? (
         <p className="special-theme-note" role="status">
-          Signal Red temporarily locks Dark, Flat, and its signature red.
-          Disable it to restore these standard appearance choices exactly as you
-          left them.
+          {signalRedActive
+            ? "Signal Red temporarily locks Dark, Flat, and its signature red."
+            : "Bakbak Signature uses its fixed night, leather, and brass palette."}{" "}
+          Choose Classic to restore the standard appearance choices exactly as
+          you left them.
         </p>
       ) : null}
-      <div className="theme-options" role="radiogroup" aria-label="App theme">
-        {options.map((option) => (
-          <button
-            className={preference === option.value ? "is-active" : ""}
-            type="button"
-            role="radio"
-            aria-checked={preference === option.value}
-            disabled={signalRedActive}
-            key={option.value}
-            onClick={() => onChange(option.value)}
+      {!fixedPresetActive ? (
+        <div className="classic-customization">
+          <div className="classic-customization__heading">
+            <span className="eyebrow">Customize Classic</span>
+            <h3>Make it yours</h3>
+            <p>These controls apply immediately and stay on this device.</p>
+          </div>
+          <div
+            className="theme-options"
+            role="radiogroup"
+            aria-label="App theme"
           >
-            <span>{option.icon}</span>
-            <strong>{option.label}</strong>
-            <small>{option.description}</small>
-            {preference === option.value ? <Check size={16} /> : null}
-          </button>
-        ))}
-      </div>
-      <section className="surface-settings" aria-labelledby="surface-title">
-        <div>
-          <h3 id="surface-title">Surface style</h3>
-          <p>Keep the warmth, or make every surface calm and flat.</p>
-        </div>
-        <div
-          className="surface-options"
-          role="radiogroup"
-          aria-label="Surface style"
-        >
-          <button
-            className={surfaceStyle === "warm" ? "is-active" : ""}
-            type="button"
-            role="radio"
-            aria-checked={surfaceStyle === "warm"}
-            disabled={signalRedActive}
-            onClick={() => onSurfaceStyleChange("warm")}
-          >
-            <span>Warm</span>
-            <small>Gradients, depth, and soft light</small>
-            {surfaceStyle === "warm" ? <Check size={15} /> : null}
-          </button>
-          <button
-            className={surfaceStyle === "flat" ? "is-active" : ""}
-            type="button"
-            role="radio"
-            aria-checked={surfaceStyle === "flat"}
-            disabled={signalRedActive}
-            onClick={() => onSurfaceStyleChange("flat")}
-          >
-            <span>Flat</span>
-            <small>Plain grayscale surfaces, no glow</small>
-            {surfaceStyle === "flat" ? <Check size={15} /> : null}
-          </button>
-        </div>
-      </section>
-      <section className="accent-settings" aria-labelledby="accent-title">
-        <div>
-          <h3 id="accent-title">Accent colour</h3>
-          <p>One accent adapts itself to both Light and Dark.</p>
-        </div>
-        <div
-          className="accent-options"
-          role="radiogroup"
-          aria-label="Accent colour"
-        >
-          {(
-            [
-              "coral",
-              "purple",
-              "red",
-              "yellow",
-            ] as const satisfies readonly AccentColor[]
-          ).map((option) => (
-            <button
-              className={accent === option ? "is-active" : ""}
-              type="button"
-              role="radio"
-              aria-checked={accent === option}
-              disabled={signalRedActive}
-              data-accent-option={option}
-              key={option}
-              onClick={() => onAccentChange(option, intensity)}
+            {options.map((option) => (
+              <button
+                className={preference === option.value ? "is-active" : ""}
+                type="button"
+                role="radio"
+                aria-checked={preference === option.value}
+                key={option.value}
+                onClick={() => onChange(option.value)}
+              >
+                <span>{option.icon}</span>
+                <strong>{option.label}</strong>
+                <small>{option.description}</small>
+                {preference === option.value ? <Check size={16} /> : null}
+              </button>
+            ))}
+          </div>
+          <section className="surface-settings" aria-labelledby="surface-title">
+            <div>
+              <h3 id="surface-title">Surface style</h3>
+              <p>Keep the warmth, or make every surface calm and flat.</p>
+            </div>
+            <div
+              className="surface-options"
+              role="radiogroup"
+              aria-label="Surface style"
             >
-              <i />
-              <span>{option}</span>
-              {accent === option ? <Check size={14} /> : null}
-            </button>
-          ))}
+              <button
+                className={surfaceStyle === "warm" ? "is-active" : ""}
+                type="button"
+                role="radio"
+                aria-checked={surfaceStyle === "warm"}
+                onClick={() => onSurfaceStyleChange("warm")}
+              >
+                <span>Warm</span>
+                <small>Gradients, depth, and soft light</small>
+                {surfaceStyle === "warm" ? <Check size={15} /> : null}
+              </button>
+              <button
+                className={surfaceStyle === "flat" ? "is-active" : ""}
+                type="button"
+                role="radio"
+                aria-checked={surfaceStyle === "flat"}
+                onClick={() => onSurfaceStyleChange("flat")}
+              >
+                <span>Flat</span>
+                <small>Plain grayscale surfaces, no glow</small>
+                {surfaceStyle === "flat" ? <Check size={15} /> : null}
+              </button>
+            </div>
+          </section>
+          <section className="accent-settings" aria-labelledby="accent-title">
+            <div>
+              <h3 id="accent-title">Accent colour</h3>
+              <p>One accent adapts itself to both Light and Dark.</p>
+            </div>
+            <div
+              className="accent-options"
+              role="radiogroup"
+              aria-label="Accent colour"
+            >
+              {(
+                [
+                  "coral",
+                  "purple",
+                  "red",
+                  "yellow",
+                ] as const satisfies readonly AccentColor[]
+              ).map((option) => (
+                <button
+                  className={accent === option ? "is-active" : ""}
+                  type="button"
+                  role="radio"
+                  aria-checked={accent === option}
+                  data-accent-option={option}
+                  key={option}
+                  onClick={() => onAccentChange(option, intensity)}
+                >
+                  <i />
+                  <span>{option}</span>
+                  {accent === option ? <Check size={14} /> : null}
+                </button>
+              ))}
+            </div>
+            <label className="accent-intensity">
+              <span>Accent intensity</span>
+              <strong>{intensity}%</strong>
+              <input
+                type="range"
+                min="25"
+                max="100"
+                step="5"
+                value={intensity}
+                onChange={(event) =>
+                  onAccentChange(accent, Number(event.target.value))
+                }
+              />
+              <small>Subtle</small>
+              <small>Vivid</small>
+            </label>
+          </section>
         </div>
-        <label className="accent-intensity">
-          <span>Accent intensity</span>
-          <strong>{intensity}%</strong>
-          <input
-            type="range"
-            min="25"
-            max="100"
-            step="5"
-            value={intensity}
-            disabled={signalRedActive}
-            onChange={(event) =>
-              onAccentChange(accent, Number(event.target.value))
-            }
-          />
-          <small>Subtle</small>
-          <small>Vivid</small>
-        </label>
-      </section>
+      ) : null}
       <div
-        className={`theme-preview ${signalRedActive ? "is-signal-red" : ""}`}
+        className={`theme-preview ${signalRedActive ? "is-signal-red" : ""} ${signatureActive ? "is-signature" : ""}`}
         aria-hidden="true"
       >
         <div className="theme-preview__shelf">

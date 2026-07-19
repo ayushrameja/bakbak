@@ -8,6 +8,8 @@ import {
 } from "./screen-share-preferences";
 import {
   listScreenShareSources,
+  openScreenRecordingSettings,
+  restartDesktopApp,
   type ScreenShareSource,
 } from "./screen-share-service";
 
@@ -67,6 +69,10 @@ export function ScreenShareDialog({
   }, [customPicker, reloadToken]);
 
   const visibleSources = sources.filter((source) => source.kind === sourceKind);
+  const macPermissionError =
+    sourceError?.toLowerCase().includes("permission") === true ||
+    sourceError?.toLowerCase().includes("screen access") === true ||
+    sourceError?.toLowerCase().includes("tcc") === true;
 
   useEffect(() => {
     if (!customPicker) return;
@@ -131,13 +137,33 @@ export function ScreenShareDialog({
             {sourceError ? (
               <div className="screen-share-dialog__source-status" role="alert">
                 <p>{sourceError}</p>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() => setReloadToken((current) => current + 1)}
-                >
-                  Retry
-                </button>
+                <div className="screen-share-dialog__source-actions">
+                  {macPermissionError ? (
+                    <>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => void openScreenRecordingSettings()}
+                      >
+                        Open Privacy Settings
+                      </button>
+                      <button
+                        className="primary-button"
+                        type="button"
+                        onClick={() => void restartDesktopApp()}
+                      >
+                        Restart Bakbak
+                      </button>
+                    </>
+                  ) : null}
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => setReloadToken((current) => current + 1)}
+                  >
+                    Retry
+                  </button>
+                </div>
               </div>
             ) : null}
             {sourcesLoading ? (

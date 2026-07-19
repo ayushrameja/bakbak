@@ -8,6 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use core_graphics::access::ScreenCaptureAccess;
 use livekit::webrtc::{
     audio_source::native::NativeAudioSource,
     prelude::{AudioFrame, VideoFrame, VideoRotation},
@@ -306,11 +307,18 @@ fn display_index(displays: &[SCDisplay], display_id: u32) -> usize {
 
 fn shareable_content_error(error: impl std::fmt::Display) -> String {
     format!(
-        "macOS could not list shareable sources. Allow Bakbak under Privacy & Security > Screen & System Audio Recording, then relaunch it: {error}"
+        "macOS refused screen access for this running copy of Bakbak. Permission changes only apply after a full app restart. If Bakbak is already enabled, remove that entry, launch this exact Bakbak.app again, re-enable it, and restart: {error}"
     )
 }
 
 async fn shareable_content() -> Result<SCShareableContent, String> {
+    let access = ScreenCaptureAccess;
+    if !access.preflight() && !access.request() {
+        return Err(
+            "Screen recording permission is not active for this running copy of Bakbak. Open Privacy & Security > Screen & System Audio Recording, enable Bakbak, then restart the app."
+                .to_string(),
+        );
+    }
     timeout(
         SOURCE_ENUMERATION_TIMEOUT,
         AsyncSCShareableContent::get(),

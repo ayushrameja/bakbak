@@ -63,15 +63,47 @@ export interface MessageDraft {
   mentions: DraftMention[];
 }
 
-export interface ChatMessage {
+export interface ConversationMessage {
   id: string;
-  channelId: string;
   authorId: string;
   body: string;
   content: MessageSegment[] | null;
   createdAt: string;
   pending?: boolean;
 }
+
+export interface ChatMessage extends ConversationMessage {
+  channelId: string;
+}
+
+export interface DirectMessage extends ConversationMessage {
+  conversationId: string;
+}
+
+export interface DirectConversation {
+  id: string;
+  otherMember: ServerMember;
+  createdAt: string;
+  updatedAt: string;
+  latestMessageId: string | null;
+  latestMessageAuthorId: string | null;
+  latestMessageBody: string | null;
+  latestMessageCreatedAt: string | null;
+  hasUnread: boolean;
+}
+
+export type ConversationTarget =
+  | {
+      kind: "channel";
+      id: string;
+      name: string;
+      topic: string;
+    }
+  | {
+      kind: "direct";
+      id: string;
+      member: ServerMember;
+    };
 
 export interface ChannelActivity {
   channelId: string;
@@ -94,4 +126,5 @@ export interface VoiceRoomOccupant {
   avatarUrl: string | null;
   channelId: string;
   joinedAt: string;
+  isStreaming: boolean;
 }

@@ -27,6 +27,7 @@
   "dependencies": {
     "@ffmpeg/ffmpeg": "0.12.15",
     "@ffmpeg/util": "0.12.2",
+    "@fontsource/cormorant-garamond": "^5.2.11",
     "@fontsource/ibm-plex-mono": "^5.2.7",
     "@fontsource/league-gothic": "^5.2.8",
     "@jitsi/rnnoise-wasm": "0.2.1",

@@ -62,7 +62,8 @@ export function VoiceRoom({
   const {
     participants: voiceParticipants,
     screenShares,
-    selectScreenShare,
+    watchedScreenShareId,
+    stopWatchingScreenShare,
   } = voice;
 
   const exitFullscreen = useCallback(async () => {
@@ -99,7 +100,7 @@ export function VoiceRoom({
           : true;
     if (isConnected && targetStillExists) return;
     setFocusedTarget(null);
-    selectScreenShare(null);
+    stopWatchingScreenShare();
     if (fullscreen) void exitFullscreen();
   }, [
     exitFullscreen,
@@ -107,9 +108,20 @@ export function VoiceRoom({
     fullscreen,
     isConnected,
     screenShares,
-    selectScreenShare,
+    stopWatchingScreenShare,
     voiceParticipants,
   ]);
+
+  useEffect(() => {
+    if (
+      watchedScreenShareId &&
+      screenShares.some(
+        (share) => share.id === watchedScreenShareId && !share.isLocal,
+      )
+    ) {
+      setFocusedTarget({ kind: "screen", id: watchedScreenShareId });
+    }
+  }, [screenShares, watchedScreenShareId]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -136,12 +148,20 @@ export function VoiceRoom({
 
   const focusTarget = (target: MediaTarget) => {
     setFocusedTarget(target);
-    voice.selectScreenShare(target.kind === "screen" ? target.id : null);
+    const share =
+      target.kind === "screen"
+        ? voice.screenShares.find((candidate) => candidate.id === target.id)
+        : null;
+    if (share && !share.isLocal) {
+      voice.watchScreenShare(share.id);
+    } else {
+      voice.stopWatchingScreenShare();
+    }
   };
 
   const returnToGallery = () => {
     setFocusedTarget(null);
-    voice.selectScreenShare(null);
+    voice.stopWatchingScreenShare();
     if (fullscreen) void exitFullscreen();
   };
 
@@ -347,6 +367,9 @@ export function VoiceRoom({
                   key={`screen:${share.id}`}
                   share={share}
                   localSourceLabel={voice.screenShareSourceLabel}
+                  watched={
+                    share.isLocal || voice.watchedScreenShareId === share.id
+                  }
                   onFocus={() => focusTarget({ kind: "screen", id: share.id })}
                 />
               ))}
@@ -536,10 +559,12 @@ function ParticipantCard({
 function ScreenShareTile({
   share,
   localSourceLabel,
+  watched,
   onFocus,
 }: {
   share: VoiceScreenShare;
   localSourceLabel: string | null;
+  watched: boolean;
   onFocus: () => void;
 }) {
   return (
@@ -547,20 +572,28 @@ function ScreenShareTile({
       className="screen-share-tile"
       type="button"
       onClick={onFocus}
-      aria-label={`Focus ${share.displayName}'s screen share`}
+      aria-label={
+        share.isLocal || watched
+          ? `Focus ${share.displayName}'s screen share`
+          : `Watch ${share.displayName}'s screen share`
+      }
     >
       <span className="screen-share-tile__media">
-        {share.track ? (
+        {(share.isLocal || watched) && share.track ? (
           <ParticipantVideo
             track={share.track}
-            local={false}
+            local={share.isLocal}
             label={share.displayName}
             kind="screen"
           />
         ) : (
           <span className="screen-share-stage__waiting">
             <Monitor size={30} />
-            <span>Waiting for the first frame…</span>
+            <span>
+              {share.isLocal || watched
+                ? "Waiting for the first frame…"
+                : "Watch stream"}
+            </span>
           </span>
         )}
         {share.paused ? (
