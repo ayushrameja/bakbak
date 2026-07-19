@@ -6,7 +6,7 @@ import type { VoiceScreenShare } from "./useVoiceRoom";
 
 const first = share("share-1", "Mira", "2026-07-12T10:00:00.000Z");
 describe("ScreenShareStage", () => {
-  it("renders a focused share and returns to the gallery", async () => {
+  it("renders a focused share and stops watching", async () => {
     const onBack = vi.fn();
     render(
       <ScreenShareStage
@@ -23,7 +23,7 @@ describe("ScreenShareStage", () => {
 
     expect(screen.getByLabelText("Mira screen")).toBeVisible();
     await userEvent.click(
-      screen.getByRole("button", { name: "Return to gallery" }),
+      screen.getByRole("button", { name: "Stop watching screen share" }),
     );
     expect(onBack).toHaveBeenCalledOnce();
   });

@@ -2,7 +2,45 @@ import { describe, expect, it, vi } from "vitest";
 import themeBootstrap from "../../../public/theme-init.js?raw";
 
 describe("pre-React appearance bootstrap", () => {
-  it("applies a persisted Flat surface and accent on first paint", () => {
+  it("applies Flat Purple Classic on first paint when no preference exists", () => {
+    const root = createRoot();
+    const themeColor = { setAttribute: vi.fn() };
+    const storage = storageWith({});
+
+    executeBootstrap(themeBootstrap, {
+      document: {
+        documentElement: root,
+        querySelector: () => themeColor,
+      },
+      localStorage: storage,
+      matchMedia: () => ({ matches: false }),
+    });
+
+    expect(root.dataset).toMatchObject({
+      theme: "light",
+      accent: "purple",
+      accentIntensity: "100",
+      surfaceStyle: "flat",
+      visualPreset: "standard",
+    });
+    expect(root.style.setProperty).toHaveBeenCalledWith(
+      "--accent-bright",
+      "hsl(276 89% 39%)",
+    );
+    expect(themeColor.setAttribute).toHaveBeenCalledWith("content", "#ffffff");
+    expect(storage.setItem).toHaveBeenCalledWith(
+      "bakbak.appearancePreferences.v6",
+      JSON.stringify({
+        theme: "system",
+        accent: "purple",
+        intensity: 100,
+        surfaceStyle: "flat",
+        visualPreset: "standard",
+      }),
+    );
+  });
+
+  it("resets a v5 Signature choice before first paint", () => {
     const root = createRoot();
     const themeColor = { setAttribute: vi.fn() };
 
@@ -12,28 +50,29 @@ describe("pre-React appearance bootstrap", () => {
         querySelector: () => themeColor,
       },
       localStorage: storageWith({
-        "bakbak.appearancePreferences.v3": JSON.stringify({
+        "bakbak.appearancePreferences.v5": JSON.stringify({
           theme: "dark",
-          accent: "purple",
+          accent: "coral",
           intensity: 70,
-          surfaceStyle: "flat",
+          surfaceStyle: "warm",
+          visualPreset: "signature",
         }),
       }),
       matchMedia: () => ({ matches: false }),
     });
 
     expect(root.dataset).toMatchObject({
-      theme: "dark",
+      theme: "light",
       accent: "purple",
-      accentIntensity: "70",
+      accentIntensity: "100",
       surfaceStyle: "flat",
       visualPreset: "standard",
     });
-    expect(root.style.colorScheme).toBe("dark");
-    expect(themeColor.setAttribute).toHaveBeenCalledWith("content", "#090909");
+    expect(root.style.colorScheme).toBe("light");
+    expect(themeColor.setAttribute).toHaveBeenCalledWith("content", "#ffffff");
   });
 
-  it("migrates v2 bootstrap values to Warm without losing their accent", () => {
+  it("preserves choices made after the v6 reset", () => {
     const root = createRoot();
 
     executeBootstrap(themeBootstrap, {
@@ -42,10 +81,12 @@ describe("pre-React appearance bootstrap", () => {
         querySelector: () => null,
       },
       localStorage: storageWith({
-        "bakbak.appearancePreferences.v2": JSON.stringify({
+        "bakbak.appearancePreferences.v6": JSON.stringify({
           theme: "light",
           accent: "yellow",
           intensity: 55,
+          surfaceStyle: "warm",
+          visualPreset: "standard",
         }),
       }),
       matchMedia: () => ({ matches: true }),
@@ -70,7 +111,7 @@ describe("pre-React appearance bootstrap", () => {
         querySelector: () => themeColor,
       },
       localStorage: storageWith({
-        "bakbak.appearancePreferences.v4": JSON.stringify({
+        "bakbak.appearancePreferences.v6": JSON.stringify({
           theme: "light",
           accent: "purple",
           intensity: 35,
@@ -106,6 +147,7 @@ function createRoot() {
 function storageWith(values: Record<string, string>) {
   return {
     getItem: (key: string) => values[key] ?? null,
+    setItem: vi.fn(),
   };
 }
 

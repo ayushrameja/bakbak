@@ -1,4 +1,6 @@
-export const APPEARANCE_PREFERENCES_KEY = "bakbak.appearancePreferences.v4";
+export const APPEARANCE_PREFERENCES_KEY = "bakbak.appearancePreferences.v6";
+export const V5_APPEARANCE_PREFERENCES_KEY = "bakbak.appearancePreferences.v5";
+export const V4_APPEARANCE_PREFERENCES_KEY = "bakbak.appearancePreferences.v4";
 export const V3_APPEARANCE_PREFERENCES_KEY = "bakbak.appearancePreferences.v3";
 export const V2_APPEARANCE_PREFERENCES_KEY = "bakbak.appearancePreferences.v2";
 export const LEGACY_APPEARANCE_PREFERENCES_KEY =
@@ -8,7 +10,7 @@ export type ThemePreference = "system" | "light" | "dark";
 export type ResolvedTheme = Exclude<ThemePreference, "system">;
 export type AccentColor = "coral" | "purple" | "red" | "yellow";
 export type SurfaceStyle = "warm" | "flat";
-export type VisualPreset = "standard" | "signal-red";
+export type VisualPreset = "signature" | "standard" | "signal-red";
 
 export interface AppearancePreferences {
   theme: ThemePreference;
@@ -31,9 +33,9 @@ interface AppearanceEnvironment {
 
 export const DEFAULT_APPEARANCE_PREFERENCES: AppearancePreferences = {
   theme: "system",
-  accent: "coral",
+  accent: "purple",
   intensity: 100,
-  surfaceStyle: "warm",
+  surfaceStyle: "flat",
   visualPreset: "standard",
 };
 const SYSTEM_DARK_QUERY = "(prefers-color-scheme: dark)";
@@ -76,7 +78,9 @@ function isSurfaceStyle(value: unknown): value is SurfaceStyle {
 }
 
 function isVisualPreset(value: unknown): value is VisualPreset {
-  return value === "standard" || value === "signal-red";
+  return (
+    value === "signature" || value === "standard" || value === "signal-red"
+  );
 }
 
 function browserDocument(): Document | undefined {
@@ -112,6 +116,18 @@ function readStoredPreferences(storage: StorageLike, key: string): unknown {
   return JSON.parse(storage.getItem(key) ?? "null") as unknown;
 }
 
+function persistMigration(
+  storage: StorageLike,
+  preferences: AppearancePreferences,
+): AppearancePreferences {
+  try {
+    storage.setItem(APPEARANCE_PREFERENCES_KEY, JSON.stringify(preferences));
+  } catch {
+    // Migration still applies for this session when storage is read-only.
+  }
+  return preferences;
+}
+
 export function loadAppearancePreferences(
   storage: StorageLike | undefined = browserStorage(),
 ): AppearancePreferences {
@@ -141,60 +157,9 @@ export function loadAppearancePreferences(
       };
     }
 
-    const v3 = readStoredPreferences(storage, V3_APPEARANCE_PREFERENCES_KEY);
-    if (
-      v3 &&
-      typeof v3 === "object" &&
-      "theme" in v3 &&
-      "accent" in v3 &&
-      "intensity" in v3 &&
-      "surfaceStyle" in v3 &&
-      isThemePreference(v3.theme) &&
-      isAccentColor(v3.accent) &&
-      isIntensity(v3.intensity) &&
-      isSurfaceStyle(v3.surfaceStyle)
-    ) {
-      return {
-        theme: v3.theme,
-        accent: v3.accent,
-        intensity: v3.intensity,
-        surfaceStyle: v3.surfaceStyle,
-        visualPreset: "standard",
-      };
-    }
-
-    const v2 = readStoredPreferences(storage, V2_APPEARANCE_PREFERENCES_KEY);
-    if (
-      v2 &&
-      typeof v2 === "object" &&
-      "theme" in v2 &&
-      "accent" in v2 &&
-      "intensity" in v2 &&
-      isThemePreference(v2.theme) &&
-      isAccentColor(v2.accent) &&
-      isIntensity(v2.intensity)
-    ) {
-      return {
-        theme: v2.theme,
-        accent: v2.accent,
-        intensity: v2.intensity,
-        surfaceStyle: "warm",
-        visualPreset: "standard",
-      };
-    }
-
-    const legacy = readStoredPreferences(
-      storage,
-      LEGACY_APPEARANCE_PREFERENCES_KEY,
-    );
-    if (
-      legacy &&
-      typeof legacy === "object" &&
-      "theme" in legacy &&
-      isThemePreference(legacy.theme)
-    ) {
-      return { ...DEFAULT_APPEARANCE_PREFERENCES, theme: legacy.theme };
-    }
+    // v6 intentionally resets every older installation once. Choices made
+    // after this migration are stored under v6 and remain user-controlled.
+    return persistMigration(storage, DEFAULT_APPEARANCE_PREFERENCES);
   } catch {
     // Corrupt or inaccessible preferences must never block startup.
   }
@@ -265,7 +230,9 @@ export function applyAppearancePreferences(
     environment.matchMedia ?? browserMatchMedia(),
   );
   const signalRed = preferences.visualPreset === "signal-red";
-  const effectiveTheme = signalRed ? "dark" : resolvedTheme;
+  const signature = preferences.visualPreset === "signature";
+  const fixedPreset = signalRed || signature;
+  const effectiveTheme = fixedPreset ? "dark" : resolvedTheme;
   const targetDocument = environment.document ?? browserDocument();
   if (!targetDocument) return effectiveTheme;
 
@@ -279,14 +246,31 @@ export function applyAppearancePreferences(
         glow: "rgb(229 6 47 / 0.09)",
         onAccent: "#f4f2ef",
       }
-    : accentTokens(preferences.accent, preferences.intensity, resolvedTheme);
+    : signature
+      ? {
+          accent: "#8b4a2f",
+          bright: "#d1b06e",
+          soft: "rgb(139 74 47 / 0.18)",
+          border: "rgb(209 176 110 / 0.5)",
+          glow: "rgb(209 176 110 / 0.08)",
+          onAccent: "#fff8ef",
+        }
+      : accentTokens(preferences.accent, preferences.intensity, resolvedTheme);
   root.dataset.theme = effectiveTheme;
   root.dataset.themePreference = preferences.theme;
-  root.dataset.accent = signalRed ? "red" : preferences.accent;
+  root.dataset.accent = signalRed
+    ? "red"
+    : signature
+      ? "coral"
+      : preferences.accent;
   root.dataset.accentIntensity = String(
-    signalRed ? 100 : preferences.intensity,
+    fixedPreset ? 100 : preferences.intensity,
   );
-  root.dataset.surfaceStyle = signalRed ? "flat" : preferences.surfaceStyle;
+  root.dataset.surfaceStyle = signalRed
+    ? "flat"
+    : signature
+      ? "warm"
+      : preferences.surfaceStyle;
   root.dataset.visualPreset = preferences.visualPreset;
   root.style.colorScheme = effectiveTheme;
   root.style.setProperty("--accent", tokens.accent);
@@ -304,8 +288,10 @@ export function applyAppearancePreferences(
     themeColor.name = "theme-color";
     targetDocument.head.append(themeColor);
   }
-  themeColor.content = signalRed
-    ? "#050505"
+  themeColor.content = fixedPreset
+    ? signalRed
+      ? "#050505"
+      : "#100d0b"
     : preferences.surfaceStyle === "flat"
       ? resolvedTheme === "dark"
         ? "#090909"

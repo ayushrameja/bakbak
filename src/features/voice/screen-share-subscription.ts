@@ -1,17 +1,17 @@
 export interface ScreenShareSubscriptionPolicy {
-  subscribeVideo: true;
+  subscribeVideo: boolean;
   videoQuality: "low" | "high";
   subscribeAudio: boolean;
 }
 
 export function screenShareSubscriptionPolicy(
   shareId: string,
-  focusedShareId: string | null,
+  watchedShareId: string | null,
 ): ScreenShareSubscriptionPolicy {
-  const focused = shareId === focusedShareId;
+  const watched = shareId === watchedShareId;
   return {
-    subscribeVideo: true,
-    videoQuality: focused ? "high" : "low",
-    subscribeAudio: focused,
+    subscribeVideo: watched,
+    videoQuality: watched ? "high" : "low",
+    subscribeAudio: watched,
   };
 }

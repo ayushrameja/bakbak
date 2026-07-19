@@ -7,7 +7,7 @@ import type {
   ChatMessage,
   ServerMember,
 } from "../../lib/types";
-import { ChatView } from "./ChatView";
+import { ChatView, ConversationView } from "./ChatView";
 
 const user: AppUser = {
   id: "user-1",
@@ -113,5 +113,37 @@ describe("ChatView controlled drafts", () => {
     const composer = screen.getByRole("combobox");
     await userEvent.click(composer);
     expect(screen.getByRole("option", { name: /New Mira/ })).toBeVisible();
+  });
+
+  it("renders a direct target and restores its draft after send failure", async () => {
+    const friend: ServerMember = {
+      ...member,
+      id: "user-2",
+      displayName: "Mira",
+      role: "member",
+    };
+    const onDraftChange = vi.fn();
+    const onSend = vi.fn().mockRejectedValue(new Error("network"));
+    render(
+      <ConversationView
+        target={{ kind: "direct", id: "direct-1", member: friend }}
+        messages={[]}
+        members={[member, friend]}
+        currentUser={user}
+        sending={false}
+        draft={{ text: "private thought", mentions: [] }}
+        onDraftChange={onDraftChange}
+        onSend={onSend}
+      />,
+    );
+
+    expect(screen.getByRole("combobox", { name: "Message Mira" })).toHaveValue(
+      "private thought",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Send message" }));
+    expect(onDraftChange.mock.calls).toEqual([
+      [{ text: "", mentions: [] }],
+      [{ text: "private thought", mentions: [] }],
+    ]);
   });
 });

@@ -63,12 +63,14 @@ describe("server presence", () => {
           last_seen_at: new Date().toISOString(),
           voice_channel_id: null,
           voice_joined_at: null,
+          is_streaming: false,
         },
         {
           user_id: "user-2",
           last_seen_at: new Date().toISOString(),
           voice_channel_id: "voice-1",
           voice_joined_at: "2026-07-11T12:00:00.000Z",
+          is_streaming: true,
         },
       ],
       error: null,
@@ -84,12 +86,14 @@ describe("server presence", () => {
           last_seen_at: new Date(now - 1000).toISOString(),
           voice_channel_id: "voice-1",
           voice_joined_at: new Date(now - 5000).toISOString(),
+          is_streaming: true,
         },
         {
           user_id: "stale",
           last_seen_at: new Date(now - PRESENCE_EXPIRY_MS - 1).toISOString(),
           voice_channel_id: "voice-1",
           voice_joined_at: new Date(now - 60_000).toISOString(),
+          is_streaming: false,
         },
       ],
       now,
@@ -114,9 +118,10 @@ describe("server presence", () => {
       ),
     );
     await vi.waitFor(() =>
-      expect(presenceState.rpc).toHaveBeenCalledWith("heartbeat_presence_v2", {
+      expect(presenceState.rpc).toHaveBeenCalledWith("heartbeat_presence_v3", {
         p_server_id: "server-1",
         p_voice_channel_id: null,
+        p_is_streaming: false,
       }),
     );
     await vi.waitFor(() =>
@@ -127,6 +132,7 @@ describe("server presence", () => {
             userId: "user-2",
             channelId: "voice-1",
             joinedAt: "2026-07-11T12:00:00.000Z",
+            isStreaming: true,
           },
         ],
       }),
@@ -144,13 +150,14 @@ describe("server presence", () => {
       expect.any(Function),
     );
 
-    await subscription.setVoiceChannel("voice-2");
+    await subscription.setVoiceState("voice-2", true);
     await vi.waitFor(() =>
       expect(presenceState.rpc).toHaveBeenLastCalledWith(
-        "heartbeat_presence_v2",
+        "heartbeat_presence_v3",
         {
           p_server_id: "server-1",
           p_voice_channel_id: "voice-2",
+          p_is_streaming: true,
         },
       ),
     );
@@ -159,5 +166,70 @@ describe("server presence", () => {
     expect(presenceState.removeChannel).toHaveBeenCalledWith(
       presenceState.channel,
     );
+  });
+
+  it("falls back to legacy heartbeat writes and reads before migration deployment", async () => {
+    presenceState.rpc
+      .mockResolvedValueOnce({
+        data: null,
+        error: { code: "PGRST202", message: "function was not found" },
+      })
+      .mockResolvedValue({ data: new Date().toISOString(), error: null });
+    presenceState.query.returns
+      .mockResolvedValueOnce({
+        data: null,
+        error: { code: "42703", message: "is_streaming does not exist" },
+      })
+      .mockResolvedValue({
+        data: [
+          {
+            user_id: "user-2",
+            last_seen_at: new Date().toISOString(),
+            voice_channel_id: "voice-1",
+            voice_joined_at: "2026-07-11T12:00:00.000Z",
+          },
+        ],
+        error: null,
+      });
+    const onError = vi.fn();
+    const onSync = vi.fn();
+
+    const subscription = subscribeToServerPresence({
+      serverId: "server-1",
+      userId: "user-1",
+      onSync,
+      onError,
+    });
+
+    await vi.waitFor(() =>
+      expect(presenceState.rpc).toHaveBeenCalledWith("heartbeat_presence_v2", {
+        p_server_id: "server-1",
+        p_voice_channel_id: null,
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(onSync).toHaveBeenCalledWith({
+        onlineUserIds: new Set(["user-2"]),
+        voiceSessions: [
+          {
+            userId: "user-2",
+            channelId: "voice-1",
+            joinedAt: "2026-07-11T12:00:00.000Z",
+            isStreaming: false,
+          },
+        ],
+      }),
+    );
+    expect(onError).not.toHaveBeenCalled();
+
+    await subscription.setVoiceState("voice-2", true);
+    expect(presenceState.rpc).toHaveBeenLastCalledWith(
+      "heartbeat_presence_v2",
+      {
+        p_server_id: "server-1",
+        p_voice_channel_id: "voice-2",
+      },
+    );
+    subscription.stop();
   });
 });

@@ -19,9 +19,10 @@ privacy boundaries below remain in force.
 
 - Screen sharing exists only in installed macOS and Windows clients. Browser
   clients neither publish nor subscribe to share tracks.
-- Every start shows a confirmation with source audio unchecked, followed by the
-  platform picker. Camera, microphone, soundboard, and sharing remain
-  independent.
+- Every start shows a confirmation with source audio on by default when
+  available, followed by Bakbak's Entire screen / Application picker on macOS
+  14+ and Windows (plan 0010). Camera, microphone, soundboard, and sharing
+  remain independent.
 - A native companion may publish only `screen_share` and
   `screen_share_audio`, cannot subscribe or send data, and is destroyed on
   stop, voice leave, window close, source termination, or terminal connection

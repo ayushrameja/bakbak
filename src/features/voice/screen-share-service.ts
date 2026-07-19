@@ -1,5 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { relaunch } from "@tauri-apps/plugin-process";
 import {
   DEFAULT_SCREEN_SHARE_SETTINGS,
   SCREEN_SHARE_FRAME_RATES,
@@ -93,6 +94,16 @@ export async function getScreenShareCapabilities(): Promise<ScreenShareCapabilit
 export async function listScreenShareSources(): Promise<ScreenShareSource[]> {
   if (!isTauri()) return [];
   return await invoke<ScreenShareSource[]>("list_screen_share_sources");
+}
+
+export async function openScreenRecordingSettings(): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("open_screen_recording_settings");
+}
+
+export async function restartDesktopApp(): Promise<void> {
+  if (!isTauri()) return;
+  await relaunch();
 }
 
 export async function startScreenShare(

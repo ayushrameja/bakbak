@@ -1,4 +1,10 @@
-import { ArrowRight, KeyRound, LogOut, MessageCircle } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  KeyRound,
+  LogOut,
+  MessageCircle,
+} from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { getSupabaseClient } from "../../lib/supabase";
 import type { AppUser } from "../../lib/types";
@@ -8,9 +14,15 @@ interface InviteGateProps {
   user: AppUser;
   onRedeemed: () => void;
   onSignOut: () => void;
+  onBack?: (() => void) | undefined;
 }
 
-export function InviteGate({ user, onRedeemed, onSignOut }: InviteGateProps) {
+export function InviteGate({
+  user,
+  onRedeemed,
+  onSignOut,
+  onBack,
+}: InviteGateProps) {
   const [code, setCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +100,15 @@ export function InviteGate({ user, onRedeemed, onSignOut }: InviteGateProps) {
         >
           <LogOut size={14} /> Sign in with another account
         </button>
+        {onBack ? (
+          <button
+            className="text-button invite-gate__signout"
+            type="button"
+            onClick={onBack}
+          >
+            <ArrowLeft size={14} /> Back to Personal
+          </button>
+        ) : null}
       </section>
     </main>
   );

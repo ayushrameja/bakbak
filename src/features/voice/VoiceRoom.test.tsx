@@ -84,7 +84,7 @@ function createVoice(
     cameraEnabled: false,
     cameraPending: false,
     screenShares: [],
-    selectedScreenShareId: null,
+    watchedScreenShareId: null,
     screenShareAvailable: false,
     screenShareAudioAvailable: false,
     screenShareCustomPicker: false,
@@ -120,7 +120,8 @@ function createVoice(
     startScreenShare: vi.fn().mockResolvedValue(undefined),
     updateScreenShareSettings: vi.fn().mockResolvedValue(undefined),
     stopScreenShare: vi.fn().mockResolvedValue(undefined),
-    selectScreenShare: vi.fn(),
+    watchScreenShare: vi.fn(),
+    stopWatchingScreenShare: vi.fn(),
     dispatchSound: vi.fn().mockResolvedValue(undefined),
     stopLocalSounds: vi.fn().mockResolvedValue(undefined),
     setSoundboardVolume: vi.fn(),
@@ -153,10 +154,10 @@ describe("VoiceRoom", () => {
 
     await userEvent.click(
       screen.getByRole("button", {
-        name: `Focus ${friend.displayName}'s screen share`,
+        name: `Watch ${friend.displayName}'s screen share`,
       }),
     );
-    expect(voice.selectScreenShare).toHaveBeenCalledWith(screenShare.id);
+    expect(voice.watchScreenShare).toHaveBeenCalledWith(screenShare.id);
 
     await userEvent.click(
       screen.getByRole("button", { name: "Enter fullscreen" }),
@@ -195,7 +196,10 @@ describe("VoiceRoom", () => {
       <VoiceRoom
         channel={channel}
         user={user}
-        voice={createVoice({ screenShares: [screenShare] })}
+        voice={createVoice({
+          screenShares: [screenShare],
+          watchedScreenShareId: screenShare.id,
+        })}
         onOpenSettings={vi.fn()}
       />,
     );
@@ -305,7 +309,7 @@ describe("VoiceRoom", () => {
     };
     const voice = createVoice({
       screenShares: [screenShare],
-      selectedScreenShareId: screenShare.id,
+      watchedScreenShareId: screenShare.id,
     });
     const { container } = render(
       <VoiceRoom
