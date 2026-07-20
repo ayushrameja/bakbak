@@ -627,22 +627,19 @@ export function useVoiceRoom(
       const policy = screenShareSubscriptionPolicy(
         shareId,
         watchedScreenShareId,
+        locallyPresented,
       );
       const videoPublication = participant.getTrackPublication(
         Track.Source.ScreenShare,
       );
-      videoPublication?.setSubscribed(
-        locallyPresented || policy.subscribeVideo,
-      );
+      videoPublication?.setSubscribed(policy.subscribeVideo);
       if (
         videoPublication &&
         "setVideoQuality" in videoPublication &&
         typeof videoPublication.setVideoQuality === "function"
       ) {
         videoPublication.setVideoQuality(
-          locallyPresented || policy.videoQuality === "high"
-            ? VideoQuality.HIGH
-            : VideoQuality.LOW,
+          policy.videoQuality === "high" ? VideoQuality.HIGH : VideoQuality.LOW,
         );
       }
       participant
@@ -1058,11 +1055,11 @@ export function useVoiceRoom(
             if (!isCurrentRoom()) return;
             if (isScreenShareSource(publication.source)) {
               const companion = readScreenShareCompanion(participant);
-              if (
-                companion?.ownerUserId === user.id &&
-                publication.source === Track.Source.ScreenShare
-              ) {
-                sync();
+              if (companion?.ownerUserId === user.id) {
+                publication.setSubscribed(
+                  publication.source === Track.Source.ScreenShare,
+                );
+                if (publication.source === Track.Source.ScreenShare) sync();
                 return;
               }
               const shareId = readScreenShareCompanion(participant)

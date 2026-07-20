@@ -269,8 +269,9 @@ export function ScreenShareDialog({
             <strong>Include system audio</strong>
             <small>
               {sourceAudioAvailable
-                ? "Only audio belonging to the selected source is included."
-                : (audioUnavailableReason ??
+                ? "Selected-source audio is included; Bakbak voice chat is excluded."
+                : (selectedSource?.audioUnavailableReason ??
+                  audioUnavailableReason ??
                   "Matched audio is unavailable on this system; video still works.")}
             </small>
           </div>

@@ -40,6 +40,7 @@ export interface ScreenShareSource {
   label: string;
   applicationLabel: string | null;
   audioAvailable: boolean;
+  audioUnavailableReason: string | null;
   thumbnailDataUrl: string | null;
 }
 

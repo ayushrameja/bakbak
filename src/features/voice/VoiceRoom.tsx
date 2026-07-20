@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   CircleAlert,
   Expand,
   LoaderCircle,
@@ -12,7 +13,7 @@ import {
 } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauri } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Avatar } from "../../components/Avatar";
 import {
   ProfileTrigger,
@@ -22,7 +23,6 @@ import {
 import type { AppUser, Channel, ServerMember } from "../../lib/types";
 import { ParticipantVideo } from "./ParticipantVideo";
 import { ScreenShareStage } from "./ScreenShareStage";
-import { VoiceElapsedTime } from "./VoiceElapsedTime";
 import type { useVoiceRoom } from "./useVoiceRoom";
 import type { VoiceParticipant, VoiceScreenShare } from "./useVoiceRoom";
 
@@ -59,35 +59,106 @@ export function VoiceRoom({
   const isReconnecting = isThisRoom && voice.status === "reconnecting";
   const [focusedTarget, setFocusedTarget] = useState<MediaTarget | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  const [fullscreenError, setFullscreenError] = useState<string | null>(null);
+  const [fullscreenControlsVisible, setFullscreenControlsVisible] =
+    useState(true);
+  const fullscreenRef = useRef(false);
+  const fullscreenControlsTimerRef = useRef<number | null>(null);
   const {
     participants: voiceParticipants,
     screenShares,
-    watchedScreenShareId,
     stopWatchingScreenShare,
   } = voice;
 
-  const exitFullscreen = useCallback(async () => {
-    if (isTauri()) {
-      await getCurrentWindow()
-        .setFullscreen(false)
-        .catch(() => undefined);
-    }
-    document.documentElement.removeAttribute("data-voice-fullscreen");
-    setFullscreen(false);
-  }, []);
-
-  const toggleFullscreen = useCallback(async () => {
-    if (!focusedTarget || !isTauri()) return;
-    const appWindow = getCurrentWindow();
-    const next = !(await appWindow.isFullscreen());
-    await appWindow.setFullscreen(next);
+  const applyFullscreenState = useCallback((next: boolean) => {
     if (next) {
       document.documentElement.dataset.voiceFullscreen = "true";
     } else {
       document.documentElement.removeAttribute("data-voice-fullscreen");
     }
+    if (fullscreenRef.current === next) return;
+    fullscreenRef.current = next;
     setFullscreen(next);
-  }, [focusedTarget]);
+  }, []);
+
+  const reconcileFullscreen = useCallback(async () => {
+    if (!isTauri()) {
+      applyFullscreenState(false);
+      return false;
+    }
+    try {
+      const actual = await getCurrentWindow().isFullscreen();
+      applyFullscreenState(actual);
+      return actual;
+    } catch {
+      applyFullscreenState(false);
+      return false;
+    }
+  }, [applyFullscreenState]);
+
+  const requestFullscreen = useCallback(
+    async (next: boolean) => {
+      if (!isTauri() || (next && !focusedTarget)) return;
+      setFullscreenError(null);
+      try {
+        await getCurrentWindow().setFullscreen(next);
+      } catch {
+        setFullscreenError(
+          next
+            ? "Bakbak could not enter fullscreen."
+            : "Bakbak could not exit fullscreen.",
+        );
+      } finally {
+        await reconcileFullscreen();
+      }
+    },
+    [focusedTarget, reconcileFullscreen],
+  );
+
+  const revealFullscreenControls = useCallback(() => {
+    if (!fullscreen) return;
+    setFullscreenControlsVisible(true);
+    if (fullscreenControlsTimerRef.current !== null) {
+      window.clearTimeout(fullscreenControlsTimerRef.current);
+    }
+    fullscreenControlsTimerRef.current = window.setTimeout(() => {
+      setFullscreenControlsVisible(false);
+      fullscreenControlsTimerRef.current = null;
+    }, 2_500);
+  }, [fullscreen]);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    let disposed = false;
+    const unlisteners: Array<() => void> = [];
+    const sync = () => {
+      if (!disposed) void reconcileFullscreen();
+    };
+    void Promise.all([
+      getCurrentWindow().onResized(sync),
+      getCurrentWindow().onFocusChanged(sync),
+    ]).then((listeners) => {
+      if (disposed) listeners.forEach((unlisten) => unlisten());
+      else unlisteners.push(...listeners);
+    });
+    void reconcileFullscreen();
+    return () => {
+      disposed = true;
+      unlisteners.forEach((unlisten) => unlisten());
+    };
+  }, [reconcileFullscreen]);
+
+  useEffect(() => {
+    if (fullscreen) {
+      revealFullscreenControls();
+      return;
+    }
+    setFullscreenControlsVisible(true);
+    if (fullscreenControlsTimerRef.current !== null) {
+      window.clearTimeout(fullscreenControlsTimerRef.current);
+      fullscreenControlsTimerRef.current = null;
+    }
+  }, [fullscreen, revealFullscreenControls]);
 
   useEffect(() => {
     const targetStillExists =
@@ -101,42 +172,34 @@ export function VoiceRoom({
     if (isConnected && targetStillExists) return;
     setFocusedTarget(null);
     stopWatchingScreenShare();
-    if (fullscreen) void exitFullscreen();
+    if (fullscreen) void requestFullscreen(false);
   }, [
-    exitFullscreen,
     focusedTarget,
     fullscreen,
     isConnected,
+    requestFullscreen,
     screenShares,
     stopWatchingScreenShare,
     voiceParticipants,
   ]);
 
   useEffect(() => {
-    if (
-      watchedScreenShareId &&
-      screenShares.some(
-        (share) => share.id === watchedScreenShareId && !share.isLocal,
-      )
-    ) {
-      setFocusedTarget({ kind: "screen", id: watchedScreenShareId });
-    }
-  }, [screenShares, watchedScreenShareId]);
-
-  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && fullscreen) {
         event.preventDefault();
-        void exitFullscreen();
+        void requestFullscreen(false);
       }
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [exitFullscreen, fullscreen]);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [fullscreen, requestFullscreen]);
 
   useEffect(
     () => () => {
       document.documentElement.removeAttribute("data-voice-fullscreen");
+      if (fullscreenControlsTimerRef.current !== null) {
+        window.clearTimeout(fullscreenControlsTimerRef.current);
+      }
       if (isTauri()) {
         void getCurrentWindow()
           .setFullscreen(false)
@@ -146,7 +209,16 @@ export function VoiceRoom({
     [],
   );
 
+  const returnToGallery = useCallback(() => {
+    setFocusedTarget(null);
+    if (fullscreen) void requestFullscreen(false);
+  }, [fullscreen, requestFullscreen]);
+
   const focusTarget = (target: MediaTarget) => {
+    if (focusedTarget?.kind === target.kind && focusedTarget.id === target.id) {
+      returnToGallery();
+      return;
+    }
     setFocusedTarget(target);
     const share =
       target.kind === "screen"
@@ -157,12 +229,6 @@ export function VoiceRoom({
     } else {
       voice.stopWatchingScreenShare();
     }
-  };
-
-  const returnToGallery = () => {
-    setFocusedTarget(null);
-    voice.stopWatchingScreenShare();
-    if (fullscreen) void exitFullscreen();
   };
 
   const focusedParticipant =
@@ -281,17 +347,21 @@ export function VoiceRoom({
           ) : null}
           {focusedTarget ? (
             <div
-              className={`voice-focus-layout ${fullscreen ? "is-fullscreen" : ""}`}
+              className={`voice-focus-layout ${fullscreen ? "is-fullscreen" : ""} ${fullscreen && !fullscreenControlsVisible ? "controls-hidden" : ""}`}
+              onPointerMove={revealFullscreenControls}
+              onFocusCapture={revealFullscreenControls}
+              onKeyDown={revealFullscreenControls}
             >
               {focusedShare ? (
                 <ScreenShareStage
                   share={focusedShare}
-                  localSourceLabel={voice.screenShareSourceLabel}
                   settings={voice.screenShareSettings}
                   settingsPending={voice.screenShareSettingsPending}
                   fullscreen={fullscreen}
+                  fullscreenError={fullscreenError}
                   onBack={returnToGallery}
-                  onToggleFullscreen={() => void toggleFullscreen()}
+                  onActivateMedia={returnToGallery}
+                  onToggleFullscreen={() => void requestFullscreen(!fullscreen)}
                   onUpdateSettings={(settings) =>
                     void voice.updateScreenShareSettings(settings)
                   }
@@ -301,26 +371,6 @@ export function VoiceRoom({
                   className="voice-participant-stage"
                   aria-label={`${focusedParticipant.displayName} focused`}
                 >
-                  <header>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={returnToGallery}
-                    >
-                      Gallery
-                    </button>
-                    <strong>{focusedParticipant.displayName}</strong>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={() => void toggleFullscreen()}
-                      aria-label={
-                        fullscreen ? "Exit fullscreen" : "Enter fullscreen"
-                      }
-                    >
-                      {fullscreen ? <Shrink size={16} /> : <Expand size={16} />}
-                    </button>
-                  </header>
                   <ParticipantCard
                     participant={focusedParticipant}
                     members={members}
@@ -329,16 +379,36 @@ export function VoiceRoom({
                     loadProfileMedia={loadProfileMedia}
                     onOpenProfile={onOpenProfile}
                     openProfileId={openProfileId}
+                    onFocus={returnToGallery}
                     focused
                   />
+                  <div className="voice-participant-stage__controls">
+                    <button
+                      type="button"
+                      className="secondary-button voice-participant-stage__back"
+                      onClick={returnToGallery}
+                    >
+                      <ArrowLeft size={17} />
+                      Back to grid
+                    </button>
+                    <button
+                      type="button"
+                      className={`screen-share-stage__icon-button ${fullscreen ? "voice-fullscreen-exit" : ""}`}
+                      onClick={() => void requestFullscreen(!fullscreen)}
+                      aria-label={
+                        fullscreen ? "Exit fullscreen" : "Enter fullscreen"
+                      }
+                    >
+                      {fullscreen ? <Shrink size={16} /> : <Expand size={16} />}
+                    </button>
+                  </div>
+                  {fullscreenError ? (
+                    <div className="voice-fullscreen-error" role="status">
+                      {fullscreenError}
+                    </div>
+                  ) : null}
                 </section>
               ) : null}
-              <MediaTargetStrip
-                participants={voice.participants}
-                shares={voice.screenShares}
-                focused={focusedTarget}
-                onFocus={focusTarget}
-              />
             </div>
           ) : (
             <div
@@ -346,6 +416,9 @@ export function VoiceRoom({
               data-target-count={
                 voice.participants.length + voice.screenShares.length
               }
+              data-layout={mediaGalleryLayout(
+                voice.participants.length + voice.screenShares.length,
+              )}
             >
               {voice.participants.map((participant) => (
                 <ParticipantCard
@@ -501,12 +574,7 @@ function ParticipantCard({
             onOpenProfile={onOpenProfile}
             expanded={openProfileId === profileMember.id}
           >
-            {() => (
-              <strong>
-                {displayName}
-                {participant.isLocal ? " (you)" : ""}
-              </strong>
-            )}
+            {() => <strong>{displayName}</strong>}
           </ProfileTrigger>
         ) : (
           <strong>{displayName}</strong>
@@ -522,9 +590,6 @@ function ParticipantCard({
                 ? "Muted"
                 : "Listening"}
         </span>
-        {participant.joinedAt ? (
-          <VoiceElapsedTime joinedAt={participant.joinedAt} />
-        ) : null}
       </div>
       <span
         className={`participant-card__mic ${participant.isMuted ? "muted" : ""} ${soundActive && !participant.isMuted ? "active" : ""}`}
@@ -617,51 +682,6 @@ function ScreenShareTile({
   );
 }
 
-function MediaTargetStrip({
-  participants,
-  shares,
-  focused,
-  onFocus,
-}: {
-  participants: VoiceParticipant[];
-  shares: VoiceScreenShare[];
-  focused: MediaTarget;
-  onFocus: (target: MediaTarget) => void;
-}) {
-  return (
-    <nav className="media-target-strip" aria-label="Voice room media targets">
-      {participants.map((participant) => (
-        <button
-          className={
-            focused.kind === "participant" && focused.id === participant.id
-              ? "is-active"
-              : ""
-          }
-          type="button"
-          key={`participant:${participant.id}`}
-          onClick={() => onFocus({ kind: "participant", id: participant.id })}
-        >
-          {participant.cameraEnabled ? "📹" : "●"} {participant.displayName}
-        </button>
-      ))}
-      {shares.map((share) => (
-        <button
-          className={
-            focused.kind === "screen" && focused.id === share.id
-              ? "is-active"
-              : ""
-          }
-          type="button"
-          key={`screen:${share.id}`}
-          onClick={() => onFocus({ kind: "screen", id: share.id })}
-        >
-          <Monitor size={13} /> {share.displayName}
-        </button>
-      ))}
-    </nav>
-  );
-}
-
 function SoundEmoji({
   emoji,
   label,
@@ -699,4 +719,14 @@ function describeJoinStage(
   if (stage === "microphone") return "Starting your microphone…";
   if (stage === "soundboard") return "Preparing room audio…";
   return "Preparing voice…";
+}
+
+function mediaGalleryLayout(
+  targetCount: number,
+): "solo" | "pair" | "quad" | "six" | "many" {
+  if (targetCount <= 1) return "solo";
+  if (targetCount === 2) return "pair";
+  if (targetCount <= 4) return "quad";
+  if (targetCount <= 6) return "six";
+  return "many";
 }

@@ -117,7 +117,10 @@ describe("App navigation state", () => {
       screen.queryByRole("button", { name: "Join voice" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Joining quietly…")).not.toBeInTheDocument();
-    expect(await screen.findByText("Ayush (you)")).toBeVisible();
+    expect(
+      await within(screen.getByRole("main")).findByText("Ayush"),
+    ).toBeVisible();
+    expect(screen.queryByText("Ayush (you)")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("combobox", { name: "Message #Queue" }),
     ).not.toBeInTheDocument();

@@ -1,15 +1,45 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppUser, Channel, ServerMember } from "../../lib/types";
 import { mockSoundboardController } from "../soundboard/mock-catalog";
 import { VoiceRoom } from "./VoiceRoom";
 import type { useVoiceRoom } from "./useVoiceRoom";
 
-const tauriWindow = vi.hoisted(() => ({
-  isFullscreen: vi.fn().mockResolvedValue(false),
-  setFullscreen: vi.fn().mockResolvedValue(undefined),
-}));
+const tauriWindow = vi.hoisted(() => {
+  let fullscreen = false;
+  let resized: (() => void) | null = null;
+  let focusChanged: (() => void) | null = null;
+  return {
+    isFullscreen: vi.fn(() => Promise.resolve(fullscreen)),
+    setFullscreen: vi.fn((next: boolean) => {
+      fullscreen = next;
+      return Promise.resolve();
+    }),
+    onResized: vi.fn((handler: () => void) => {
+      resized = handler;
+      return Promise.resolve(() => {
+        resized = null;
+      });
+    }),
+    onFocusChanged: vi.fn((handler: () => void) => {
+      focusChanged = handler;
+      return Promise.resolve(() => {
+        focusChanged = null;
+      });
+    }),
+    simulateNativeFullscreen(next: boolean) {
+      fullscreen = next;
+      resized?.();
+      focusChanged?.();
+    },
+    reset() {
+      fullscreen = false;
+      resized = null;
+      focusChanged = null;
+    },
+  };
+});
 
 vi.mock("@tauri-apps/api/core", () => ({
   isTauri: () => true,
@@ -131,6 +161,14 @@ function createVoice(
 }
 
 describe("VoiceRoom", () => {
+  beforeEach(() => {
+    tauriWindow.reset();
+    tauriWindow.isFullscreen.mockClear();
+    tauriWindow.setFullscreen.mockClear();
+    tauriWindow.onResized.mockClear();
+    tauriWindow.onFocusChanged.mockClear();
+  });
+
   it("focuses any share, toggles OS fullscreen, and keeps focus after Escape", async () => {
     const screenShare = {
       id: "share-1",
@@ -163,6 +201,11 @@ describe("VoiceRoom", () => {
       screen.getByRole("button", { name: "Enter fullscreen" }),
     );
     expect(tauriWindow.setFullscreen).toHaveBeenCalledWith(true);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Exit fullscreen" }),
+      ).toBeVisible(),
+    );
     await userEvent.keyboard("{Escape}");
     expect(tauriWindow.setFullscreen).toHaveBeenCalledWith(false);
     expect(screen.getByLabelText("Screen share stage")).toBeVisible();
@@ -179,6 +222,165 @@ describe("VoiceRoom", () => {
       screen.queryByText("Source minimized or paused"),
     ).not.toBeInTheDocument();
     expect(document.querySelector(".voice-media-gallery")).toBeVisible();
+  });
+
+  it("returns a focused share to the grid without interrupting its playback", async () => {
+    const screenShare = {
+      id: "share-1",
+      ownerId: friend.id,
+      displayName: friend.displayName,
+      isLocal: false,
+      joinedAt: null,
+      track: { attach: vi.fn(), detach: vi.fn() },
+      audioPublished: true,
+      paused: false,
+    };
+    const voice = createVoice({
+      screenShares: [screenShare],
+      watchedScreenShareId: screenShare.id,
+    });
+    const { container } = render(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={voice}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: `Focus ${friend.displayName}'s screen share`,
+      }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Back to grid" }));
+
+    expect(voice.stopWatchingScreenShare).not.toHaveBeenCalled();
+    expect(document.querySelector(".voice-media-gallery")).toBeVisible();
+    expect(container.querySelector(".voice-media-gallery video")).toBeVisible();
+    expect(screen.queryByText("Watch stream")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("navigation", { name: "Voice room media targets" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("reconciles renderer fullscreen controls with the actual native window", async () => {
+    const screenShare = {
+      id: "share-1",
+      ownerId: friend.id,
+      displayName: friend.displayName,
+      isLocal: false,
+      joinedAt: null,
+      track: { attach: vi.fn(), detach: vi.fn() },
+      audioPublished: false,
+      paused: false,
+    };
+    render(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={createVoice({ screenShares: [screenShare] })}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: `Watch ${friend.displayName}'s screen share`,
+      }),
+    );
+    await act(async () => {
+      tauriWindow.simulateNativeFullscreen(true);
+      await Promise.resolve();
+    });
+    expect(
+      screen.getByRole("button", { name: "Exit fullscreen" }),
+    ).toBeVisible();
+
+    await act(async () => {
+      tauriWindow.simulateNativeFullscreen(false);
+      await Promise.resolve();
+    });
+    expect(
+      screen.getByRole("button", { name: "Enter fullscreen" }),
+    ).toBeVisible();
+  });
+
+  it("keeps the actual window state and reports a fullscreen request failure", async () => {
+    const screenShare = {
+      id: "share-1",
+      ownerId: friend.id,
+      displayName: friend.displayName,
+      isLocal: false,
+      joinedAt: null,
+      track: { attach: vi.fn(), detach: vi.fn() },
+      audioPublished: false,
+      paused: false,
+    };
+    tauriWindow.setFullscreen.mockRejectedValueOnce(new Error("native nope"));
+    render(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={createVoice({ screenShares: [screenShare] })}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: `Watch ${friend.displayName}'s screen share`,
+      }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Enter fullscreen" }),
+    );
+
+    expect(
+      await screen.findByText("Bakbak could not enter fullscreen."),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Enter fullscreen" }),
+    ).toBeVisible();
+  });
+
+  it("returns a focused participant to the grid when its media is activated", async () => {
+    const participant = {
+      id: friend.id,
+      displayName: friend.displayName,
+      isLocal: false,
+      isSpeaking: false,
+      isMuted: false,
+      volume: 1,
+      joinedAt: null,
+      cameraEnabled: false,
+      cameraTrack: null,
+      activeSounds: [],
+    };
+    const { container } = render(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={createVoice({ participants: [participant] })}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    const card = container.querySelector<HTMLElement>(".participant-card");
+    expect(card).not.toBeNull();
+    card?.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(
+      screen.getByLabelText(`${friend.displayName} focused`),
+    ).toBeVisible();
+
+    const focusedCard = container.querySelector<HTMLElement>(
+      ".voice-participant-stage .participant-card",
+    );
+    expect(focusedCard).not.toBeNull();
+    focusedCard?.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(container.querySelector(".voice-media-gallery")).toBeVisible();
   });
 
   it("retains the last share frame under a paused-source label", () => {
@@ -204,7 +406,9 @@ describe("VoiceRoom", () => {
       />,
     );
 
-    expect(screen.getByLabelText(`${friend.displayName} screen`)).toBeVisible();
+    expect(
+      screen.getAllByLabelText(`${friend.displayName} screen`)[0],
+    ).toBeVisible();
     expect(screen.getByText("Source minimized or paused")).toBeVisible();
   });
 
@@ -359,7 +563,7 @@ describe("VoiceRoom", () => {
     expect(resumeAudio).not.toHaveBeenCalled();
   });
 
-  it("uses compact occupancy layouts and replaces an idle avatar with the newest sound emoji", () => {
+  it("uses compact occupancy layouts without local labels or personal call timers", () => {
     const participant = {
       id: user.id,
       displayName: user.displayName,
@@ -367,7 +571,7 @@ describe("VoiceRoom", () => {
       isSpeaking: false,
       isMuted: false,
       volume: 1,
-      joinedAt: null,
+      joinedAt: "2026-07-20T12:00:00.000Z",
       cameraEnabled: false,
       cameraTrack: null,
       activeSounds: [
@@ -401,6 +605,37 @@ describe("VoiceRoom", () => {
     expect(
       screen.getByRole("img", { name: "Ayu is playing Latest" }),
     ).toHaveTextContent("🔥2/5");
+    expect(screen.getByText("Ayu")).toBeVisible();
+    expect(screen.queryByText("Ayu (you)")).not.toBeInTheDocument();
+    expect(container.querySelector(".participant-card__identity time")).toBe(
+      null,
+    );
+  });
+
+  it.each([
+    [1, "solo"],
+    [2, "pair"],
+    [3, "quad"],
+    [4, "quad"],
+    [6, "six"],
+    [8, "many"],
+  ])("uses the %s-target compact gallery layout", (count, layout) => {
+    const participants = Array.from({ length: count }, (_, index) =>
+      participant(`participant-${index}`),
+    );
+    const { container } = render(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={createVoice({ participants })}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector(".voice-media-gallery")).toHaveAttribute(
+      "data-layout",
+      layout,
+    );
   });
 
   it("keeps camera video visible and overlays the active sound emoji", () => {
@@ -476,3 +711,18 @@ describe("VoiceRoom", () => {
     expect(onOpenProfile).toHaveBeenCalledWith(friend, trigger);
   });
 });
+
+function participant(id: string) {
+  return {
+    id,
+    displayName: `Person with a deliberately long display name ${id}`,
+    isLocal: false,
+    isSpeaking: false,
+    isMuted: false,
+    volume: 1,
+    joinedAt: null,
+    cameraEnabled: false,
+    cameraTrack: null,
+    activeSounds: [],
+  };
+}

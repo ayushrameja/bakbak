@@ -5,7 +5,6 @@ import {
   Mic,
   MicOff,
   Pencil,
-  Play,
   Plus,
   Settings,
   Volume2,
@@ -56,7 +55,6 @@ interface ChannelSidebarProps {
   openProfileId?: string | null;
   onToggleSoundboard: () => void;
   onOpenScreenShare: () => void;
-  onWatch?: (occupant: VoiceRoomOccupant, channel: Channel) => void;
 }
 
 export function ChannelSidebar({
@@ -82,7 +80,6 @@ export function ChannelSidebar({
   openProfileId = null,
   onToggleSoundboard,
   onOpenScreenShare,
-  onWatch = () => undefined,
 }: ChannelSidebarProps) {
   const orderedCategories = [...categories].sort(
     (left, right) =>
@@ -154,6 +151,22 @@ export function ChannelSidebar({
     const occupants = voiceOccupants.filter(
       (occupant) => occupant.channelId === channel.id,
     );
+    const roomJoinedAt = occupants.reduce<string | null>(
+      (earliest, occupant) =>
+        earliest === null ||
+        Date.parse(occupant.joinedAt) < Date.parse(earliest)
+          ? occupant.joinedAt
+          : earliest,
+      null,
+    );
+    const speakingUserIds =
+      voice.channel?.id === channel.id
+        ? new Set(
+            voice.participants
+              .filter((participant) => participant.isSpeaking)
+              .map((participant) => participant.id),
+          )
+        : new Set<string>();
     return (
       <div className="channel-row-wrap" key={channel.id}>
         <div className="channel-row-stack">
@@ -166,7 +179,15 @@ export function ChannelSidebar({
           >
             <Volume2 size={17} />
             <span>{channel.name}</span>
-            {occupants.length > 0 ? <i className="live-dot" /> : null}
+            {roomJoinedAt ? (
+              <span
+                className="channel-voice-duration"
+                aria-label={`${channel.name} active time`}
+              >
+                <i className="live-dot" />
+                <VoiceElapsedTime joinedAt={roomJoinedAt} />
+              </span>
+            ) : null}
           </button>
           {canManageChannels ? (
             <button
@@ -192,40 +213,22 @@ export function ChannelSidebar({
                   >
                     {({ animationUrl, animated }) => (
                       <>
-                        <Avatar
-                          user={profileForOccupant(occupant)}
-                          size="small"
-                          animationUrl={animationUrl}
-                          animated={animated}
-                        />
-                        <span>
-                          <b>
-                            {occupant.displayName}
-                            {occupant.userId === user.id ? " (you)" : ""}
-                          </b>
-                          <VoiceElapsedTime joinedAt={occupant.joinedAt} />
+                        <span
+                          className={`channel-voice-person__avatar ${speakingUserIds.has(occupant.userId) ? "is-speaking" : ""}`}
+                        >
+                          <Avatar
+                            user={profileForOccupant(occupant)}
+                            size="small"
+                            animationUrl={animationUrl}
+                            animated={animated}
+                          />
                         </span>
+                        <b>{occupant.displayName}</b>
                       </>
                     )}
                   </ProfileTrigger>
                   {occupant.isStreaming ? (
-                    <>
-                      <span className="channel-voice-person__live">LIVE</span>
-                      {occupant.userId !== user.id ? (
-                        <button
-                          className="channel-voice-person__watch"
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onWatch(occupant, channel);
-                          }}
-                          aria-label={`Watch ${occupant.displayName}`}
-                        >
-                          <Play size={11} fill="currentColor" />
-                          Watch
-                        </button>
-                      ) : null}
-                    </>
+                    <span className="channel-voice-person__live">LIVE</span>
                   ) : null}
                 </div>
               ))}

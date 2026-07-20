@@ -3082,3 +3082,130 @@ src-tauri/Cargo.toml --check`, `pnpm security:scan`, and `git diff --check` —
 - **Next:** Publish the upcoming renderer/native update and verify one existing
   v5 Signature installation resets before first paint, then verify its next
   user-selected appearance survives another restart.
+
+## 2026-07-20 — Screen-share isolation and compact call layout
+
+- **Completed:** Implemented plan 0015. Native source audio now has explicit
+  isolation policies: macOS ScreenCaptureKit excludes current-process audio,
+  Windows application capture includes only the selected process tree, and
+  Windows Entire screen excludes Bakbak's process tree. macOS and Windows
+  source enumeration and start validation reject Bakbak descendants. Added
+  per-source `audioUnavailableReason`, video-only degradation with renderer
+  warning, and a subscription rule that keeps the presenter's companion video
+  while always forcing its companion audio off. Removed sidebar Watch and
+  cross-room pending-watch state. Rebuilt calls around exact bounded 16:9
+  count-aware tiles, reversible participant/share focus, a 72 px visual
+  filmstrip, and truncated informational LIVE rows. Replaced shell-dependent
+  fullscreen with a fixed `100dvh` overlay, pinned exit, 2.5-second idle
+  controls, actual Tauri-state reconciliation, Escape handling, target-loss
+  cleanup, and non-blocking failure recovery.
+- **Decisions:** Installed isolation results remain authoritative: any
+  platform/source mode that leaks voice ships video-only. Database LIVE no
+  longer implies a cross-room media action; a member joins the room and selects
+  a share tile. Narrow centers preserve exact 16:9 tile dimensions and scroll
+  vertically instead of compressing media. Escape exits OS fullscreen without
+  clearing focus; activating focused media or Back to grid clears focus,
+  exits fullscreen, and releases remote subscriptions.
+- **Validation:**
+  - Focused Vitest — passed five files with 45 tests, then the final focused
+    VoiceRoom run passed 21/21 tests covering reversible participant/share
+    focus, fullscreen failure/reconciliation, target loss, Escape, and count
+    layouts.
+  - `pnpm check` — passed Prettier, ESLint, strict renderer/Node typechecks, 55
+    Vitest files with 303 tests, 13 Node tests, version synchronization,
+    production build, and bundle secret scan. Vite retains the existing
+    non-blocking large-chunk warning; main JavaScript is 1,256.28 kB
+    (347.25 kB gzip).
+  - `cargo fmt --manifest-path src-tauri/Cargo.toml --check` — passed.
+  - `cargo check --manifest-path src-tauri/Cargo.toml --locked` — passed on
+    Apple Silicon macOS.
+  - `cargo test --manifest-path src-tauri/Cargo.toml --locked screen_share
+--lib` — passed 13/13 macOS/common screen-share tests.
+  - `cargo xwin check --manifest-path src-tauri/Cargo.toml --locked --target
+x86_64-pc-windows-msvc --tests` — passed, including compilation of the
+    Windows process-tree policy and rejection tests. The first sandboxed
+    attempt could not update cargo-xwin's external compiler cache; the approved
+    rerun passed.
+  - Browser visual QA — at 1024×680 with the supported 420 px center, three
+    targets measured exactly 380×214 with vertical scrolling and no horizontal
+    overflow. At 1280×800, hiding the member panel reflowed the same targets
+    into two 380×214 columns. Focused media measured a separate non-overlapping
+    72 px filmstrip and returned through its active item. Classic Light/Dark,
+    Signature, and Signal Red retained exact dimensions with no console errors.
+  - `pnpm tauri:build:local` — passed for the final source state and produced an
+    ad-hoc-signed ARM64 `Bakbak.app`; notarization was skipped because Apple
+    credentials are absent.
+  - `pnpm security:scan` and `git diff --check` — passed after the final bundle
+    and source changes.
+- **Documentation updated:** Added plan 0015; updated architecture, active plan
+  0001, parent plans 0010/0014, and this canonical log.
+- **Known limitations:** Installed three-client macOS/Windows source-audio
+  isolation, direct-volume proof, deafen/output switching, pause/teardown,
+  native fullscreen, Windows scaling, Retina sizing, and all source edges still
+  require the acceptance matrix. Windows code cross-checks from macOS, but a
+  Windows MSVC runner/native bundle was not available in this task. Browser QA
+  used mock participants; automated layout tests cover 1/2/3/4/6/8 target
+  buckets, while installed ultrawide/portrait shares and every panel/theme
+  combination remain open. The macOS bundle is not notarized.
+- **Next:** Install the final macOS build and a Windows MSVC build on three
+  clients, run Entire screen and Application through plan 0015's isolation and
+  fullscreen matrix, and keep any failing source mode video-only before
+  release.
+
+## 2026-07-20 — Media-first screen-share and room-presence polish
+
+- **Completed:** Removed the focused share identity/audio header and the people
+  filmstrip so the shared source owns the full bounded stage. Moved Back to grid,
+  fullscreen, and local quality controls onto the bottom media overlay; the
+  fullscreen exit remains pinned while secondary controls retain the idle-hide
+  behavior. Returning to the gallery now preserves the selected remote
+  subscription and renders its live track in the grid instead of reverting to
+  “Watch stream.” Removed personal call durations and the redundant `(you)`
+  suffix from call tiles and sidebar occupants. Added one room-active timer from
+  the earliest current occupant, tightened occupant spacing, reduced avatars,
+  enlarged/truncated names, and connected a sidebar avatar ring to LiveKit
+  speaking state.
+- **Decisions:** Focus is now presentation state rather than subscription state:
+  Back or focused-media activation only changes layout, while selecting a
+  person/another share, target loss, disconnect, or leave still performs
+  cleanup. Black letterboxing is preferred over cropping any source edge.
+  Database presence remains the source for room activity; LiveKit supplies the
+  real-time speaking signal only for the currently joined room.
+- **Validation:**
+  - Focused Vitest — passed three files with 34/34 tests for media-first
+    controls, still-playing grid return, filmstrip absence, room-level time,
+    local-label removal, and speaking rings.
+  - `pnpm exec vitest run src/app/App.test.tsx` — passed 6/6 after updating the
+    application contract to expect the intentionally suffix-free local name.
+  - `node --test scripts/focused-media-layout.test.mjs` — passed 3/3 layout
+    checks for the single-row focus stage, pinned bottom fullscreen exit, and
+    compact speaking-aware room shelf.
+  - Browser visual QA — passed at 1280×720. The actual mock call showed compact
+    participant tiles without personal timers or `(you)`, and a temporary
+    isolated focused-share preview confirmed an edge-to-edge black media stage
+    with non-overlapping bottom-left Back and bottom-right fullscreen controls;
+    the preview fixture was removed afterward.
+  - First `pnpm check` — failed only because `App.test.tsx` still expected
+    `Ayush (you)`; no product check failed. The stale assertion was corrected.
+  - Final `pnpm check` — passed Prettier, ESLint, strict renderer/Node
+    typechecks, 55 Vitest files with 304 tests, 14 Node tests, version
+    synchronization, production build, and secret scan. Vite retains the
+    existing non-blocking large-chunk warning; main JavaScript is 1,254.66 kB
+    (346.96 kB gzip).
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed Apple
+    Silicon `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+  - `pnpm security:scan` and `git diff --check` — passed after the final bundle
+    and source audit.
+- **Documentation updated:** Updated architecture, active plan 0001, parent
+  plans 0010/0014, plan 0015, and this canonical log.
+- **Known limitations:** Browser QA used mock media and a CSS-equivalent focus
+  fixture rather than a real native screen track. Installed macOS/Windows
+  source-audio isolation, fullscreen/scaling, Retina sizing, ultrawide/portrait
+  shares, and three-client teardown/switching remain gated by plan 0015's
+  acceptance matrix. Room-active time is derived from the earliest currently
+  present occupant because presence does not persist a separate room-session
+  record.
+- **Next:** Run the installed three-client macOS/Windows matrix with a watched
+  share returned to the grid, then verify playback continuity, both bottom
+  controls, speaking rings, room timing, and every source edge before release.

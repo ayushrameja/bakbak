@@ -388,7 +388,9 @@ The renderer uses a three-panel desktop layout plus a modal layer:
    active-call/sidebar controls, signed-in user actions, voice occupancy, and
    admin-only create/rename controls. The shelf scrolls independently; admin
    creation adds an uncategorized room because category management is outside
-   plan 0012.
+   plan 0012. Occupied rooms show one room-active timer; their compact occupant
+   rows omit personal timers/local suffixes and ring the current room's active
+   speakers.
 2. The flexible center canvas contains text chat or the voice room. Header-edge
    buttons independently toggle the left and right panels, immediately
    reallocating space across all four combinations.
@@ -402,9 +404,13 @@ The renderer uses a three-panel desktop layout plus a modal layer:
    channel switches the active call. Hover/focus can prepare one candidate room
    without media or presence side effects; click consumes that work and shows a
    compact stage loader instead of a blank canvas. After connection, people
-   and active shares share one responsive gallery. Clicking either opens a
-   focused stage and compact media-target strip; target loss returns to the
-   gallery.
+   and active shares share one centered, count-aware 16:9 gallery. Tiles are
+   bounded from 520 px for one target through 240–300 px auto-fit tiles for
+   seven or more. Clicking either opens a single media-first focused stage with
+   bottom-overlay Back/fullscreen controls and no metadata header or people
+   strip. Clicking the active media or Back to grid returns to the gallery;
+   watched share playback continues there, while target loss also clears its
+   subscription.
 6. Shared dialogs use compact/default/wide widths, responsive viewport padding,
    and a `100dvh`-bounded grid with a fixed header, internally scrollable body,
    and sticky wrapping footer actions. Buttons stack at narrow widths. The
@@ -840,7 +846,9 @@ An invite-management UI is deferred until post-v1.
 1. A connected installed client opens a renderer confirmation with Entire
    screen / Application tabs on macOS 14+ and Windows. Source audio defaults on
    when matched audio is available; the presenter can turn it off with a
-   switch. The confirmation exposes independent 480p/720p/1080p and 15/30/60-fps
+   switch. `ScreenShareSource.audioUnavailableReason` is authoritative for the
+   selected source: the picker disables and clears audio when that reason is
+   present. The confirmation exposes independent 480p/720p/1080p and 15/30/60-fps
    controls, defaults to 1080p/60 on first use, and persists only the last
    successful quality under `bakbak.screenSharePreferences.v1`. Browser clients
    have no share UI and force every screen publication unsubscribed.
@@ -860,33 +868,47 @@ An invite-management UI is deferred until post-v1.
    follow-up. The presenter ceiling uses 0.8–8 Mbps H.264
    encoding limits across the nine quality combinations; LiveKit adaptive
    layers may deliver less to a viewer.
-5. macOS optional 48 kHz stereo source audio excludes Bakbak; if setup fails,
-   capture retries video-only and the renderer shows a warning. On Windows
-   build 20348 or newer, applications include only the selected process tree
-   and displays exclude Bakbak's process tree. Older Windows builds keep video
-   available, disable audio with an explanation, and never broaden capture to
-   unrelated output.
+5. macOS application filters contain only the selected application; Entire
+   screen keeps Bakbak visually present when selected but both modes apply
+   ScreenCaptureKit current-process audio exclusion. Windows build 20348 or
+   newer includes only the selected application process tree or excludes
+   Bakbak's process tree for Entire screen. Enumeration and start-time
+   validation reject Bakbak and descendant application processes. Older
+   Windows builds and any isolated-audio startup failure keep video available,
+   disable audio with a source-specific explanation/warning, and never broaden
+   capture to unrelated output. `screen_share_audio` publication starts only
+   after isolated capture succeeds.
 6. A two-second gap without a complete frame mutes the publication, keeps the
    viewer's last frame visible, and reports “Source minimized or paused.”
    Capture automatically unmutes when a complete frame returns.
 7. Companion participants are merged into their owner's UI state and omitted
    from ordinary participant cards. Every remote screen video/audio publication
    is immediately unsubscribed. `watchedScreenShareId` is the sole subscription
-   gate: Watch unsubscribes the previous remote share first, then subscribes
-   the selected high-quality video and source audio. The presenter's own
-   companion video remains subscribed locally without source-audio feedback.
+   gate: selecting an in-room share tile unsubscribes the previous remote share
+   first, then subscribes the selected high-quality video and source audio. The
+   watched share remains subscribed when focus returns to the gallery, where
+   the same live track continues inside its tile; selecting a person, switching
+   shares, target loss, disconnect, or leave performs the corresponding cleanup.
+   The presenter's own companion video remains subscribed locally while its
+   companion source audio is always forced unsubscribed.
    Deafen, selected output, and owner volume still apply to watched audio.
-8. Clicking Watch in another room uses the prepared-join/direct-switch
-   microphone-reuse path, then waits up to twelve seconds for the authoritative
-   matching owner publication before focusing it. A join error or ended share
-   clears the pending request with a notice. Database LIVE alone never creates
-   a subscription.
-9. Focused people and shares use a fixed-toolbar, `minmax(0, 1fr)` media stage
-   with `object-fit: contain`; no percentage-height subtraction can clip the
-   bottom edge. The fullscreen control uses Tauri OS fullscreen. Escape exits
-   fullscreen without clearing focus. Gallery/person focus, Stop Watching,
-   leaving voice, or losing the target unsubscribes the watched share and exits
-   fullscreen.
+8. Sidebar LIVE is informational and has no Watch action or pending cross-room
+   state. Database LIVE alone never creates a subscription; the viewer joins
+   the voice room and selects the share tile. Each occupied channel shows one
+   room-active timer based on its earliest current join. Occupants have no
+   personal timers or redundant local-user suffix; compact avatars use a live
+   speaking ring from the active LiveKit room.
+9. Focused people and shares use one `minmax(0, 1fr)` media stage without a
+   metadata header or people filmstrip. Shared media uses `object-fit: contain`
+   against a black canvas, while Back to grid and fullscreen sit above its
+   bottom corners; local quality controls share that overlay. Fullscreen is a
+   fixed `100dvh` overlay reconciled with Tauri's actual `isFullscreen()` after
+   requests, resize/focus events, Escape, target loss, disconnect, and teardown.
+   Exit fullscreen stays pinned at the bottom while secondary controls hide
+   after 2.5 seconds idle. Escape retains focus; active media or Back to grid
+   exits fullscreen and clears focus without interrupting a watched share.
+   Failures surface non-blocking status while renderer state returns to the
+   actual native value.
 10. Explicit stop, voice leave, source termination, terminal native-room
     disconnect, or main-window close releases capture immediately and closes the
     companion. Multiple app instances may present concurrently, but each app

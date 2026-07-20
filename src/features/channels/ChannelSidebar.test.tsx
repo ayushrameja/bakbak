@@ -80,8 +80,7 @@ function renderSidebar(
     onOpenScreenShare: vi.fn(),
     ...overrides,
   };
-  render(<ChannelSidebar {...props} />);
-  return props;
+  return { props, ...render(<ChannelSidebar {...props} />) };
 }
 
 describe("ChannelSidebar room shelf", () => {
@@ -225,9 +224,62 @@ describe("ChannelSidebar room shelf", () => {
     expect(screen.getByText("Mira")).toBeVisible();
   });
 
-  it("shows server-wide LIVE state and watches without opening a profile", async () => {
-    const onWatch = vi.fn();
-    const onOpenProfile = vi.fn();
+  it("shows one room timer, omits personal timers and local labels, and rings speakers", () => {
+    const roomStartedAt = "2026-07-20T12:00:00.000Z";
+    const { container } = renderSidebar([voiceChannel], {
+      voiceOccupants: [
+        {
+          userId: user.id,
+          displayName: user.displayName,
+          avatarUrl: null,
+          channelId: voiceChannel.id,
+          joinedAt: roomStartedAt,
+          isStreaming: false,
+        },
+        {
+          userId: friend.id,
+          displayName: friend.displayName,
+          avatarUrl: null,
+          channelId: voiceChannel.id,
+          joinedAt: "2026-07-20T12:01:00.000Z",
+          isStreaming: false,
+        },
+      ],
+      voice: {
+        status: "disconnected",
+        channel: voiceChannel,
+        participants: [
+          {
+            id: friend.id,
+            displayName: friend.displayName,
+            isLocal: false,
+            isSpeaking: true,
+            isMuted: false,
+            volume: 1,
+            joinedAt: null,
+            cameraEnabled: false,
+            cameraTrack: null,
+            activeSounds: [],
+          },
+        ],
+      } as unknown as ReturnType<typeof useVoiceRoom>,
+    });
+
+    expect(screen.getByLabelText("Lounge active time")).toContainElement(
+      container.querySelector(`time[datetime="${roomStartedAt}"]`),
+    );
+    expect(
+      container.querySelectorAll(".channel-voice-people time"),
+    ).toHaveLength(0);
+    expect(screen.queryByText(/\(you\)/i)).not.toBeInTheDocument();
+    expect(
+      screen
+        .getByRole("button", { name: "View Mira's profile" })
+        .querySelector(".channel-voice-person__avatar"),
+    ).toHaveClass("is-speaking");
+  });
+
+  it("shows server-wide LIVE state without a direct watch action", () => {
     const occupant = {
       userId: friend.id,
       displayName: friend.displayName,
@@ -239,14 +291,12 @@ describe("ChannelSidebar room shelf", () => {
     renderSidebar([voiceChannel], {
       members: [{ ...user, role: "admin" }, friend],
       voiceOccupants: [occupant],
-      onWatch,
-      onOpenProfile,
     });
 
     expect(screen.getByText("LIVE")).toBeVisible();
-    await userEvent.click(screen.getByRole("button", { name: "Watch Mira" }));
-    expect(onWatch).toHaveBeenCalledWith(occupant, voiceChannel);
-    expect(onOpenProfile).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("button", { name: "Watch Mira" }),
+    ).not.toBeInTheDocument();
   });
 
   it("opens voice-occupant and signed-in user profiles", async () => {

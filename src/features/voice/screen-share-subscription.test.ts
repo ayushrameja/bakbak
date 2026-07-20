@@ -22,4 +22,17 @@ describe("screen share subscription policy", () => {
       subscribeAudio: false,
     });
   });
+
+  it("keeps the presenter's companion video but never its companion audio", () => {
+    expect(screenShareSubscriptionPolicy("mine", "mine", true)).toEqual({
+      subscribeVideo: true,
+      videoQuality: "high",
+      subscribeAudio: false,
+    });
+    expect(screenShareSubscriptionPolicy("mine", null, true)).toEqual({
+      subscribeVideo: true,
+      videoQuality: "high",
+      subscribeAudio: false,
+    });
+  });
 });
