@@ -103,6 +103,7 @@ pub struct ScreenShareSource {
     label: String,
     application_label: Option<String>,
     audio_available: bool,
+    audio_unavailable_reason: Option<String>,
     thumbnail_data_url: Option<String>,
 }
 
@@ -503,7 +504,7 @@ async fn start_publisher(
         publish_video(&room, video_track.clone(), request.settings.validate()?).await?;
 
     let requested_audio_source = prepared
-        .include_audio
+        .includes_audio()
         .then(|| NativeAudioSource::new(AudioSourceOptions::default(), 48_000, 2, 200));
     let source_label = prepared.source_label.clone();
     let source_kind = prepared.source_kind;

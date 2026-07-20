@@ -252,6 +252,7 @@ name = "bakbak"
 version = "0.15.0"
 dependencies = [
  "core-graphics",
+ "libc",
  "livekit",
  "os_info",
  "screencapturekit",

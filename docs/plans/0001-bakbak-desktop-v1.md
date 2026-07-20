@@ -176,12 +176,19 @@ The Signature premium appearance, shared destination shell, Personal
 one-to-one DMs, resizable side panels, server-wide LIVE state, and explicit
 opt-in remote stream subscriptions are approved under
 `0014-bakbak-signature-shell-personal-dms-live-watching.md`.
+Per-source native audio isolation, Bakbak process-tree rejection, bounded
+Discord-like call tiles, reversible focus, informational LIVE state, and
+native-state-synchronized fullscreen are approved under
+`0015-screen-share-reliability-and-call-layout.md`. Plan 0015 supersedes plan
+0014's sidebar Watch and pending cross-room watch flow while retaining explicit
+in-room subscription consent.
 
 ### Phase 5 — Post-v1 improvements
 
 - [ ] Complete desktop screen sharing with matched system audio on macOS and
       Windows under plans `0003-screen-sharing.md` and
-      `0010-cross-platform-screen-share-and-focus.md`.
+      `0010-cross-platform-screen-share-and-focus.md`; plan 0015's installed
+      isolation matrix remains the release gate.
 - [ ] Add invite management UI.
 - [ ] Add desktop notifications and tray controls.
 - [x] Add locally persisted microphone, speaker, and camera preferences.
@@ -258,11 +265,16 @@ opt-in remote stream subscriptions are approved under
       Purple through the parser-blocking v6 appearance migration.
 - [x] Add participant-private one-to-one DMs with retained former-member
       history, Realtime updates, unread/read state, and person details.
-- [x] Add server-wide LIVE presence and explicit one-share Watch subscriptions
-      that keep remote screen video/audio unsubscribed before user intent.
+- [x] Add server-wide informational LIVE presence and explicit one-share tile
+      subscriptions that keep remote screen video/audio unsubscribed before
+      in-room user intent under plan 0015.
 - [x] Deploy plan 0014's additive migration before distributing its renderer.
 - [ ] Complete plan 0014's hosted DM and installed three-client LIVE/Watch
       acceptance matrices.
+- [x] Add plan 0015's per-source audio policy, compact responsive gallery,
+      reversible focus, fullscreen reconciliation, and sidebar cleanup.
+- [ ] Complete plan 0015's installed macOS/Windows isolation, fullscreen, and
+      visual acceptance matrices.
 - [ ] Evaluate optional global push-to-talk.
 - [x] Implement Windows process/display-matched audio with build gating and
       video-only fallback.

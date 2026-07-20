@@ -210,11 +210,6 @@ export default function App() {
   const [voiceSessions, setVoiceSessions] = useState<VoicePresenceSession[]>(
     [],
   );
-  const [pendingWatch, setPendingWatch] = useState<{
-    ownerId: string;
-    channelId: string;
-    startedAt: number;
-  } | null>(null);
   const selectedChannelIdRef = useRef(selectedChannelId);
   const selectedConversationIdRef = useRef(selectedConversationId);
   const activeViewRef = useRef(activeView);
@@ -815,53 +810,6 @@ export default function App() {
     );
     return latestChannel ? { ...voice, channel: latestChannel } : voice;
   }, [voice, workspace]);
-  const voiceChannelId = voice.channel?.id;
-  const voiceScreenShares = voice.screenShares;
-  const voiceStatus = voice.status;
-  const watchScreenShare = voice.watchScreenShare;
-
-  useEffect(() => {
-    if (!pendingWatch) return;
-    if (voiceStatus === "error" && voiceChannelId === pendingWatch.channelId) {
-      setPendingWatch(null);
-      setAppError(
-        "Bakbak joined the applause but not the room. The stream was not watched.",
-      );
-      return;
-    }
-    if (
-      voiceStatus === "connected" &&
-      voiceChannelId === pendingWatch.channelId
-    ) {
-      const share = voiceScreenShares.find(
-        (candidate) =>
-          candidate.ownerId === pendingWatch.ownerId && !candidate.isLocal,
-      );
-      if (share) {
-        watchScreenShare(share.id);
-        setPendingWatch(null);
-        return;
-      }
-    }
-    const remaining = Math.max(0, pendingWatch.startedAt + 12_000 - Date.now());
-    const timer = window.setTimeout(() => {
-      setPendingWatch((current) => {
-        if (current !== pendingWatch) return current;
-        setAppError(
-          "That LIVE share ended before Bakbak could tune in. Excellent timing, universe.",
-        );
-        return null;
-      });
-    }, remaining);
-    return () => window.clearTimeout(timer);
-  }, [
-    pendingWatch,
-    voiceChannelId,
-    voiceScreenShares,
-    voiceStatus,
-    watchScreenShare,
-  ]);
-
   const messageChannelIds = useMemo(
     () =>
       workspace?.channels
@@ -1508,31 +1456,6 @@ export default function App() {
     }
   }
 
-  function handleWatchVoiceOccupant(
-    occupant: VoiceRoomOccupant,
-    channel: Channel,
-  ) {
-    setAppError(null);
-    setOpenProfile(null);
-    setSoundboardOpen(false);
-    setActiveSpace("server");
-    setActiveView("channel");
-    selectedChannelIdRef.current = channel.id;
-    setSelectedChannelId(channel.id);
-    setPendingWatch({
-      ownerId: occupant.userId,
-      channelId: channel.id,
-      startedAt: Date.now(),
-    });
-    if (
-      voice.channel?.id !== channel.id ||
-      voice.status === "disconnected" ||
-      voice.status === "error"
-    ) {
-      void voice.join(channel);
-    }
-  }
-
   function handleSelectConversation(conversation: DirectConversation) {
     setOpenProfile(null);
     setSoundboardOpen(false);
@@ -1773,7 +1696,6 @@ export default function App() {
               setOpenProfile(null);
               setScreenShareDialogOpen(true);
             }}
-            onWatch={handleWatchVoiceOccupant}
           />
         ) : (
           <PersonalSidebar

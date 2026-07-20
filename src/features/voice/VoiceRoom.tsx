@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauri } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Avatar } from "../../components/Avatar";
 import {
   ProfileTrigger,
@@ -59,6 +59,11 @@ export function VoiceRoom({
   const isReconnecting = isThisRoom && voice.status === "reconnecting";
   const [focusedTarget, setFocusedTarget] = useState<MediaTarget | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  const [fullscreenError, setFullscreenError] = useState<string | null>(null);
+  const [fullscreenControlsVisible, setFullscreenControlsVisible] =
+    useState(true);
+  const fullscreenRef = useRef(false);
+  const fullscreenControlsTimerRef = useRef<number | null>(null);
   const {
     participants: voiceParticipants,
     screenShares,
@@ -66,28 +71,95 @@ export function VoiceRoom({
     stopWatchingScreenShare,
   } = voice;
 
-  const exitFullscreen = useCallback(async () => {
-    if (isTauri()) {
-      await getCurrentWindow()
-        .setFullscreen(false)
-        .catch(() => undefined);
-    }
-    document.documentElement.removeAttribute("data-voice-fullscreen");
-    setFullscreen(false);
-  }, []);
-
-  const toggleFullscreen = useCallback(async () => {
-    if (!focusedTarget || !isTauri()) return;
-    const appWindow = getCurrentWindow();
-    const next = !(await appWindow.isFullscreen());
-    await appWindow.setFullscreen(next);
+  const applyFullscreenState = useCallback((next: boolean) => {
     if (next) {
       document.documentElement.dataset.voiceFullscreen = "true";
     } else {
       document.documentElement.removeAttribute("data-voice-fullscreen");
     }
+    if (fullscreenRef.current === next) return;
+    fullscreenRef.current = next;
     setFullscreen(next);
-  }, [focusedTarget]);
+  }, []);
+
+  const reconcileFullscreen = useCallback(async () => {
+    if (!isTauri()) {
+      applyFullscreenState(false);
+      return false;
+    }
+    try {
+      const actual = await getCurrentWindow().isFullscreen();
+      applyFullscreenState(actual);
+      return actual;
+    } catch {
+      applyFullscreenState(false);
+      return false;
+    }
+  }, [applyFullscreenState]);
+
+  const requestFullscreen = useCallback(
+    async (next: boolean) => {
+      if (!isTauri() || (next && !focusedTarget)) return;
+      setFullscreenError(null);
+      try {
+        await getCurrentWindow().setFullscreen(next);
+      } catch {
+        setFullscreenError(
+          next
+            ? "Bakbak could not enter fullscreen."
+            : "Bakbak could not exit fullscreen.",
+        );
+      } finally {
+        await reconcileFullscreen();
+      }
+    },
+    [focusedTarget, reconcileFullscreen],
+  );
+
+  const revealFullscreenControls = useCallback(() => {
+    if (!fullscreen) return;
+    setFullscreenControlsVisible(true);
+    if (fullscreenControlsTimerRef.current !== null) {
+      window.clearTimeout(fullscreenControlsTimerRef.current);
+    }
+    fullscreenControlsTimerRef.current = window.setTimeout(() => {
+      setFullscreenControlsVisible(false);
+      fullscreenControlsTimerRef.current = null;
+    }, 2_500);
+  }, [fullscreen]);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    let disposed = false;
+    const unlisteners: Array<() => void> = [];
+    const sync = () => {
+      if (!disposed) void reconcileFullscreen();
+    };
+    void Promise.all([
+      getCurrentWindow().onResized(sync),
+      getCurrentWindow().onFocusChanged(sync),
+    ]).then((listeners) => {
+      if (disposed) listeners.forEach((unlisten) => unlisten());
+      else unlisteners.push(...listeners);
+    });
+    void reconcileFullscreen();
+    return () => {
+      disposed = true;
+      unlisteners.forEach((unlisten) => unlisten());
+    };
+  }, [reconcileFullscreen]);
+
+  useEffect(() => {
+    if (fullscreen) {
+      revealFullscreenControls();
+      return;
+    }
+    setFullscreenControlsVisible(true);
+    if (fullscreenControlsTimerRef.current !== null) {
+      window.clearTimeout(fullscreenControlsTimerRef.current);
+      fullscreenControlsTimerRef.current = null;
+    }
+  }, [fullscreen, revealFullscreenControls]);
 
   useEffect(() => {
     const targetStillExists =
@@ -101,12 +173,12 @@ export function VoiceRoom({
     if (isConnected && targetStillExists) return;
     setFocusedTarget(null);
     stopWatchingScreenShare();
-    if (fullscreen) void exitFullscreen();
+    if (fullscreen) void requestFullscreen(false);
   }, [
-    exitFullscreen,
     focusedTarget,
     fullscreen,
     isConnected,
+    requestFullscreen,
     screenShares,
     stopWatchingScreenShare,
     voiceParticipants,
@@ -127,16 +199,19 @@ export function VoiceRoom({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && fullscreen) {
         event.preventDefault();
-        void exitFullscreen();
+        void requestFullscreen(false);
       }
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [exitFullscreen, fullscreen]);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [fullscreen, requestFullscreen]);
 
   useEffect(
     () => () => {
       document.documentElement.removeAttribute("data-voice-fullscreen");
+      if (fullscreenControlsTimerRef.current !== null) {
+        window.clearTimeout(fullscreenControlsTimerRef.current);
+      }
       if (isTauri()) {
         void getCurrentWindow()
           .setFullscreen(false)
@@ -146,7 +221,17 @@ export function VoiceRoom({
     [],
   );
 
+  const returnToGallery = useCallback(() => {
+    setFocusedTarget(null);
+    voice.stopWatchingScreenShare();
+    if (fullscreen) void requestFullscreen(false);
+  }, [fullscreen, requestFullscreen, voice]);
+
   const focusTarget = (target: MediaTarget) => {
+    if (focusedTarget?.kind === target.kind && focusedTarget.id === target.id) {
+      returnToGallery();
+      return;
+    }
     setFocusedTarget(target);
     const share =
       target.kind === "screen"
@@ -157,12 +242,6 @@ export function VoiceRoom({
     } else {
       voice.stopWatchingScreenShare();
     }
-  };
-
-  const returnToGallery = () => {
-    setFocusedTarget(null);
-    voice.stopWatchingScreenShare();
-    if (fullscreen) void exitFullscreen();
   };
 
   const focusedParticipant =
@@ -281,7 +360,10 @@ export function VoiceRoom({
           ) : null}
           {focusedTarget ? (
             <div
-              className={`voice-focus-layout ${fullscreen ? "is-fullscreen" : ""}`}
+              className={`voice-focus-layout ${fullscreen ? "is-fullscreen" : ""} ${fullscreen && !fullscreenControlsVisible ? "controls-hidden" : ""}`}
+              onPointerMove={revealFullscreenControls}
+              onFocusCapture={revealFullscreenControls}
+              onKeyDown={revealFullscreenControls}
             >
               {focusedShare ? (
                 <ScreenShareStage
@@ -290,8 +372,10 @@ export function VoiceRoom({
                   settings={voice.screenShareSettings}
                   settingsPending={voice.screenShareSettingsPending}
                   fullscreen={fullscreen}
+                  fullscreenError={fullscreenError}
                   onBack={returnToGallery}
-                  onToggleFullscreen={() => void toggleFullscreen()}
+                  onActivateMedia={returnToGallery}
+                  onToggleFullscreen={() => void requestFullscreen(!fullscreen)}
                   onUpdateSettings={(settings) =>
                     void voice.updateScreenShareSettings(settings)
                   }
@@ -304,16 +388,16 @@ export function VoiceRoom({
                   <header>
                     <button
                       type="button"
-                      className="secondary-button"
+                      className="secondary-button voice-participant-stage__back"
                       onClick={returnToGallery}
                     >
-                      Gallery
+                      Back to grid
                     </button>
                     <strong>{focusedParticipant.displayName}</strong>
                     <button
                       type="button"
-                      className="secondary-button"
-                      onClick={() => void toggleFullscreen()}
+                      className={`secondary-button ${fullscreen ? "voice-fullscreen-exit" : ""}`}
+                      onClick={() => void requestFullscreen(!fullscreen)}
                       aria-label={
                         fullscreen ? "Exit fullscreen" : "Enter fullscreen"
                       }
@@ -329,8 +413,14 @@ export function VoiceRoom({
                     loadProfileMedia={loadProfileMedia}
                     onOpenProfile={onOpenProfile}
                     openProfileId={openProfileId}
+                    onFocus={returnToGallery}
                     focused
                   />
+                  {fullscreenError ? (
+                    <div className="voice-fullscreen-error" role="status">
+                      {fullscreenError}
+                    </div>
+                  ) : null}
                 </section>
               ) : null}
               <MediaTargetStrip
@@ -346,6 +436,9 @@ export function VoiceRoom({
               data-target-count={
                 voice.participants.length + voice.screenShares.length
               }
+              data-layout={mediaGalleryLayout(
+                voice.participants.length + voice.screenShares.length,
+              )}
             >
               {voice.participants.map((participant) => (
                 <ParticipantCard
@@ -640,8 +733,20 @@ function MediaTargetStrip({
           type="button"
           key={`participant:${participant.id}`}
           onClick={() => onFocus({ kind: "participant", id: participant.id })}
+          aria-label={`${focused.kind === "participant" && focused.id === participant.id ? "Return" : "Focus"} ${participant.displayName}`}
         >
-          {participant.cameraEnabled ? "📹" : "●"} {participant.displayName}
+          <span className="media-target-strip__preview" aria-hidden="true">
+            {participant.cameraEnabled && participant.cameraTrack ? (
+              <ParticipantVideo
+                track={participant.cameraTrack}
+                local={participant.isLocal}
+                label={participant.displayName}
+              />
+            ) : (
+              <span>{participant.displayName.trim().charAt(0) || "?"}</span>
+            )}
+          </span>
+          <span title={participant.displayName}>{participant.displayName}</span>
         </button>
       ))}
       {shares.map((share) => (
@@ -654,8 +759,21 @@ function MediaTargetStrip({
           type="button"
           key={`screen:${share.id}`}
           onClick={() => onFocus({ kind: "screen", id: share.id })}
+          aria-label={`${focused.kind === "screen" && focused.id === share.id ? "Return" : "Focus"} ${share.displayName}'s screen`}
         >
-          <Monitor size={13} /> {share.displayName}
+          <span className="media-target-strip__preview" aria-hidden="true">
+            {share.track ? (
+              <ParticipantVideo
+                track={share.track}
+                local={false}
+                label={share.displayName}
+                kind="screen"
+              />
+            ) : (
+              <Monitor size={18} />
+            )}
+          </span>
+          <span title={share.displayName}>{share.displayName}</span>
         </button>
       ))}
     </nav>
@@ -699,4 +817,14 @@ function describeJoinStage(
   if (stage === "microphone") return "Starting your microphone…";
   if (stage === "soundboard") return "Preparing room audio…";
   return "Preparing voice…";
+}
+
+function mediaGalleryLayout(
+  targetCount: number,
+): "solo" | "pair" | "quad" | "six" | "many" {
+  if (targetCount <= 1) return "solo";
+  if (targetCount === 2) return "pair";
+  if (targetCount <= 4) return "quad";
+  if (targetCount <= 6) return "six";
+  return "many";
 }

@@ -95,6 +95,7 @@ describe("ScreenShareDialog", () => {
         label: "Screen 1",
         applicationLabel: null,
         audioAvailable: true,
+        audioUnavailableReason: null,
         thumbnailDataUrl: null,
       },
       {
@@ -103,6 +104,7 @@ describe("ScreenShareDialog", () => {
         label: "Project",
         applicationLabel: "Editor",
         audioAvailable: true,
+        audioUnavailableReason: null,
         thumbnailDataUrl: "data:image/bmp;base64,Qk0=",
       },
     ]);
@@ -148,6 +150,7 @@ describe("ScreenShareDialog", () => {
         label: "Screen 1",
         applicationLabel: null,
         audioAvailable: true,
+        audioUnavailableReason: null,
         thumbnailDataUrl: null,
       },
       {
@@ -156,6 +159,7 @@ describe("ScreenShareDialog", () => {
         label: "Project",
         applicationLabel: "Editor",
         audioAvailable: true,
+        audioUnavailableReason: null,
         thumbnailDataUrl: null,
       },
     ]);
@@ -201,6 +205,7 @@ describe("ScreenShareDialog", () => {
         label: "Screen 1",
         applicationLabel: null,
         audioAvailable: true,
+        audioUnavailableReason: null,
         thumbnailDataUrl: null,
       },
       {
@@ -209,6 +214,8 @@ describe("ScreenShareDialog", () => {
         label: "Project",
         applicationLabel: "Editor",
         audioAvailable: false,
+        audioUnavailableReason:
+          "Application audio is disabled until isolation is verified.",
         thumbnailDataUrl: null,
       },
     ]);
@@ -233,6 +240,7 @@ describe("ScreenShareDialog", () => {
     expect(
       screen.getByRole("switch", { name: "Include system audio" }),
     ).toBeDisabled();
+    expect(screen.getByText(/isolation is verified/i)).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "Share" }));
 
     expect(onStart).toHaveBeenCalledWith(
@@ -254,6 +262,7 @@ describe("ScreenShareDialog", () => {
           label: "Screen 1",
           applicationLabel: null,
           audioAvailable: true,
+          audioUnavailableReason: null,
           thumbnailDataUrl: null,
         },
       ]);

@@ -1,5 +1,6 @@
 use std::{
     borrow::Cow,
+    collections::HashSet,
     mem,
     sync::{
         Arc, Mutex as StdMutex,
@@ -34,18 +35,29 @@ const PAUSED_SOURCE_TIMEOUT: Duration = Duration::from_secs(2);
 const SOURCE_ENUMERATION_TIMEOUT: Duration = Duration::from_secs(5);
 const BAKBAK_BUNDLE_IDENTIFIER: &str = "com.bakbak.desktop";
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum AudioIsolationPolicy {
+    ExcludeCurrentProcess,
+}
+
 pub struct PreparedCapture {
     pub source_label: String,
     pub source_kind: ScreenShareSourceKind,
     pub width: u32,
     pub height: u32,
-    pub include_audio: bool,
+    audio_isolation: Option<AudioIsolationPolicy>,
     settings: ScreenShareSettings,
     source_width: u32,
     source_height: u32,
     filter: SCContentFilter,
     termination_sender: mpsc::UnboundedSender<String>,
     pause_sender: mpsc::UnboundedSender<bool>,
+}
+
+impl PreparedCapture {
+    pub fn includes_audio(&self) -> bool {
+        self.audio_isolation.is_some()
+    }
 }
 
 pub struct CaptureSession {
@@ -112,6 +124,7 @@ pub async fn sources() -> Result<Vec<ScreenShareSource>, String> {
             label: format!("Screen {}", index + 1),
             application_label: None,
             audio_available: true,
+            audio_unavailable_reason: None,
             thumbnail_data_url: None,
         })
         .collect::<Vec<_>>();
@@ -127,6 +140,7 @@ pub async fn sources() -> Result<Vec<ScreenShareSource>, String> {
             application_label: Some(application.bundle_identifier())
                 .filter(|value| !value.trim().is_empty()),
             audio_available: true,
+            audio_unavailable_reason: None,
             thumbnail_data_url: None,
         })
         .collect::<Vec<_>>();
@@ -155,7 +169,7 @@ pub async fn pick_source(
         source_kind,
         width,
         height,
-        include_audio,
+        audio_isolation: audio_isolation_policy(include_audio),
         settings,
         source_width,
         source_height,
@@ -163,6 +177,10 @@ pub async fn pick_source(
         termination_sender,
         pause_sender,
     })
+}
+
+fn audio_isolation_policy(include_audio: bool) -> Option<AudioIsolationPolicy> {
+    include_audio.then_some(AudioIsolationPolicy::ExcludeCurrentProcess)
 }
 
 fn resolve_source(
@@ -233,7 +251,9 @@ fn is_shareable_application(application: &SCRunningApplication, windows: &[SCWin
     if name.trim().is_empty() {
         return false;
     }
-    if application.bundle_identifier() == BAKBAK_BUNDLE_IDENTIFIER {
+    if application.bundle_identifier() == BAKBAK_BUNDLE_IDENTIFIER
+        || process_is_in_current_tree(application.process_id())
+    {
         return false;
     }
     windows.iter().any(|window| {
@@ -242,6 +262,53 @@ fn is_shareable_application(application: &SCRunningApplication, windows: &[SCWin
                 .owning_application()
                 .is_some_and(|owner| owner.process_id() == application.process_id())
     })
+}
+
+fn process_is_in_current_tree(process_id: i32) -> bool {
+    process_is_in_tree_with(process_id, std::process::id() as i32, parent_process_id)
+}
+
+fn process_is_in_tree_with(
+    process_id: i32,
+    root_process_id: i32,
+    mut parent_of: impl FnMut(i32) -> Option<i32>,
+) -> bool {
+    if process_id <= 0 || root_process_id <= 0 {
+        return true;
+    }
+    let mut current = process_id;
+    let mut visited = HashSet::new();
+    while visited.insert(current) {
+        if current == root_process_id {
+            return true;
+        }
+        if current == 1 {
+            return false;
+        }
+        let Some(parent) = parent_of(current) else {
+            return true;
+        };
+        if parent <= 0 || parent == current {
+            return false;
+        }
+        current = parent;
+    }
+    true
+}
+
+fn parent_process_id(process_id: i32) -> Option<i32> {
+    let mut info = unsafe { mem::zeroed::<libc::proc_bsdinfo>() };
+    let size = mem::size_of::<libc::proc_bsdinfo>() as i32;
+    let read = unsafe {
+        libc::proc_pidinfo(
+            process_id,
+            libc::PROC_PIDTBSDINFO,
+            0,
+            (&mut info as *mut libc::proc_bsdinfo).cast(),
+            size,
+        )
+    };
+    (read == size).then_some(info.pbi_ppid as i32)
 }
 
 fn application_display<'a>(
@@ -337,8 +404,8 @@ pub async fn start_capture(
     audio_source: Option<NativeAudioSource>,
 ) -> Result<(CaptureSession, bool), String> {
     match start_capture_attempt(&prepared, video_source.clone(), audio_source, true).await {
-        Ok(session) => Ok((session, prepared.include_audio)),
-        Err(_) if prepared.include_audio => {
+        Ok(session) => Ok((session, prepared.includes_audio())),
+        Err(_) if prepared.includes_audio() => {
             start_capture_attempt(&prepared, video_source, None, false)
                 .await
                 .map(|session| (session, false))
@@ -679,6 +746,27 @@ fn fit_to_resolution(width: u32, height: u32, resolution: u32) -> (u32, u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn excludes_bakbak_audio_only_when_source_audio_is_requested() {
+        assert_eq!(audio_isolation_policy(false), None);
+        assert_eq!(
+            audio_isolation_policy(true),
+            Some(AudioIsolationPolicy::ExcludeCurrentProcess)
+        );
+    }
+
+    #[test]
+    fn rejects_bakbak_descendants_and_fails_closed_when_ancestry_is_unknown() {
+        let parents = [(11, 10), (12, 11), (20, 1)]
+            .into_iter()
+            .collect::<std::collections::HashMap<_, _>>();
+        let lookup = |process_id| parents.get(&process_id).copied();
+        assert!(process_is_in_tree_with(10, 10, lookup));
+        assert!(process_is_in_tree_with(12, 10, lookup));
+        assert!(!process_is_in_tree_with(20, 10, lookup));
+        assert!(process_is_in_tree_with(30, 10, lookup));
+    }
 
     #[test]
     fn caps_capture_dimensions_without_changing_aspect_ratio() {

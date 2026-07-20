@@ -8,6 +8,10 @@ presence, explicit Watch contract, and automated validation are complete.
 Hosted rollout is complete; the installed multi-client acceptance matrix
 remains open.
 
+Plan 0015 supersedes the sidebar Watch chip and cross-room pending-watch flow.
+LIVE is now informational; a member joins the voice room and chooses a share
+tile. The one-remote-share subscription boundary remains in force.
+
 ## Accepted scope
 
 - Classic System + Flat + Purple is the update default. The v6 migration resets
@@ -28,13 +32,14 @@ remains open.
 - Starting a DM requires shared server membership. An established conversation,
   profile visibility, media visibility, and continued messaging survive later
   membership removal.
-- Voice occupant rows show profile identity, elapsed time, LIVE, and Watch
-  without making profile activation join voice.
+- Voice occupant rows show profile identity, elapsed time, and informational
+  LIVE without making profile activation join voice.
 - Database LIVE state is advisory and server-wide. The matching LiveKit
   publication is authoritative.
-- Remote screen video and source audio remain unsubscribed until Watch. Exactly
-  one remote share may be watched; switching unsubscribes the old share first,
-  and gallery/person focus or Stop Watching removes the subscription.
+- Remote screen video and source audio remain unsubscribed until an in-room
+  share tile is selected. Exactly one remote share may be viewed; switching
+  unsubscribes the old share first, and gallery/person focus or Back to grid
+  removes the subscription.
 
 ## Completed implementation
 
@@ -58,8 +63,8 @@ remains open.
 - [x] Add `presence_heartbeats.is_streaming`,
       `heartbeat_presence_v3(server, voice_channel, is_streaming)`, and
       compatibility behavior that clears LIVE from older heartbeat RPCs.
-- [x] Add rich server-wide voice occupant rows and join/switch-and-watch
-      sequencing with a bounded publication wait.
+- [x] Add rich server-wide voice occupant rows. Plan 0015 later removed their
+      join/switch-and-watch sequencing and Watch chip.
 - [x] Replace focus-as-subscription with `watchedScreenShareId`,
       `watchScreenShare`, and `stopWatchingScreenShare`.
 - [x] Keep all unwatched remote share publications unsubscribed and local
@@ -82,8 +87,9 @@ remains open.
       reconnect, sound, membership removal, retained messaging, profile, and
       private media access.
 - [ ] Run three installed clients across two voice rooms through server-wide
-      LIVE, direct switching, publication wait, one-stream replacement,
-      deafen/source audio, pause, stop, failure, and crash expiry.
+      informational LIVE, in-room tile selection, one-stream replacement,
+      deafen/source audio, pause, stop, failure, and crash expiry under plan
+      0015's stricter isolation matrix.
 - [ ] Inspect LiveKit statistics to prove an unwatched remote share receives
       zero screen video and zero source audio.
 - [ ] Repeat all panel combinations and resize extremes in installed Signature,

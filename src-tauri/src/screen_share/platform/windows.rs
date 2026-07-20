@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    collections::VecDeque,
+    collections::{HashMap, HashSet, VecDeque},
     path::Path,
     sync::{
         Arc, Mutex as StdMutex,
@@ -45,6 +45,10 @@ use windows::{
         },
         System::{
             Com::{COINIT_MULTITHREADED, CoInitializeEx},
+            Diagnostics::ToolHelp::{
+                CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
+                TH32CS_SNAPPROCESS,
+            },
             Threading::{
                 GetCurrentProcessId, OpenProcess, PROCESS_NAME_WIN32,
                 PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
@@ -93,12 +97,17 @@ pub struct PreparedCapture {
     pub source_kind: ScreenShareSourceKind,
     pub width: u32,
     pub height: u32,
-    pub include_audio: bool,
     settings: ScreenShareSettings,
     item: GraphicsCaptureItem,
     audio_target: Option<ProcessLoopbackTarget>,
     termination_sender: mpsc::UnboundedSender<String>,
     pause_sender: mpsc::UnboundedSender<bool>,
+}
+
+impl PreparedCapture {
+    pub fn includes_audio(&self) -> bool {
+        self.audio_target.is_some()
+    }
 }
 
 pub struct CaptureSession {
@@ -255,6 +264,7 @@ pub async fn pick_source(
     let source_label = source_label(&target);
     let audio_target = (include_audio && process_loopback_supported())
         .then(|| process_loopback_target(&target))
+        .transpose()?
         .flatten();
     let (width, height) =
         fit_to_resolution(size.Width as u32, size.Height as u32, settings.resolution);
@@ -264,7 +274,6 @@ pub async fn pick_source(
         source_kind,
         width,
         height,
-        include_audio: audio_target.is_some(),
         settings,
         item,
         audio_target,
@@ -431,16 +440,25 @@ fn process_loopback_supported_for_build(build: u32) -> bool {
     build >= PROCESS_LOOPBACK_MINIMUM_BUILD
 }
 
-fn process_loopback_target(target: &CaptureTarget) -> Option<ProcessLoopbackTarget> {
+fn process_loopback_target(
+    target: &CaptureTarget,
+) -> Result<Option<ProcessLoopbackTarget>, String> {
     match target {
         CaptureTarget::Window(hwnd) => {
             let mut process_id = 0;
             unsafe { GetWindowThreadProcessId(*hwnd, Some(&mut process_id)) };
-            (process_id != 0).then_some(ProcessLoopbackTarget::IncludeProcessTree(process_id))
+            if process_id == 0 {
+                return Ok(None);
+            }
+            let parents = process_parent_map()?;
+            if process_is_in_tree(process_id, unsafe { GetCurrentProcessId() }, &parents) {
+                return Err("Bakbak cannot capture its own application audio.".to_string());
+            }
+            Ok(Some(ProcessLoopbackTarget::IncludeProcessTree(process_id)))
         }
-        CaptureTarget::Display(_) => Some(ProcessLoopbackTarget::ExcludeProcessTree(unsafe {
+        CaptureTarget::Display(_) => Ok(Some(ProcessLoopbackTarget::ExcludeProcessTree(unsafe {
             GetCurrentProcessId()
-        })),
+        }))),
     }
 }
 
@@ -637,10 +655,21 @@ fn source_label(target: &CaptureTarget) -> String {
 }
 
 fn enumerate_windows() -> Result<Vec<ScreenShareSource>, String> {
-    let mut windows = Vec::<ScreenShareSource>::new();
+    struct EnumerationContext {
+        sources: Vec<ScreenShareSource>,
+        process_parents: HashMap<u32, u32>,
+        current_process_id: u32,
+        audio_supported: bool,
+        audio_unavailable_reason: Option<String>,
+    }
+
     unsafe extern "system" fn callback(hwnd: HWND, data: LPARAM) -> BOOL {
-        let sources = unsafe { &mut *(data.0 as *mut Vec<ScreenShareSource>) };
-        if !is_shareable_window(hwnd) {
+        let context = unsafe { &mut *(data.0 as *mut EnumerationContext) };
+        if !is_shareable_window_with_process_map(
+            hwnd,
+            context.current_process_id,
+            &context.process_parents,
+        ) {
             return BOOL(1);
         }
         let Some(label) = window_title(hwnd) else {
@@ -648,23 +677,33 @@ fn enumerate_windows() -> Result<Vec<ScreenShareSource>, String> {
         };
         let mut pid = 0;
         unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
-        sources.push(ScreenShareSource {
+        context.sources.push(ScreenShareSource {
             id: format!("window:{}", hwnd.0 as isize),
             kind: ScreenShareSourceKind::Application,
             label,
             application_label: process_label(pid),
-            audio_available: process_loopback_supported(),
+            audio_available: context.audio_supported,
+            audio_unavailable_reason: context.audio_unavailable_reason.clone(),
             thumbnail_data_url: None,
         });
         BOOL(1)
     }
+    let audio_supported = process_loopback_supported();
+    let mut context = EnumerationContext {
+        sources: Vec::new(),
+        process_parents: process_parent_map()?,
+        current_process_id: unsafe { GetCurrentProcessId() },
+        audio_supported,
+        audio_unavailable_reason: process_loopback_unavailable_reason(audio_supported),
+    };
     unsafe {
         EnumWindows(
             Some(callback),
-            LPARAM((&mut windows as *mut Vec<ScreenShareSource>) as isize),
+            LPARAM((&mut context as *mut EnumerationContext) as isize),
         )
     }
     .map_err(|error| format!("Windows could not enumerate application windows: {error}"))?;
+    let mut windows = context.sources;
     windows.sort_by(|left, right| {
         left.application_label
             .cmp(&right.application_label)
@@ -674,6 +713,8 @@ fn enumerate_windows() -> Result<Vec<ScreenShareSource>, String> {
 }
 
 fn enumerate_displays() -> Vec<ScreenShareSource> {
+    let audio_supported = process_loopback_supported();
+    let audio_unavailable_reason = process_loopback_unavailable_reason(audio_supported);
     available_monitors()
         .into_iter()
         .enumerate()
@@ -682,7 +723,8 @@ fn enumerate_displays() -> Vec<ScreenShareSource> {
             kind: ScreenShareSourceKind::Display,
             label: format!("Screen {}", index + 1),
             application_label: None,
-            audio_available: process_loopback_supported(),
+            audio_available: audio_supported,
+            audio_unavailable_reason: audio_unavailable_reason.clone(),
             thumbnail_data_url: None,
         })
         .collect()
@@ -890,6 +932,17 @@ fn encode_base64(bytes: &[u8]) -> String {
 }
 
 fn is_shareable_window(hwnd: HWND) -> bool {
+    let Ok(process_parents) = process_parent_map() else {
+        return false;
+    };
+    is_shareable_window_with_process_map(hwnd, unsafe { GetCurrentProcessId() }, &process_parents)
+}
+
+fn is_shareable_window_with_process_map(
+    hwnd: HWND,
+    current_process_id: u32,
+    process_parents: &HashMap<u32, u32>,
+) -> bool {
     if hwnd.0.is_null() {
         return false;
     }
@@ -899,7 +952,7 @@ fn is_shareable_window(hwnd: HWND) -> bool {
     let tool_window = extended_style & WS_EX_TOOLWINDOW.0 != 0;
     let mut process_id = 0;
     unsafe { GetWindowThreadProcessId(hwnd, Some(&mut process_id)) };
-    let own_process = process_id == unsafe { GetCurrentProcessId() };
+    let own_process = process_is_in_tree(process_id, current_process_id, process_parents);
     let mut cloaked = 0u32;
     let cloaked = unsafe {
         DwmGetWindowAttribute(
@@ -919,6 +972,63 @@ fn is_shareable_window(hwnd: HWND) -> bool {
         cloaked,
         window_title(hwnd).is_some(),
     )
+}
+
+fn process_parent_map() -> Result<HashMap<u32, u32>, String> {
+    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }
+        .map_err(|error| format!("Windows could not inspect application processes: {error}"))?;
+    let mut result = HashMap::new();
+    let mut entry = PROCESSENTRY32W {
+        dwSize: size_of::<PROCESSENTRY32W>() as u32,
+        ..Default::default()
+    };
+    if let Err(error) = unsafe { Process32FirstW(snapshot, &mut entry) } {
+        let _ = unsafe { CloseHandle(snapshot) };
+        return Err(format!(
+            "Windows could not inspect the first application process: {error}"
+        ));
+    }
+    loop {
+        result.insert(entry.th32ProcessID, entry.th32ParentProcessID);
+        if unsafe { Process32NextW(snapshot, &mut entry) }.is_err() {
+            break;
+        }
+    }
+    let _ = unsafe { CloseHandle(snapshot) };
+    Ok(result)
+}
+
+fn process_is_in_tree(
+    process_id: u32,
+    root_process_id: u32,
+    process_parents: &HashMap<u32, u32>,
+) -> bool {
+    if process_id == 0 || root_process_id == 0 {
+        return false;
+    }
+    let mut current = process_id;
+    let mut visited = HashSet::new();
+    while visited.insert(current) {
+        if current == root_process_id {
+            return true;
+        }
+        let Some(parent) = process_parents.get(&current).copied() else {
+            return false;
+        };
+        if parent == 0 || parent == current {
+            return false;
+        }
+        current = parent;
+    }
+    false
+}
+
+fn process_loopback_unavailable_reason(supported: bool) -> Option<String> {
+    (!supported).then(|| {
+        format!(
+            "Matched source audio requires Windows build {PROCESS_LOOPBACK_MINIMUM_BUILD} or newer; video sharing still works."
+        )
+    })
 }
 
 fn is_shareable_window_metadata(
@@ -1245,6 +1355,31 @@ mod tests {
             process_loopback_configuration(ProcessLoopbackTarget::ExcludeProcessTree(7)),
             (7, false)
         );
+    }
+
+    #[test]
+    fn rejects_bakbak_and_descendant_application_processes() {
+        let parents = HashMap::from([(11, 10), (12, 11), (20, 1)]);
+        assert!(process_is_in_tree(10, 10, &parents));
+        assert!(process_is_in_tree(11, 10, &parents));
+        assert!(process_is_in_tree(12, 10, &parents));
+        assert!(!process_is_in_tree(20, 10, &parents));
+        assert!(!process_is_in_tree(0, 10, &parents));
+    }
+
+    #[test]
+    fn process_tree_walk_fails_closed_on_cycles() {
+        let parents = HashMap::from([(11, 12), (12, 11)]);
+        assert!(!process_is_in_tree(11, 10, &parents));
+    }
+
+    #[test]
+    fn gives_unsupported_sources_a_video_only_reason() {
+        assert!(process_loopback_unavailable_reason(true).is_none());
+        let reason = process_loopback_unavailable_reason(false)
+            .expect("unsupported builds explain fallback");
+        assert!(reason.contains("video sharing still works"));
+        assert!(reason.contains(&PROCESS_LOOPBACK_MINIMUM_BUILD.to_string()));
     }
 
     #[test]

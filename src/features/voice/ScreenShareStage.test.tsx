@@ -15,16 +15,16 @@ describe("ScreenShareStage", () => {
         settings={{ resolution: 1080, frameRate: 60 }}
         settingsPending={false}
         fullscreen={false}
+        fullscreenError={null}
         onBack={onBack}
+        onActivateMedia={vi.fn()}
         onToggleFullscreen={vi.fn()}
         onUpdateSettings={vi.fn()}
       />,
     );
 
     expect(screen.getByLabelText("Mira screen")).toBeVisible();
-    await userEvent.click(
-      screen.getByRole("button", { name: "Stop watching screen share" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Back to grid" }));
     expect(onBack).toHaveBeenCalledOnce();
   });
 
@@ -36,12 +36,39 @@ describe("ScreenShareStage", () => {
         settings={{ resolution: 1080, frameRate: 60 }}
         settingsPending={false}
         fullscreen={false}
+        fullscreenError={null}
         onBack={vi.fn()}
+        onActivateMedia={vi.fn()}
         onToggleFullscreen={vi.fn()}
         onUpdateSettings={vi.fn()}
       />,
     );
     expect(screen.getByText("Video only")).toBeVisible();
+  });
+
+  it("returns to the grid when the focused media is activated", async () => {
+    const onActivateMedia = vi.fn();
+    render(
+      <ScreenShareStage
+        share={first}
+        localSourceLabel={null}
+        settings={{ resolution: 1080, frameRate: 60 }}
+        settingsPending={false}
+        fullscreen={false}
+        fullscreenError={null}
+        onBack={vi.fn()}
+        onActivateMedia={onActivateMedia}
+        onToggleFullscreen={vi.fn()}
+        onUpdateSettings={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "Return focused screen share to grid",
+      }),
+    );
+    expect(onActivateMedia).toHaveBeenCalledOnce();
   });
 });
 

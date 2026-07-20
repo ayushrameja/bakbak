@@ -20,7 +20,9 @@ export function ScreenShareStage({
   settings,
   settingsPending,
   fullscreen,
+  fullscreenError,
   onBack,
+  onActivateMedia,
   onToggleFullscreen,
   onUpdateSettings,
 }: {
@@ -29,7 +31,9 @@ export function ScreenShareStage({
   settings: ScreenShareSettings;
   settingsPending: boolean;
   fullscreen: boolean;
+  fullscreenError: string | null;
   onBack: () => void;
+  onActivateMedia: () => void;
   onToggleFullscreen: () => void;
   onUpdateSettings: (settings: ScreenShareSettings) => void;
 }) {
@@ -40,19 +44,13 @@ export function ScreenShareStage({
     <section className="screen-share-stage" aria-label="Screen share stage">
       <header>
         <button
-          className={
-            share.isLocal
-              ? "screen-share-stage__icon-button"
-              : "secondary-button"
-          }
+          className="secondary-button screen-share-stage__back"
           type="button"
           onClick={onBack}
-          aria-label={
-            share.isLocal ? "Return to gallery" : "Stop watching screen share"
-          }
+          aria-label="Back to grid"
         >
           <ArrowLeft size={17} />
-          {!share.isLocal ? "Stop watching" : null}
+          Back to grid
         </button>
         <div>
           <Monitor size={17} />
@@ -110,7 +108,7 @@ export function ScreenShareStage({
           </div>
         ) : null}
         <button
-          className="screen-share-stage__icon-button"
+          className={`screen-share-stage__icon-button ${fullscreen ? "screen-share-stage__fullscreen-exit" : ""}`}
           type="button"
           onClick={onToggleFullscreen}
           aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
@@ -118,7 +116,19 @@ export function ScreenShareStage({
           {fullscreen ? <Shrink size={17} /> : <Expand size={17} />}
         </button>
       </header>
-      <div className="screen-share-stage__media">
+      <div
+        className="screen-share-stage__media"
+        role="button"
+        tabIndex={0}
+        aria-label="Return focused screen share to grid"
+        onClick={onActivateMedia}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onActivateMedia();
+          }
+        }}
+      >
         {share.track ? (
           <ParticipantVideo
             track={share.track}
@@ -134,6 +144,11 @@ export function ScreenShareStage({
         )}
         {share.paused ? (
           <div className="screen-share-paused">Source minimized or paused</div>
+        ) : null}
+        {fullscreenError ? (
+          <div className="voice-fullscreen-error" role="status">
+            {fullscreenError}
+          </div>
         ) : null}
       </div>
     </section>

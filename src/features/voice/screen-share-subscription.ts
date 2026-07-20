@@ -7,11 +7,12 @@ export interface ScreenShareSubscriptionPolicy {
 export function screenShareSubscriptionPolicy(
   shareId: string,
   watchedShareId: string | null,
+  locallyPresented = false,
 ): ScreenShareSubscriptionPolicy {
   const watched = shareId === watchedShareId;
   return {
-    subscribeVideo: watched,
-    videoQuality: watched ? "high" : "low",
-    subscribeAudio: watched,
+    subscribeVideo: locallyPresented || watched,
+    videoQuality: locallyPresented || watched ? "high" : "low",
+    subscribeAudio: !locallyPresented && watched,
   };
 }

@@ -4,6 +4,10 @@
 - **Approved:** 2026-07-17
 - **Depends on:** plans 0002, 0003, and 0006
 
+Plan 0015 tightens this plan's source-audio isolation, gallery sizing, focus
+reversal, and fullscreen behavior. Its installed macOS/Windows matrix is now
+the authoritative release gate.
+
 ## Goal
 
 Finish the native macOS and Windows screen-sharing path, raise the presenter
@@ -30,10 +34,12 @@ and browser exclusion.
   process-tree or display audio never relies on title guessing.
 - A source that stops producing complete frames freezes its last good frame,
   reports a paused state after two seconds, and resumes automatically.
-- Voice rooms open in a gallery. Clicking a participant or share opens a
-  focused stage with a compact target strip. Only the focused share receives
-  high-quality video and source audio; gallery thumbnails use low video.
-- Focused media can place the Tauri window in OS fullscreen. Escape exits OS
+- Voice rooms open in a bounded count-aware 16:9 gallery. Clicking a participant
+  or share opens a focused stage with a visual target strip. Clicking the
+  focused target again returns to the gallery and releases a remote share.
+  Only the focused remote share receives high-quality video and source audio.
+- Focused media can place the Tauri window in OS fullscreen through plan 0015's
+  fixed overlay and actual-native-state reconciliation. Escape exits OS
   fullscreen while retaining focus; disconnect or target loss clears it.
 - The focused media row uses bounded grid sizing and `object-fit: contain`, so
   no edge of a shared source is clipped.

@@ -79,6 +79,7 @@ describe("screen-share-service", () => {
         label: "Screen 1",
         applicationLabel: null,
         audioAvailable: false,
+        audioUnavailableReason: "Video only on this Windows build.",
         thumbnailDataUrl: null,
       },
     ]);

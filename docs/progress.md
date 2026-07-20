@@ -3082,3 +3082,72 @@ src-tauri/Cargo.toml --check`, `pnpm security:scan`, and `git diff --check` —
 - **Next:** Publish the upcoming renderer/native update and verify one existing
   v5 Signature installation resets before first paint, then verify its next
   user-selected appearance survives another restart.
+
+## 2026-07-20 — Screen-share isolation and compact call layout
+
+- **Completed:** Implemented plan 0015. Native source audio now has explicit
+  isolation policies: macOS ScreenCaptureKit excludes current-process audio,
+  Windows application capture includes only the selected process tree, and
+  Windows Entire screen excludes Bakbak's process tree. macOS and Windows
+  source enumeration and start validation reject Bakbak descendants. Added
+  per-source `audioUnavailableReason`, video-only degradation with renderer
+  warning, and a subscription rule that keeps the presenter's companion video
+  while always forcing its companion audio off. Removed sidebar Watch and
+  cross-room pending-watch state. Rebuilt calls around exact bounded 16:9
+  count-aware tiles, reversible participant/share focus, a 72 px visual
+  filmstrip, and truncated informational LIVE rows. Replaced shell-dependent
+  fullscreen with a fixed `100dvh` overlay, pinned exit, 2.5-second idle
+  controls, actual Tauri-state reconciliation, Escape handling, target-loss
+  cleanup, and non-blocking failure recovery.
+- **Decisions:** Installed isolation results remain authoritative: any
+  platform/source mode that leaks voice ships video-only. Database LIVE no
+  longer implies a cross-room media action; a member joins the room and selects
+  a share tile. Narrow centers preserve exact 16:9 tile dimensions and scroll
+  vertically instead of compressing media. Escape exits OS fullscreen without
+  clearing focus; activating focused media or Back to grid clears focus,
+  exits fullscreen, and releases remote subscriptions.
+- **Validation:**
+  - Focused Vitest — passed five files with 45 tests, then the final focused
+    VoiceRoom run passed 21/21 tests covering reversible participant/share
+    focus, fullscreen failure/reconciliation, target loss, Escape, and count
+    layouts.
+  - `pnpm check` — passed Prettier, ESLint, strict renderer/Node typechecks, 55
+    Vitest files with 303 tests, 13 Node tests, version synchronization,
+    production build, and bundle secret scan. Vite retains the existing
+    non-blocking large-chunk warning; main JavaScript is 1,256.28 kB
+    (347.25 kB gzip).
+  - `cargo fmt --manifest-path src-tauri/Cargo.toml --check` — passed.
+  - `cargo check --manifest-path src-tauri/Cargo.toml --locked` — passed on
+    Apple Silicon macOS.
+  - `cargo test --manifest-path src-tauri/Cargo.toml --locked screen_share
+--lib` — passed 13/13 macOS/common screen-share tests.
+  - `cargo xwin check --manifest-path src-tauri/Cargo.toml --locked --target
+x86_64-pc-windows-msvc --tests` — passed, including compilation of the
+    Windows process-tree policy and rejection tests. The first sandboxed
+    attempt could not update cargo-xwin's external compiler cache; the approved
+    rerun passed.
+  - Browser visual QA — at 1024×680 with the supported 420 px center, three
+    targets measured exactly 380×214 with vertical scrolling and no horizontal
+    overflow. At 1280×800, hiding the member panel reflowed the same targets
+    into two 380×214 columns. Focused media measured a separate non-overlapping
+    72 px filmstrip and returned through its active item. Classic Light/Dark,
+    Signature, and Signal Red retained exact dimensions with no console errors.
+  - `pnpm tauri:build:local` — passed for the final source state and produced an
+    ad-hoc-signed ARM64 `Bakbak.app`; notarization was skipped because Apple
+    credentials are absent.
+  - `pnpm security:scan` and `git diff --check` — passed after the final bundle
+    and source changes.
+- **Documentation updated:** Added plan 0015; updated architecture, active plan
+  0001, parent plans 0010/0014, and this canonical log.
+- **Known limitations:** Installed three-client macOS/Windows source-audio
+  isolation, direct-volume proof, deafen/output switching, pause/teardown,
+  native fullscreen, Windows scaling, Retina sizing, and all source edges still
+  require the acceptance matrix. Windows code cross-checks from macOS, but a
+  Windows MSVC runner/native bundle was not available in this task. Browser QA
+  used mock participants; automated layout tests cover 1/2/3/4/6/8 target
+  buckets, while installed ultrawide/portrait shares and every panel/theme
+  combination remain open. The macOS bundle is not notarized.
+- **Next:** Install the final macOS build and a Windows MSVC build on three
+  clients, run Entire screen and Application through plan 0015's isolation and
+  fullscreen matrix, and keep any failing source mode video-only before
+  release.

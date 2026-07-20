@@ -5,7 +5,6 @@ import {
   Mic,
   MicOff,
   Pencil,
-  Play,
   Plus,
   Settings,
   Volume2,
@@ -56,7 +55,6 @@ interface ChannelSidebarProps {
   openProfileId?: string | null;
   onToggleSoundboard: () => void;
   onOpenScreenShare: () => void;
-  onWatch?: (occupant: VoiceRoomOccupant, channel: Channel) => void;
 }
 
 export function ChannelSidebar({
@@ -82,7 +80,6 @@ export function ChannelSidebar({
   openProfileId = null,
   onToggleSoundboard,
   onOpenScreenShare,
-  onWatch = () => undefined,
 }: ChannelSidebarProps) {
   const orderedCategories = [...categories].sort(
     (left, right) =>
@@ -209,23 +206,7 @@ export function ChannelSidebar({
                     )}
                   </ProfileTrigger>
                   {occupant.isStreaming ? (
-                    <>
-                      <span className="channel-voice-person__live">LIVE</span>
-                      {occupant.userId !== user.id ? (
-                        <button
-                          className="channel-voice-person__watch"
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onWatch(occupant, channel);
-                          }}
-                          aria-label={`Watch ${occupant.displayName}`}
-                        >
-                          <Play size={11} fill="currentColor" />
-                          Watch
-                        </button>
-                      ) : null}
-                    </>
+                    <span className="channel-voice-person__live">LIVE</span>
                   ) : null}
                 </div>
               ))}

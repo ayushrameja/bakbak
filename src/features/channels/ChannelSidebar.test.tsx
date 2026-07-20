@@ -225,9 +225,7 @@ describe("ChannelSidebar room shelf", () => {
     expect(screen.getByText("Mira")).toBeVisible();
   });
 
-  it("shows server-wide LIVE state and watches without opening a profile", async () => {
-    const onWatch = vi.fn();
-    const onOpenProfile = vi.fn();
+  it("shows server-wide LIVE state without a direct watch action", () => {
     const occupant = {
       userId: friend.id,
       displayName: friend.displayName,
@@ -239,14 +237,12 @@ describe("ChannelSidebar room shelf", () => {
     renderSidebar([voiceChannel], {
       members: [{ ...user, role: "admin" }, friend],
       voiceOccupants: [occupant],
-      onWatch,
-      onOpenProfile,
     });
 
     expect(screen.getByText("LIVE")).toBeVisible();
-    await userEvent.click(screen.getByRole("button", { name: "Watch Mira" }));
-    expect(onWatch).toHaveBeenCalledWith(occupant, voiceChannel);
-    expect(onOpenProfile).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("button", { name: "Watch Mira" }),
+    ).not.toBeInTheDocument();
   });
 
   it("opens voice-occupant and signed-in user profiles", async () => {
