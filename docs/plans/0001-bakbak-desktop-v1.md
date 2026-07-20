@@ -272,7 +272,8 @@ in-room subscription consent.
 - [ ] Complete plan 0014's hosted DM and installed three-client LIVE/Watch
       acceptance matrices.
 - [x] Add plan 0015's per-source audio policy, compact responsive gallery,
-      reversible focus, fullscreen reconciliation, and sidebar cleanup.
+      media-first reversible focus with watched grid playback, fullscreen
+      reconciliation, and room-level sidebar activity treatment.
 - [ ] Complete plan 0015's installed macOS/Windows isolation, fullscreen, and
       visual acceptance matrices.
 - [ ] Evaluate optional global push-to-talk.

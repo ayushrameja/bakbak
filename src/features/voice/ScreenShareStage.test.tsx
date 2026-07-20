@@ -6,12 +6,11 @@ import type { VoiceScreenShare } from "./useVoiceRoom";
 
 const first = share("share-1", "Mira", "2026-07-12T10:00:00.000Z");
 describe("ScreenShareStage", () => {
-  it("renders a focused share and stops watching", async () => {
+  it("renders media-first share controls over the focused video", async () => {
     const onBack = vi.fn();
-    render(
+    const { container } = render(
       <ScreenShareStage
         share={first}
-        localSourceLabel={null}
         settings={{ resolution: 1080, frameRate: 60 }}
         settingsPending={false}
         fullscreen={false}
@@ -24,26 +23,35 @@ describe("ScreenShareStage", () => {
     );
 
     expect(screen.getByLabelText("Mira screen")).toBeVisible();
+    expect(
+      container.querySelector(".screen-share-stage__controls"),
+    ).toBeVisible();
+    expect(screen.queryByText("Mira")).not.toBeInTheDocument();
+    expect(screen.queryByText("Video only")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Back to grid" }));
     expect(onBack).toHaveBeenCalledOnce();
   });
 
-  it("labels a share without source audio", () => {
+  it("keeps fullscreen available without a metadata header", async () => {
+    const onToggleFullscreen = vi.fn();
     render(
       <ScreenShareStage
         share={first}
-        localSourceLabel={null}
         settings={{ resolution: 1080, frameRate: 60 }}
         settingsPending={false}
         fullscreen={false}
         fullscreenError={null}
         onBack={vi.fn()}
         onActivateMedia={vi.fn()}
-        onToggleFullscreen={vi.fn()}
+        onToggleFullscreen={onToggleFullscreen}
         onUpdateSettings={vi.fn()}
       />,
     );
-    expect(screen.getByText("Video only")).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Enter fullscreen" }),
+    );
+    expect(onToggleFullscreen).toHaveBeenCalledOnce();
+    expect(document.querySelector(".screen-share-stage > header")).toBeNull();
   });
 
   it("returns to the grid when the focused media is activated", async () => {
@@ -51,7 +59,6 @@ describe("ScreenShareStage", () => {
     render(
       <ScreenShareStage
         share={first}
-        localSourceLabel={null}
         settings={{ resolution: 1080, frameRate: 60 }}
         settingsPending={false}
         fullscreen={false}

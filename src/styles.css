@@ -7969,3 +7969,202 @@ button.message-mention:hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* 0015 follow-up — media-first focus controls and Discord-like room shelf */
+.voice-focus-layout {
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+}
+
+.voice-room-view.is-connected .voice-focus-layout .screen-share-stage {
+  position: relative;
+  display: block;
+  background: #050505;
+}
+
+.voice-room-view.is-connected .voice-focus-layout .screen-share-stage__media {
+  width: 100%;
+  height: 100%;
+  background: #050505;
+}
+
+.screen-share-stage__controls,
+.voice-participant-stage__controls {
+  position: absolute;
+  z-index: 12;
+  right: 14px;
+  bottom: 14px;
+  left: 14px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  pointer-events: none;
+}
+
+.screen-share-stage__controls > *,
+.voice-participant-stage__controls > * {
+  pointer-events: auto;
+}
+
+.screen-share-stage__controls .screen-share-stage__quality {
+  margin-left: auto;
+}
+
+.screen-share-stage__controls
+  > .screen-share-stage__icon-button:first-child:last-child,
+.screen-share-stage__controls > .screen-share-stage__icon-button:last-child,
+.voice-participant-stage__controls
+  > .screen-share-stage__icon-button:last-child {
+  margin-left: auto;
+}
+
+.screen-share-stage__back,
+.voice-participant-stage__back,
+.screen-share-stage__icon-button,
+.screen-share-stage__quality select {
+  border-color: rgb(255 255 255 / 0.16);
+  color: white;
+  background: rgb(10 10 12 / 0.82);
+  box-shadow: 0 7px 24px rgb(0 0 0 / 0.3);
+  backdrop-filter: blur(12px);
+}
+
+.screen-share-stage__back,
+.voice-participant-stage__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.voice-participant-stage {
+  position: relative;
+  display: block;
+}
+
+.voice-participant-stage .participant-card.is-focused {
+  width: 100%;
+  height: 100%;
+}
+
+.voice-participant-stage
+  .participant-card.is-focused
+  .participant-card__identity,
+.voice-participant-stage .participant-card.is-focused .participant-volume {
+  bottom: 58px;
+}
+
+.voice-focus-layout.is-fullscreen {
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+}
+
+.voice-focus-layout.is-fullscreen .screen-share-stage__fullscreen-exit,
+.voice-focus-layout.is-fullscreen .voice-fullscreen-exit {
+  position: fixed;
+  top: auto;
+  right: 16px;
+  bottom: 16px;
+}
+
+.voice-focus-layout.is-fullscreen .screen-share-stage__controls > *,
+.voice-focus-layout.is-fullscreen .voice-participant-stage__controls > * {
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.voice-focus-layout.is-fullscreen.controls-hidden
+  .screen-share-stage__controls
+  > :not(.screen-share-stage__fullscreen-exit),
+.voice-focus-layout.is-fullscreen.controls-hidden
+  .voice-participant-stage__controls
+  > :not(.voice-fullscreen-exit) {
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.voice-focus-layout .screen-share-paused {
+  bottom: 60px;
+}
+
+.voice-focus-layout .voice-fullscreen-error {
+  top: 16px;
+}
+
+.channel-row .channel-voice-duration {
+  min-width: max-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  color: var(--faint);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+.channel-row .channel-voice-duration .live-dot {
+  width: 5px;
+  height: 5px;
+  margin: 0;
+}
+
+.channel-voice-people {
+  gap: 3px;
+  margin: 3px 0 8px 22px;
+}
+
+.channel-voice-people .channel-voice-person {
+  min-height: 34px;
+  gap: 5px;
+  padding: 2px 3px;
+}
+
+.channel-voice-person__profile {
+  gap: 8px;
+}
+
+.channel-voice-person__profile > b {
+  min-width: 0;
+  overflow: hidden;
+  color: #a5a5b0;
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channel-voice-person__avatar {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  transition:
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.channel-voice-person__avatar .avatar--small {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 8px;
+}
+
+.channel-voice-person__avatar.is-speaking {
+  box-shadow:
+    0 0 0 2px var(--green),
+    0 0 10px color-mix(in srgb, var(--green) 44%, transparent);
+  transform: scale(1.03);
+}
+
+@container (max-width: 720px) {
+  .screen-share-stage__controls,
+  .voice-participant-stage__controls {
+    right: 9px;
+    bottom: 9px;
+    left: 9px;
+  }
+}

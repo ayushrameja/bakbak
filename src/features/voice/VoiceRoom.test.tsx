@@ -224,7 +224,7 @@ describe("VoiceRoom", () => {
     expect(document.querySelector(".voice-media-gallery")).toBeVisible();
   });
 
-  it("returns a focused share to the gallery and releases its subscriptions", async () => {
+  it("returns a focused share to the grid without interrupting its playback", async () => {
     const screenShare = {
       id: "share-1",
       ownerId: friend.id,
@@ -235,8 +235,11 @@ describe("VoiceRoom", () => {
       audioPublished: true,
       paused: false,
     };
-    const voice = createVoice({ screenShares: [screenShare] });
-    render(
+    const voice = createVoice({
+      screenShares: [screenShare],
+      watchedScreenShareId: screenShare.id,
+    });
+    const { container } = render(
       <VoiceRoom
         channel={channel}
         user={user}
@@ -247,17 +250,18 @@ describe("VoiceRoom", () => {
 
     await userEvent.click(
       screen.getByRole("button", {
-        name: `Watch ${friend.displayName}'s screen share`,
+        name: `Focus ${friend.displayName}'s screen share`,
       }),
     );
-    await userEvent.click(
-      screen.getByRole("button", {
-        name: `Return ${friend.displayName}'s screen`,
-      }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Back to grid" }));
 
-    expect(voice.stopWatchingScreenShare).toHaveBeenCalled();
+    expect(voice.stopWatchingScreenShare).not.toHaveBeenCalled();
     expect(document.querySelector(".voice-media-gallery")).toBeVisible();
+    expect(container.querySelector(".voice-media-gallery video")).toBeVisible();
+    expect(screen.queryByText("Watch stream")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("navigation", { name: "Voice room media targets" }),
+    ).not.toBeInTheDocument();
   });
 
   it("reconciles renderer fullscreen controls with the actual native window", async () => {
@@ -559,7 +563,7 @@ describe("VoiceRoom", () => {
     expect(resumeAudio).not.toHaveBeenCalled();
   });
 
-  it("uses compact occupancy layouts and replaces an idle avatar with the newest sound emoji", () => {
+  it("uses compact occupancy layouts without local labels or personal call timers", () => {
     const participant = {
       id: user.id,
       displayName: user.displayName,
@@ -567,7 +571,7 @@ describe("VoiceRoom", () => {
       isSpeaking: false,
       isMuted: false,
       volume: 1,
-      joinedAt: null,
+      joinedAt: "2026-07-20T12:00:00.000Z",
       cameraEnabled: false,
       cameraTrack: null,
       activeSounds: [
@@ -601,6 +605,11 @@ describe("VoiceRoom", () => {
     expect(
       screen.getByRole("img", { name: "Ayu is playing Latest" }),
     ).toHaveTextContent("🔥2/5");
+    expect(screen.getByText("Ayu")).toBeVisible();
+    expect(screen.queryByText("Ayu (you)")).not.toBeInTheDocument();
+    expect(container.querySelector(".participant-card__identity time")).toBe(
+      null,
+    );
   });
 
   it.each([

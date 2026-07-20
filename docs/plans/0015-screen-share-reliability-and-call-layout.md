@@ -37,24 +37,27 @@ members join the voice room and choose a share tile.
   target, 440 px for two, 380 px in two columns for three/four, 320 px in up to
   three columns for five/six, and 240–300 px auto-fit tiles with scrolling for
   seven or more.
-- Clicking a target focuses it. Clicking the focused media, active filmstrip
-  item, or Back to grid returns to the gallery and releases remote share
-  subscriptions.
-- Focus uses a bounded `minmax(0, 1fr)` stage plus a separate 72 px visual
-  filmstrip. Media uses `object-fit: contain`; labels never consume its bottom
-  edge.
+- Clicking a target focuses it. Clicking the focused media or Back to grid
+  returns to the gallery. A watched remote share remains subscribed and keeps
+  playing in its grid tile; switching targets, target loss, disconnect, or
+  leave performs subscription cleanup.
+- Focus uses one bounded `minmax(0, 1fr)` media stage without a metadata header
+  or people filmstrip. Media uses `object-fit: contain` against a black canvas;
+  Back to grid, fullscreen, and presenter quality controls overlay its bottom
+  edge without consuming layout height.
 - Focused fullscreen is a fixed `100dvh` overlay. The renderer reconciles
   against Tauri `isFullscreen()` after requests, resize/focus changes, Escape,
   target loss, disconnect, and teardown.
-- Exit fullscreen remains pinned above media. Secondary controls and the
-  filmstrip hide after 2.5 seconds idle and return on pointer or keyboard
-  activity.
+- Exit fullscreen remains pinned at the bottom above media. Secondary controls
+  hide after 2.5 seconds idle and return on pointer or keyboard activity.
 - Escape exits OS fullscreen and retains focus. Back to grid or activating the
-  focused target exits fullscreen, returns to the gallery, and stops watching.
+  focused target exits fullscreen and returns to the still-playing gallery.
 - Fullscreen failures are non-blocking and the UI restores the actual native
   state.
-- Sidebar LIVE is informational, long names truncate, elapsed time stays on a
-  second row, and there is no Watch chip.
+- Sidebar LIVE is informational and there is no Watch chip. Each occupied
+  channel shows one room-active timer; occupants have no individual duration or
+  local-user suffix, use smaller avatars and larger truncated names, and gain a
+  speaking ring while active in the current LiveKit room.
 
 ## Completion criteria
 
@@ -63,8 +66,9 @@ members join the voice room and choose a share tile.
 - [x] Reject Bakbak descendants and retain video-only fallback.
 - [x] Keep local companion video while forcing local companion audio off.
 - [x] Remove sidebar Watch and pending cross-room watch state.
-- [x] Add bounded count-aware gallery tiles and visual focus filmstrip.
-- [x] Make focused media activation reversible with subscription cleanup.
+- [x] Add bounded count-aware gallery tiles and a media-first focus stage.
+- [x] Make focused media activation reversible while watched grid playback
+      continues.
 - [x] Replace shell-dependent fullscreen with a native-state-synchronized fixed
       overlay and pinned exit.
 - [x] Add focused renderer and native policy tests.

@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   CircleAlert,
   Expand,
   LoaderCircle,
@@ -22,7 +23,6 @@ import {
 import type { AppUser, Channel, ServerMember } from "../../lib/types";
 import { ParticipantVideo } from "./ParticipantVideo";
 import { ScreenShareStage } from "./ScreenShareStage";
-import { VoiceElapsedTime } from "./VoiceElapsedTime";
 import type { useVoiceRoom } from "./useVoiceRoom";
 import type { VoiceParticipant, VoiceScreenShare } from "./useVoiceRoom";
 
@@ -67,7 +67,6 @@ export function VoiceRoom({
   const {
     participants: voiceParticipants,
     screenShares,
-    watchedScreenShareId,
     stopWatchingScreenShare,
   } = voice;
 
@@ -185,17 +184,6 @@ export function VoiceRoom({
   ]);
 
   useEffect(() => {
-    if (
-      watchedScreenShareId &&
-      screenShares.some(
-        (share) => share.id === watchedScreenShareId && !share.isLocal,
-      )
-    ) {
-      setFocusedTarget({ kind: "screen", id: watchedScreenShareId });
-    }
-  }, [screenShares, watchedScreenShareId]);
-
-  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && fullscreen) {
         event.preventDefault();
@@ -223,9 +211,8 @@ export function VoiceRoom({
 
   const returnToGallery = useCallback(() => {
     setFocusedTarget(null);
-    voice.stopWatchingScreenShare();
     if (fullscreen) void requestFullscreen(false);
-  }, [fullscreen, requestFullscreen, voice]);
+  }, [fullscreen, requestFullscreen]);
 
   const focusTarget = (target: MediaTarget) => {
     if (focusedTarget?.kind === target.kind && focusedTarget.id === target.id) {
@@ -368,7 +355,6 @@ export function VoiceRoom({
               {focusedShare ? (
                 <ScreenShareStage
                   share={focusedShare}
-                  localSourceLabel={voice.screenShareSourceLabel}
                   settings={voice.screenShareSettings}
                   settingsPending={voice.screenShareSettingsPending}
                   fullscreen={fullscreen}
@@ -385,26 +371,6 @@ export function VoiceRoom({
                   className="voice-participant-stage"
                   aria-label={`${focusedParticipant.displayName} focused`}
                 >
-                  <header>
-                    <button
-                      type="button"
-                      className="secondary-button voice-participant-stage__back"
-                      onClick={returnToGallery}
-                    >
-                      Back to grid
-                    </button>
-                    <strong>{focusedParticipant.displayName}</strong>
-                    <button
-                      type="button"
-                      className={`secondary-button ${fullscreen ? "voice-fullscreen-exit" : ""}`}
-                      onClick={() => void requestFullscreen(!fullscreen)}
-                      aria-label={
-                        fullscreen ? "Exit fullscreen" : "Enter fullscreen"
-                      }
-                    >
-                      {fullscreen ? <Shrink size={16} /> : <Expand size={16} />}
-                    </button>
-                  </header>
                   <ParticipantCard
                     participant={focusedParticipant}
                     members={members}
@@ -416,6 +382,26 @@ export function VoiceRoom({
                     onFocus={returnToGallery}
                     focused
                   />
+                  <div className="voice-participant-stage__controls">
+                    <button
+                      type="button"
+                      className="secondary-button voice-participant-stage__back"
+                      onClick={returnToGallery}
+                    >
+                      <ArrowLeft size={17} />
+                      Back to grid
+                    </button>
+                    <button
+                      type="button"
+                      className={`screen-share-stage__icon-button ${fullscreen ? "voice-fullscreen-exit" : ""}`}
+                      onClick={() => void requestFullscreen(!fullscreen)}
+                      aria-label={
+                        fullscreen ? "Exit fullscreen" : "Enter fullscreen"
+                      }
+                    >
+                      {fullscreen ? <Shrink size={16} /> : <Expand size={16} />}
+                    </button>
+                  </div>
                   {fullscreenError ? (
                     <div className="voice-fullscreen-error" role="status">
                       {fullscreenError}
@@ -423,12 +409,6 @@ export function VoiceRoom({
                   ) : null}
                 </section>
               ) : null}
-              <MediaTargetStrip
-                participants={voice.participants}
-                shares={voice.screenShares}
-                focused={focusedTarget}
-                onFocus={focusTarget}
-              />
             </div>
           ) : (
             <div
@@ -594,12 +574,7 @@ function ParticipantCard({
             onOpenProfile={onOpenProfile}
             expanded={openProfileId === profileMember.id}
           >
-            {() => (
-              <strong>
-                {displayName}
-                {participant.isLocal ? " (you)" : ""}
-              </strong>
-            )}
+            {() => <strong>{displayName}</strong>}
           </ProfileTrigger>
         ) : (
           <strong>{displayName}</strong>
@@ -615,9 +590,6 @@ function ParticipantCard({
                 ? "Muted"
                 : "Listening"}
         </span>
-        {participant.joinedAt ? (
-          <VoiceElapsedTime joinedAt={participant.joinedAt} />
-        ) : null}
       </div>
       <span
         className={`participant-card__mic ${participant.isMuted ? "muted" : ""} ${soundActive && !participant.isMuted ? "active" : ""}`}
@@ -707,76 +679,6 @@ function ScreenShareTile({
         </span>
       </span>
     </button>
-  );
-}
-
-function MediaTargetStrip({
-  participants,
-  shares,
-  focused,
-  onFocus,
-}: {
-  participants: VoiceParticipant[];
-  shares: VoiceScreenShare[];
-  focused: MediaTarget;
-  onFocus: (target: MediaTarget) => void;
-}) {
-  return (
-    <nav className="media-target-strip" aria-label="Voice room media targets">
-      {participants.map((participant) => (
-        <button
-          className={
-            focused.kind === "participant" && focused.id === participant.id
-              ? "is-active"
-              : ""
-          }
-          type="button"
-          key={`participant:${participant.id}`}
-          onClick={() => onFocus({ kind: "participant", id: participant.id })}
-          aria-label={`${focused.kind === "participant" && focused.id === participant.id ? "Return" : "Focus"} ${participant.displayName}`}
-        >
-          <span className="media-target-strip__preview" aria-hidden="true">
-            {participant.cameraEnabled && participant.cameraTrack ? (
-              <ParticipantVideo
-                track={participant.cameraTrack}
-                local={participant.isLocal}
-                label={participant.displayName}
-              />
-            ) : (
-              <span>{participant.displayName.trim().charAt(0) || "?"}</span>
-            )}
-          </span>
-          <span title={participant.displayName}>{participant.displayName}</span>
-        </button>
-      ))}
-      {shares.map((share) => (
-        <button
-          className={
-            focused.kind === "screen" && focused.id === share.id
-              ? "is-active"
-              : ""
-          }
-          type="button"
-          key={`screen:${share.id}`}
-          onClick={() => onFocus({ kind: "screen", id: share.id })}
-          aria-label={`${focused.kind === "screen" && focused.id === share.id ? "Return" : "Focus"} ${share.displayName}'s screen`}
-        >
-          <span className="media-target-strip__preview" aria-hidden="true">
-            {share.track ? (
-              <ParticipantVideo
-                track={share.track}
-                local={false}
-                label={share.displayName}
-                kind="screen"
-              />
-            ) : (
-              <Monitor size={18} />
-            )}
-          </span>
-          <span title={share.displayName}>{share.displayName}</span>
-        </button>
-      ))}
-    </nav>
   );
 }
 

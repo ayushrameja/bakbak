@@ -35,14 +35,16 @@ and browser exclusion.
 - A source that stops producing complete frames freezes its last good frame,
   reports a paused state after two seconds, and resumes automatically.
 - Voice rooms open in a bounded count-aware 16:9 gallery. Clicking a participant
-  or share opens a focused stage with a visual target strip. Clicking the
-  focused target again returns to the gallery and releases a remote share.
-  Only the focused remote share receives high-quality video and source audio.
+  or share opens a media-first focused stage without a metadata header or
+  people strip. Clicking the focused target again returns to the gallery; a
+  watched remote share stays live in its grid tile until switching, target
+  loss, disconnect, or leave.
 - Focused media can place the Tauri window in OS fullscreen through plan 0015's
   fixed overlay and actual-native-state reconciliation. Escape exits OS
   fullscreen while retaining focus; disconnect or target loss clears it.
 - The focused media row uses bounded grid sizing and `object-fit: contain`, so
-  no edge of a shared source is clipped.
+  no edge of a shared source is clipped. Back and fullscreen controls overlay
+  the bottom corners instead of reserving stage height.
 - The soundboard closes on outside interaction and Escape while treating its
   triggers and edit modal as owned surfaces.
 

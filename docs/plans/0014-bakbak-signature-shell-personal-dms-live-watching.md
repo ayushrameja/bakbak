@@ -32,14 +32,16 @@ tile. The one-remote-share subscription boundary remains in force.
 - Starting a DM requires shared server membership. An established conversation,
   profile visibility, media visibility, and continued messaging survive later
   membership removal.
-- Voice occupant rows show profile identity, elapsed time, and informational
-  LIVE without making profile activation join voice.
+- Voice occupant rows show compact profile identity, active-speaker rings, and
+  informational LIVE without making profile activation join voice. One timer
+  belongs to the occupied room rather than to each person.
 - Database LIVE state is advisory and server-wide. The matching LiveKit
   publication is authoritative.
 - Remote screen video and source audio remain unsubscribed until an in-room
   share tile is selected. Exactly one remote share may be viewed; switching
-  unsubscribes the old share first, and gallery/person focus or Back to grid
-  removes the subscription.
+  unsubscribes the old share first. Back to grid keeps the selected share
+  playing in its tile; person focus, target loss, disconnect, or leave removes
+  the subscription.
 
 ## Completed implementation
 

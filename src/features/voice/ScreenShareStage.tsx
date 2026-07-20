@@ -1,11 +1,4 @@
-import {
-  ArrowLeft,
-  Expand,
-  Monitor,
-  Shrink,
-  Volume2,
-  VolumeX,
-} from "lucide-react";
+import { ArrowLeft, Expand, Monitor, Shrink } from "lucide-react";
 import { ParticipantVideo } from "./ParticipantVideo";
 import {
   SCREEN_SHARE_FRAME_RATES,
@@ -16,7 +9,6 @@ import type { VoiceScreenShare } from "./useVoiceRoom";
 
 export function ScreenShareStage({
   share,
-  localSourceLabel,
   settings,
   settingsPending,
   fullscreen,
@@ -27,7 +19,6 @@ export function ScreenShareStage({
   onUpdateSettings,
 }: {
   share: VoiceScreenShare;
-  localSourceLabel: string | null;
   settings: ScreenShareSettings;
   settingsPending: boolean;
   fullscreen: boolean;
@@ -37,12 +28,44 @@ export function ScreenShareStage({
   onToggleFullscreen: () => void;
   onUpdateSettings: (settings: ScreenShareSettings) => void;
 }) {
-  const sourceLabel =
-    share.isLocal && localSourceLabel ? localSourceLabel : "Shared screen";
-
   return (
     <section className="screen-share-stage" aria-label="Screen share stage">
-      <header>
+      <div
+        className="screen-share-stage__media"
+        role="button"
+        tabIndex={0}
+        aria-label="Return focused screen share to grid"
+        onClick={onActivateMedia}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onActivateMedia();
+          }
+        }}
+      >
+        {share.track ? (
+          <ParticipantVideo
+            track={share.track}
+            local={false}
+            label={share.displayName}
+            kind="screen"
+          />
+        ) : (
+          <div className="screen-share-stage__waiting">
+            <Monitor size={30} />
+            <span>Waiting for the first frame…</span>
+          </div>
+        )}
+        {share.paused ? (
+          <div className="screen-share-paused">Source minimized or paused</div>
+        ) : null}
+        {fullscreenError ? (
+          <div className="voice-fullscreen-error" role="status">
+            {fullscreenError}
+          </div>
+        ) : null}
+      </div>
+      <div className="screen-share-stage__controls">
         <button
           className="secondary-button screen-share-stage__back"
           type="button"
@@ -52,19 +75,6 @@ export function ScreenShareStage({
           <ArrowLeft size={17} />
           Back to grid
         </button>
-        <div>
-          <Monitor size={17} />
-          <span>
-            <strong>{share.displayName}</strong>
-            <small>{sourceLabel}</small>
-          </span>
-        </div>
-        <span
-          className={`screen-share-stage__audio ${share.audioPublished ? "is-live" : ""}`}
-        >
-          {share.audioPublished ? <Volume2 size={14} /> : <VolumeX size={14} />}
-          {share.audioPublished ? "Source audio" : "Video only"}
-        </span>
         {share.isLocal ? (
           <div className="screen-share-stage__quality">
             <select
@@ -115,41 +125,6 @@ export function ScreenShareStage({
         >
           {fullscreen ? <Shrink size={17} /> : <Expand size={17} />}
         </button>
-      </header>
-      <div
-        className="screen-share-stage__media"
-        role="button"
-        tabIndex={0}
-        aria-label="Return focused screen share to grid"
-        onClick={onActivateMedia}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            onActivateMedia();
-          }
-        }}
-      >
-        {share.track ? (
-          <ParticipantVideo
-            track={share.track}
-            local={false}
-            label={share.displayName}
-            kind="screen"
-          />
-        ) : (
-          <div className="screen-share-stage__waiting">
-            <Monitor size={30} />
-            <span>Waiting for the first frame…</span>
-          </div>
-        )}
-        {share.paused ? (
-          <div className="screen-share-paused">Source minimized or paused</div>
-        ) : null}
-        {fullscreenError ? (
-          <div className="voice-fullscreen-error" role="status">
-            {fullscreenError}
-          </div>
-        ) : null}
       </div>
     </section>
   );

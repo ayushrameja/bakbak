@@ -388,7 +388,9 @@ The renderer uses a three-panel desktop layout plus a modal layer:
    active-call/sidebar controls, signed-in user actions, voice occupancy, and
    admin-only create/rename controls. The shelf scrolls independently; admin
    creation adds an uncategorized room because category management is outside
-   plan 0012.
+   plan 0012. Occupied rooms show one room-active timer; their compact occupant
+   rows omit personal timers/local suffixes and ring the current room's active
+   speakers.
 2. The flexible center canvas contains text chat or the voice room. Header-edge
    buttons independently toggle the left and right panels, immediately
    reallocating space across all four combinations.
@@ -404,9 +406,11 @@ The renderer uses a three-panel desktop layout plus a modal layer:
    compact stage loader instead of a blank canvas. After connection, people
    and active shares share one centered, count-aware 16:9 gallery. Tiles are
    bounded from 520 px for one target through 240–300 px auto-fit tiles for
-   seven or more. Clicking either opens a focused stage and 72 px visual
-   media-target strip; clicking the active media/strip item or Back to grid
-   returns to the gallery and target loss does the same.
+   seven or more. Clicking either opens a single media-first focused stage with
+   bottom-overlay Back/fullscreen controls and no metadata header or people
+   strip. Clicking the active media or Back to grid returns to the gallery;
+   watched share playback continues there, while target loss also clears its
+   subscription.
 6. Shared dialogs use compact/default/wide widths, responsive viewport padding,
    and a `100dvh`-bounded grid with a fixed header, internally scrollable body,
    and sticky wrapping footer actions. Buttons stack at narrow widths. The
@@ -882,21 +886,29 @@ An invite-management UI is deferred until post-v1.
    is immediately unsubscribed. `watchedScreenShareId` is the sole subscription
    gate: selecting an in-room share tile unsubscribes the previous remote share
    first, then subscribes the selected high-quality video and source audio. The
-   presenter's own companion video remains subscribed locally while its
+   watched share remains subscribed when focus returns to the gallery, where
+   the same live track continues inside its tile; selecting a person, switching
+   shares, target loss, disconnect, or leave performs the corresponding cleanup.
+   The presenter's own companion video remains subscribed locally while its
    companion source audio is always forced unsubscribed.
    Deafen, selected output, and owner volume still apply to watched audio.
 8. Sidebar LIVE is informational and has no Watch action or pending cross-room
    state. Database LIVE alone never creates a subscription; the viewer joins
-   the voice room and selects the share tile.
-9. Focused people and shares use `minmax(0, 1fr)` media plus a separate 72 px
-   filmstrip with `object-fit: contain`, so identity text cannot clip a source
-   edge. Fullscreen is a fixed `100dvh` overlay reconciled with Tauri's actual
-   `isFullscreen()` after requests, resize/focus events, Escape, target loss,
-   disconnect, and teardown. Exit fullscreen stays pinned while secondary
-   controls hide after 2.5 seconds idle. Escape retains focus; active media,
-   active strip item, or Back to grid exits fullscreen, clears focus, and
-   unsubscribes the watched share. Failures surface non-blocking status while
-   renderer state returns to the actual native value.
+   the voice room and selects the share tile. Each occupied channel shows one
+   room-active timer based on its earliest current join. Occupants have no
+   personal timers or redundant local-user suffix; compact avatars use a live
+   speaking ring from the active LiveKit room.
+9. Focused people and shares use one `minmax(0, 1fr)` media stage without a
+   metadata header or people filmstrip. Shared media uses `object-fit: contain`
+   against a black canvas, while Back to grid and fullscreen sit above its
+   bottom corners; local quality controls share that overlay. Fullscreen is a
+   fixed `100dvh` overlay reconciled with Tauri's actual `isFullscreen()` after
+   requests, resize/focus events, Escape, target loss, disconnect, and teardown.
+   Exit fullscreen stays pinned at the bottom while secondary controls hide
+   after 2.5 seconds idle. Escape retains focus; active media or Back to grid
+   exits fullscreen and clears focus without interrupting a watched share.
+   Failures surface non-blocking status while renderer state returns to the
+   actual native value.
 10. Explicit stop, voice leave, source termination, terminal native-room
     disconnect, or main-window close releases capture immediately and closes the
     companion. Multiple app instances may present concurrently, but each app

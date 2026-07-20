@@ -3151,3 +3151,61 @@ x86_64-pc-windows-msvc --tests` — passed, including compilation of the
   clients, run Entire screen and Application through plan 0015's isolation and
   fullscreen matrix, and keep any failing source mode video-only before
   release.
+
+## 2026-07-20 — Media-first screen-share and room-presence polish
+
+- **Completed:** Removed the focused share identity/audio header and the people
+  filmstrip so the shared source owns the full bounded stage. Moved Back to grid,
+  fullscreen, and local quality controls onto the bottom media overlay; the
+  fullscreen exit remains pinned while secondary controls retain the idle-hide
+  behavior. Returning to the gallery now preserves the selected remote
+  subscription and renders its live track in the grid instead of reverting to
+  “Watch stream.” Removed personal call durations and the redundant `(you)`
+  suffix from call tiles and sidebar occupants. Added one room-active timer from
+  the earliest current occupant, tightened occupant spacing, reduced avatars,
+  enlarged/truncated names, and connected a sidebar avatar ring to LiveKit
+  speaking state.
+- **Decisions:** Focus is now presentation state rather than subscription state:
+  Back or focused-media activation only changes layout, while selecting a
+  person/another share, target loss, disconnect, or leave still performs
+  cleanup. Black letterboxing is preferred over cropping any source edge.
+  Database presence remains the source for room activity; LiveKit supplies the
+  real-time speaking signal only for the currently joined room.
+- **Validation:**
+  - Focused Vitest — passed three files with 34/34 tests for media-first
+    controls, still-playing grid return, filmstrip absence, room-level time,
+    local-label removal, and speaking rings.
+  - `pnpm exec vitest run src/app/App.test.tsx` — passed 6/6 after updating the
+    application contract to expect the intentionally suffix-free local name.
+  - `node --test scripts/focused-media-layout.test.mjs` — passed 3/3 layout
+    checks for the single-row focus stage, pinned bottom fullscreen exit, and
+    compact speaking-aware room shelf.
+  - Browser visual QA — passed at 1280×720. The actual mock call showed compact
+    participant tiles without personal timers or `(you)`, and a temporary
+    isolated focused-share preview confirmed an edge-to-edge black media stage
+    with non-overlapping bottom-left Back and bottom-right fullscreen controls;
+    the preview fixture was removed afterward.
+  - First `pnpm check` — failed only because `App.test.tsx` still expected
+    `Ayush (you)`; no product check failed. The stale assertion was corrected.
+  - Final `pnpm check` — passed Prettier, ESLint, strict renderer/Node
+    typechecks, 55 Vitest files with 304 tests, 14 Node tests, version
+    synchronization, production build, and secret scan. Vite retains the
+    existing non-blocking large-chunk warning; main JavaScript is 1,254.66 kB
+    (346.96 kB gzip).
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed Apple
+    Silicon `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+  - `pnpm security:scan` and `git diff --check` — passed after the final bundle
+    and source audit.
+- **Documentation updated:** Updated architecture, active plan 0001, parent
+  plans 0010/0014, plan 0015, and this canonical log.
+- **Known limitations:** Browser QA used mock media and a CSS-equivalent focus
+  fixture rather than a real native screen track. Installed macOS/Windows
+  source-audio isolation, fullscreen/scaling, Retina sizing, ultrawide/portrait
+  shares, and three-client teardown/switching remain gated by plan 0015's
+  acceptance matrix. Room-active time is derived from the earliest currently
+  present occupant because presence does not persist a separate room-session
+  record.
+- **Next:** Run the installed three-client macOS/Windows matrix with a watched
+  share returned to the grid, then verify playback continuity, both bottom
+  controls, speaking rings, room timing, and every source edge before release.
