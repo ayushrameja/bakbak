@@ -1,20 +1,16 @@
 import {
   Camera,
-  Check,
-  Crown,
   Headphones,
   Laptop,
   LogOut,
   Mic,
   MicOff,
   Mic2,
-  Moon,
   Palette,
   Play,
-  RadioTower,
   RefreshCw,
   Square,
-  Sun,
+  Type,
   UserRound,
   Volume2,
   VolumeX,
@@ -44,12 +40,6 @@ import {
 } from "../../lib/profile-service";
 import { useReducedMotion } from "../../lib/use-reduced-motion";
 import type {
-  AccentColor,
-  SurfaceStyle,
-  ThemePreference,
-  VisualPreset,
-} from "./appearance-preferences";
-import type {
   InterfaceSoundCategory,
   InterfaceSoundPreferences,
 } from "./interface-sound-preferences";
@@ -78,11 +68,6 @@ export interface ProfileSaveInput {
 interface SettingsPageProps {
   user: AppUser;
   section: SettingsSection;
-  visualPreset: VisualPreset;
-  themePreference: ThemePreference;
-  accent: AccentColor;
-  accentIntensity: number;
-  surfaceStyle: SurfaceStyle;
   inputDevices: MediaDeviceInfo[];
   outputDevices: MediaDeviceInfo[];
   cameraDevices: MediaDeviceInfo[];
@@ -105,10 +90,6 @@ interface SettingsPageProps {
   voiceMuted: boolean;
   voiceDeafened: boolean;
   onSectionChange: (section: SettingsSection) => void;
-  onVisualPresetChange: (preset: VisualPreset) => void;
-  onThemeChange: (preference: ThemePreference) => void;
-  onAccentChange: (accent: AccentColor, intensity: number) => void;
-  onSurfaceStyleChange: (surfaceStyle: SurfaceStyle) => void;
   onSaveProfile: (input: ProfileSaveInput) => Promise<{ warning?: string }>;
   loadProfileMedia?: LoadProfileMedia;
   onInputChange: (deviceId: string) => void;
@@ -312,19 +293,7 @@ export function SettingsPage(props: SettingsPageProps) {
               />
             ) : null}
             {props.section === "audio" ? <AudioSettings {...props} /> : null}
-            {props.section === "appearance" ? (
-              <AppearanceSettings
-                visualPreset={props.visualPreset}
-                preference={props.themePreference}
-                accent={props.accent}
-                intensity={props.accentIntensity}
-                surfaceStyle={props.surfaceStyle}
-                onChange={props.onThemeChange}
-                onVisualPresetChange={props.onVisualPresetChange}
-                onAccentChange={props.onAccentChange}
-                onSurfaceStyleChange={props.onSurfaceStyleChange}
-              />
-            ) : null}
+            {props.section === "appearance" ? <AppearanceSettings /> : null}
           </div>
         </div>
         {confirmingSignOut ? (
@@ -341,7 +310,7 @@ export function SettingsPage(props: SettingsPageProps) {
               <p>
                 {props.voiceStatus !== "disconnected"
                   ? "This will also leave your active voice room."
-                  : "Your local appearance and device choices will stay on this computer."}
+                  : "Your local device choices will stay on this computer."}
               </p>
               {signOutError ? (
                 <p className="settings-error" role="alert">
@@ -734,7 +703,7 @@ function ProfileSettings({
         </div>
       </section>
       <div className="profile-media-editors">
-        <section>
+        <section className="appearance-summary-card">
           <strong>Avatar</strong>
           <div>
             <label className="secondary-button profile-upload">
@@ -764,7 +733,7 @@ function ProfileSettings({
           </div>
           <span>PNG, JPEG, WebP, or GIF · up to 5 MiB</span>
         </section>
-        <section>
+        <section className="appearance-summary-card">
           <strong>Cover</strong>
           <div>
             <label className="secondary-button profile-upload">
@@ -1506,287 +1475,36 @@ function DeviceSelect({
   );
 }
 
-function AppearanceSettings({
-  visualPreset,
-  preference,
-  accent,
-  intensity,
-  surfaceStyle,
-  onChange,
-  onVisualPresetChange,
-  onAccentChange,
-  onSurfaceStyleChange,
-}: {
-  visualPreset: VisualPreset;
-  preference: ThemePreference;
-  accent: AccentColor;
-  intensity: number;
-  surfaceStyle: SurfaceStyle;
-  onChange: (preference: ThemePreference) => void;
-  onVisualPresetChange: (preset: VisualPreset) => void;
-  onAccentChange: (accent: AccentColor, intensity: number) => void;
-  onSurfaceStyleChange: (surfaceStyle: SurfaceStyle) => void;
-}) {
-  const signalRedActive = visualPreset === "signal-red";
-  const signatureActive = visualPreset === "signature";
-  const fixedPresetActive = signalRedActive || signatureActive;
-  const options: Array<{
-    value: ThemePreference;
-    label: string;
-    description: string;
-    icon: React.ReactNode;
-  }> = [
-    {
-      value: "system",
-      label: "System",
-      description: "Follow this computer",
-      icon: <Laptop size={20} />,
-    },
-    {
-      value: "light",
-      label: "Light",
-      description: "Oat, paper, and daylight",
-      icon: <Sun size={20} />,
-    },
-    {
-      value: "dark",
-      label: "Dark",
-      description: "Charcoal after-hours",
-      icon: <Moon size={20} />,
-    },
-  ];
+function AppearanceSettings() {
   return (
     <div className="settings-panel appearance-settings">
       <div className="settings-panel__heading">
         <span className="eyebrow">Appearance</span>
-        <h2>Choose a style</h2>
+        <h2>One clean look</h2>
         <p>
-          Start with a complete look. Classic can then be adjusted below; the
-          two special themes are intentionally fixed.
+          Bakbak keeps the interface calm, friendly, and consistent so the
+          conversation stays in charge.
         </p>
       </div>
-      <section
-        className={`special-theme-card special-theme-card--classic ${visualPreset === "standard" ? "is-active" : ""}`}
-        aria-labelledby="classic-theme-title"
-      >
-        <div className="special-theme-card__mark" aria-hidden="true">
-          <Palette size={26} />
-          <span>FLAT // PURPLE</span>
-        </div>
-        <div className="special-theme-card__copy">
-          <span className="eyebrow">Recommended · customizable</span>
-          <h3 id="classic-theme-title">Classic</h3>
-          <p>
-            Calm flat surfaces with a purple accent by default. Choose the
-            system theme, colour, and intensity below.
-          </p>
-        </div>
-        <button
-          className={
-            visualPreset === "standard" ? "secondary-button" : "primary-button"
-          }
-          type="button"
-          aria-pressed={visualPreset === "standard"}
-          onClick={() => onVisualPresetChange("standard")}
-        >
-          {visualPreset === "standard" ? "Classic active" : "Use Classic"}
-        </button>
-      </section>
-      <section
-        className={`special-theme-card special-theme-card--signature ${signatureActive ? "is-active" : ""}`}
-        aria-labelledby="signature-theme-title"
-      >
-        <div className="special-theme-card__mark" aria-hidden="true">
-          <Crown size={26} />
-          <span>BB // CLUB</span>
-        </div>
-        <div className="special-theme-card__copy">
-          <span className="eyebrow">Premium fixed theme</span>
-          <h3 id="signature-theme-title">Bakbak Signature</h3>
-          <p>
-            A fixed private-club skin with dark textile, cognac leather,
-            restrained brass, and clean conversation surfaces.
-          </p>
-        </div>
-        <button
-          className={signatureActive ? "secondary-button" : "primary-button"}
-          type="button"
-          aria-pressed={signatureActive}
-          onClick={() => onVisualPresetChange("signature")}
-        >
-          {signatureActive ? "Signature active" : "Use Signature"}
-        </button>
-      </section>
-      <section
-        className={`special-theme-card ${signalRedActive ? "is-active" : ""}`}
-        aria-labelledby="special-theme-title"
-      >
-        <div className="special-theme-card__mark" aria-hidden="true">
-          <RadioTower size={26} />
-          <span>BK // 01</span>
-        </div>
-        <div className="special-theme-card__copy">
-          <span className="eyebrow">Special theme</span>
-          <h3 id="special-theme-title">Signal Red</h3>
-          <p>
-            A fixed black-and-red broadcast skin with sharp type, signal
-            texture, and restrained edge animations.
-          </p>
-        </div>
-        <button
-          className={signalRedActive ? "secondary-button" : "primary-button"}
-          type="button"
-          aria-pressed={signalRedActive}
-          onClick={() =>
-            onVisualPresetChange(signalRedActive ? "standard" : "signal-red")
-          }
-        >
-          {signalRedActive ? "Use standard" : "Activate Signal Red"}
-        </button>
-      </section>
-      {fixedPresetActive ? (
-        <p className="special-theme-note" role="status">
-          {signalRedActive
-            ? "Signal Red temporarily locks Dark, Flat, and its signature red."
-            : "Bakbak Signature uses its fixed night, leather, and brass palette."}{" "}
-          Choose Classic to restore the standard appearance choices exactly as
-          you left them.
-        </p>
-      ) : null}
-      {!fixedPresetActive ? (
-        <div className="classic-customization">
-          <div className="classic-customization__heading">
-            <span className="eyebrow">Customize Classic</span>
-            <h3>Make it yours</h3>
-            <p>These controls apply immediately and stay on this device.</p>
-          </div>
-          <div
-            className="theme-options"
-            role="radiogroup"
-            aria-label="App theme"
-          >
-            {options.map((option) => (
-              <button
-                className={preference === option.value ? "is-active" : ""}
-                type="button"
-                role="radio"
-                aria-checked={preference === option.value}
-                key={option.value}
-                onClick={() => onChange(option.value)}
-              >
-                <span>{option.icon}</span>
-                <strong>{option.label}</strong>
-                <small>{option.description}</small>
-                {preference === option.value ? <Check size={16} /> : null}
-              </button>
-            ))}
-          </div>
-          <section className="surface-settings" aria-labelledby="surface-title">
-            <div>
-              <h3 id="surface-title">Surface style</h3>
-              <p>Keep the warmth, or make every surface calm and flat.</p>
-            </div>
-            <div
-              className="surface-options"
-              role="radiogroup"
-              aria-label="Surface style"
-            >
-              <button
-                className={surfaceStyle === "warm" ? "is-active" : ""}
-                type="button"
-                role="radio"
-                aria-checked={surfaceStyle === "warm"}
-                onClick={() => onSurfaceStyleChange("warm")}
-              >
-                <span>Warm</span>
-                <small>Gradients, depth, and soft light</small>
-                {surfaceStyle === "warm" ? <Check size={15} /> : null}
-              </button>
-              <button
-                className={surfaceStyle === "flat" ? "is-active" : ""}
-                type="button"
-                role="radio"
-                aria-checked={surfaceStyle === "flat"}
-                onClick={() => onSurfaceStyleChange("flat")}
-              >
-                <span>Flat</span>
-                <small>Plain grayscale surfaces, no glow</small>
-                {surfaceStyle === "flat" ? <Check size={15} /> : null}
-              </button>
-            </div>
-          </section>
-          <section className="accent-settings" aria-labelledby="accent-title">
-            <div>
-              <h3 id="accent-title">Accent colour</h3>
-              <p>One accent adapts itself to both Light and Dark.</p>
-            </div>
-            <div
-              className="accent-options"
-              role="radiogroup"
-              aria-label="Accent colour"
-            >
-              {(
-                [
-                  "coral",
-                  "purple",
-                  "red",
-                  "yellow",
-                ] as const satisfies readonly AccentColor[]
-              ).map((option) => (
-                <button
-                  className={accent === option ? "is-active" : ""}
-                  type="button"
-                  role="radio"
-                  aria-checked={accent === option}
-                  data-accent-option={option}
-                  key={option}
-                  onClick={() => onAccentChange(option, intensity)}
-                >
-                  <i />
-                  <span>{option}</span>
-                  {accent === option ? <Check size={14} /> : null}
-                </button>
-              ))}
-            </div>
-            <label className="accent-intensity">
-              <span>Accent intensity</span>
-              <strong>{intensity}%</strong>
-              <input
-                type="range"
-                min="25"
-                max="100"
-                step="5"
-                value={intensity}
-                onChange={(event) =>
-                  onAccentChange(accent, Number(event.target.value))
-                }
-              />
-              <small>Subtle</small>
-              <small>Vivid</small>
-            </label>
-          </section>
-        </div>
-      ) : null}
-      <div
-        className={`theme-preview ${signalRedActive ? "is-signal-red" : ""} ${signatureActive ? "is-signature" : ""}`}
-        aria-hidden="true"
-      >
-        <div className="theme-preview__shelf">
-          <i />
-          <i />
-          <i />
-        </div>
-        <div className="theme-preview__conversation">
-          <span />
-          <span />
-          <span />
-        </div>
-        <div className="theme-preview__tray">
-          <i />
-          <i />
-          <i />
-          <i />
-        </div>
+      <div className="appearance-summary-grid">
+        <section className="appearance-summary-card">
+          <Palette size={22} aria-hidden="true" />
+          <span>Surface</span>
+          <strong>Flat</strong>
+          <p>Quiet grayscale layers with no decorative glow or texture.</p>
+        </section>
+        <section>
+          <Laptop size={22} aria-hidden="true" />
+          <span>Colour scheme</span>
+          <strong>Follows system</strong>
+          <p>Bakbak switches between light and dark with this computer.</p>
+        </section>
+        <section>
+          <Type size={22} aria-hidden="true" />
+          <span>Typeface</span>
+          <strong>Roundo</strong>
+          <p>A clean, friendly face used across messages and controls.</p>
+        </section>
       </div>
     </div>
   );

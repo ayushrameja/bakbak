@@ -43,11 +43,6 @@ function renderSettings(
   const props: React.ComponentProps<typeof SettingsPage> = {
     user,
     section,
-    visualPreset: "standard",
-    themePreference: "system",
-    accent: "coral",
-    accentIntensity: 100,
-    surfaceStyle: "warm",
     inputDevices: [],
     outputDevices: [],
     cameraDevices: [],
@@ -79,10 +74,6 @@ function renderSettings(
     voiceMuted: false,
     voiceDeafened: false,
     onSectionChange: vi.fn(),
-    onVisualPresetChange: vi.fn(),
-    onThemeChange: vi.fn(),
-    onAccentChange: vi.fn(),
-    onSurfaceStyleChange: vi.fn(),
     onSaveProfile: vi.fn().mockResolvedValue({}),
     onInputChange: vi.fn(),
     onOutputChange: vi.fn(),
@@ -676,90 +667,17 @@ describe("SettingsPage", () => {
     vi.unstubAllGlobals();
   });
 
-  it("offers System, Light, and Dark as local appearance choices", async () => {
-    const onThemeChange = vi.fn();
-    renderSettings("appearance", { onThemeChange });
-    expect(screen.getByRole("radio", { name: /System/ })).toBeChecked();
-    await userEvent.click(screen.getByRole("radio", { name: /Light/ }));
-    expect(onThemeChange).toHaveBeenCalledWith("light");
-  });
+  it("describes the fixed appearance without exposing theme controls", () => {
+    renderSettings("appearance");
 
-  it("presents Signature as a fixed preset and restores Classic controls", async () => {
-    const onVisualPresetChange = vi.fn();
-    const { rerender, props } = renderSettings("appearance", {
-      visualPreset: "signature",
-      onVisualPresetChange,
-    });
+    expect(screen.getByText("Flat")).toBeVisible();
+    expect(screen.getByText("Follows system")).toBeVisible();
+    expect(screen.getByText("Roundo")).toBeVisible();
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    expect(screen.queryByRole("slider")).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Signature active" }),
-    ).toHaveAttribute("aria-pressed", "true");
-    expect(
-      screen.queryByRole("radiogroup", { name: "App theme" }),
+      screen.queryByRole("button", { name: /theme|signature|signal red/i }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText(/fixed night, leather, and brass/i)).toBeVisible();
-
-    await userEvent.click(screen.getByRole("button", { name: "Use Classic" }));
-    expect(onVisualPresetChange).toHaveBeenCalledWith("standard");
-    rerender(
-      <SettingsPage
-        {...props}
-        visualPreset="standard"
-        onVisualPresetChange={onVisualPresetChange}
-      />,
-    );
-    expect(screen.getByRole("radio", { name: /System/ })).toBeEnabled();
-  });
-
-  it("activates Signal Red and locks standard controls without losing them", async () => {
-    const onVisualPresetChange = vi.fn();
-    const { rerender, props } = renderSettings("appearance", {
-      onVisualPresetChange,
-    });
-    const activate = screen.getByRole("button", {
-      name: "Activate Signal Red",
-    });
-    activate.focus();
-    await userEvent.keyboard("{Enter}");
-    expect(onVisualPresetChange).toHaveBeenCalledWith("signal-red");
-
-    rerender(
-      <SettingsPage
-        {...props}
-        visualPreset="signal-red"
-        onVisualPresetChange={onVisualPresetChange}
-      />,
-    );
-    expect(
-      screen.getByText(/temporarily locks Dark, Flat/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("radiogroup", { name: "App theme" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("slider", { name: /Accent intensity/i }),
-    ).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Use standard" }));
-    expect(onVisualPresetChange).toHaveBeenLastCalledWith("standard");
-  });
-
-  it("changes accent colour and intensity", async () => {
-    const onAccentChange = vi.fn();
-    renderSettings("appearance", { onAccentChange });
-    await userEvent.click(screen.getByRole("radio", { name: /Purple/i }));
-    expect(onAccentChange).toHaveBeenCalledWith("purple", 100);
-    fireEvent.change(
-      screen.getByRole("slider", { name: /Accent intensity/i }),
-      { target: { value: "60" } },
-    );
-    expect(onAccentChange).toHaveBeenCalledWith("coral", 60);
-  });
-
-  it("switches between Warm and Flat surfaces", async () => {
-    const onSurfaceStyleChange = vi.fn();
-    renderSettings("appearance", { onSurfaceStyleChange });
-
-    await userEvent.click(screen.getByRole("radio", { name: /Flat/i }));
-    expect(onSurfaceStyleChange).toHaveBeenCalledWith("flat");
   });
 
   it("traps focus, closes with Escape, and restores the opener", () => {

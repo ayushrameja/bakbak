@@ -45,15 +45,6 @@ import {
   type AppSpace,
 } from "../features/server/DestinationRail";
 import {
-  loadAppearancePreferences,
-  setAppearancePreferences as persistAppearancePreferences,
-  type AccentColor,
-  type AppearancePreferences,
-  type SurfaceStyle,
-  type ThemePreference,
-  type VisualPreset,
-} from "../features/settings/appearance-preferences";
-import {
   loadInterfaceSoundPreferences,
   saveInterfaceSoundPreferences,
   type InterfaceSoundPreferences,
@@ -75,7 +66,6 @@ import {
   type ProfileSaveInput,
   type SettingsSection,
 } from "../features/settings/SettingsPage";
-import { SignalRedEffects } from "../features/settings/SignalRedEffects";
 import { Soundboard } from "../features/soundboard/Soundboard";
 import {
   shouldDismissSoundboardForEscape,
@@ -182,14 +172,8 @@ export default function App() {
   const [activeView, setActiveView] = useState<AppView>("channel");
   const [settingsSection, setSettingsSection] =
     useState<SettingsSection>("profile");
-  const [appearancePreferences, setAppearancePreferences] =
-    useState<AppearancePreferences>(() => loadAppearancePreferences());
   const [interfaceSoundPreferences, setInterfaceSoundPreferences] =
     useState<InterfaceSoundPreferences>(() => loadInterfaceSoundPreferences());
-  const [communicationEffect, setCommunicationEffect] = useState<{
-    event: CommunicationEffectEvent;
-    sequence: number;
-  } | null>(null);
   const [layoutPreferences, setLayoutPreferences] = useState<LayoutPreferences>(
     () => loadLayoutPreferences(),
   );
@@ -221,7 +205,6 @@ export default function App() {
   const profileMediaCacheRef = useRef(new ProfileMediaCache());
   const profileUpdateSequenceRef = useRef(new Map<string, number>());
   const voiceDeafenedRef = useRef(false);
-  const communicationSequenceRef = useRef(0);
   const signedInUserId = user?.id;
   const signedInUserEmail = user?.email ?? "";
   const workspaceServerId = workspace?.server.id;
@@ -232,13 +215,6 @@ export default function App() {
   );
   const handleCommunicationEffect = useCallback(
     (event: CommunicationEffectEvent) => {
-      if (document.documentElement.dataset.visualPreset === "signal-red") {
-        communicationSequenceRef.current += 1;
-        setCommunicationEffect({
-          event,
-          sequence: communicationSequenceRef.current,
-        });
-      }
       interfaceSoundController.play(event, {
         deafened: voiceDeafenedRef.current,
       });
@@ -1327,31 +1303,6 @@ export default function App() {
     return warning ? { warning } : {};
   }
 
-  function handleThemeChange(preference: ThemePreference) {
-    const next = { ...appearancePreferences, theme: preference };
-    setAppearancePreferences(next);
-    persistAppearancePreferences(next);
-  }
-
-  function handleAccentChange(accent: AccentColor, intensity: number) {
-    const next = { ...appearancePreferences, accent, intensity };
-    setAppearancePreferences(next);
-    persistAppearancePreferences(next);
-  }
-
-  function handleSurfaceStyleChange(surfaceStyle: SurfaceStyle) {
-    const next = { ...appearancePreferences, surfaceStyle };
-    setAppearancePreferences(next);
-    persistAppearancePreferences(next);
-  }
-
-  function handleVisualPresetChange(visualPreset: VisualPreset) {
-    const next = { ...appearancePreferences, visualPreset };
-    setCommunicationEffect(null);
-    setAppearancePreferences(next);
-    persistAppearancePreferences(next);
-  }
-
   function handleInterfaceSoundPreferencesChange(
     preferences: InterfaceSoundPreferences,
   ) {
@@ -1642,16 +1593,6 @@ export default function App() {
         layoutPreferences.rightPanelVisible ? "visible" : "hidden"
       }
     >
-      <SignalRedEffects
-        active={appearancePreferences.visualPreset === "signal-red"}
-        paused={
-          activeView === "settings" ||
-          channelDialog !== null ||
-          screenShareDialogOpen ||
-          openProfile !== null
-        }
-        effect={communicationEffect}
-      />
       <DestinationRail
         activeSpace={activeSpace}
         personalUnread={directConversations.some(
@@ -1971,11 +1912,6 @@ export default function App() {
         <SettingsPage
           user={user}
           section={settingsSection}
-          visualPreset={appearancePreferences.visualPreset}
-          themePreference={appearancePreferences.theme}
-          accent={appearancePreferences.accent}
-          accentIntensity={appearancePreferences.intensity}
-          surfaceStyle={appearancePreferences.surfaceStyle}
           inputDevices={voice.inputDevices}
           outputDevices={voice.outputDevices}
           cameraDevices={voice.cameraDevices}
@@ -2003,10 +1939,6 @@ export default function App() {
           onToggleDeafen={voice.toggleDeafen}
           onLeaveVoice={() => void voice.leave()}
           onSectionChange={setSettingsSection}
-          onThemeChange={handleThemeChange}
-          onVisualPresetChange={handleVisualPresetChange}
-          onAccentChange={handleAccentChange}
-          onSurfaceStyleChange={handleSurfaceStyleChange}
           onSaveProfile={handleSaveProfile}
           loadProfileMedia={loadProfileMedia}
           onInputChange={(deviceId) => void voice.setInputDevice(deviceId)}

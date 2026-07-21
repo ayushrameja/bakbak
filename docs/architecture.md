@@ -7,9 +7,9 @@ and phase completion belong in the numbered files under `docs/plans`.
 
 ## Current implementation state
 
-As of 2026-07-19, Bakbak has a complete local/mock product path and production
+As of 2026-07-21, Bakbak has a complete local/mock product path and production
 Supabase and LiveKit adapters. The renderer provides the invite-only welcome
-flow and one shared Signature/Classic/Signal Red shell. A fixed 68 px
+flow and one shared flat monochrome shell. A fixed 68 px
 destination rail switches Personal and the single Bakbak server without
 interrupting voice. The adjacent context panel defaults to 232 px, the
 conversation canvas retains at least 420 px at the 1024 px minimum window, and
@@ -19,22 +19,17 @@ persist widths and visibility per device. Settings is a centered,
 focus-trapped in-app modal with internal scrolling, active-call controls, and
 confirmed logout.
 
-Classic System + Flat + Purple is the default. The v6 preference migration
-resets every older installation to that appearance once on its first updated
-launch; choices made afterward persist normally. Appearance presents three
-complete styles first and shows theme/surface/accent customization only while
-Classic is active. Signature remains the premium fixed option with a
-high-contrast night palette based on cognac, oxblood, brass, and green
-presence; bundled
-Cormorant Garamond is reserved for plaques/display headings while Inter remains
-the message, form, and profile face. Bakbak-owned textile/leather SVG grain is
-limited to outer furniture and controls at no more than 3% effective opacity.
-Messages, inputs, dialogs, and other reading surfaces remain opaque and
-texture-free. Classic retains System/Light/Dark,
-Coral/Purple/Red/Yellow accent/intensity, and Warm/Flat controls. Flat uses
-crisp grayscale surfaces without decorative gradients, glow, glass blur, or
-heavy shadows while preserving semantic accent, presence, danger, and focus
-colors. Profiles support validated display names, 190-character plain-text
+Appearance has one crisp grayscale surface without decorative texture, glow,
+glass blur, heavy shadows, or selectable accents. CSS
+`prefers-color-scheme` applies the operating system's light/dark setting and
+media-qualified `theme-color` metadata keeps host chrome aligned; the renderer
+stores no appearance choice. Accent, presence, warning, danger, and focus use
+grayscale contrast, icons, labels, borders, rings, and opacity. Appearance
+remains in Settings as a read-only summary of `Flat`, `Follows system`, and
+`Roundo`. Legacy `bakbak.appearancePreferences.*` values are inert and
+intentionally left in local storage. Roundo v2.0 is served from a committed
+variable WOFF2 with upright weights 200–700 and a generic sans-serif fallback
+for unsupported glyphs. Profiles support validated display names, 190-character plain-text
 descriptions, static or GIF avatars, 3:1 static or GIF covers, integer cover
 focal points, and an accessible Discord-style anchored card. Admin-only
 controls create or rename text and voice channels, while Realtime reconciles
@@ -42,22 +37,11 @@ changes for every member. Ordered channel categories reproduce the visible
 Unlucky Boys layout: 7 categories, 18 text rooms, and 6 voice rooms in the same
 mixed order. This layout imports no Discord messages or credentials.
 
-Signal Red is a fixed device-local special preset layered over those retained
-Classic choices. Its first paint resolves to Dark + Flat with a `#050505`
-canvas, near-black panels, `#e5062f` primary red, `#ff2648` hot red, and
-`#f4f2ef` off-white. League Gothic is restricted to display/UI chrome, IBM Plex
-Mono to signal metadata, and Inter remains the content/form/profile face. One
-pointer-transparent layer adds low-opacity static noise, edge grids, bars,
-timecodes, a slow ticker, scheduled Bakbak stamps, and typed communication
-labels without covering the center reading area. Reduced motion freezes the
-texture, removes marquees/glitches/random stamps, and keeps only a static event
-label.
-
 Upgraded clients expose chat, structured individual mentions, account-synced
 unread emphasis, incoming-message sounds, and drafts only for text channels.
 Message alerts now use the same original generated interface-sound controller
 as voice join/leave, screen-share start/stop, reconnect success, and actionable
-communication failure. These cues run under every visual theme through the
+communication failure. These cues run under the shared monochrome appearance through the
 system output, independently of the selected call/soundboard output.
 Voice-channel message rows, RPC permissions, and read-state data remain intact
 for installed-client compatibility, but the upgraded renderer neither loads,
@@ -340,16 +324,19 @@ bakbak/
 │       ├── 0010-cross-platform-screen-share-and-focus.md
 │       ├── 0011-soundboard-categories-favorites-and-uploads.md
 │       ├── 0012-unlucky-boys-channel-layout.md
-│       └── 0013-local-microphone-processing-and-voice-lab.md
+│       ├── 0013-local-microphone-processing-and-voice-lab.md
+│       ├── 0014-bakbak-signature-shell-personal-dms-live-watching.md
+│       ├── 0015-screen-share-reliability-and-call-layout.md
+│       └── 0016-flat-monochrome-roundo.md
 ├── public/
 │   ├── bakbak.svg                 # renderer favicon/source logo
+│   ├── fonts/roundo/              # pinned Roundo v2.0 variable WOFF2
 │   ├── interface-sounds/          # generated original 48 kHz mono WAV cues
-│   ├── signal-noise.svg           # Bakbak-owned tiled texture source
-│   ├── theme-init.js              # parser-blocking, CSP-safe first-paint theme bootstrap
 │   └── vendor/
 │       ├── ffmpeg/                # lazy reduced LGPL core and license
 │       └── rnnoise/               # bundled RNNoise/Jitsi license notices
 ├── scripts/                       # checks, release/audio generation, reduced-core build
+├── third_party/roundo/             # Roundo source record and SIL OFL notice
 ├── src/
 │   ├── app/                       # application shell, routing, providers
 │   ├── components/                # reusable presentation components
@@ -414,7 +401,7 @@ The renderer uses a three-panel desktop layout plus a modal layer:
 6. Shared dialogs use compact/default/wide widths, responsive viewport padding,
    and a `100dvh`-bounded grid with a fixed header, internally scrollable body,
    and sticky wrapping footer actions. Buttons stack at narrow widths. The
-   layer stays above the soundboard and visual effects while retaining focus
+   layer stays above the soundboard while retaining focus
    trapping/restoration plus backdrop/X/Escape dismissal. Settings uses the
    wide shell up to 1000×720 with left navigation, compact call controls, live
    rich-profile editing, and confirmed logout. Its focus lifecycle runs once
@@ -424,19 +411,13 @@ The renderer uses a three-panel desktop layout plus a modal layer:
    authors, mentions, voice identities, or the user dock. It prefers the
    trigger's right side, flips/clamps inside the viewport, contains focus, and
    shows only current-server role/presence plus global profile fields.
-8. Signal Red adds one fixed, non-interactive effects layer above normal shell
-   content (`z-index: 50`) and below profile/dialog/settings surfaces
-   (`z-index: 90+`). Ambient stamps use only four safe edge positions and pause
-   while the document is hidden or an interactive overlay is open.
-
-The reusable backend health poll measures a Supabase Auth round trip every 30
-seconds and labels the result as backend latency. LiveKit
-`ConnectionQualityChanged` events separately normalize the local participant as
-Unknown/Excellent/Good/Poor; reconnecting display takes precedence. Warm uses
-oat/stone light surfaces or charcoal dark surfaces with restrained ambience.
-Flat retains the same theme/accent/semantic tokens on grayscale backgrounds but
-removes decorative depth. Both modes preserve focus, readable contrast,
-reduced-motion behavior, and the supported 1024×680 and 1280×800 layouts.
+   The reusable backend health poll measures a Supabase Auth round trip every 30
+   seconds and labels the result as backend latency. LiveKit
+   `ConnectionQualityChanged` events separately normalize the local participant as
+   Unknown/Excellent/Good/Poor; reconnecting display takes precedence. The single
+   flat appearance uses grayscale backgrounds and semantic contrast without
+   decorative depth. It preserves focus, readable contrast, reduced-motion
+   behavior, and the supported 1024×680 and 1280×800 layouts.
 
 ## Runtime and trust boundaries
 
@@ -652,15 +633,11 @@ An invite-management UI is deferred until post-v1.
 
 ### Profile, appearance, and modal settings
 
-1. The renderer validates and applies `bakbak.appearancePreferences.v6`
-   synchronously before mounting React. A local parser-blocking bootstrap sets
-   visual preset, theme, accent, intensity, surface style, and theme-specific
-   CSS tokens before the production stylesheet loads; React then installs the
-   System media-query listener for Classic. A missing v6 preference, including
-   every v5-or-older installation, is written once as Classic System + Flat +
-   Purple before first paint. Subsequent v6 choices persist normally. Signature
-   and Signal Red lock their fixed values without overwriting the retained v6
-   Classic fields.
+1. The renderer loads one local Roundo font face and one flat token set before
+   mounting React. CSS `prefers-color-scheme` supplies the light/dark token
+   override, so operating-system changes apply without JavaScript or stored
+   state. Legacy `bakbak.appearancePreferences.*` keys are neither read nor
+   deleted.
 2. Profile edits validate a trimmed 1–50 character display name, a
    190-character plain-text description, integer 0–100 cover coordinates, and
    optional PNG/JPEG/WebP/GIF media. Avatars are limited to 5 MiB, covers to 10
@@ -1006,13 +983,9 @@ Interface cues deliberately bypass the selected call output.
 Soundboard section collapse state is stored independently per server under
 `bakbak.soundboardSections.v1:<server ID>` and never syncs; favorite rows sync
 through Supabase instead.
-The renderer stores `{ theme, accent, intensity, surfaceStyle, visualPreset }`
-separately under `bakbak.appearancePreferences.v6`. Missing v6 preferences,
-including all v5-or-older installations, reset once to Classic System + Flat +
-Purple. Theme is System/Light/Dark, accent is Coral/Purple/Red/Yellow, intensity is a
-validated 25–100% five-point step, surface style is Warm/Flat, and the visual
-preset is Signature/Standard/Signal Red. Only Standard exposes the variable
-theme, accent, intensity, and surface controls.
+Appearance has no local preference. CSS follows the operating system and old
+`bakbak.appearancePreferences.*` entries remain inert rather than receiving a
+cleanup migration.
 It stores `{ enabled, volume, categories }` under
 `bakbak.interfaceSoundPreferences.v1`; the default is enabled at 55% with
 Messages, Voice, Screen share, and Status enabled. Interface sounds lazily
@@ -1025,9 +998,12 @@ reclamped to the viewport so at least 420 px remains for the centre canvas.
 All of these preferences are device-local and never part of the profile or
 Supabase schema.
 
-League Gothic `5.2.8`, IBM Plex Mono `5.2.7`, and Cormorant Garamond `5.2.11`
-are installed from Fontsource; their package manifests declare SIL Open Font
-License 1.1 (`OFL-1.1`). Every WAV under `public/interface-sounds` is original
+Roundo v2.0 is vendored from Fontshare as
+`public/fonts/roundo/Roundo-Variable.woff2` and served locally with no CDN
+dependency. Its SHA-256 is
+`74481965a428478803e36f6aaf21d163c36c5c8fc2cb27029dfbf1f9fb6f5a65`;
+the upstream/download record and SIL Open Font License 1.1 notice live under
+`third_party/roundo`. Every WAV under `public/interface-sounds` is original
 Bakbak project output from the checked-in deterministic
 oscillator/filter/envelope/seeded-noise generator.
 The assets contain no recordings or third-party samples. The microphone
@@ -1292,6 +1268,12 @@ that it has passed.
 
 ## Current limitations and deferred work
 
+- Plan 0016's single system-following grayscale appearance, read-only
+  Appearance page, local Roundo bundle, and regression guard pass the complete
+  renderer suite, production build, secret scan, and local macOS app build.
+  The in-app browser's localhost policy blocked the mock-preview reload, so the
+  dark/light 1024×680 and 1280×800 visual matrix plus installed macOS/Windows
+  glyph, clipping, wrapping, and offline-network observation remain required.
 - Plan 0006's three-panel shell, centered settings modal, Flat surfaces,
   text-only upgraded chat boundary, sidebar call controls, floating dock, and
   simplified voice canvas pass automated and mock-browser validation. The
@@ -1308,16 +1290,14 @@ that it has passed.
   anchored profile card, privacy boundary, and reduced-motion behavior pass
   automated and mock-browser validation at both supported viewport sizes. The
   hosted additive migration is deployed and linted, and Docker-backed pgTAP
-  passes. Installed-app theme/reduced-motion observation and the live
+  passes. Installed-app profile/reduced-motion observation and the live
   two-account media/Realtime/outsider matrix remain required before
   distribution.
-- Plan 0009's Signal Red preset, first-paint migration, edge effects,
-  reduced-motion behavior, generated sound pack, sound controller, preferences,
-  and typed lifecycle routing pass automated and mock-browser validation at
-  both supported viewport sizes. Installed-app multi-client audio observation
-  remains required for rapid messages, simultaneous joins/leaves, screen
-  sharing, reconnect, deafen, and a call output different from the system
-  output.
+- Plan 0016 retires plan 0009's Signal Red visuals and appearance persistence
+  while retaining its generated sound pack, sound controller, preferences, and
+  typed lifecycle routing. Installed-app multi-client audio observation remains
+  required for rapid messages, simultaneous joins/leaves, screen sharing,
+  reconnect, deafen, and a call output different from the system output.
 - The Warm Adda renderer, profile/avatar services, channel RPCs, and policies
   are implemented, and migration
   `202607120003_profile_avatars_and_channel_management.sql` is deployed to the

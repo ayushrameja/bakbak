@@ -3209,3 +3209,63 @@ x86_64-pc-windows-msvc --tests` — passed, including compilation of the
 - **Next:** Run the installed three-client macOS/Windows matrix with a watched
   share returned to the grid, then verify playback continuity, both bottom
   controls, speaking rings, room timing, and every source edge before release.
+
+## 2026-07-21 — Flat monochrome appearance and local Roundo
+
+- **Completed:** Replaced Classic, Signature, Signal Red, Warm/Flat, accents,
+  intensity, and their appearance state with one flat grayscale renderer that
+  follows `prefers-color-scheme`. Removed the parser-blocking theme bootstrap,
+  appearance preference types/migrations/setters/tests, Signal Red effects and
+  scheduler, and Signal/Signature texture assets while retaining interface
+  sounds and typed communication behavior. Converted first-party CSS and the
+  in-app Bakbak SVG to grayscale, kept user/live media unfiltered, and reduced
+  Appearance to read-only `Flat`, `Follows system`, and `Roundo` cards. Vendored
+  Roundo v2.0's variable WOFF2 and SIL OFL notice, removed all three Fontsource
+  families, applied upright weights 200–700 locally, raised dense text to a
+  9 px minimum, and set chat/composer text to 14 px. Added a regression test for
+  chromatic CSS/SVG colors, old themes/assets/fonts, unsupported type weights,
+  vendored font drift, and the fixed Appearance contract.
+- **Decisions:** Operating-system light/dark is the only appearance switch;
+  legacy `bakbak.appearancePreferences.*` keys remain inert rather than being
+  cleaned up. Roundo Regular 400 is used for body/chat text, Medium 500 for
+  controls and labels, SemiBold 600 for emphasis, and Bold 700 for headings and
+  primary actions; synthetic italic and weights above 700 are not allowed.
+  Grayscale semantic states use labels, icons, contrast, borders, rings, and
+  opacity. Native installer/application icons remain outside plan 0016.
+- **Validation:**
+  - Focused `pnpm typecheck`, Settings/App Vitest, and the new monochrome Node
+    test — passed strict TypeScript, 29/29 component tests, and 3/3 appearance
+    regression tests during implementation.
+  - `pnpm format:check` — passed with every matched file formatted.
+  - `pnpm lint` — passed with zero warnings.
+  - `pnpm typecheck` — passed both renderer and Node TypeScript projects.
+  - `pnpm test` — passed 52 Vitest files with 279 tests and 17/17 Node tests.
+  - `pnpm build` — passed after transforming 1,995 modules. The stylesheet is
+    113.55 kB (19.26 kB gzip) and the main JavaScript chunk is 1,240.92 kB
+    (342.67 kB gzip); Vite retains the existing non-blocking large-chunk
+    warning.
+  - Offline font audit — passed: the production build contains
+    `dist/fonts/roundo/Roundo-Variable.woff2`, its CSS uses only that local URL,
+    and the installed executable embeds the same route with no Google Fonts,
+    Fontshare, or other remote font host string.
+  - `pnpm security:scan` — passed for `dist` and the final native bundle before
+    and after the Tauri build.
+  - `pnpm tauri:build:local` — passed and produced an ad-hoc-signed Apple
+    Silicon `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+  - `git diff --check` — passed.
+  - In-app browser visual QA — skipped. The localhost policy blocked the mock
+    preview reload, so no dark/light screenshot or manual layout result is
+    claimed.
+- **Documentation updated:** Added plan 0016, updated active plan 0001 and the
+  architecture/licensing source of truth, added the Roundo upstream/hash record
+  and OFL notice, and appended this canonical log entry.
+- **Known limitations:** Dark/light visual checks at 1024×680 and 1280×800
+  remain required across auth, chat, voice, profiles, Settings, dialogs,
+  soundboard, errors, and focus. Installed macOS and Windows still need human
+  review of Roundo's ambiguous glyphs, clipping, line height, and wrapping at
+  9–12 px UI and 14–16 px chat sizes, plus an offline network observation. The
+  macOS bundle is not notarized.
+- **Next:** Install the macOS app and a Windows build, disconnect network font
+  access, then complete plan 0016's two-scheme/two-viewport visual and dense
+  typography matrix before v1 distribution.
