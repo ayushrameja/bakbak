@@ -31,6 +31,11 @@ describe("App navigation state", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Enter the preview" }),
     );
+    expect(screen.getByText("OG Nahan Gang")).toBeVisible();
+    expect(document.querySelector(".app-frame")).toHaveAttribute(
+      "data-startup-assembly",
+      expect.stringMatching(/running|complete/),
+    );
     expect(
       screen.getByRole("navigation", { name: "Bakbak spaces" }),
     ).toBeVisible();
@@ -104,6 +109,14 @@ describe("App navigation state", () => {
     );
     expect(shell).toHaveAttribute("data-left-panel", "hidden");
     expect(shell).toHaveAttribute("data-right-panel", "visible");
+    const leftSlot = document.querySelector(".panel-slot--left");
+    const leftResizer = document.querySelector(".panel-resizer--left");
+    expect(leftSlot).toHaveAttribute("data-visible", "false");
+    expect(leftSlot).toHaveAttribute("aria-hidden", "true");
+    expect(leftSlot).toHaveAttribute("inert");
+    expect(leftSlot?.querySelector(".channel-sidebar")).not.toBeNull();
+    expect(leftResizer).toHaveAttribute("data-enabled", "false");
+    expect(leftResizer).toHaveAttribute("aria-hidden", "true");
     expect(
       screen.getByRole("button", { name: "Show channel panel" }),
     ).toHaveAttribute("aria-expanded", "false");
@@ -116,6 +129,13 @@ describe("App navigation state", () => {
     expect(
       screen.queryByRole("complementary", { name: "Members" }),
     ).not.toBeInTheDocument();
+    const rightSlot = document.querySelector(".panel-slot--right");
+    const rightResizer = document.querySelector(".panel-resizer--right");
+    expect(rightSlot).toHaveAttribute("data-visible", "false");
+    expect(rightSlot).toHaveAttribute("aria-hidden", "true");
+    expect(rightSlot).toHaveAttribute("inert");
+    expect(rightSlot?.querySelector(".member-panel")).not.toBeNull();
+    expect(rightResizer).toHaveAttribute("data-enabled", "false");
     expect(shell).toHaveAttribute("data-left-panel", "hidden");
     expect(shell).toHaveAttribute("data-right-panel", "hidden");
 
@@ -189,6 +209,10 @@ describe("App navigation state", () => {
     );
 
     await userEvent.click(screen.getByRole("button", { name: "Personal" }));
+    expect(document.querySelector(".desktop-shell")).toHaveAttribute(
+      "data-space-transition",
+      "true",
+    );
     expect(
       screen.getByRole("heading", { name: "Your conversations live here" }),
     ).toBeVisible();

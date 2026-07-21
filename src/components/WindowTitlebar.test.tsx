@@ -93,6 +93,23 @@ describe("WindowTitlebar", () => {
     },
   );
 
+  it("keeps the space switch left and the signed-in title independently centered", () => {
+    const { adapter } = createAdapter("macos");
+    const { container } = renderTitlebar(adapter);
+    const switcher = screen.getByRole("navigation", {
+      name: "Bakbak spaces",
+    });
+
+    expect(switcher.parentElement).toHaveClass("window-titlebar__leading");
+    expect(screen.getByText("OG Nahan Gang").parentElement).toHaveClass(
+      "window-titlebar__center",
+    );
+    expect(container.querySelector(".window-titlebar")).toHaveAttribute(
+      "data-platform",
+      "macos",
+    );
+  });
+
   it("keeps native titlebar dragging and double-click maximize on macOS", () => {
     const { adapter, spies } = createAdapter("macos");
     const { container } = renderTitlebar(adapter);
@@ -165,5 +182,6 @@ describe("WindowTitlebar", () => {
     expect(
       screen.queryByRole("group", { name: "Panel controls" }),
     ).not.toBeInTheDocument();
+    expect(screen.queryByText("OG Nahan Gang")).not.toBeInTheDocument();
   });
 });

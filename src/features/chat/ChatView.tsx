@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
   type KeyboardEvent,
 } from "react";
@@ -259,6 +260,11 @@ export function ConversationView({
             <article
               className={`message ${grouped ? "message--grouped" : ""} ${message.pending ? "message--pending" : ""}`}
               key={message.id}
+              style={
+                {
+                  "--startup-order": Math.min(index, 7),
+                } as CSSProperties
+              }
             >
               {!grouped ? (
                 authorMember ? (

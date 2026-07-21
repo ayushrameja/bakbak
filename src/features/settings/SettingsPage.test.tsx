@@ -670,7 +670,7 @@ describe("SettingsPage", () => {
   it("describes the fixed appearance without exposing theme controls", () => {
     renderSettings("appearance");
 
-    expect(screen.getByText("Flat")).toBeVisible();
+    expect(screen.getByText("Glass")).toBeVisible();
     expect(screen.getByText("Follows system")).toBeVisible();
     expect(screen.getByText("Roundo")).toBeVisible();
     expect(screen.queryByRole("radio")).not.toBeInTheDocument();

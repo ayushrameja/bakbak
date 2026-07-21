@@ -3386,3 +3386,76 @@ x86_64-pc-windows-msvc --tests` — passed, including compilation of the
 - **Next:** Open the rebuilt macOS app to confirm traffic-light centering, then
   repeat the titlebar/control check in the Windows x64 build before v1
   distribution.
+
+## 2026-07-21 — Native glass, edge-to-edge panels, and motion polish
+
+- **Completed:** Added plan 0018's system-adaptive glass hierarchy with dark
+  68% black/light 66% white panels, 82% strong controls, and 24 px blur at 120%
+  saturation while leaving avatars, covers, emoji, video, and screen shares
+  unfiltered. Added pre-React native/fallback material detection, transparent
+  macOS `underWindowBackground` material with active-state following and the
+  required private API feature, plus Rust-gated Windows 11 Mica with an opaque
+  Windows 10/browser underlay. Rebuilt the signed-in shell as a stable
+  edge-to-edge five-track grid with straight 1 px separators, overlapping 9 px
+  resize targets, zero outer padding/gutters/rounding/shadows, and persistent
+  side slots that become inert and assistive-technology-hidden at zero width.
+  Moved the 232 px space switch left after the macOS safe area, fixed `OG Nahan
+Gang` at the true window center, and retained panel/Windows controls at the
+  right. Added 220 ms panel collapse, 0/40/80 ms replaceable space entrances, a
+  one-shot sub-500 ms launch assembly with an eight-row message cap, immediate
+  reduced-motion layout, and delegated 6 px scrollbars that clear scroll
+  activity after 650 ms. Preserved `bakbak.layoutPreferences.v2`, panel sizes,
+  visibility, drafts, navigation, voice ownership, backend contracts, and the
+  420 px center minimum.
+- **Decisions:** Browser and Windows 10 use an opaque CSS underlay rather than
+  exposing desktop content; Windows 10 deliberately receives no Acrylic.
+  Windows native material is limited to build 22000 or newer. macOS private
+  material is accepted for Bakbak's private distribution even though it rules
+  out Mac App Store submission. Hidden panel components remain mounted for
+  local state continuity, but both their controls and resizer contract disable
+  immediately. Motion is visual only: app/voice/draft state remains above the
+  keyed entrance subtrees, and repeated switches replace the current revision
+  rather than queueing it.
+- **Validation:**
+  - Focused Vitest and Node contract runs — passed 44/44 component/App tests and
+    9/9 glass, shell, appearance, native-config, and window-capability checks.
+  - Initial `pnpm lint` — failed on two unhandled `act(...)` return values in
+    the new scrollbar timer test; both are now explicitly ignored with `void`.
+    No product assertion failed, and the final lint passed with zero warnings.
+  - Dark mock-browser QA — passed at 1024×680, 1280×800, and 2560×1440 with no
+    document overflow or console warnings/errors. The shell measured from x=0
+    to the full viewport with 0 px padding/gap, tracks were `266/1/516/1/240`
+    at the minimum viewport, and the title center was within 0.01 px of the
+    window center. All four panel combinations settled to the correct stable
+    five-track geometry; hidden slots remained mounted, inert, `aria-hidden`,
+    and paired with disabled resizers. The scrollbar thumb was transparent at
+    rest, visible during focus/scroll, and hidden after 650 ms. Startup moved
+    from `running` to `complete` once, and Personal/Bakbak used the approved
+    0/40/80 ms stagger without interrupting shell state.
+  - `pnpm check` — passed Prettier, ESLint, both strict TypeScript projects, 54
+    Vitest files with 290 tests, 23/23 Node tests, version synchronization,
+    production build, and secret scan. Vite retains the existing non-blocking
+    large-chunk warning; the stylesheet is 128.79 kB (21.50 kB gzip) and the
+    main JavaScript chunk is 1,246.31 kB (344.17 kB gzip).
+  - `cargo fmt --check`, `cargo check --manifest-path src-tauri/Cargo.toml`, and
+    `git diff --check` — passed.
+  - `pnpm tauri:build:local` — passed and produced the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are not
+    present. Post-build secret scan, strict deep code-sign verification, and
+    Mach-O inspection passed and confirmed an ARM64 executable.
+- **Documentation updated:** Added plan 0018 as the current visual/layout
+  authority, recorded its supersession boundaries in plans 0016 and 0017,
+  updated active plan 0001, updated architecture material/layout/motion and
+  scrollbar contracts, changed the Appearance summary to `Glass`, and appended
+  this canonical log entry.
+- **Known limitations:** Browser automation exposed only the dark system scheme,
+  so light tokens have automated/static coverage but the light visual matrix
+  remains open. The rebuilt macOS app was compiled and signature-verified but
+  still needs direct installed observation of wallpaper vibrancy, inactive
+  state, traffic lights, shadow, drag/resize/fullscreen, contrast, and startup
+  flash. Windows 10 fallback and Windows 11 Mica require installed Windows
+  checks; no Windows build target was available in this macOS workspace. The
+  local app is not notarized.
+- **Next:** Run the light browser matrix, inspect the rebuilt macOS app over
+  varied wallpapers and active/inactive states, then validate the same startup
+  and window-interaction matrix on installed Windows 10 and Windows 11 builds.

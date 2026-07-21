@@ -9,29 +9,35 @@ and phase completion belong in the numbered files under `docs/plans`.
 
 As of 2026-07-21, Bakbak has a complete local/mock product path and production
 Supabase and LiveKit adapters. The renderer provides the invite-only welcome
-flow and one shared flat monochrome shell. An always-present 48 px titlebar
-centres the Personal/Bakbak space switch without interrupting voice; startup,
+flow and one shared grayscale glass shell. An always-present 48 px titlebar
+places the 232 px Personal/Bakbak switch at the left and `OG Nahan Gang` at the
+true signed-in window centre without interrupting voice; startup,
 authentication, and invite-only states keep a navigation-free titlebar while
 their main content owns product branding. The titlebar's right edge holds both
-side-panel toggles, leaving the contextual header dedicated to the current
-person or room.
-macOS retains native overlay traffic lights, Windows uses renderer-owned window
-controls, and browser/mock mode exposes neither platform's controls. The
-adjacent context panel defaults to 232 px, the conversation canvas retains at
-least 420 px at the 1024 px minimum window, and the details panel defaults to
-240 px. Both side panels are independently
-optional and pointer/keyboard resizable from 200–360 px; v2 layout preferences
-persist widths and visibility per device. Settings is a centered,
-focus-trapped in-app modal with internal scrolling, active-call controls, and
-confirmed logout.
+side-panel toggles and Windows window controls, leaving the contextual header
+dedicated to the current person or room.
+macOS retains native overlay traffic lights and uses an active-state-following
+`underWindowBackground` material. Windows uses renderer-owned controls and
+applies Mica on build 22000 or newer; Windows 10 and browser/mock mode use an
+opaque CSS underlay. The edge-to-edge shell keeps five tracks: the 232 px
+context panel, a 1 px separator with a 9 px resize hit area, the conversation
+canvas at a minimum 420 px, a second separator, and the 240 px details panel.
+Both side panels remain mounted but become inert while independently hidden;
+pointer/keyboard resizing stays within 200–360 px and v2 layout preferences
+persist widths and visibility per device. Settings is a centered, focus-trapped
+in-app modal with internal scrolling, active-call controls, and confirmed
+logout.
 
-Appearance has one crisp grayscale surface without decorative texture, glow,
-glass blur, heavy shadows, or selectable accents. CSS
+Appearance has one system-adaptive grayscale glass treatment without
+decorative texture, chromatic glow, selectable accents, or heavy shadows. Dark
+mode uses near-black translucent panels; light mode uses neutral-white
+translucent panels. Primary chrome uses 24 px blur at 120% saturation while
+avatars, covers, emoji, camera video, and screen sharing remain untouched. CSS
 `prefers-color-scheme` applies the operating system's light/dark setting and
 media-qualified `theme-color` metadata keeps host chrome aligned; the renderer
 stores no appearance choice. Accent, presence, warning, danger, and focus use
 grayscale contrast, icons, labels, borders, rings, and opacity. Appearance
-remains in Settings as a read-only summary of `Flat`, `Follows system`, and
+remains in Settings as a read-only summary of `Glass`, `Follows system`, and
 `Roundo`. Legacy `bakbak.appearancePreferences.*` values are inert and
 intentionally left in local storage. Roundo v2.0 is served from a committed
 variable WOFF2 with upright weights 200–700 and a generic sans-serif fallback
@@ -336,7 +342,8 @@ bakbak/
 │       ├── 0014-bakbak-signature-shell-personal-dms-live-watching.md
 │       ├── 0015-screen-share-reliability-and-call-layout.md
 │       ├── 0016-flat-monochrome-roundo.md
-│       └── 0017-space-efficient-titlebar-and-comfortable-roundo.md
+│       ├── 0017-space-efficient-titlebar-and-comfortable-roundo.md
+│       └── 0018-native-glass-edge-to-edge-motion.md
 ├── public/
 │   ├── bakbak.svg                 # renderer favicon/source logo
 │   ├── fonts/roundo/              # pinned Roundo v2.0 variable WOFF2
@@ -379,9 +386,11 @@ architectural placeholder folders are not used.
 
 The renderer uses a titlebar, three-panel desktop layout, and modal layer:
 
-1. The 48 px titlebar owns window drag behavior and centres the two-label
-   Personal/Bakbak switch. Unread and active-call markers remain attached to
-   their spaces, blocking dialogs disable space and panel navigation while
+1. The 48 px titlebar owns window drag behavior. Its left side holds the 232 px
+   Personal/Bakbak switch after an 88 px macOS traffic-light safe area, while
+   `OG Nahan Gang` occupies an independent center grid track so unequal edge
+   controls cannot displace it. Unread and active-call markers remain attached
+   to their spaces, blocking dialogs disable space and panel navigation while
    leaving native window controls available, and voice fullscreen temporarily
    removes the titlebar. Its right-edge layout controls independently toggle
    the context and details panels. A separate 60 px contextual header beneath
@@ -394,11 +403,17 @@ The renderer uses a titlebar, three-panel desktop layout, and modal layer:
    plan 0012. Occupied rooms show one room-active timer; their compact occupant
    rows omit personal timers/local suffixes and ring the current room's active
    speakers.
-3. The flexible center canvas contains text chat or the voice room. Header-edge
-   buttons independently toggle the left and right panels, immediately
-   reallocating space across all four combinations.
+3. The flexible center canvas contains text chat or the voice room. The shell
+   has no outer padding, gutters, rounding, outlines, or panel shadows; two
+   straight 1 px separators define its edges. Titlebar buttons independently
+   toggle the left and right tracks over 220 ms. Persistent clipping slots keep
+   each side component mounted while hidden, but `inert`, `aria-hidden`, and a
+   disabled resizer prevent interaction during the zero-width state.
 4. The 240 px member panel is visible by default and groups online/idle and
    offline members in normal document flow. It is not a drawer or overlay.
+   Space changes replace any in-flight 0/40/80 ms left/center/right entrance
+   sequence rather than queueing transitions, while voice and draft ownership
+   remains above the animated subtrees.
 5. During a call, an absolute centered dock appears across channel navigation.
    It auto-hides without consuming layout, clears the text composer, remains
    keyboard discoverable, and owns its More menu and compact 480×380 maximum
@@ -430,10 +445,14 @@ The renderer uses a titlebar, three-panel desktop layout, and modal layer:
    The reusable backend health poll measures a Supabase Auth round trip every 30
    seconds and labels the result as backend latency. LiveKit
    `ConnectionQualityChanged` events separately normalize the local participant as
-   Unknown/Excellent/Good/Poor; reconnecting display takes precedence. The single
-   flat appearance uses grayscale backgrounds and semantic contrast without
-   decorative depth. It preserves focus, readable contrast, reduced-motion
-   behavior, and the supported 1024×680 and 1280×800 layouts.
+   Unknown/Excellent/Good/Poor; reconnecting display takes precedence. The
+   system-following glass appearance uses grayscale translucency and semantic
+   contrast without decorative chroma. A one-shot renderer-launch assembly
+   completes within 500 ms; panel/space motion and message stagger collapse to
+   the final state under reduced motion. Every scroll surface uses a transparent
+   6 px track and reveals its thumb on hover, focus, or scroll activity, which
+   clears 650 ms after scrolling stops. The shell preserves readable contrast
+   and the supported 1024×680, 1280×800, and larger layouts.
 
 ## Runtime and trust boundaries
 
@@ -452,10 +471,19 @@ The shared main-window geometry remains 1280×800 with a 1024×680 minimum,
 resizing, and label `main` across the base, macOS, and Windows configurations.
 macOS uses the overlay titlebar with hidden native title and a 16 px horizontal,
 24 px vertical traffic-light inset that centres the controls in the 48 px bar.
-Windows disables native decorations while retaining the native
-shadow and exposes renderer minimize, toggle-maximize, close, drag, and
-maximize-state reconciliation through an injectable adapter. Capabilities grant
-those operations only to the main window. Linux custom chrome remains deferred.
+It enables `macOSPrivateApi`, a transparent window, native shadow, and the
+`underWindowBackground` effect with active/inactive-state following. Windows
+disables native decorations while retaining the native shadow and transparent
+webview, exposes renderer minimize, toggle-maximize, close, drag, and
+maximize-state reconciliation through an injectable adapter, and applies Mica
+from Rust only when `windows-version` reports build 22000 or newer. Before
+React loads, Rust injects `data-window-material="native|fallback"`; native
+material makes document roots transparent, while Windows 10, browser preview,
+and unsupported platforms retain an opaque grayscale underlay. Acrylic is not
+used. Capabilities grant window operations only to the main window. Linux
+custom chrome and native material remain deferred. The macOS private material
+API makes Mac App Store distribution unsupported; Bakbak targets private
+distribution.
 The main window enables Tauri's built-in interface zoom hotkeys, providing
 Cmd/Ctrl `+`, Cmd/Ctrl `-`, and Cmd/Ctrl `0` through the narrowly scoped
 webview-zoom capability.
@@ -627,19 +655,23 @@ An invite-management UI is deferred until post-v1.
 
 ### Application shell and direct messages
 
-1. The titlebar's segmented switch selects a navigation-neutral `AppSpace`
-   discriminant between Personal and the single server. Each space keeps its
+1. The titlebar's left-positioned segmented switch selects a navigation-neutral
+   `AppSpace` discriminant between Personal and the single server. Each space keeps its
    latest in-memory conversation/channel selection. A cold start remains on Bakbak when
    membership loads; missing membership plus established DM history resolves
    to Personal; neither history nor membership resolves to InviteGate.
 2. The context panel swaps the Personal conversation list and server channel
    shelf while retaining the shared user footer and current-call controls.
    Settings remains an overlay and does not become a rail destination.
-3. Layout preferences v2 store visibility plus context/details widths. CSS grid
-   variables apply the same geometry to every visual preset. Pointer handles
-   use capture; keyboard separators support arrows, Shift+arrows, Home/End, and
-   double-click reset. Runtime maxima clamp the 200–360 px widths so the centre
-   retains at least 420 px; hidden panels keep their stored widths.
+3. Layout preferences v2 store visibility plus context/details widths. A stable
+   five-track CSS grid uses two 1 px separator tracks for every visibility
+   combination; hidden panel and divider tracks animate to zero without being
+   removed. Each panel remains mounted in a clipping slot that becomes inert
+   and hidden from assistive technology. The invisible 9 px pointer target
+   overlaps its 1 px separator; keyboard separators support arrows,
+   Shift+arrows, Home/End, and double-click reset and disable immediately with
+   the panel. Runtime maxima clamp the 200–360 px widths so the centre retains
+   at least 420 px; hidden panels keep their stored widths.
 4. Personal loads `get_direct_conversations()` activity ordered by the newest
    message. Starting a row calls the canonical shared-membership creation RPC.
    Direct messages use a true direct `ConversationTarget`, never a fabricated
@@ -657,11 +689,16 @@ An invite-management UI is deferred until post-v1.
 
 ### Profile, appearance, and modal settings
 
-1. The renderer loads one local Roundo font face and one flat token set before
+1. The renderer loads one local Roundo font face and one glass token set before
    mounting React. CSS `prefers-color-scheme` supplies the light/dark token
    override, so operating-system changes apply without JavaScript or stored
-   state. Legacy `bakbak.appearancePreferences.*` keys are neither read nor
-   deleted. Shared type, spacing, height, and radius tokens enforce the
+   state. Rust supplies the pre-render native/fallback material marker; fallback
+   mode uses an opaque system-coloured document underlay and native mode makes
+   only the document roots transparent. Dark panels use 68% black and strong
+   controls 82% black; light panels use 66% and 82% white. Primary chrome uses
+   24 px blur and 120% saturation, never a filter on user/live media. Legacy
+   `bakbak.appearancePreferences.*` keys are neither read nor deleted. Shared
+   type, spacing, height, and radius tokens enforce the
    500/600/700 UI hierarchy, 4 px spacing rhythm, 36/40/44 px controls and rows,
    52 px composer, and restrained 10/14/16/18 px curves. Hover transitions use
    color and border changes; reduced motion disables transitions and press
@@ -1296,6 +1333,14 @@ that it has passed.
 
 ## Current limitations and deferred work
 
+- Plan 0018's system-adaptive glass tokens, native/fallback bootstrap, macOS
+  material configuration, Windows 11 Mica gate, edge-to-edge five-track shell,
+  persistent inert panel slots, centered signed-in title, bounded motion, and
+  auto-hiding scrollbars are implemented with focused renderer/native contract
+  coverage. Installed macOS and Windows 10/11 validation still must cover real
+  vibrancy/Mica, inactive windows, varied-wallpaper contrast, startup flash,
+  traffic lights/window controls, shadow, drag/resize/fullscreen, and both
+  system schemes. Browser QA cannot prove those native effects.
 - Plan 0017's 48 px titlebar, segmented Personal/Bakbak switch, rail-free
   geometry, comfortable Roundo scale, platform configurations, adapter tests,
   and dark mock-browser checks at 1024×680, 1280×800, and 2560×1440 are

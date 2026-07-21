@@ -119,13 +119,13 @@ test("Roundo is local, pinned, licensed, and limited to supported weights", () =
   );
 });
 
-test("legacy themes, visual effects, and appearance state stay removed", async () => {
+test("legacy themes and appearance state stay removed", async () => {
   const productionAppearance = `${styles}\n${app}\n${settings}`;
   assert.doesNotMatch(
     productionAppearance,
     /data-theme|data-surface-style|data-visual-preset|appearancePreferences|themePreference|visualPreset|accentIntensity|SignalRed|signal-red|signature-|Cormorant Garamond|League Gothic|IBM Plex Mono|@fontsource/i,
   );
-  assert.match(settings, /<strong>Flat<\/strong>/);
+  assert.match(settings, /<strong>Glass<\/strong>/);
   assert.match(settings, /<strong>Follows system<\/strong>/);
   assert.match(settings, /<strong>Roundo<\/strong>/);
 

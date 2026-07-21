@@ -15,6 +15,10 @@ This plan supersedes the visual-theme and typography decisions in plans 0005,
 mentions, settings, interface sounds, the three-panel shell, voice controls,
 Personal DMs, profiles, resizable panels, and live media behavior.
 
+Plan 0018 supersedes this plan's flat/opaque surface decision with
+system-adaptive glass while retaining its grayscale, system light/dark, local
+Roundo, and unfiltered user/live-media contracts.
+
 ## Decisions
 
 1. The renderer exposes no selectable theme, accent, intensity, surface, or

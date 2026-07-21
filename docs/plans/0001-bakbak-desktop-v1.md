@@ -42,13 +42,15 @@ starts with context instead of archaeological guessing.
 - Place shared UI in `src/components`, service clients in `src/lib`, and the
   application shell/providers in `src/app`.
 - Keep native configuration and Rust code isolated in `src-tauri`.
-- Use one flat monochrome desktop interface that follows the operating system's
-  light/dark setting. A 48 px app-owned titlebar switches Personal and Bakbak;
-  independently optional channel and member panels surround a flexible
-  conversation canvas, centered settings modal, sidebar call block, and
-  auto-hiding floating voice dock. The renderer uses the locally bundled
-  Roundo family at comfortable 500–700 product weights. A separate multi-server
-  rail remains deferred until multi-server navigation.
+- Use one system-adaptive monochrome glass interface that follows the operating
+  system's light/dark setting. A 48 px app-owned titlebar places the
+  Personal/Bakbak switch at the left and `OG Nahan Gang` at the true center;
+  independently optional channel and member panels occupy an edge-to-edge
+  five-track shell around a flexible conversation canvas, centered settings
+  modal, sidebar call block, and auto-hiding floating voice dock. The renderer
+  uses the locally bundled Roundo family at comfortable 500–700 product
+  weights. A separate multi-server rail remains deferred until multi-server
+  navigation.
 - Commit `.env.example` only. Use ignored `.env` files locally and
   platform-managed secrets for backend functions.
 
@@ -196,6 +198,12 @@ rail-free shell, and comfortable Roundo density are approved under
 plan 0014's fixed destination rail and plan 0016's dense 9–12 px product scale
 while preserving its local font, monochrome palette, and system light/dark
 behavior.
+System-adaptive native glass, the edge-to-edge five-track panel shell, fixed
+center title, bounded startup/space/panel motion, and auto-hiding scrollbars are
+approved under `0018-native-glass-edge-to-edge-motion.md`. Plan 0018 supersedes
+plan 0016's flat/opaque surfaces and plan 0017's centered switch, rounded panel,
+outer-padding, and gutter decisions while preserving their typography,
+platform-control, persistence, and minimum-canvas contracts.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -296,10 +304,16 @@ behavior.
 - [x] Replace the fixed destination rail with plan 0017's app-owned titlebar,
       Personal/Bakbak segment, rail-free shell, and comfortable renderer-wide
       Roundo density.
+- [x] Add plan 0018's native/fallback glass materials, edge-to-edge five-track
+      shell, left space switch, fixed center title, bounded motion, and
+      activity-revealed scrollbars without changing layout preference v2.
 - [ ] Complete plan 0016's installed dark/light typography and offline-font
       acceptance matrix on macOS and Windows.
 - [ ] Complete plan 0017's installed macOS/Windows titlebar, window-control,
       resizing, and close-time screen-share acceptance matrix.
+- [ ] Complete plan 0018's light/dark three-resolution browser matrix and
+      installed macOS/Windows 10/11 native-material, contrast, startup-flash,
+      and window-interaction acceptance matrix.
 - [ ] Evaluate optional global push-to-talk.
 - [x] Implement Windows process/display-matched audio with build gating and
       video-only fallback.

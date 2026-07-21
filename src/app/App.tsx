@@ -66,6 +66,7 @@ import { VoiceControlDock } from "../features/voice/VoiceControlDock";
 import { VoiceRoom } from "../features/voice/VoiceRoom";
 import { useVoiceRoom } from "../features/voice/useVoiceRoom";
 import { sessionToAppUser, signOut } from "../lib/auth-service";
+import { useAutoHideScrollbars } from "../lib/use-auto-hide-scrollbars";
 import type { CommunicationEffectEvent } from "../lib/communication-effects";
 import {
   createLiveChannel,
@@ -166,6 +167,10 @@ export default function App() {
   const [layoutPreferences, setLayoutPreferences] = useState<LayoutPreferences>(
     () => loadLayoutPreferences(),
   );
+  const [spaceTransitionRevision, setSpaceTransitionRevision] = useState(0);
+  const [startupAssembly, setStartupAssembly] = useState<
+    "pending" | "running" | "complete"
+  >("pending");
   const [soundboardOpen, setSoundboardOpen] = useState(false);
   const soundboardDrawerRef = useRef<HTMLElement>(null);
   const [channelDialog, setChannelDialog] = useState<ChannelDialogState>(null);
@@ -216,6 +221,7 @@ export default function App() {
     soundboard,
     handleCommunicationEffect,
   );
+  useAutoHideScrollbars();
 
   useEffect(() => {
     const update = () => setViewportWidth(window.innerWidth);
@@ -757,6 +763,32 @@ export default function App() {
       ) ?? null,
     [directConversations, selectedConversationId],
   );
+  const inviteBlocksShell =
+    appConfig.dataMode === "live" &&
+    (inviteGateOpen ||
+      (needsInvite &&
+        !directHistoryLoading &&
+        directConversations.length === 0));
+  const shellReady = Boolean(
+    user &&
+    !inviteBlocksShell &&
+    (activeSpace === "personal" || (workspace && selectedChannel)),
+  );
+
+  useEffect(() => {
+    if (shellReady && startupAssembly === "pending") {
+      setStartupAssembly("running");
+    }
+  }, [shellReady, startupAssembly]);
+
+  useEffect(() => {
+    if (startupAssembly !== "running") return;
+    const timeout = window.setTimeout(
+      () => setStartupAssembly("complete"),
+      500,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [startupAssembly]);
   const openedProfileMember =
     workspace?.members.find((member) => member.id === openProfile?.memberId) ??
     directConversations.find(
@@ -1378,10 +1410,17 @@ export default function App() {
     setUser(null);
   }
 
+  function transitionToSpace(space: AppSpace) {
+    if (space !== activeSpace) {
+      setSpaceTransitionRevision((current) => current + 1);
+    }
+    setActiveSpace(space);
+  }
+
   function handleSelectChannel(channel: Channel) {
     setOpenProfile(null);
     setSoundboardOpen(false);
-    setActiveSpace("server");
+    transitionToSpace("server");
     selectedChannelIdRef.current = channel.id;
     setSelectedChannelId(channel.id);
     setActiveView("channel");
@@ -1401,7 +1440,7 @@ export default function App() {
     setSoundboardOpen(false);
     selectedConversationIdRef.current = conversation.id;
     setSelectedConversationId(conversation.id);
-    setActiveSpace("personal");
+    transitionToSpace("personal");
     setActiveView("channel");
   }
 
@@ -1435,7 +1474,7 @@ export default function App() {
       await refreshDirectConversations();
       selectedConversationIdRef.current = conversationId;
       setSelectedConversationId(conversationId);
-      setActiveSpace("personal");
+      transitionToSpace("personal");
       setActiveView("channel");
     } catch (caught) {
       setAppError(
@@ -1451,7 +1490,7 @@ export default function App() {
     if (space === "server" && !workspace) return;
     setOpenProfile(null);
     setSoundboardOpen(false);
-    setActiveSpace(space);
+    transitionToSpace(space);
     setActiveView("channel");
   }
 
@@ -1465,7 +1504,10 @@ export default function App() {
 
   function renderAppFrame(content: ReactNode, showSpaceSwitcher = false) {
     return (
-      <div className="app-frame">
+      <div
+        className="app-frame"
+        data-startup-assembly={showSpaceSwitcher ? startupAssembly : undefined}
+      >
         <WindowTitlebar
           showSpaceSwitcher={showSpaceSwitcher}
           activeSpace={activeSpace}
@@ -1626,83 +1668,93 @@ export default function App() {
       data-right-panel={
         layoutPreferences.rightPanelVisible ? "visible" : "hidden"
       }
+      data-space-transition={spaceTransitionRevision > 0 ? "true" : "false"}
     >
-      {layoutPreferences.leftPanelVisible ? (
-        activeSpace === "server" && workspace && selectedChannel ? (
-          <ChannelSidebar
-            server={workspace.server}
-            categories={workspace.channelCategories}
-            channels={workspace.channels}
-            selectedChannelId={selectedChannel.id}
-            user={user}
-            members={workspace.members}
-            voiceOccupants={voiceOccupants}
-            unreadChannelIds={unreadChannelIds}
-            voice={visibleVoice}
-            mode={appConfig.dataMode}
-            soundboardOpen={soundboardOpen}
-            canManageChannels={workspace.currentUserRole === "admin"}
-            onSelect={handleSelectChannel}
-            onPrepareVoiceChannel={voice.prepareVoiceChannel}
-            onCreateChannel={(kind) => {
-              setOpenProfile(null);
-              setChannelDialog({ mode: "create", kind });
-            }}
-            onRenameChannel={(channel) => {
-              setOpenProfile(null);
-              setChannelDialog({ mode: "rename", channel });
-            }}
-            onOpenSettings={() => openSettings("profile")}
-            loadProfileMedia={loadProfileMedia}
-            onOpenProfile={handleOpenProfile}
-            openProfileId={openProfile?.memberId ?? null}
-            onToggleSoundboard={toggleSoundboard}
-            onOpenScreenShare={() => {
-              setOpenProfile(null);
-              setScreenShareDialogOpen(true);
-            }}
-          />
-        ) : (
-          <PersonalSidebar
-            user={user}
-            members={personalMembers}
-            conversations={directConversations}
-            selectedConversationId={selectedConversationId}
-            voice={visibleVoice}
-            mode={appConfig.dataMode}
-            soundboardOpen={soundboardOpen}
-            onSelect={handleSelectConversation}
-            onStartConversation={handleStartConversation}
-            onOpenSettings={() => openSettings("profile")}
-            onToggleSoundboard={toggleSoundboard}
-            onOpenScreenShare={() => {
-              setOpenProfile(null);
-              setScreenShareDialogOpen(true);
-            }}
-            loadProfileMedia={loadProfileMedia}
-            onOpenProfile={handleOpenProfile}
-            openProfileId={openProfile?.memberId ?? null}
-            inviteAvailable={!workspace}
-            onOpenInvite={() => setInviteGateOpen(true)}
-          />
-        )
-      ) : null}
-      {layoutPreferences.leftPanelVisible ? (
-        <PanelResizer
-          label="Resize navigation panel"
-          side="left"
-          value={contextPanelWidth}
-          minimum={MIN_SIDE_PANEL_WIDTH}
-          maximum={contextMaximum}
-          defaultValue={DEFAULT_CONTEXT_PANEL_WIDTH}
-          onChange={(contextPanelWidth) =>
-            updateLayoutPreferences((current) => ({
-              ...current,
-              contextPanelWidth,
-            }))
-          }
-        />
-      ) : null}
+      <div
+        className="panel-slot panel-slot--left"
+        data-visible={layoutPreferences.leftPanelVisible ? "true" : "false"}
+        aria-hidden={layoutPreferences.leftPanelVisible ? undefined : true}
+        inert={layoutPreferences.leftPanelVisible ? undefined : true}
+      >
+        <div
+          className="panel-slot__motion panel-slot__motion--left"
+          key={`left-${activeSpace}-${spaceTransitionRevision}`}
+        >
+          {activeSpace === "server" && workspace && selectedChannel ? (
+            <ChannelSidebar
+              server={workspace.server}
+              categories={workspace.channelCategories}
+              channels={workspace.channels}
+              selectedChannelId={selectedChannel.id}
+              user={user}
+              members={workspace.members}
+              voiceOccupants={voiceOccupants}
+              unreadChannelIds={unreadChannelIds}
+              voice={visibleVoice}
+              mode={appConfig.dataMode}
+              soundboardOpen={soundboardOpen}
+              canManageChannels={workspace.currentUserRole === "admin"}
+              onSelect={handleSelectChannel}
+              onPrepareVoiceChannel={voice.prepareVoiceChannel}
+              onCreateChannel={(kind) => {
+                setOpenProfile(null);
+                setChannelDialog({ mode: "create", kind });
+              }}
+              onRenameChannel={(channel) => {
+                setOpenProfile(null);
+                setChannelDialog({ mode: "rename", channel });
+              }}
+              onOpenSettings={() => openSettings("profile")}
+              loadProfileMedia={loadProfileMedia}
+              onOpenProfile={handleOpenProfile}
+              openProfileId={openProfile?.memberId ?? null}
+              onToggleSoundboard={toggleSoundboard}
+              onOpenScreenShare={() => {
+                setOpenProfile(null);
+                setScreenShareDialogOpen(true);
+              }}
+            />
+          ) : (
+            <PersonalSidebar
+              user={user}
+              members={personalMembers}
+              conversations={directConversations}
+              selectedConversationId={selectedConversationId}
+              voice={visibleVoice}
+              mode={appConfig.dataMode}
+              soundboardOpen={soundboardOpen}
+              onSelect={handleSelectConversation}
+              onStartConversation={handleStartConversation}
+              onOpenSettings={() => openSettings("profile")}
+              onToggleSoundboard={toggleSoundboard}
+              onOpenScreenShare={() => {
+                setOpenProfile(null);
+                setScreenShareDialogOpen(true);
+              }}
+              loadProfileMedia={loadProfileMedia}
+              onOpenProfile={handleOpenProfile}
+              openProfileId={openProfile?.memberId ?? null}
+              inviteAvailable={!workspace}
+              onOpenInvite={() => setInviteGateOpen(true)}
+            />
+          )}
+        </div>
+      </div>
+      <PanelResizer
+        label="Resize navigation panel"
+        side="left"
+        enabled={layoutPreferences.leftPanelVisible}
+        value={contextPanelWidth}
+        minimum={MIN_SIDE_PANEL_WIDTH}
+        maximum={contextMaximum}
+        defaultValue={DEFAULT_CONTEXT_PANEL_WIDTH}
+        onChange={(contextPanelWidth) =>
+          updateLayoutPreferences((current) => ({
+            ...current,
+            contextPanelWidth,
+          }))
+        }
+      />
       <main className="content-shell">
         <TopBar
           channel={activeSpace === "server" ? selectedChannel : null}
@@ -1712,7 +1764,10 @@ export default function App() {
               : null
           }
         />
-        <div className="content-stage">
+        <div
+          className="content-stage content-stage--space-motion"
+          key={`content-${activeSpace}-${spaceTransitionRevision}`}
+        >
           {appError ? (
             <div className="app-alert" role="alert">
               <CircleAlert size={16} />
@@ -1844,42 +1899,52 @@ export default function App() {
           />
         ) : null}
       </main>
-      {layoutPreferences.rightPanelVisible ? (
-        <PanelResizer
-          label="Resize details panel"
-          side="right"
-          value={rightPanelWidth}
-          minimum={MIN_SIDE_PANEL_WIDTH}
-          maximum={rightMaximum}
-          defaultValue={DEFAULT_RIGHT_PANEL_WIDTH}
-          onChange={(rightPanelWidth) =>
-            updateLayoutPreferences((current) => ({
-              ...current,
-              rightPanelWidth,
-            }))
-          }
-        />
-      ) : null}
-      {layoutPreferences.rightPanelVisible ? (
-        activeSpace === "personal" ? (
-          <DirectPersonPanel
-            member={selectedConversation?.otherMember ?? null}
-            loadProfileMedia={loadProfileMedia}
-            sharesServer={Boolean(
-              workspace?.members.some(
-                (member) => member.id === selectedConversation?.otherMember.id,
-              ),
-            )}
-          />
-        ) : workspace ? (
-          <MemberPanel
-            members={workspace.members}
-            loadProfileMedia={loadProfileMedia}
-            onOpenProfile={handleOpenProfile}
-            openProfileId={openProfile?.memberId ?? null}
-          />
-        ) : null
-      ) : null}
+      <PanelResizer
+        label="Resize details panel"
+        side="right"
+        enabled={layoutPreferences.rightPanelVisible}
+        value={rightPanelWidth}
+        minimum={MIN_SIDE_PANEL_WIDTH}
+        maximum={rightMaximum}
+        defaultValue={DEFAULT_RIGHT_PANEL_WIDTH}
+        onChange={(rightPanelWidth) =>
+          updateLayoutPreferences((current) => ({
+            ...current,
+            rightPanelWidth,
+          }))
+        }
+      />
+      <div
+        className="panel-slot panel-slot--right"
+        data-visible={layoutPreferences.rightPanelVisible ? "true" : "false"}
+        aria-hidden={layoutPreferences.rightPanelVisible ? undefined : true}
+        inert={layoutPreferences.rightPanelVisible ? undefined : true}
+      >
+        <div
+          className="panel-slot__motion panel-slot__motion--right"
+          key={`right-${activeSpace}-${spaceTransitionRevision}`}
+        >
+          {activeSpace === "personal" ? (
+            <DirectPersonPanel
+              member={selectedConversation?.otherMember ?? null}
+              loadProfileMedia={loadProfileMedia}
+              sharesServer={Boolean(
+                workspace?.members.some(
+                  (member) =>
+                    member.id === selectedConversation?.otherMember.id,
+                ),
+              )}
+            />
+          ) : workspace ? (
+            <MemberPanel
+              members={workspace.members}
+              loadProfileMedia={loadProfileMedia}
+              onOpenProfile={handleOpenProfile}
+              openProfileId={openProfile?.memberId ?? null}
+            />
+          ) : null}
+        </div>
+      </div>
       {openProfile && openedProfileMember ? (
         <ProfilePopover
           member={openedProfileMember}

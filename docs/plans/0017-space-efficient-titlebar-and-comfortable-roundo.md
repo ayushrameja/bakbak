@@ -16,6 +16,11 @@ weights, an 11 px text minimum, 15 px chat, consistent spacing, restrained
 curves, and calmer hover behavior. The flat system-following grayscale contract
 from plan 0016 remains unchanged. Every pixel should earn its rent.
 
+Plan 0018 supersedes this plan's centered space-switch, rounded panels, outer
+padding, and gutter decisions. It retains the 48 px titlebar, platform window
+controls, comfortable Roundo scale, persisted panel sizing, and 420 px center
+minimum.
+
 ## Decisions
 
 1. The titlebar is always present. Authentication, invite, and startup states

@@ -63,4 +63,30 @@ describe("PanelResizer", () => {
     fireEvent.keyDown(separator, { key: "ArrowLeft" });
     expect(onChange).toHaveBeenCalledWith(248);
   });
+
+  it("is removed from interaction immediately when its panel is hidden", () => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <PanelResizer
+        label="Resize navigation panel"
+        side="left"
+        enabled={false}
+        value={232}
+        minimum={200}
+        maximum={360}
+        defaultValue={232}
+        onChange={onChange}
+      />,
+    );
+    const resizer = container.querySelector(".panel-resizer");
+
+    expect(resizer).toHaveAttribute("data-enabled", "false");
+    expect(resizer).toHaveAttribute("tabindex", "-1");
+    expect(resizer).toHaveAttribute("aria-hidden", "true");
+    expect(screen.queryByRole("separator")).not.toBeInTheDocument();
+    fireEvent.keyDown(resizer!, { key: "ArrowRight" });
+    fireEvent.doubleClick(resizer!);
+    fireEvent.pointerDown(resizer!, { clientX: 10, pointerId: 1 });
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });

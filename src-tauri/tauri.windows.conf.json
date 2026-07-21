@@ -13,7 +13,9 @@
         "resizable": true,
         "zoomHotkeysEnabled": true,
         "decorations": false,
-        "shadow": true
+        "shadow": true,
+        "transparent": true,
+        "noRedirectionBitmap": true
       }
     ]
   }

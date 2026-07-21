@@ -3,6 +3,7 @@ import type { KeyboardEvent, PointerEvent } from "react";
 interface PanelResizerProps {
   label: string;
   side: "left" | "right";
+  enabled?: boolean;
   value: number;
   minimum: number;
   maximum: number;
@@ -13,6 +14,7 @@ interface PanelResizerProps {
 export function PanelResizer({
   label,
   side,
+  enabled = true,
   value,
   minimum,
   maximum,
@@ -24,6 +26,7 @@ export function PanelResizer({
   }
 
   function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (!enabled) return;
     const startX = event.clientX;
     const startValue = value;
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -44,6 +47,7 @@ export function PanelResizer({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (!enabled) return;
     const step = event.shiftKey ? 24 : 8;
     const direction = side === "left" ? 1 : -1;
     if (event.key === "ArrowLeft") {
@@ -64,14 +68,18 @@ export function PanelResizer({
   return (
     <div
       className={`panel-resizer panel-resizer--${side}`}
-      role="separator"
-      tabIndex={0}
+      data-enabled={enabled ? "true" : "false"}
+      role={enabled ? "separator" : undefined}
+      tabIndex={enabled ? 0 : -1}
+      aria-hidden={enabled ? undefined : true}
       aria-label={label}
       aria-orientation="vertical"
       aria-valuemin={minimum}
       aria-valuemax={maximum}
       aria-valuenow={value}
-      onDoubleClick={() => apply(defaultValue)}
+      onDoubleClick={() => {
+        if (enabled) apply(defaultValue);
+      }}
       onKeyDown={handleKeyDown}
       onPointerDown={handlePointerDown}
     />

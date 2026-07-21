@@ -33,11 +33,32 @@ test("macOS and Windows titlebar configs retain the shared main-window contract"
   }
 
   assert.equal(macos.app.windows[0].decorations, true);
+  assert.equal(macos.app.macOSPrivateApi, true);
+  assert.equal(macos.app.windows[0].transparent, true);
   assert.equal(macos.app.windows[0].titleBarStyle, "Overlay");
   assert.equal(macos.app.windows[0].hiddenTitle, true);
   assert.deepEqual(macos.app.windows[0].trafficLightPosition, { x: 16, y: 24 });
+  assert.deepEqual(macos.app.windows[0].windowEffects, {
+    effects: ["underWindowBackground"],
+    state: "followsWindowActiveState",
+  });
   assert.equal(windows.app.windows[0].decorations, false);
+  assert.equal(windows.app.windows[0].transparent, true);
+  assert.equal(windows.app.windows[0].noRedirectionBitmap, true);
   assert.equal(windows.app.windows[0].shadow, true);
+});
+
+test("native material is injected before React and Mica is Windows 11 only", async () => {
+  const nativeSource = await readFile(
+    new URL("src-tauri/src/lib.rs", root),
+    "utf8",
+  );
+  assert.match(
+    nativeSource,
+    /document\.documentElement\.dataset\.windowMaterial = '\{window_material\}'/,
+  );
+  assert.match(nativeSource, /OsVersion::current\(\)\.build >= 22_000/);
+  assert.match(nativeSource, /EffectsBuilder::new\(\)\.effect\(Effect::Mica\)/);
 });
 
 test("main-window capabilities stay narrowly scoped to required chrome actions", async () => {

@@ -6347,7 +6347,8 @@ button.message-mention:hover {
 /* 0017 — rail-free Personal/Bakbak shell */
 .desktop-shell,
 .desktop-shell[data-left-panel],
-.desktop-shell[data-right-panel] {
+.desktop-shell[data-right-panel],
+.desktop-shell[data-left-panel][data-right-panel] {
   grid-template-columns:
     var(--context-panel-width, 232px) 5px minmax(420px, 1fr) 5px
     var(--right-panel-width, 240px);
@@ -7353,5 +7354,433 @@ button:active:not(:disabled) {
   button:active:not(:disabled),
   .channel-voice-person__avatar.is-speaking {
     transform: none !important;
+  }
+}
+
+/* 0018 — native glass, edge-to-edge panels, and motion polish */
+@keyframes glass-assemble {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.992);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes space-enter-left {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes space-enter-center {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes space-enter-right {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+:root {
+  --window-underlay: #000;
+  --glass-canvas: rgba(0, 0, 0, 0.52);
+  --glass-panel: rgba(0, 0, 0, 0.68);
+  --glass-strong: rgba(0, 0, 0, 0.82);
+  --glass-hover: rgba(255, 255, 255, 0.07);
+  --glass-line: rgba(255, 255, 255, 0.1);
+  --glass-line-bright: rgba(255, 255, 255, 0.2);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.28);
+  --bg-deep: var(--glass-canvas);
+  --bg-rail: var(--glass-panel);
+  --bg-sidebar: var(--glass-panel);
+  --bg-main: var(--glass-canvas);
+  --panel: var(--glass-panel);
+  --panel-soft: var(--glass-strong);
+  --panel-hover: var(--glass-hover);
+  --line: var(--glass-line);
+  --line-bright: var(--glass-line-bright);
+  --control-surface: var(--glass-strong);
+  --panel-glass: var(--glass-panel);
+  --sidebar-dock: var(--glass-strong);
+  --main-glass: var(--glass-panel);
+  --panel-translucent: var(--glass-panel);
+  --panel-soft-translucent: var(--glass-strong);
+  --sidebar-translucent: var(--glass-panel);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --window-underlay: #f4f4f4;
+    --glass-canvas: rgba(255, 255, 255, 0.48);
+    --glass-panel: rgba(255, 255, 255, 0.66);
+    --glass-strong: rgba(255, 255, 255, 0.82);
+    --glass-hover: rgba(0, 0, 0, 0.06);
+    --glass-line: rgba(0, 0, 0, 0.1);
+    --glass-line-bright: rgba(0, 0, 0, 0.2);
+    --scrollbar-thumb: rgba(0, 0, 0, 0.28);
+    --bg-deep: var(--glass-canvas);
+    --bg-rail: var(--glass-panel);
+    --bg-sidebar: var(--glass-panel);
+    --bg-main: var(--glass-canvas);
+    --panel: var(--glass-panel);
+    --panel-soft: var(--glass-strong);
+    --panel-hover: var(--glass-hover);
+    --line: var(--glass-line);
+    --line-bright: var(--glass-line-bright);
+    --control-surface: var(--glass-strong);
+    --panel-glass: var(--glass-panel);
+    --sidebar-dock: var(--glass-strong);
+    --main-glass: var(--glass-panel);
+    --panel-translucent: var(--glass-panel);
+    --panel-soft-translucent: var(--glass-strong);
+    --sidebar-translucent: var(--glass-panel);
+  }
+}
+
+:root,
+html,
+body,
+#root {
+  background: var(--window-underlay);
+}
+
+html[data-window-material="native"],
+html[data-window-material="native"] body,
+html[data-window-material="native"] #root {
+  background: transparent;
+}
+
+.app-frame {
+  background: var(--glass-canvas);
+}
+
+.window-titlebar {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  border-bottom-color: var(--glass-line);
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
+  backdrop-filter: blur(24px) saturate(120%);
+}
+
+.window-titlebar__leading {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 0 6px var(--space-2);
+}
+
+.window-titlebar[data-platform="macos"] .window-titlebar__leading {
+  padding-left: 88px;
+}
+
+.window-titlebar__drag--leading {
+  min-width: var(--space-2);
+  height: 100%;
+  flex: 1;
+}
+
+.window-titlebar__center {
+  min-width: 0;
+  padding: 0 var(--space-3);
+  pointer-events: none;
+}
+
+.window-titlebar__center strong {
+  color: var(--text);
+  font-size: var(--font-ui);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.space-switcher {
+  width: 232px;
+  min-width: 232px;
+  flex: 0 0 232px;
+  border-color: var(--glass-line);
+  background: var(--glass-panel);
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
+  backdrop-filter: blur(24px) saturate(120%);
+}
+
+.desktop-shell,
+.desktop-shell[data-left-panel],
+.desktop-shell[data-right-panel],
+.desktop-shell[data-left-panel][data-right-panel] {
+  --left-panel-track: var(--context-panel-width, 232px);
+  --left-divider-track: 1px;
+  --right-divider-track: 1px;
+  --right-panel-track: var(--right-panel-width, 240px);
+  grid-template-columns:
+    var(--left-panel-track) var(--left-divider-track) minmax(420px, 1fr)
+    var(--right-divider-track) var(--right-panel-track);
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--glass-canvas);
+  animation: none;
+  transition: grid-template-columns 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.desktop-shell[data-left-panel="hidden"][data-right-panel] {
+  --left-panel-track: 0px;
+  --left-divider-track: 0px;
+}
+
+.desktop-shell[data-left-panel][data-right-panel="hidden"] {
+  --right-divider-track: 0px;
+  --right-panel-track: 0px;
+}
+
+.panel-slot {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.panel-slot--left {
+  grid-column: 1;
+}
+
+.panel-slot--right {
+  grid-column: 5;
+}
+
+.panel-slot__motion {
+  height: 100%;
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 160ms ease,
+    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    visibility 0s linear 0s;
+}
+
+.panel-slot__motion--left {
+  width: var(--context-panel-width, 232px);
+}
+
+.panel-slot__motion--right {
+  width: var(--right-panel-width, 240px);
+}
+
+.panel-slot[data-visible="false"] .panel-slot__motion {
+  opacity: 0;
+  visibility: hidden;
+  transition-delay: 0s, 0s, 220ms;
+}
+
+.panel-slot[data-visible="false"] .panel-slot__motion--left {
+  transform: translateX(-10px);
+}
+
+.panel-slot[data-visible="false"] .panel-slot__motion--right {
+  transform: translateX(10px);
+}
+
+.panel-slot__motion > .channel-sidebar,
+.panel-slot__motion > .member-panel,
+.panel-slot__motion > .direct-person-panel {
+  width: 100%;
+  height: 100%;
+}
+
+.channel-sidebar,
+.content-shell,
+.member-panel,
+.direct-person-panel {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: var(--glass-panel);
+  box-shadow: none;
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
+  backdrop-filter: blur(24px) saturate(120%);
+}
+
+.member-panel,
+.direct-person-panel {
+  overflow-y: auto;
+}
+
+.content-shell {
+  grid-column: 3;
+  background: var(--glass-canvas);
+}
+
+.top-bar,
+.composer,
+.voice-control-dock,
+.soundboard-drawer,
+.modal-card,
+.settings-panel {
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
+  backdrop-filter: blur(24px) saturate(120%);
+}
+
+.panel-resizer {
+  z-index: 8;
+  width: 9px;
+  min-width: 9px;
+  margin-left: -4px;
+  cursor: col-resize;
+}
+
+.panel-resizer--left {
+  grid-column: 2;
+}
+
+.panel-resizer--right {
+  grid-column: 4;
+}
+
+.panel-resizer::after {
+  width: 1px;
+  inset-block: 0;
+  left: 4px;
+  border-radius: 0;
+  background: var(--glass-line);
+  transition: background 120ms ease;
+}
+
+.panel-resizer:hover::after,
+.panel-resizer:focus-visible::after {
+  width: 1px;
+  left: 4px;
+  background: var(--glass-line-bright);
+}
+
+.panel-resizer[data-enabled="false"] {
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.desktop-shell[data-space-transition="true"] .panel-slot__motion--left {
+  animation: space-enter-left 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.desktop-shell[data-space-transition="true"] .content-stage--space-motion {
+  animation: space-enter-center 180ms 40ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.desktop-shell[data-space-transition="true"] .panel-slot__motion--right {
+  animation: space-enter-right 160ms 80ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.app-frame[data-startup-assembly="pending"] .space-switcher,
+.app-frame[data-startup-assembly="pending"] .window-titlebar__center strong,
+.app-frame[data-startup-assembly="pending"] .panel-slot__motion,
+.app-frame[data-startup-assembly="pending"] .content-shell,
+.app-frame[data-startup-assembly="pending"] .channel-intro,
+.app-frame[data-startup-assembly="pending"] .message,
+.app-frame[data-startup-assembly="pending"] .composer-wrap {
+  opacity: 0;
+}
+
+.app-frame[data-startup-assembly="running"] .space-switcher,
+.app-frame[data-startup-assembly="running"] .window-titlebar__center strong {
+  animation: glass-assemble 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.app-frame[data-startup-assembly="running"] .panel-slot__motion--left {
+  animation: glass-assemble 200ms 30ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.app-frame[data-startup-assembly="running"] .content-shell {
+  animation: glass-assemble 220ms 70ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.app-frame[data-startup-assembly="running"] .panel-slot__motion--right {
+  animation: glass-assemble 200ms 110ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.app-frame[data-startup-assembly="running"] .channel-intro {
+  animation: glass-assemble 160ms 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.app-frame[data-startup-assembly="running"] .message {
+  animation: glass-assemble 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(160ms + var(--startup-order, 0) * 24ms);
+}
+
+.app-frame[data-startup-assembly="running"] .composer-wrap {
+  animation: glass-assemble 180ms 280ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.app-frame * {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.app-frame *::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+  background: transparent;
+}
+
+.app-frame *::-webkit-scrollbar-track,
+.app-frame *::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.app-frame *::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: transparent;
+}
+
+.app-frame *:hover::-webkit-scrollbar-thumb,
+.app-frame *:focus-within::-webkit-scrollbar-thumb,
+.app-frame *.is-scrolling::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+}
+
+.app-frame *:hover,
+.app-frame *:focus-within,
+.app-frame *.is-scrolling {
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktop-shell,
+  .panel-slot__motion {
+    transition: none !important;
+  }
+
+  .desktop-shell[data-space-transition="true"] .panel-slot__motion,
+  .desktop-shell[data-space-transition="true"] .content-stage--space-motion,
+  .app-frame[data-startup-assembly] .space-switcher,
+  .app-frame[data-startup-assembly] .window-titlebar__center strong,
+  .app-frame[data-startup-assembly] .panel-slot__motion,
+  .app-frame[data-startup-assembly] .content-shell,
+  .app-frame[data-startup-assembly] .channel-intro,
+  .app-frame[data-startup-assembly] .message,
+  .app-frame[data-startup-assembly] .composer-wrap {
+    opacity: 1;
+    transform: none;
+    animation: none !important;
   }
 }

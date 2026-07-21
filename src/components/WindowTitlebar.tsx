@@ -94,13 +94,12 @@ export function WindowTitlebar({
   }
 
   return (
-    <header className="window-titlebar" data-platform={adapter.platform}>
-      <div
-        className="window-titlebar__drag window-titlebar__drag--leading"
-        onMouseDown={handleDrag}
-        onDoubleClick={handleDoubleClick}
-      />
-      <div className="window-titlebar__center">
+    <header
+      className="window-titlebar"
+      data-platform={adapter.platform}
+      data-shell={showSpaceSwitcher ? "true" : "false"}
+    >
+      <div className="window-titlebar__leading">
         {showSpaceSwitcher ? (
           <SpaceSwitcher
             activeSpace={activeSpace}
@@ -112,6 +111,14 @@ export function WindowTitlebar({
             onSelect={onSelectSpace}
           />
         ) : null}
+        <span
+          className="window-titlebar__drag window-titlebar__drag--leading"
+          onMouseDown={handleDrag}
+          onDoubleClick={handleDoubleClick}
+        />
+      </div>
+      <div className="window-titlebar__center">
+        {showSpaceSwitcher ? <strong>OG Nahan Gang</strong> : null}
       </div>
       <div className="window-titlebar__trailing">
         <span

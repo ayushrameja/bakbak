@@ -1490,8 +1490,8 @@ function AppearanceSettings() {
         <section className="appearance-summary-card">
           <Palette size={22} aria-hidden="true" />
           <span>Surface</span>
-          <strong>Flat</strong>
-          <p>Quiet grayscale layers with no decorative glow or texture.</p>
+          <strong>Glass</strong>
+          <p>System material and translucent grayscale layers.</p>
         </section>
         <section>
           <Laptop size={22} aria-hidden="true" />
