@@ -20,7 +20,10 @@ describe("App navigation state", () => {
 
   it("shows app chrome everywhere and locks space switching behind settings", async () => {
     render(<App />);
-    expect(screen.getByLabelText("Bakbak")).toBeVisible();
+    expect(document.querySelector(".window-titlebar")).not.toBeNull();
+    expect(
+      document.querySelector(".window-titlebar [aria-label='Bakbak']"),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("navigation", { name: "Bakbak spaces" }),
     ).not.toBeInTheDocument();
@@ -35,6 +38,9 @@ describe("App navigation state", () => {
     expect(screen.getByRole("button", { name: "Personal" })).toBeDisabled();
     expect(
       screen.getByRole("button", { name: "Bakbak server" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Hide channel panel" }),
     ).toBeDisabled();
 
     await userEvent.click(
@@ -85,6 +91,14 @@ describe("App navigation state", () => {
     const shell = document.querySelector(".desktop-shell");
     expect(shell).toHaveAttribute("data-left-panel", "visible");
     expect(shell).toHaveAttribute("data-right-panel", "visible");
+    expect(
+      screen
+        .getByRole("button", { name: "Hide channel panel" })
+        .closest(".window-titlebar"),
+    ).not.toBeNull();
+    expect(
+      document.querySelector(".top-bar [aria-controls='context-panel']"),
+    ).not.toBeInTheDocument();
     await userEvent.click(
       screen.getByRole("button", { name: "Hide channel panel" }),
     );

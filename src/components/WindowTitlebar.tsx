@@ -1,4 +1,13 @@
-import { Copy, Minus, Square, X } from "lucide-react";
+import {
+  Copy,
+  Minus,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  Square,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import type { AppSpace } from "../features/server/app-space";
 import {
@@ -16,6 +25,13 @@ interface WindowTitlebarProps {
   serverAvailable: boolean;
   switchDisabled: boolean;
   onSelectSpace: (space: AppSpace) => void;
+  panelControls?: {
+    leftPanelVisible: boolean;
+    rightPanelVisible: boolean;
+    disabled: boolean;
+    onToggleLeftPanel: () => void;
+    onToggleRightPanel: () => void;
+  };
   chromeAdapter?: WindowChromeAdapter;
 }
 
@@ -28,6 +44,7 @@ export function WindowTitlebar({
   serverAvailable,
   switchDisabled,
   onSelectSpace,
+  panelControls,
   chromeAdapter,
 }: WindowTitlebarProps) {
   const adapter = useMemo(
@@ -82,12 +99,7 @@ export function WindowTitlebar({
         className="window-titlebar__drag window-titlebar__drag--leading"
         onMouseDown={handleDrag}
         onDoubleClick={handleDoubleClick}
-      >
-        <span className="window-titlebar__brand" aria-label="Bakbak">
-          <img src="/bakbak.svg" alt="" />
-          <strong>Bakbak</strong>
-        </span>
-      </div>
+      />
       <div className="window-titlebar__center">
         {showSpaceSwitcher ? (
           <SpaceSwitcher
@@ -107,6 +119,50 @@ export function WindowTitlebar({
           onMouseDown={handleDrag}
           onDoubleClick={handleDoubleClick}
         />
+        {panelControls ? (
+          <div
+            className="titlebar-panel-controls"
+            role="group"
+            aria-label="Panel controls"
+          >
+            <button
+              type="button"
+              aria-label={
+                panelControls.leftPanelVisible
+                  ? "Hide channel panel"
+                  : "Show channel panel"
+              }
+              aria-controls="context-panel"
+              aria-expanded={panelControls.leftPanelVisible}
+              disabled={panelControls.disabled}
+              onClick={panelControls.onToggleLeftPanel}
+            >
+              {panelControls.leftPanelVisible ? (
+                <PanelLeftClose size={18} />
+              ) : (
+                <PanelLeftOpen size={18} />
+              )}
+            </button>
+            <button
+              type="button"
+              aria-label={
+                panelControls.rightPanelVisible
+                  ? "Hide member panel"
+                  : "Show member panel"
+              }
+              aria-controls="member-panel"
+              aria-expanded={panelControls.rightPanelVisible}
+              disabled={panelControls.disabled}
+              onClick={panelControls.onToggleRightPanel}
+            >
+              {panelControls.rightPanelVisible ? (
+                <PanelRightClose size={18} />
+              ) : (
+                <PanelRightOpen size={18} />
+              )}
+            </button>
+          </div>
+        ) : null}
         {adapter.platform === "windows" ? (
           <div
             className="window-controls"

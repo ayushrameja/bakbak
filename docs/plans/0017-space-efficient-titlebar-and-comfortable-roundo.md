@@ -19,17 +19,20 @@ from plan 0016 remains unchanged. Every pixel should earn its rent.
 ## Decisions
 
 1. The titlebar is always present. Authentication, invite, and startup states
-   show Bakbak branding; the signed-in shell also shows the space switch.
+   keep it navigation-free and retain branding in their main content; the
+   signed-in shell shows the space switch without redundant left-edge branding.
 2. macOS uses `Overlay`, a hidden native title, native decorations, and a
-   `16×16` traffic-light position. Windows disables decorations but preserves
+   `16×24` traffic-light position so the controls align with the 48 px bar.
+   Windows disables decorations but preserves
    resizing and the native window shadow, then exposes minimize,
    maximize/restore, and close through narrowly scoped Tauri permissions.
 3. Personal and Bakbak are navigation destinations, not an on/off setting, so
    the control uses two explicit labels, `aria-current`, arrow/Home/End
    navigation, unread markers, active-call state, and a disabled invite state.
-4. Blocking dialogs disable only the space switch. Window controls remain
-   usable. Voice fullscreen hides the complete titlebar and restores it on
-   exit.
+4. Both side-panel toggles live together at the titlebar's right edge rather
+   than bracketing the contextual header. Blocking dialogs disable the space
+   and panel controls while window controls remain usable. Voice fullscreen
+   hides the complete titlebar and restores it on exit.
 5. Layout preferences remain v2 with 232/240 px side-panel defaults and the
    existing 200–360 px persisted range. Recovered rail width goes to the center
    canvas; no preference migration is needed.
@@ -51,6 +54,8 @@ from plan 0016 remains unchanged. Every pixel should earn its rent.
       minimum 420 px center canvas at the 1024 px minimum window.
 - [x] Reduce the contextual header to 60 px and apply the approved typography,
       spacing, radius, and interaction tokens across the renderer.
+- [x] Remove redundant titlebar branding, vertically align native macOS window
+      controls, and group both panel toggles at the titlebar's right edge.
 - [x] Add component, App integration, native-config, typography, and existing
       media-layout regression coverage.
 - [x] Complete browser visual checks in the dark scheme at 1024×680, 1280×800,

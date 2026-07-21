@@ -538,37 +538,6 @@ button:active:not(:disabled) {
   cursor: default;
 }
 
-.window-titlebar__drag--leading {
-  padding-left: var(--space-3);
-}
-
-.window-titlebar[data-platform="macos"] .window-titlebar__drag--leading {
-  padding-left: 82px;
-}
-
-.window-titlebar__brand {
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--muted);
-  pointer-events: none;
-}
-
-.window-titlebar__brand img {
-  width: 24px;
-  height: 24px;
-  object-fit: contain;
-}
-
-.window-titlebar__brand strong {
-  overflow: hidden;
-  font-size: var(--font-ui);
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .window-titlebar__center {
   min-width: 232px;
   display: grid;
@@ -579,11 +548,52 @@ button:active:not(:disabled) {
 .window-titlebar__trailing {
   min-width: 0;
   display: flex;
+  align-items: center;
   justify-content: flex-end;
 }
 
 .window-titlebar__drag--trailing {
   flex: 1;
+}
+
+.titlebar-panel-controls {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 var(--space-2);
+}
+
+.titlebar-panel-controls > button {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    background 140ms ease;
+}
+
+.titlebar-panel-controls > button:hover,
+.titlebar-panel-controls > button:focus-visible {
+  color: var(--text);
+  background: var(--panel-hover);
+}
+
+.titlebar-panel-controls > button[aria-expanded="true"] {
+  color: var(--text);
+}
+
+.titlebar-panel-controls > button:disabled {
+  color: var(--faint);
+  cursor: default;
+  opacity: 0.55;
 }
 
 .space-switcher {
@@ -1086,11 +1096,6 @@ button:active:not(:disabled) {
   font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.top-bar__actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
 }
 .top-bar__member-count {
   height: 34px;
@@ -3118,10 +3123,6 @@ body {
   color: var(--muted);
 }
 
-.top-bar__actions {
-  gap: 10px;
-}
-
 .connection-status {
   color: var(--green);
   border-color: var(--green-border);
@@ -4195,26 +4196,6 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.panel-toggle {
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  color: var(--muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.panel-toggle:hover,
-.panel-toggle:focus-visible {
-  color: var(--text);
-  border-color: var(--line-bright);
-  background: var(--panel-hover);
 }
 
 .member-panel {
@@ -7152,7 +7133,6 @@ button.message-mention:hover {
   font-weight: 700;
 }
 
-.panel-toggle,
 .personal-sidebar__header > button {
   width: var(--control-height);
   height: var(--control-height);
@@ -7365,6 +7345,7 @@ button:active:not(:disabled) {
   select,
   textarea,
   .space-switcher > button,
+  .titlebar-panel-controls > button,
   .window-controls > button {
     transition: none !important;
   }

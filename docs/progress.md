@@ -3334,3 +3334,55 @@ x86_64-pc-windows-msvc --tests` — passed, including compilation of the
 - **Next:** Install the macOS ARM64 app and a Windows x64 build, then complete
   plan 0017's two-scheme, three-resolution interaction matrix before v1
   distribution.
+
+## 2026-07-21 — Titlebar alignment and panel-control follow-up
+
+- **Completed:** Removed the redundant Bakbak icon/name from the titlebar,
+  leaving the left side as a clean native drag region. Moved the context and
+  details panel toggles out of the 60 px contextual header and grouped them as
+  two VS Code-style 32 px controls at the titlebar's right edge, immediately
+  before Windows window controls when present. Preserved their accessible
+  labels, `aria-controls`, expanded state, independent persistence, and all
+  four panel combinations; blocking dialogs disable these layout controls
+  alongside the space switch while native window controls remain available.
+  Adjusted the macOS traffic-light inset from 16×16 to 16×24 so the native
+  controls align vertically with the 48 px renderer titlebar, and updated the
+  platform drift regression.
+- **Decisions:** Authentication, invite, and startup screens retain product
+  branding in their main content instead of duplicating it in window chrome.
+  The contextual header now has one job—identify the current person or room.
+  Panel controls use icon-only, borderless hover surfaces at the titlebar's
+  right edge; the Personal/Bakbak segment remains geometrically centered.
+- **Validation:**
+  - Focused WindowTitlebar/App Vitest run — passed 2 files with 13 tests,
+    including right-edge placement, callbacks, removal from the contextual
+    header, persistence, dialog disabling, and native/browser control variants.
+  - `node --test scripts/window-chrome-config.test.mjs` — passed 2/2 platform
+    configuration and capability checks with the new macOS inset.
+  - Initial `pnpm typecheck` — failed only because exact optional-property
+    checking rejected an explicitly passed `undefined` panel-control contract;
+    the prop is now omitted outside the signed-in shell. The final strict
+    typecheck passed.
+  - Mock-browser visual/interaction QA at 1280×800 — passed. The titlebar
+    measured 48 px, segment 232×36 px at x=524, and right control group 82×32 px
+    at x=1198; no titlebar brand or old contextual-header toggle remained.
+    Both panel controls independently hid/restored their panels, the all-hidden
+    canvas expanded to 1264 px, Settings disabled both controls, page overflow
+    was absent, and the console had no errors.
+  - Final `pnpm check` — passed formatting, ESLint, both strict TypeScript
+    projects, 53 Vitest files with 287 tests, 19/19 Node tests, version sync,
+    production build, and secret scan. Vite retains the existing non-blocking
+    large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are absent.
+  - Final `pnpm security:scan`, Mach-O architecture inspection, and
+    `git diff --check` — passed.
+- **Documentation updated:** Updated plan 0017, the architecture titlebar/UI
+  composition contract, and this canonical progress log.
+- **Known limitations:** Browser QA cannot display native macOS traffic lights,
+  so the 16×24 installed alignment still needs direct observation. Windows
+  native control spacing and installed light-mode rendering remain part of plan
+  0017's release matrix. The local macOS bundle is not notarized.
+- **Next:** Open the rebuilt macOS app to confirm traffic-light centering, then
+  repeat the titlebar/control check in the Windows x64 build before v1
+  distribution.

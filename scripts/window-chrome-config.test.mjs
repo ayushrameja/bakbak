@@ -35,7 +35,7 @@ test("macOS and Windows titlebar configs retain the shared main-window contract"
   assert.equal(macos.app.windows[0].decorations, true);
   assert.equal(macos.app.windows[0].titleBarStyle, "Overlay");
   assert.equal(macos.app.windows[0].hiddenTitle, true);
-  assert.deepEqual(macos.app.windows[0].trafficLightPosition, { x: 16, y: 16 });
+  assert.deepEqual(macos.app.windows[0].trafficLightPosition, { x: 16, y: 24 });
   assert.equal(windows.app.windows[0].decorations, false);
   assert.equal(windows.app.windows[0].shadow, true);
 });

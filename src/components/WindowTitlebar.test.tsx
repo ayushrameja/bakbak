@@ -106,7 +106,44 @@ describe("WindowTitlebar", () => {
     expect(spies.toggleMaximize).toHaveBeenCalledOnce();
   });
 
-  it("shows only Bakbak branding before the signed-in shell is ready", () => {
+  it("puts both panel toggles at the right side of the titlebar", async () => {
+    const onToggleLeftPanel = vi.fn();
+    const onToggleRightPanel = vi.fn();
+    const { adapter } = createAdapter("web");
+    render(
+      <WindowTitlebar
+        showSpaceSwitcher
+        activeSpace="server"
+        personalUnread={false}
+        serverUnread={false}
+        callActive={false}
+        serverAvailable
+        switchDisabled={false}
+        onSelectSpace={vi.fn()}
+        panelControls={{
+          leftPanelVisible: true,
+          rightPanelVisible: false,
+          disabled: false,
+          onToggleLeftPanel,
+          onToggleRightPanel,
+        }}
+        chromeAdapter={adapter}
+      />,
+    );
+
+    const controls = screen.getByRole("group", { name: "Panel controls" });
+    expect(controls.parentElement).toHaveClass("window-titlebar__trailing");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Hide channel panel" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Show member panel" }),
+    );
+    expect(onToggleLeftPanel).toHaveBeenCalledOnce();
+    expect(onToggleRightPanel).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the pre-shell titlebar free of branding and navigation", () => {
     const { adapter } = createAdapter("web");
     render(
       <WindowTitlebar
@@ -121,9 +158,12 @@ describe("WindowTitlebar", () => {
         chromeAdapter={adapter}
       />,
     );
-    expect(screen.getByLabelText("Bakbak")).toBeVisible();
+    expect(screen.queryByLabelText("Bakbak")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("navigation", { name: "Bakbak spaces" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: "Panel controls" }),
     ).not.toBeInTheDocument();
   });
 });

@@ -11,7 +11,10 @@ As of 2026-07-21, Bakbak has a complete local/mock product path and production
 Supabase and LiveKit adapters. The renderer provides the invite-only welcome
 flow and one shared flat monochrome shell. An always-present 48 px titlebar
 centres the Personal/Bakbak space switch without interrupting voice; startup,
-authentication, and invite-only states show branding without the switch.
+authentication, and invite-only states keep a navigation-free titlebar while
+their main content owns product branding. The titlebar's right edge holds both
+side-panel toggles, leaving the contextual header dedicated to the current
+person or room.
 macOS retains native overlay traffic lights, Windows uses renderer-owned window
 controls, and browser/mock mode exposes neither platform's controls. The
 adjacent context panel defaults to 232 px, the conversation canvas retains at
@@ -378,10 +381,11 @@ The renderer uses a titlebar, three-panel desktop layout, and modal layer:
 
 1. The 48 px titlebar owns window drag behavior and centres the two-label
    Personal/Bakbak switch. Unread and active-call markers remain attached to
-   their spaces, blocking dialogs disable only space navigation, and voice
-   fullscreen temporarily removes the titlebar. A separate 60 px contextual
-   header beneath it names the current conversation/room and owns both panel
-   toggles.
+   their spaces, blocking dialogs disable space and panel navigation while
+   leaving native window controls available, and voice fullscreen temporarily
+   removes the titlebar. Its right-edge layout controls independently toggle
+   the context and details panels. A separate 60 px contextual header beneath
+   it is dedicated to the current conversation or room.
 2. The 232 px channel panel contains seven ordered Unlucky Boys categories with
    18 text rooms and six voice rooms in mixed source order, plus
    active-call/sidebar controls, signed-in user actions, voice occupancy, and
@@ -446,8 +450,9 @@ Tauri owns the native window, capabilities, application identity, and desktop
 bundles. V1 should expose the smallest capability set needed by the renderer.
 The shared main-window geometry remains 1280×800 with a 1024×680 minimum,
 resizing, and label `main` across the base, macOS, and Windows configurations.
-macOS uses the overlay titlebar with hidden native title and a 16×16 traffic-
-light inset. Windows disables native decorations while retaining the native
+macOS uses the overlay titlebar with hidden native title and a 16 px horizontal,
+24 px vertical traffic-light inset that centres the controls in the 48 px bar.
+Windows disables native decorations while retaining the native
 shadow and exposes renderer minimize, toggle-maximize, close, drag, and
 maximize-state reconciliation through an injectable adapter. Capabilities grant
 those operations only to the main window. Linux custom chrome remains deferred.

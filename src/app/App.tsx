@@ -1,13 +1,4 @@
-import {
-  CircleAlert,
-  Hash,
-  MessageCircle,
-  PanelLeftClose,
-  PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
-  Volume2,
-} from "lucide-react";
+import { CircleAlert, Hash, MessageCircle, Volume2 } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -1484,6 +1475,25 @@ export default function App() {
           serverAvailable={Boolean(workspace)}
           switchDisabled={blockingDialogOpen}
           onSelectSpace={handleSelectSpace}
+          {...(showSpaceSwitcher
+            ? {
+                panelControls: {
+                  leftPanelVisible: layoutPreferences.leftPanelVisible,
+                  rightPanelVisible: layoutPreferences.rightPanelVisible,
+                  disabled: blockingDialogOpen,
+                  onToggleLeftPanel: () =>
+                    updateLayoutPreferences((current) => ({
+                      ...current,
+                      leftPanelVisible: !current.leftPanelVisible,
+                    })),
+                  onToggleRightPanel: () =>
+                    updateLayoutPreferences((current) => ({
+                      ...current,
+                      rightPanelVisible: !current.rightPanelVisible,
+                    })),
+                },
+              }
+            : {})}
         />
         <div className="app-frame__content">{content}</div>
       </div>
@@ -1700,20 +1710,6 @@ export default function App() {
             activeSpace === "personal"
               ? (selectedConversation?.otherMember ?? null)
               : null
-          }
-          leftPanelVisible={layoutPreferences.leftPanelVisible}
-          rightPanelVisible={layoutPreferences.rightPanelVisible}
-          onToggleLeftPanel={() =>
-            updateLayoutPreferences((current) => ({
-              ...current,
-              leftPanelVisible: !current.leftPanelVisible,
-            }))
-          }
-          onToggleRightPanel={() =>
-            updateLayoutPreferences((current) => ({
-              ...current,
-              rightPanelVisible: !current.rightPanelVisible,
-            }))
           }
         />
         <div className="content-stage">
@@ -1982,37 +1978,13 @@ export default function App() {
 function TopBar({
   channel,
   directMember,
-  leftPanelVisible,
-  rightPanelVisible,
-  onToggleLeftPanel,
-  onToggleRightPanel,
 }: {
   channel: Channel | null;
   directMember: ServerMember | null;
-  leftPanelVisible: boolean;
-  rightPanelVisible: boolean;
-  onToggleLeftPanel: () => void;
-  onToggleRightPanel: () => void;
 }) {
   return (
     <header className="top-bar">
       <div className="top-bar__leading">
-        <button
-          className="panel-toggle"
-          type="button"
-          aria-label={
-            leftPanelVisible ? "Hide channel panel" : "Show channel panel"
-          }
-          aria-controls="context-panel"
-          aria-expanded={leftPanelVisible}
-          onClick={onToggleLeftPanel}
-        >
-          {leftPanelVisible ? (
-            <PanelLeftClose size={18} />
-          ) : (
-            <PanelLeftOpen size={18} />
-          )}
-        </button>
         <div className="top-bar__channel">
           {directMember ? (
             <MessageCircle size={20} />
@@ -2033,24 +2005,6 @@ function TopBar({
             </span>
           </div>
         </div>
-      </div>
-      <div className="top-bar__actions">
-        <button
-          className="panel-toggle"
-          type="button"
-          aria-label={
-            rightPanelVisible ? "Hide member panel" : "Show member panel"
-          }
-          aria-controls="member-panel"
-          aria-expanded={rightPanelVisible}
-          onClick={onToggleRightPanel}
-        >
-          {rightPanelVisible ? (
-            <PanelRightClose size={18} />
-          ) : (
-            <PanelRightOpen size={18} />
-          )}
-        </button>
       </div>
     </header>
   );
