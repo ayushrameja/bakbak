@@ -18,6 +18,31 @@ vi.mock("../lib/env", () => ({
 describe("App navigation state", () => {
   beforeEach(() => window.localStorage.clear());
 
+  it("shows app chrome everywhere and locks space switching behind settings", async () => {
+    render(<App />);
+    expect(screen.getByLabelText("Bakbak")).toBeVisible();
+    expect(
+      screen.queryByRole("navigation", { name: "Bakbak spaces" }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Enter the preview" }),
+    );
+    expect(
+      screen.getByRole("navigation", { name: "Bakbak spaces" }),
+    ).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.getByRole("button", { name: "Personal" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Bakbak server" }),
+    ).toBeDisabled();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Close settings" }),
+    );
+    expect(screen.getByRole("button", { name: "Personal" })).toBeEnabled();
+  });
+
   it("preserves each channel draft while visiting settings and other rooms", async () => {
     render(<App />);
     await userEvent.click(

@@ -5,7 +5,6 @@ export const DEFAULT_RIGHT_PANEL_WIDTH = 240;
 export const MIN_SIDE_PANEL_WIDTH = 200;
 export const MAX_SIDE_PANEL_WIDTH = 360;
 export const MIN_CONTENT_WIDTH = 420;
-export const DESTINATION_RAIL_WIDTH = 68;
 
 export interface LayoutPreferences {
   leftPanelVisible: boolean;

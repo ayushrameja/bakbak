@@ -15,6 +15,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
 import { ProfilePopover } from "../components/ProfilePopover";
 import { PanelResizer } from "../components/PanelResizer";
@@ -22,6 +23,7 @@ import type {
   LoadProfileMedia,
   OpenProfile,
 } from "../components/ProfileTrigger";
+import { WindowTitlebar } from "../components/WindowTitlebar";
 import { AuthScreen } from "../features/auth/AuthScreen";
 import { InviteGate } from "../features/auth/InviteGate";
 import { ChannelDialog } from "../features/channels/ChannelDialog";
@@ -40,10 +42,7 @@ import {
   segmentsToFallback,
 } from "../features/chat/message-content";
 import { MemberPanel } from "../features/server/MemberPanel";
-import {
-  DestinationRail,
-  type AppSpace,
-} from "../features/server/DestinationRail";
+import type { AppSpace } from "../features/server/app-space";
 import {
   loadInterfaceSoundPreferences,
   saveInterfaceSoundPreferences,
@@ -54,7 +53,6 @@ import {
   loadLayoutPreferences,
   DEFAULT_CONTEXT_PANEL_WIDTH,
   DEFAULT_RIGHT_PANEL_WIDTH,
-  DESTINATION_RAIL_WIDTH,
   MAX_SIDE_PANEL_WIDTH,
   MIN_CONTENT_WIDTH,
   MIN_SIDE_PANEL_WIDTH,
@@ -1466,26 +1464,52 @@ export default function App() {
     setActiveView("channel");
   }
 
-  if (authLoading) {
+  const personalUnread = directConversations.some(
+    (conversation) => conversation.hasUnread,
+  );
+  const blockingDialogOpen =
+    activeView === "settings" ||
+    channelDialog !== null ||
+    screenShareDialogOpen;
+
+  function renderAppFrame(content: ReactNode, showSpaceSwitcher = false) {
     return (
+      <div className="app-frame">
+        <WindowTitlebar
+          showSpaceSwitcher={showSpaceSwitcher}
+          activeSpace={activeSpace}
+          personalUnread={personalUnread}
+          serverUnread={unreadChannelIds.size > 0}
+          callActive={voice.status !== "disconnected"}
+          serverAvailable={Boolean(workspace)}
+          switchDisabled={blockingDialogOpen}
+          onSelectSpace={handleSelectSpace}
+        />
+        <div className="app-frame__content">{content}</div>
+      </div>
+    );
+  }
+
+  if (authLoading) {
+    return renderAppFrame(
       <main className="app-loading">
         <span className="brand-mark">
           <MessageCircle size={24} />
         </span>
         <h1>Opening Bakbak</h1>
         <p>Checking whether you already have a seat…</p>
-      </main>
+      </main>,
     );
   }
 
   if (!user) {
-    return (
+    return renderAppFrame(
       <AuthScreen
         mode={appConfig.dataMode}
         configurationWarning={appConfig.configurationWarning}
         onAuthenticated={setUser}
         onEnterMock={() => setUser(mockCurrentUser)}
-      />
+      />,
     );
   }
 
@@ -1496,7 +1520,7 @@ export default function App() {
         directConversations.length === 0)) &&
     appConfig.dataMode === "live"
   ) {
-    return (
+    return renderAppFrame(
       <InviteGate
         user={user}
         onRedeemed={() => {
@@ -1510,12 +1534,12 @@ export default function App() {
             ? () => setInviteGateOpen(false)
             : undefined
         }
-      />
+      />,
     );
   }
 
   if (activeSpace === "server" && (!workspace || !selectedChannel)) {
-    return (
+    return renderAppFrame(
       <main className="app-loading">
         <span className="brand-mark">
           <MessageCircle size={24} />
@@ -1534,7 +1558,7 @@ export default function App() {
             Back to sign in
           </button>
         ) : null}
-      </main>
+      </main>,
     );
   }
 
@@ -1546,7 +1570,7 @@ export default function App() {
       ].map((member) => [member.id, member]),
     ).values(),
   );
-  const reservedShellWidth = DESTINATION_RAIL_WIDTH + MIN_CONTENT_WIDTH + 30;
+  const reservedShellWidth = MIN_CONTENT_WIDTH + 30;
   const contextMaximum = Math.max(
     MIN_SIDE_PANEL_WIDTH,
     Math.min(
@@ -1582,7 +1606,7 @@ export default function App() {
     "--right-panel-width": `${rightPanelWidth}px`,
   } as CSSProperties;
 
-  return (
+  return renderAppFrame(
     <div
       className="desktop-shell"
       style={shellStyle}
@@ -1593,16 +1617,6 @@ export default function App() {
         layoutPreferences.rightPanelVisible ? "visible" : "hidden"
       }
     >
-      <DestinationRail
-        activeSpace={activeSpace}
-        personalUnread={directConversations.some(
-          (conversation) => conversation.hasUnread,
-        )}
-        serverUnread={unreadChannelIds.size > 0}
-        callActive={voice.status !== "disconnected"}
-        serverAvailable={Boolean(workspace)}
-        onSelect={handleSelectSpace}
-      />
       {layoutPreferences.leftPanelVisible ? (
         activeSpace === "server" && workspace && selectedChannel ? (
           <ChannelSidebar
@@ -1960,7 +1974,8 @@ export default function App() {
           onClose={() => setActiveView("channel")}
         />
       ) : null}
-    </div>
+    </div>,
+    true,
   );
 }
 

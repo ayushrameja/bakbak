@@ -9,11 +9,14 @@ and phase completion belong in the numbered files under `docs/plans`.
 
 As of 2026-07-21, Bakbak has a complete local/mock product path and production
 Supabase and LiveKit adapters. The renderer provides the invite-only welcome
-flow and one shared flat monochrome shell. A fixed 68 px
-destination rail switches Personal and the single Bakbak server without
-interrupting voice. The adjacent context panel defaults to 232 px, the
-conversation canvas retains at least 420 px at the 1024 px minimum window, and
-the details panel defaults to 240 px. Both side panels are independently
+flow and one shared flat monochrome shell. An always-present 48 px titlebar
+centres the Personal/Bakbak space switch without interrupting voice; startup,
+authentication, and invite-only states show branding without the switch.
+macOS retains native overlay traffic lights, Windows uses renderer-owned window
+controls, and browser/mock mode exposes neither platform's controls. The
+adjacent context panel defaults to 232 px, the conversation canvas retains at
+least 420 px at the 1024 px minimum window, and the details panel defaults to
+240 px. Both side panels are independently
 optional and pointer/keyboard resizable from 200–360 px; v2 layout preferences
 persist widths and visibility per device. Settings is a centered,
 focus-trapped in-app modal with internal scrolling, active-call controls, and
@@ -29,7 +32,9 @@ remains in Settings as a read-only summary of `Flat`, `Follows system`, and
 `Roundo`. Legacy `bakbak.appearancePreferences.*` values are inert and
 intentionally left in local storage. Roundo v2.0 is served from a committed
 variable WOFF2 with upright weights 200–700 and a generic sans-serif fallback
-for unsupported glyphs. Profiles support validated display names, 190-character plain-text
+for unsupported glyphs; product UI uses only 500, 600, and 700, never renders
+below 11 px, and gives chat/composer text a 15 px weight-500 baseline. Profiles
+support validated display names, 190-character plain-text
 descriptions, static or GIF avatars, 3:1 static or GIF covers, integer cover
 focal points, and an accessible Discord-style anchored card. Admin-only
 controls create or rename text and voice channels, while Realtime reconciles
@@ -327,7 +332,8 @@ bakbak/
 │       ├── 0013-local-microphone-processing-and-voice-lab.md
 │       ├── 0014-bakbak-signature-shell-personal-dms-live-watching.md
 │       ├── 0015-screen-share-reliability-and-call-layout.md
-│       └── 0016-flat-monochrome-roundo.md
+│       ├── 0016-flat-monochrome-roundo.md
+│       └── 0017-space-efficient-titlebar-and-comfortable-roundo.md
 ├── public/
 │   ├── bakbak.svg                 # renderer favicon/source logo
 │   ├── fonts/roundo/              # pinned Roundo v2.0 variable WOFF2
@@ -368,9 +374,15 @@ architectural placeholder folders are not used.
 
 ## UI composition
 
-The renderer uses a three-panel desktop layout plus a modal layer:
+The renderer uses a titlebar, three-panel desktop layout, and modal layer:
 
-1. The 232 px channel panel contains seven ordered Unlucky Boys categories with
+1. The 48 px titlebar owns window drag behavior and centres the two-label
+   Personal/Bakbak switch. Unread and active-call markers remain attached to
+   their spaces, blocking dialogs disable only space navigation, and voice
+   fullscreen temporarily removes the titlebar. A separate 60 px contextual
+   header beneath it names the current conversation/room and owns both panel
+   toggles.
+2. The 232 px channel panel contains seven ordered Unlucky Boys categories with
    18 text rooms and six voice rooms in mixed source order, plus
    active-call/sidebar controls, signed-in user actions, voice occupancy, and
    admin-only create/rename controls. The shelf scrolls independently; admin
@@ -378,16 +390,16 @@ The renderer uses a three-panel desktop layout plus a modal layer:
    plan 0012. Occupied rooms show one room-active timer; their compact occupant
    rows omit personal timers/local suffixes and ring the current room's active
    speakers.
-2. The flexible center canvas contains text chat or the voice room. Header-edge
+3. The flexible center canvas contains text chat or the voice room. Header-edge
    buttons independently toggle the left and right panels, immediately
    reallocating space across all four combinations.
-3. The 240 px member panel is visible by default and groups online/idle and
+4. The 240 px member panel is visible by default and groups online/idle and
    offline members in normal document flow. It is not a drawer or overlay.
-4. During a call, an absolute centered dock appears across channel navigation.
+5. During a call, an absolute centered dock appears across channel navigation.
    It auto-hides without consuming layout, clears the text composer, remains
    keyboard discoverable, and owns its More menu and compact 480×380 maximum
    soundboard popover anchoring.
-5. Selecting a voice channel joins it immediately, and selecting another voice
+6. Selecting a voice channel joins it immediately, and selecting another voice
    channel switches the active call. Hover/focus can prepare one candidate room
    without media or presence side effects; click consumes that work and shows a
    compact stage loader instead of a blank canvas. After connection, people
@@ -398,7 +410,7 @@ The renderer uses a three-panel desktop layout plus a modal layer:
    strip. Clicking the active media or Back to grid returns to the gallery;
    watched share playback continues there, while target loss also clears its
    subscription.
-6. Shared dialogs use compact/default/wide widths, responsive viewport padding,
+7. Shared dialogs use compact/default/wide widths, responsive viewport padding,
    and a `100dvh`-bounded grid with a fixed header, internally scrollable body,
    and sticky wrapping footer actions. Buttons stack at narrow widths. The
    layer stays above the soundboard while retaining focus
@@ -407,7 +419,7 @@ The renderer uses a three-panel desktop layout plus a modal layer:
    rich-profile editing, and confirmed logout. Its focus lifecycle runs once
    per mount so changing parent callbacks, presence, or voice state cannot
    steal focus from a field.
-7. One application-owned profile popover anchors to member rows, message
+8. One application-owned profile popover anchors to member rows, message
    authors, mentions, voice identities, or the user dock. It prefers the
    trigger's right side, flips/clamps inside the viewport, contains focus, and
    shows only current-server role/presence plus global profile fields.
@@ -432,6 +444,13 @@ sound objects. It must never contain a service-role key or LiveKit API secret.
 
 Tauri owns the native window, capabilities, application identity, and desktop
 bundles. V1 should expose the smallest capability set needed by the renderer.
+The shared main-window geometry remains 1280×800 with a 1024×680 minimum,
+resizing, and label `main` across the base, macOS, and Windows configurations.
+macOS uses the overlay titlebar with hidden native title and a 16×16 traffic-
+light inset. Windows disables native decorations while retaining the native
+shadow and exposes renderer minimize, toggle-maximize, close, drag, and
+maximize-state reconciliation through an injectable adapter. Capabilities grant
+those operations only to the main window. Linux custom chrome remains deferred.
 The main window enables Tauri's built-in interface zoom hotkeys, providing
 Cmd/Ctrl `+`, Cmd/Ctrl `-`, and Cmd/Ctrl `0` through the narrowly scoped
 webview-zoom capability.
@@ -603,9 +622,9 @@ An invite-management UI is deferred until post-v1.
 
 ### Application shell and direct messages
 
-1. The 68 px destination rail switches an `AppSpace` discriminant between
-   Personal and the single server. Each space keeps its latest in-memory
-   conversation/channel selection. A cold start remains on Bakbak when
+1. The titlebar's segmented switch selects a navigation-neutral `AppSpace`
+   discriminant between Personal and the single server. Each space keeps its
+   latest in-memory conversation/channel selection. A cold start remains on Bakbak when
    membership loads; missing membership plus established DM history resolves
    to Personal; neither history nor membership resolves to InviteGate.
 2. The context panel swaps the Personal conversation list and server channel
@@ -637,7 +656,11 @@ An invite-management UI is deferred until post-v1.
    mounting React. CSS `prefers-color-scheme` supplies the light/dark token
    override, so operating-system changes apply without JavaScript or stored
    state. Legacy `bakbak.appearancePreferences.*` keys are neither read nor
-   deleted.
+   deleted. Shared type, spacing, height, and radius tokens enforce the
+   500/600/700 UI hierarchy, 4 px spacing rhythm, 36/40/44 px controls and rows,
+   52 px composer, and restrained 10/14/16/18 px curves. Hover transitions use
+   color and border changes; reduced motion disables transitions and press
+   scaling.
 2. Profile edits validate a trimmed 1–50 character display name, a
    190-character plain-text description, integer 0–100 cover coordinates, and
    optional PNG/JPEG/WebP/GIF media. Avatars are limited to 5 MiB, covers to 10
@@ -1268,6 +1291,12 @@ that it has passed.
 
 ## Current limitations and deferred work
 
+- Plan 0017's 48 px titlebar, segmented Personal/Bakbak switch, rail-free
+  geometry, comfortable Roundo scale, platform configurations, adapter tests,
+  and dark mock-browser checks at 1024×680, 1280×800, and 2560×1440 are
+  implemented. Installed macOS and Windows verification still must cover
+  native controls, dragging, maximize/restore, resizing, light/dark modes,
+  offline font loading, OS shortcuts, and screen-share cleanup on close.
 - Plan 0016's single system-following grayscale appearance, read-only
   Appearance page, local Roundo bundle, and regression guard pass the complete
   renderer suite, production build, secret scan, and local macOS app build.

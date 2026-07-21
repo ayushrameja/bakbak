@@ -95,24 +95,28 @@ test("Roundo is local, pinned, licensed, and limited to supported weights", () =
   );
   assert.match(license, /SIL OPEN FONT LICENSE Version 1\.1/);
 
-  for (const match of styles.matchAll(/font-weight:\s*(\d+)/g)) {
-    assert.ok(Number(match[1]) <= 700, `unsupported font weight ${match[1]}`);
+  const productStyles = styles.replace(/@font-face\s*{[^}]*}/s, "");
+  for (const match of productStyles.matchAll(/font-weight:\s*(\d+)/g)) {
     assert.ok(
-      [200, 300, 400, 500, 600, 700].includes(Number(match[1])),
-      `unassigned typography weight ${match[1]}`,
+      [500, 600, 700].includes(Number(match[1])),
+      `unapproved product typography weight ${match[1]}`,
     );
   }
   for (const match of styles.matchAll(/font:\s*(\d+)\b/g)) {
     assert.ok(Number(match[1]) <= 700, `unsupported font weight ${match[1]}`);
   }
   for (const match of styles.matchAll(/font-size:\s*(\d+)px/g)) {
-    assert.ok(Number(match[1]) >= 9, `cramped text size ${match[1]}px`);
+    assert.ok(Number(match[1]) >= 11, `cramped text size ${match[1]}px`);
   }
+  assert.match(styles, /--font-chat:\s*15px;/);
   assert.match(
     styles,
-    /\.message__body p\s*{[^}]*font-size:\s*14px;[^}]*font-weight:\s*400;/s,
+    /\.message__body p\s*{[^}]*font-size:\s*var\(--font-chat\);[^}]*font-weight:\s*500;/s,
   );
-  assert.match(styles, /\.composer input\s*{[^}]*font-size:\s*14px;/s);
+  assert.match(
+    styles,
+    /\.composer input\s*{[^}]*font-size:\s*var\(--font-chat\);[^}]*font-weight:\s*500;/s,
+  );
 });
 
 test("legacy themes, visual effects, and appearance state stay removed", async () => {

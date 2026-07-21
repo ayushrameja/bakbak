@@ -3269,3 +3269,68 @@ x86_64-pc-windows-msvc --tests` — passed, including compilation of the
 - **Next:** Install the macOS app and a Windows build, disconnect network font
   access, then complete plan 0016's two-scheme/two-viewport visual and dense
   typography matrix before v1 distribution.
+
+## 2026-07-21 — Space-efficient titlebar and comfortable Roundo
+
+- **Completed:** Replaced the fixed 68 px destination rail with a 48 px app
+  frame titlebar and centered accessible Personal/Bakbak segmented switch.
+  Preserved per-space selection, drafts, unread markers, active calls, and the
+  rule that navigation never disconnects voice. Authentication, invite, and
+  startup states now show titlebar branding without navigation; blocking
+  dialogs disable only the switch, and voice fullscreen removes the complete
+  titlebar. Added an injectable native-window adapter, renderer-owned Windows
+  controls, native-overlay macOS configuration, narrow main-window
+  capabilities, and a platform-config drift regression. Removed
+  `DestinationRail`, moved `AppSpace` into a navigation-neutral module, removed
+  the rail width constant/grid column, and returned the recovered width to the
+  conversation canvas without changing layout preference v2 or its 232/240 px
+  defaults. Applied shared 11–16 px type, 4 px spacing, control/row/composer
+  height, 10/14/16/18 px curve, 500/600/700 weight, hover, press, focus, and
+  reduced-motion contracts across the renderer; chat and composer text are
+  15 px at weight 500 and the contextual header is 60 px.
+- **Decisions:** Personal and Bakbak are destinations rather than a binary
+  setting, so both labels remain visible and support Arrow/Home/End keyboard
+  movement. macOS keeps native traffic lights at a 16×16 inset; Windows is
+  undecorated but resizable with native shadow and app-owned controls; browser
+  mode exposes no fake window buttons. Linux chrome remains deferred. The
+  visual refresh keeps the one system-following grayscale theme, local Roundo,
+  flat surfaces, and the existing layout preference key with no data or
+  backend migration.
+- **Validation:**
+  - Focused component/integration runs — passed 15/15 Vitest assertions for
+    switch selection/keyboard/state, browser/macOS/Windows chrome behavior,
+    adapter reconciliation, and App dialog/auth integration; focused Node
+    layout/config/appearance regressions passed 8/8.
+  - Mock-browser visual and interaction QA — passed in the dark scheme at
+    1024×680, 1280×800, and 2560×1440. The 1024 px shell retained a 492 px
+    center canvas, titlebar/context headers measured 48/60 px, chat measured
+    15 px weight 500, Settings remained internally scrollable with its switch
+    disabled, Personal/server navigation worked, and no page overflow or
+    console errors appeared.
+  - First `pnpm check` — stopped at ESLint with 18 strict promise/mock errors in
+    the new window-adapter test seam. The no-op promises and spy ownership were
+    corrected; no runtime or product assertion failed.
+  - Final `pnpm check` — passed Prettier, ESLint with zero warnings, both strict
+    TypeScript projects, 53 Vitest files with 286 tests, 19/19 Node tests,
+    version synchronization, production build, and secret scan. Vite retains
+    the existing non-blocking large-chunk warning; the stylesheet is 119.86 kB
+    (20.24 kB gzip) and the main JavaScript chunk is 1,244.45 kB (343.54 kB
+    gzip).
+  - `pnpm tauri:build:local` — passed and produced the ad-hoc-signed ARM64
+    `Bakbak.app`. Notarization was skipped because Apple credentials are not
+    present.
+  - Final `pnpm security:scan`, Mach-O architecture inspection, and
+    `git diff --check` — passed for renderer/native artifacts, confirmed the
+    installed executable is ARM64, and found no whitespace errors.
+- **Documentation updated:** Added plan 0017, updated active plan 0001 and the
+  architecture shell/type/platform source of truth, and appended this canonical
+  log entry.
+- **Known limitations:** Browser QA covered dark mode only and cannot prove
+  native traffic-light placement, Windows hit-testing/shadow behavior,
+  dragging/double-click maximize, OS shortcuts, native resizing, installed
+  light/dark rendering, offline Roundo loading, or screen-share cleanup on
+  close. A Windows build and installed interaction matrix were not available in
+  this macOS workspace. The local macOS bundle is not notarized.
+- **Next:** Install the macOS ARM64 app and a Windows x64 build, then complete
+  plan 0017's two-scheme, three-resolution interaction matrix before v1
+  distribution.

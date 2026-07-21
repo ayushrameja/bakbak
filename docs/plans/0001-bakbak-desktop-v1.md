@@ -43,11 +43,12 @@ starts with context instead of archaeological guessing.
   application shell/providers in `src/app`.
 - Keep native configuration and Rust code isolated in `src-tauri`.
 - Use one flat monochrome desktop interface that follows the operating system's
-  light/dark setting, with independently
-  optional channel and member panels, a flexible conversation canvas, centered
-  settings modal, sidebar call block, and auto-hiding floating voice dock. The
-  renderer uses the locally bundled Roundo family throughout. The deferred
-  server rail remains out of scope until multi-server navigation.
+  light/dark setting. A 48 px app-owned titlebar switches Personal and Bakbak;
+  independently optional channel and member panels surround a flexible
+  conversation canvas, centered settings modal, sidebar call block, and
+  auto-hiding floating voice dock. The renderer uses the locally bundled
+  Roundo family at comfortable 500–700 product weights. A separate multi-server
+  rail remains deferred until multi-server navigation.
 - Commit `.env.example` only. Use ignored `.env` files locally and
   platform-managed secrets for backend functions.
 
@@ -189,6 +190,12 @@ typeface, and read-only Appearance summary are approved under
 `0016-flat-monochrome-roundo.md`. Plan 0016 supersedes the visual theme and
 typography portions of plans 0005, 0006, 0009, and 0014 while preserving their
 non-visual behavior.
+The app-owned cross-platform titlebar, Personal/Bakbak segmented switch,
+rail-free shell, and comfortable Roundo density are approved under
+`0017-space-efficient-titlebar-and-comfortable-roundo.md`. Plan 0017 supersedes
+plan 0014's fixed destination rail and plan 0016's dense 9–12 px product scale
+while preserving its local font, monochrome palette, and system light/dark
+behavior.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -286,8 +293,13 @@ non-visual behavior.
 - [x] Replace selectable appearances and their persistence with plan 0016's
       flat grayscale system-following CSS, local Roundo v2.0 family, and
       read-only Appearance summary.
+- [x] Replace the fixed destination rail with plan 0017's app-owned titlebar,
+      Personal/Bakbak segment, rail-free shell, and comfortable renderer-wide
+      Roundo density.
 - [ ] Complete plan 0016's installed dark/light typography and offline-font
       acceptance matrix on macOS and Windows.
+- [ ] Complete plan 0017's installed macOS/Windows titlebar, window-control,
+      resizing, and close-time screen-share acceptance matrix.
 - [ ] Evaluate optional global push-to-talk.
 - [x] Implement Windows process/display-matched audio with build gating and
       video-only fallback.
@@ -327,8 +339,8 @@ non-visual behavior.
 - Add focused tests with each behavior change rather than postponing all test
   work until distribution.
 - Reject chromatic first-party CSS/SVG colors, retired theme machinery,
-  unsupported Roundo weights, and changed vendored font bytes in regression
-  tests.
+  product text below 11 px/weight 500, unsupported Roundo weights, and changed
+  vendored font bytes in regression tests.
 
 ### Manual Apple Silicon macOS acceptance
 
