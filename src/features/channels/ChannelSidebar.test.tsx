@@ -84,6 +84,16 @@ function renderSidebar(
 }
 
 describe("ChannelSidebar room shelf", () => {
+  it("shows the Bakbak identity without the retired adda tagline", () => {
+    const { container } = renderSidebar([voiceChannel]);
+
+    expect(screen.getByText("Bakbak")).toBeVisible();
+    expect(screen.queryByText("Friends-only adda")).not.toBeInTheDocument();
+    expect(
+      container.querySelector('.server-brand__mark[src="/bakbak-orbit.png"]'),
+    ).toBeVisible();
+  });
+
   it("shows create and rename controls only to admins", async () => {
     const onCreateChannel = vi.fn();
     const onRenameChannel = vi.fn();

@@ -4,6 +4,7 @@ import { Avatar } from "../../components/Avatar";
 import type { LoadProfileMedia } from "../../components/ProfileTrigger";
 import { AVATAR_BUCKET, COVER_BUCKET } from "../../lib/profile-service";
 import type { ServerMember } from "../../lib/types";
+import { useReducedMotion } from "../../lib/use-reduced-motion";
 
 interface DirectPersonPanelProps {
   member: ServerMember | null;
@@ -17,13 +18,22 @@ export function DirectPersonPanel({
   sharesServer,
 }: DirectPersonPanelProps) {
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
+  const [coverAnimationUrl, setCoverAnimationUrl] = useState<string | null>(
+    null,
+  );
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarAnimationUrl, setAvatarAnimationUrl] = useState<string | null>(
+    null,
+  );
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
     let cancelled = false;
     if (!member) {
       setCoverUrl(null);
+      setCoverAnimationUrl(null);
       setAvatarUrl(null);
+      setAvatarAnimationUrl(null);
       return;
     }
     void Promise.all([
@@ -33,16 +43,28 @@ export function DirectPersonPanel({
       member.avatarUrl
         ? Promise.resolve(member.avatarUrl)
         : loadProfileMedia(AVATAR_BUCKET, member.avatarPath),
-    ]).then(([cover, avatar]) => {
+      reducedMotion
+        ? Promise.resolve(null)
+        : member.coverAnimationUrl
+          ? Promise.resolve(member.coverAnimationUrl)
+          : loadProfileMedia(COVER_BUCKET, member.coverAnimationPath),
+      reducedMotion
+        ? Promise.resolve(null)
+        : member.avatarAnimationUrl
+          ? Promise.resolve(member.avatarAnimationUrl)
+          : loadProfileMedia(AVATAR_BUCKET, member.avatarAnimationPath),
+    ]).then(([cover, avatar, animatedCover, animatedAvatar]) => {
       if (!cancelled) {
         setCoverUrl(cover);
+        setCoverAnimationUrl(animatedCover);
         setAvatarUrl(avatar);
+        setAvatarAnimationUrl(animatedAvatar);
       }
     });
     return () => {
       cancelled = true;
     };
-  }, [loadProfileMedia, member]);
+  }, [loadProfileMedia, member, reducedMotion]);
 
   if (!member) {
     return (
@@ -63,12 +85,36 @@ export function DirectPersonPanel({
       id="member-panel"
       aria-label={`${member.displayName} details`}
     >
-      <div
-        className="direct-person-panel__cover"
-        style={coverUrl ? { backgroundImage: `url("${coverUrl}")` } : undefined}
-      />
+      <div className="direct-person-panel__cover">
+        {coverUrl ? (
+          <img
+            className="direct-person-panel__cover-poster"
+            src={coverUrl}
+            alt=""
+            style={{
+              objectPosition: `${member.coverPositionX}% ${member.coverPositionY}%`,
+            }}
+          />
+        ) : null}
+        {coverAnimationUrl ? (
+          <img
+            className="direct-person-panel__cover-animation"
+            src={coverAnimationUrl}
+            alt=""
+            style={{
+              objectPosition: `${member.coverPositionX}% ${member.coverPositionY}%`,
+            }}
+          />
+        ) : null}
+      </div>
       <div className="direct-person-panel__identity">
-        <Avatar user={displayedMember} size="large" showStatus />
+        <Avatar
+          user={displayedMember}
+          size="large"
+          showStatus
+          animationUrl={avatarAnimationUrl}
+          animated={!reducedMotion}
+        />
         <h2>{member.displayName}</h2>
         <span>
           {member.status === "online"

@@ -188,8 +188,9 @@ describe("Soundboard", () => {
       { target: { value: "0.4" } },
     );
     expect(onVolumeChange).toHaveBeenCalledWith(0.4);
+    expect(screen.getByText("2/5")).toBeVisible();
     await userEvent.click(
-      screen.getByRole("button", { name: /Stop my sounds/ }),
+      screen.getByRole("button", { name: "Stop my sounds (2/5 playing)" }),
     );
     expect(onStopAll).toHaveBeenCalledOnce();
   });
@@ -201,7 +202,7 @@ describe("Soundboard", () => {
       sounds: [{ ...bakbakSound, assetStatus: "error" }],
     });
 
-    expect(screen.getByText("5/5 playing")).toBeVisible();
+    expect(screen.getByText("5/5")).toBeVisible();
     expect(
       screen.getByRole("button", {
         name: `${bakbakSound.label}, retry download`,

@@ -354,23 +354,22 @@ export function Soundboard({
       ) : null}
 
       <footer className="soundboard-stop-footer">
-        <div>
-          <strong>
-            {activeLocalSoundCount}/{maxConcurrentSounds} playing
-          </strong>
-          <span>
-            {soundLimitReached
-              ? "Stop your stack before adding another sound."
-              : "You can overlap up to five sounds."}
-          </span>
-        </div>
         <button
           type="button"
           disabled={activeLocalSoundCount === 0}
+          aria-label={`Stop my sounds (${activeLocalSoundCount}/${maxConcurrentSounds} playing)`}
+          title="Stop my sounds"
           onClick={() => void onStopAll()}
         >
-          <Square size={14} /> Stop my sounds
+          <Square size={14} />
         </button>
+        {activeLocalSoundCount > 0 ? (
+          <strong aria-live="polite">
+            {activeLocalSoundCount}/{maxConcurrentSounds}
+          </strong>
+        ) : (
+          <span className="visually-hidden">No sounds playing</span>
+        )}
       </footer>
 
       {editingSound ? (

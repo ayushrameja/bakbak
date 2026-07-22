@@ -4,7 +4,7 @@ import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 
 const stylesUrl = new URL("../src/styles.css", import.meta.url);
-const logoUrl = new URL("../public/bakbak.svg", import.meta.url);
+const brandAssetUrl = new URL("../public/bakbak-orbit.png", import.meta.url);
 const fontUrl = new URL(
   "../public/fonts/roundo/Roundo-Variable.woff2",
   import.meta.url,
@@ -15,15 +15,20 @@ const settingsUrl = new URL(
   "../src/features/settings/SettingsPage.tsx",
   import.meta.url,
 );
+const channelSidebarUrl = new URL(
+  "../src/features/channels/ChannelSidebar.tsx",
+  import.meta.url,
+);
 
-const [styles, logo, app, settings, font, license] = await Promise.all([
-  readFile(stylesUrl, "utf8"),
-  readFile(logoUrl, "utf8"),
-  readFile(appUrl, "utf8"),
-  readFile(settingsUrl, "utf8"),
-  readFile(fontUrl),
-  readFile(licenseUrl, "utf8"),
-]);
+const [styles, app, settings, channelSidebar, font, license] =
+  await Promise.all([
+    readFile(stylesUrl, "utf8"),
+    readFile(appUrl, "utf8"),
+    readFile(settingsUrl, "utf8"),
+    readFile(channelSidebarUrl, "utf8"),
+    readFile(fontUrl),
+    readFile(licenseUrl, "utf8"),
+  ]);
 
 function expandHex(value) {
   const hex = value.slice(1).toLowerCase();
@@ -96,15 +101,26 @@ function contrastRatio(left, right) {
   );
 }
 
-test("ordinary chrome and the in-app logo remain monochrome", () => {
+test("ordinary chrome stays monochrome while brand chroma remains contained", async () => {
+  const brandChromaPattern =
+    /\/\* BRAND-CHROMA-START[\s\S]*?\/\* BRAND-CHROMA-END \*\//;
+  const brandChroma = styles.match(brandChromaPattern)?.[0];
+  assert.ok(brandChroma, "the contained Bakbak brand block is missing");
+
   const semanticNames = Object.keys(semanticTokenValues).join("|");
-  const ordinaryStyles = styles.replace(
-    new RegExp(`--(?:${semanticNames}):\\s*#[\\da-f]{3,8};`, "gi"),
-    "",
-  );
+  const ordinaryStyles = styles
+    .replace(brandChromaPattern, "")
+    .replace(
+      new RegExp(`--(?:${semanticNames}):\\s*#[\\da-f]{3,8};`, "gi"),
+      "",
+    );
   assertGrayscale(ordinaryStyles, "src/styles.css ordinary chrome");
-  assertGrayscale(logo, "public/bakbak.svg");
   assert.doesNotMatch(styles, /\b(?:hsl|hsla|hwb|lab|lch|oklch)\(/i);
+  assert.match(brandChroma, /--brand-indigo:\s*#7469ff;/);
+  assert.match(brandChroma, /--brand-cyan:\s*#20d8ee;/);
+  assert.match(brandChroma, /--brand-coral:\s*#ff716f;/);
+  assert.match(channelSidebar, /src="\/bakbak-orbit\.png"/);
+  await access(brandAssetUrl);
 
   for (const match of styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     if (/avatar|cover|emoji|participant-video|screen-share/i.test(match[1])) {
@@ -120,8 +136,12 @@ test("ordinary chrome and the in-app logo remain monochrome", () => {
 test("approved semantic colors are system-adaptive and accessible", () => {
   for (const [name, expectedValues] of Object.entries(semanticTokenValues)) {
     const actualValues = [
-      ...styles.matchAll(new RegExp(`--${name}:\\s*(#[\\da-f]{6});`, "gi")),
-    ].map((match) => match[1].toLowerCase());
+      new Set(
+        [
+          ...styles.matchAll(new RegExp(`--${name}:\\s*(#[\\da-f]{6});`, "gi")),
+        ].map((match) => match[1].toLowerCase()),
+      ),
+    ].flatMap((values) => [...values]);
     assert.deepEqual(actualValues, expectedValues, `${name} token drifted`);
   }
 
@@ -195,15 +215,19 @@ test("Roundo is local, pinned, licensed, and limited to supported weights", () =
   );
 });
 
-test("legacy themes and appearance state stay removed", async () => {
+test("appearance stays grayscale while exposing only scheme selection", async () => {
   const productionAppearance = `${styles}\n${app}\n${settings}`;
   assert.doesNotMatch(
     productionAppearance,
-    /data-theme|data-surface-style|data-visual-preset|appearancePreferences|themePreference|visualPreset|accentIntensity|SignalRed|signal-red|signature-|Cormorant Garamond|League Gothic|IBM Plex Mono|@fontsource/i,
+    /data-theme|data-surface-style|data-visual-preset|appearancePreferences|themePreference|visualPreset|accentIntensity|SignalRed|signal-red|Cormorant Garamond|League Gothic|IBM Plex Mono|@fontsource/i,
   );
+  assert.match(styles, /data-color-scheme="dark"/);
+  assert.match(styles, /data-color-scheme="light"/);
+  assert.match(settings, /value:\s*"auto"/);
+  assert.match(settings, /value:\s*"dark"/);
+  assert.match(settings, /value:\s*"light"/);
   assert.match(settings, /<strong>Glass<\/strong>/);
-  assert.match(settings, /<strong>Follows system<\/strong>/);
-  assert.match(settings, /<strong>Roundo<\/strong>/);
+  assert.doesNotMatch(settings, />Typeface</);
 
   for (const path of [
     "../public/theme-init.js",

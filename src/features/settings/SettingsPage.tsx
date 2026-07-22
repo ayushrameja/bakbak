@@ -6,11 +6,12 @@ import {
   Mic,
   MicOff,
   Mic2,
+  Moon,
   Palette,
   Play,
   RefreshCw,
   Square,
-  Type,
+  Sun,
   UserRound,
   Volume2,
   VolumeX,
@@ -22,10 +23,12 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
+  type ReactNode,
 } from "react";
 import { Avatar } from "../../components/Avatar";
 import type { LoadProfileMedia } from "../../components/ProfileTrigger";
 import type { AppUser } from "../../lib/types";
+import type { AppearancePreference } from "./appearance-preferences";
 import {
   AVATAR_BUCKET,
   COVER_BUCKET,
@@ -80,6 +83,7 @@ interface SettingsPageProps {
   microphoneProcessingSupported: boolean;
   microphoneProcessingError: string | null;
   interfaceSoundPreferences: InterfaceSoundPreferences;
+  appearancePreference: AppearancePreference;
   inputError: string | null;
   outputError: string | null;
   cameraError: string | null;
@@ -102,6 +106,7 @@ interface SettingsPageProps {
   onInterfaceSoundPreferencesChange: (
     preferences: InterfaceSoundPreferences,
   ) => void;
+  onAppearancePreferenceChange: (preference: AppearancePreference) => void;
   onPreviewInterfaceSound: (category: InterfaceSoundCategory) => void;
   onToggleMute: () => void;
   onToggleDeafen: () => void;
@@ -293,7 +298,12 @@ export function SettingsPage(props: SettingsPageProps) {
               />
             ) : null}
             {props.section === "audio" ? <AudioSettings {...props} /> : null}
-            {props.section === "appearance" ? <AppearanceSettings /> : null}
+            {props.section === "appearance" ? (
+              <AppearanceSettings
+                preference={props.appearancePreference}
+                onChange={props.onAppearancePreferenceChange}
+              />
+            ) : null}
           </div>
         </div>
         {confirmingSignOut ? (
@@ -351,7 +361,7 @@ function SettingsNavButton({
   onClick,
 }: {
   active: boolean;
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
   onClick: () => void;
 }) {
@@ -1475,35 +1485,79 @@ function DeviceSelect({
   );
 }
 
-function AppearanceSettings() {
+const APPEARANCE_OPTIONS: ReadonlyArray<{
+  value: AppearancePreference;
+  label: string;
+  description: string;
+  icon: ReactNode;
+}> = [
+  {
+    value: "auto",
+    label: "Auto",
+    description: "Follow this computer",
+    icon: <Laptop size={19} aria-hidden="true" />,
+  },
+  {
+    value: "dark",
+    label: "Dark",
+    description: "Keep the lights low",
+    icon: <Moon size={19} aria-hidden="true" />,
+  },
+  {
+    value: "light",
+    label: "Light",
+    description: "Invite the daylight in",
+    icon: <Sun size={19} aria-hidden="true" />,
+  },
+];
+
+function AppearanceSettings({
+  preference,
+  onChange,
+}: {
+  preference: AppearancePreference;
+  onChange: (preference: AppearancePreference) => void;
+}) {
   return (
     <div className="settings-panel appearance-settings">
       <div className="settings-panel__heading">
         <span className="eyebrow">Appearance</span>
-        <h2>One clean look</h2>
+        <h2>Pick your lighting</h2>
         <p>
-          Bakbak keeps the interface calm, friendly, and consistent so the
-          conversation stays in charge.
+          Choose a theme, or let Bakbak follow your computer like a very polite
+          little shadow.
         </p>
       </div>
+      <fieldset className="appearance-theme-picker">
+        <legend>Theme</legend>
+        <div>
+          {APPEARANCE_OPTIONS.map((option) => (
+            <label
+              className={preference === option.value ? "is-selected" : ""}
+              key={option.value}
+            >
+              <input
+                type="radio"
+                name="appearance-theme"
+                value={option.value}
+                checked={preference === option.value}
+                onChange={() => onChange(option.value)}
+              />
+              {option.icon}
+              <span>
+                <strong>{option.label}</strong>
+                <small>{option.description}</small>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <div className="appearance-summary-grid">
         <section className="appearance-summary-card">
           <Palette size={22} aria-hidden="true" />
           <span>Surface</span>
           <strong>Glass</strong>
           <p>System material and translucent grayscale layers.</p>
-        </section>
-        <section>
-          <Laptop size={22} aria-hidden="true" />
-          <span>Colour scheme</span>
-          <strong>Follows system</strong>
-          <p>Bakbak switches between light and dark with this computer.</p>
-        </section>
-        <section>
-          <Type size={22} aria-hidden="true" />
-          <span>Typeface</span>
-          <strong>Roundo</strong>
-          <p>A clean, friendly face used across messages and controls.</p>
         </section>
       </div>
     </div>

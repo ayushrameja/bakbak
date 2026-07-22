@@ -31,20 +31,23 @@ persist widths and visibility per device. Settings is a centered, focus-trapped
 in-app modal with internal scrolling, active-call controls, and confirmed
 logout.
 
-Appearance has one system-adaptive neutral glass treatment without decorative
-texture, chromatic glow, selectable accents, or heavy shadows. Dark
-mode uses near-black translucent panels; light mode uses neutral-white
-translucent panels. Primary chrome uses 24 px blur at 120% saturation while
-avatars, covers, emoji, camera video, and screen sharing remain untouched. CSS
-`prefers-color-scheme` applies the operating system's light/dark setting and
-media-qualified `theme-color` metadata keeps host chrome aligned; the renderer
-stores no appearance choice. Ordinary chrome and the Bakbak logo remain
-grayscale; scoped Discord-inspired positive, danger, selected, warning, and
+Appearance has one neutral glass treatment without global decorative texture,
+chromatic glow, selectable accents, or heavy shadows. A device-local scheme
+choice offers Auto, Light, and Dark: Auto follows `prefers-color-scheme`, while
+the explicit choices apply before React mounts and update the matching
+`theme-color` metadata. Dark mode uses near-black translucent panels; light
+mode uses neutral-white translucent panels. Primary chrome uses 24 px blur at
+120% saturation while avatars, covers, emoji, camera video, and screen sharing
+remain untouched. Ordinary chrome remains grayscale. The original
+Bakbak Orbit identity is the sole decorative chroma exception: its generated
+artwork and contained server header use indigo, cyan, and coral over a fixed ink
+surface with restrained grain and orbit lines. Scoped Discord-inspired
+positive, danger, selected, warning, and
 icon tokens identify call controls, presence, streaming, and admin state with
-verified light/dark contrast. Appearance
-remains in Settings as a read-only summary of `Glass`, `Follows system`, and
-`Roundo`. Legacy `bakbak.appearancePreferences.*` values are inert and
-intentionally left in local storage. Roundo v2.0 is served from a committed
+verified light/dark contrast. Appearance Settings exposes only the three scheme
+choices plus the `Glass` surface summary; typography controls remain absent.
+Legacy `bakbak.appearancePreferences.*` values are inert and intentionally left
+in local storage. Roundo v2.0 is served from a committed
 variable WOFF2 with upright weights 200–700 and a generic sans-serif fallback
 for unsupported glyphs; product UI uses only 500, 600, and 700, never renders
 below 11 px, and gives chat/composer text a 15 px weight-500 baseline. Profiles
@@ -100,8 +103,9 @@ without moving it from System or Bakbak. Uploaders and server admins may edit
 labels/emoji or delete member sounds, while only admins manage operator sounds.
 The drawer retains persisted global volume, per-participant volume, overlapping
 activity badges, retry states, and stop-all. A sender reserves at most five
-pending/active sounds, the drawer and global dock expose prominent stop
-controls, and upgraded clients clamp remote activity to the newest five events.
+pending/active sounds; the drawer uses a bottom-left circular stop action with
+an active `n/5` counter, the global dock keeps its compact stop action, and
+upgraded clients clamp remote activity to the newest five events.
 Participant tiles replace a camera-off
 avatar with the newest sound emoji or overlay it on camera video, with overlap
 counting and reduced-motion behavior. Deafen suppresses remote speech and local/incoming soundboard
@@ -350,9 +354,10 @@ bakbak/
 │       ├── 0016-flat-monochrome-roundo.md
 │       ├── 0017-space-efficient-titlebar-and-comfortable-roundo.md
 │       ├── 0018-native-glass-edge-to-edge-motion.md
-│       └── 0019-discord-inspired-controls-and-member-rail.md
+│       ├── 0019-discord-inspired-controls-and-member-rail.md
+│       └── 0020-bakbak-orbit-branding.md
 ├── public/
-│   ├── bakbak.svg                 # renderer favicon/source logo
+│   ├── bakbak-orbit.png           # generated renderer/native-icon source artwork
 │   ├── fonts/roundo/              # pinned Roundo v2.0 variable WOFF2
 │   ├── interface-sounds/          # generated original 48 kHz mono WAV cues
 │   └── vendor/
@@ -443,8 +448,9 @@ The renderer uses a titlebar, three-panel desktop layout, and modal layer:
 6. Selecting a voice channel joins it immediately, and selecting another voice
    channel switches the active call. Hover/focus can prepare one candidate room
    without media or presence side effects; click consumes that work and shows a
-   compact stage loader instead of a blank canvas. After connection, people
-   and active shares share one centered, count-aware 16:9 gallery. Tiles are
+   compact stage loader instead of a blank canvas. A disconnected room offers
+   a concise rejoin action instead of going blank. After connection, people and
+   active shares share one centered, count-aware 16:9 gallery. Tiles are
    bounded from 520 px for one target through 240–300 px auto-fit tiles for
    seven or more. Clicking either opens a single media-first focused stage with
    bottom-overlay Back/fullscreen controls and no metadata header or people
@@ -468,9 +474,10 @@ The renderer uses a titlebar, three-panel desktop layout, and modal layer:
    seconds and labels the result as backend latency. LiveKit
    `ConnectionQualityChanged` events separately normalize the local participant as
    Unknown/Excellent/Good/Poor; reconnecting display takes precedence. The
-   system-following glass appearance uses grayscale translucency plus scoped
-   positive, danger, selected, warning, and icon colors without decorative
-   chroma. A one-shot renderer-launch assembly
+   selected glass scheme uses grayscale translucency plus scoped
+   positive, danger, selected, warning, and icon colors. The server identity
+   header alone uses the Bakbak Orbit artwork and bounded brand chroma. A
+   one-shot renderer-launch assembly
    completes within 500 ms; panel/space motion and message stagger collapse to
    the final state under reduced motion. Every scroll surface uses a transparent
    6 px track and reveals its thumb on hover, focus, or scroll activity, which
@@ -711,14 +718,18 @@ An invite-management UI is deferred until post-v1.
    Realtime refreshes Personal unread markers.
 7. The details panel resolves the other participant's profile and private media
    through shared-server or established-DM policy. Former members may use the
-   reversible invite action while keeping established conversations.
+   reversible invite action while keeping established conversations. The DM
+   header uses that participant's avatar, while the details rail plays their
+   GIF avatar and cover unless reduced motion is enabled. The Personal member
+   picker truncates long names and dismisses on outside pointer or Escape.
 
 ### Profile, appearance, and modal settings
 
 1. The renderer loads one local Roundo font face and one glass token set before
-   mounting React. CSS `prefers-color-scheme` supplies the light/dark token
-   override, so operating-system changes apply without JavaScript or stored
-   state. Rust supplies the pre-render native/fallback material marker; fallback
+   mounting React. A validated `auto | light | dark` preference applies before
+   React mounts; Auto delegates to CSS `prefers-color-scheme`, so operating-
+   system changes continue to apply live. Rust supplies the pre-render
+   native/fallback material marker; fallback
    mode uses an opaque system-coloured document underlay and native mode makes
    only the document roots transparent. Dark panels use 68% black and strong
    controls 82% black; light panels use 66% and 82% white. Primary chrome uses
@@ -1077,7 +1088,8 @@ Interface cues deliberately bypass the selected call output.
 Soundboard section collapse state is stored independently per server under
 `bakbak.soundboardSections.v1:<server ID>` and never syncs; favorite rows sync
 through Supabase instead.
-Appearance has no local preference. CSS follows the operating system and old
+Appearance stores only `auto`, `light`, or `dark` under
+`bakbak.appearancePreference.v1`. Invalid values restore Auto. Old
 `bakbak.appearancePreferences.*` entries remain inert rather than receiving a
 cleanup migration.
 It stores `{ enabled, volume, categories }` under
@@ -1382,11 +1394,13 @@ that it has passed.
   implemented. Installed macOS and Windows verification still must cover
   native controls, dragging, maximize/restore, resizing, light/dark modes,
   offline font loading, OS shortcuts, and screen-share cleanup on close.
-- Plan 0016's single system-following neutral appearance, read-only
-  Appearance page, local Roundo bundle, and regression guard pass the complete
-  renderer suite, production build, secret scan, and local macOS app build.
-  Plan 0019 now permits only its scoped semantic control tokens; ordinary
-  chrome and the product logo remain grayscale.
+- Plan 0016's neutral appearance and local Roundo bundle remain active, while a
+  later user-directed follow-up restores only Auto/Light/Dark scheme selection
+  and removes the typography summary. Accent, surface, and font controls remain
+  absent. The appearance regression guard covers the scheme-only preference.
+  Plan 0019 permits its scoped semantic control tokens, and plan 0020 permits
+  decorative chroma only in the generated product artwork and explicitly
+  delimited server-header brand block; ordinary chrome remains grayscale.
   The in-app browser's localhost policy blocked the mock-preview reload, so the
   dark/light 1024×680 and 1280×800 visual matrix plus installed macOS/Windows
   glyph, clipping, wrapping, and offline-network observation remain required.

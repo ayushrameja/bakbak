@@ -64,6 +64,7 @@ function renderSettings(
         status: true,
       },
     },
+    appearancePreference: "auto",
     inputError: null,
     outputError: null,
     cameraError: null,
@@ -83,6 +84,7 @@ function renderSettings(
     onEnhancedNoiseSuppressionChange: vi.fn(),
     onVoiceEffectChange: vi.fn(),
     onInterfaceSoundPreferencesChange: vi.fn(),
+    onAppearancePreferenceChange: vi.fn(),
     onPreviewInterfaceSound: vi.fn(),
     onToggleMute: vi.fn(),
     onToggleDeafen: vi.fn(),
@@ -667,17 +669,19 @@ describe("SettingsPage", () => {
     vi.unstubAllGlobals();
   });
 
-  it("describes the fixed appearance without exposing theme controls", () => {
-    renderSettings("appearance");
+  it("selects Auto, Dark, or Light without typography controls", async () => {
+    const onAppearancePreferenceChange = vi.fn();
+    renderSettings("appearance", { onAppearancePreferenceChange });
 
     expect(screen.getByText("Glass")).toBeVisible();
-    expect(screen.getByText("Follows system")).toBeVisible();
-    expect(screen.getByText("Roundo")).toBeVisible();
-    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /Auto/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /Dark/ })).not.toBeChecked();
+    expect(screen.getByRole("radio", { name: /Light/ })).not.toBeChecked();
+    await userEvent.click(screen.getByRole("radio", { name: /Dark/ }));
+    expect(onAppearancePreferenceChange).toHaveBeenCalledWith("dark");
+    expect(screen.queryByText("Typeface")).not.toBeInTheDocument();
+    expect(screen.queryByText("Roundo")).not.toBeInTheDocument();
     expect(screen.queryByRole("slider")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /theme|signature|signal red/i }),
-    ).not.toBeInTheDocument();
   });
 
   it("traps focus, closes with Escape, and restores the opener", () => {

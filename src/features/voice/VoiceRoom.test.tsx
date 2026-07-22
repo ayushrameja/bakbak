@@ -169,6 +169,24 @@ describe("VoiceRoom", () => {
     tauriWindow.onFocusChanged.mockClear();
   });
 
+  it("replaces the disconnected blank canvas with a rejoin invitation", async () => {
+    const voice = createVoice({ status: "disconnected", channel: null });
+    render(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={voice}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("No voices. Just premium silence.")).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("button", { name: `Rejoin ${channel.name}` }),
+    );
+    expect(voice.join).toHaveBeenCalledWith(channel);
+  });
+
   it("focuses any share, toggles OS fullscreen, and keeps focus after Escape", async () => {
     const screenShare = {
       id: "share-1",

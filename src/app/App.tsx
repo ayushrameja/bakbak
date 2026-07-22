@@ -1,4 +1,4 @@
-import { CircleAlert, Hash, MessageCircle, Volume2 } from "lucide-react";
+import { CircleAlert, Hash, Volume2 } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { ProfilePopover } from "../components/ProfilePopover";
+import { Avatar } from "../components/Avatar";
 import { PanelResizer } from "../components/PanelResizer";
 import type {
   LoadProfileMedia,
@@ -37,6 +38,12 @@ import {
   type MemberVoiceActivity,
 } from "../features/server/MemberPanel";
 import type { AppSpace } from "../features/server/app-space";
+import {
+  applyAppearancePreference,
+  loadAppearancePreference,
+  saveAppearancePreference,
+  type AppearancePreference,
+} from "../features/settings/appearance-preferences";
 import {
   loadInterfaceSoundPreferences,
   saveInterfaceSoundPreferences,
@@ -165,6 +172,8 @@ export default function App() {
   const [activeView, setActiveView] = useState<AppView>("channel");
   const [settingsSection, setSettingsSection] =
     useState<SettingsSection>("profile");
+  const [appearancePreference, setAppearancePreference] =
+    useState<AppearancePreference>(() => loadAppearancePreference());
   const [interfaceSoundPreferences, setInterfaceSoundPreferences] =
     useState<InterfaceSoundPreferences>(() => loadInterfaceSoundPreferences());
   const [layoutPreferences, setLayoutPreferences] = useState<LayoutPreferences>(
@@ -1384,6 +1393,12 @@ export default function App() {
     saveInterfaceSoundPreferences(preferences);
   }
 
+  function handleAppearancePreferenceChange(preference: AppearancePreference) {
+    setAppearancePreference(preference);
+    applyAppearancePreference(preference);
+    saveAppearancePreference(preference);
+  }
+
   function updateLayoutPreferences(
     updater: (current: LayoutPreferences) => LayoutPreferences,
   ) {
@@ -1599,9 +1614,7 @@ export default function App() {
   if (authLoading) {
     return renderAppFrame(
       <main className="app-loading">
-        <span className="brand-mark">
-          <MessageCircle size={24} />
-        </span>
+        <img className="brand-mark" src="/bakbak-orbit.png" alt="" />
         <h1>Opening Bakbak</h1>
         <p>Checking whether you already have a seat…</p>
       </main>,
@@ -1647,9 +1660,7 @@ export default function App() {
   if (activeSpace === "server" && (!workspace || !selectedChannel)) {
     return renderAppFrame(
       <main className="app-loading">
-        <span className="brand-mark">
-          <MessageCircle size={24} />
-        </span>
+        <img className="brand-mark" src="/bakbak-orbit.png" alt="" />
         <h1>{appError ? "The door is stuck" : "Setting the room up"}</h1>
         <p>
           {appError ??
@@ -1862,7 +1873,7 @@ export default function App() {
               />
             ) : activeSpace === "personal" ? (
               <section className="personal-home">
-                <img src="/bakbak.svg" alt="" />
+                <img src="/bakbak-orbit.png" alt="" />
                 <span className="eyebrow">Personal lounge</span>
                 <h2>Your conversations live here</h2>
                 <p>
@@ -2054,6 +2065,7 @@ export default function App() {
           microphoneProcessingSupported={voice.microphoneProcessingSupported}
           microphoneProcessingError={voice.microphoneProcessingError}
           interfaceSoundPreferences={interfaceSoundPreferences}
+          appearancePreference={appearancePreference}
           inputError={voice.inputDeviceError}
           outputError={voice.outputDeviceError}
           cameraError={voice.cameraDeviceError}
@@ -2083,6 +2095,7 @@ export default function App() {
           onInterfaceSoundPreferencesChange={
             handleInterfaceSoundPreferencesChange
           }
+          onAppearancePreferenceChange={handleAppearancePreferenceChange}
           onPreviewInterfaceSound={(category) =>
             void interfaceSoundController.preview(category)
           }
@@ -2107,7 +2120,7 @@ function TopBar({
       <div className="top-bar__leading">
         <div className="top-bar__channel">
           {directMember ? (
-            <MessageCircle size={20} />
+            <Avatar user={directMember} size="small" showStatus />
           ) : channel?.kind === "voice" ? (
             <Volume2 size={20} />
           ) : (

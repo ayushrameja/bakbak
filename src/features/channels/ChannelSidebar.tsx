@@ -232,10 +232,10 @@ export function ChannelSidebar({
 
   return (
     <aside className="channel-sidebar" id="context-panel">
-      <header className="server-switcher">
-        <div>
+      <header className="server-switcher server-brand">
+        <img className="server-brand__mark" src="/bakbak-orbit.png" alt="" />
+        <div className="server-brand__wordmark">
           <strong>{server.name}</strong>
-          <span>Friends-only adda</span>
         </div>
       </header>
       <nav className="channel-nav" aria-label="Channels">

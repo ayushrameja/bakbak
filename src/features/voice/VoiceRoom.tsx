@@ -6,6 +6,7 @@ import {
   Mic,
   MicOff,
   Monitor,
+  PhoneCall,
   RefreshCw,
   Shrink,
   Volume2,
@@ -273,6 +274,31 @@ export function VoiceRoom({
             onClick={() => void voice.join(channel)}
           >
             <RefreshCw size={16} /> Try again
+          </button>
+        </div>
+      ) : null}
+
+      {!isConnected &&
+      !isConnecting &&
+      !isReconnecting &&
+      !(isThisRoom && voice.status === "error") ? (
+        <div className="voice-empty-state">
+          <span className="voice-empty-state__icon" aria-hidden="true">
+            <PhoneCall size={24} />
+          </span>
+          <span className="eyebrow">The room survived your exit</span>
+          <h2>No voices. Just premium silence.</h2>
+          <p>
+            Pick any voice room from the left, or rejoin {channel.name}. You can
+            give up, obviously—but then who will deliver your excellent point
+            badly?
+          </p>
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => void voice.join(channel)}
+          >
+            <PhoneCall size={16} /> Rejoin {channel.name}
           </button>
         </div>
       ) : null}

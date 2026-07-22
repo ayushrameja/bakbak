@@ -1,10 +1,4 @@
-import {
-  ArrowLeft,
-  ArrowRight,
-  KeyRound,
-  LogOut,
-  MessageCircle,
-} from "lucide-react";
+import { ArrowLeft, ArrowRight, KeyRound, LogOut } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { getSupabaseClient } from "../../lib/supabase";
 import type { AppUser } from "../../lib/types";
@@ -51,9 +45,7 @@ export function InviteGate({
   return (
     <main className="invite-gate">
       <section>
-        <span className="brand-mark">
-          <MessageCircle size={24} />
-        </span>
+        <img className="brand-mark" src="/bakbak-orbit.png" alt="" />
         <div className="invite-gate__icon">
           <KeyRound size={25} />
         </div>

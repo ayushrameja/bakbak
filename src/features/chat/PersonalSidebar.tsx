@@ -13,7 +13,7 @@ import type {
 import { SidebarVoicePanel } from "../voice/SidebarVoicePanel";
 import { SidebarUserDock } from "../voice/SidebarUserDock";
 import type { useVoiceRoom } from "../voice/useVoiceRoom";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface PersonalSidebarProps {
   user: AppUser;
@@ -55,10 +55,37 @@ export function PersonalSidebar({
   onOpenInvite = () => undefined,
 }: PersonalSidebarProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const pickerButtonRef = useRef<HTMLButtonElement>(null);
   const availableMembers = members.filter((member) => member.id !== user.id);
   const currentMember =
     members.find((member) => member.id === user.id) ??
     ({ ...user, role: "member" } satisfies ServerMember);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const closeFromOutside = (event: PointerEvent) => {
+      if (
+        event.target instanceof Node &&
+        !pickerRef.current?.contains(event.target) &&
+        !pickerButtonRef.current?.contains(event.target)
+      ) {
+        setPickerOpen(false);
+      }
+    };
+    const closeFromKeyboard = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setPickerOpen(false);
+      pickerButtonRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", closeFromOutside, true);
+    document.addEventListener("keydown", closeFromKeyboard);
+    return () => {
+      document.removeEventListener("pointerdown", closeFromOutside, true);
+      document.removeEventListener("keydown", closeFromKeyboard);
+    };
+  }, [pickerOpen]);
 
   return (
     <aside className="channel-sidebar personal-sidebar" id="context-panel">
@@ -68,9 +95,12 @@ export function PersonalSidebar({
           <span>Your private conversations</span>
         </div>
         <button
+          ref={pickerButtonRef}
           type="button"
           aria-label="New message"
-          onClick={() => setPickerOpen(true)}
+          aria-expanded={pickerOpen}
+          aria-controls="direct-message-picker"
+          onClick={() => setPickerOpen((open) => !open)}
           disabled={availableMembers.length === 0}
         >
           <MessageCirclePlus size={17} />
@@ -124,7 +154,14 @@ export function PersonalSidebar({
         onOpenSettings={onOpenSettings}
       />
       {pickerOpen ? (
-        <div className="direct-picker" role="dialog" aria-modal="true">
+        <div
+          ref={pickerRef}
+          className="direct-picker"
+          id="direct-message-picker"
+          role="dialog"
+          aria-modal="false"
+          aria-label="Choose a club member"
+        >
           <header>
             <div>
               <span className="eyebrow">New message</span>
@@ -143,6 +180,7 @@ export function PersonalSidebar({
               <button
                 type="button"
                 key={member.id}
+                aria-label={member.displayName}
                 onClick={() => {
                   void onStartConversation(member).then(() =>
                     setPickerOpen(false),

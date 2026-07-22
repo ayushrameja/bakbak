@@ -23,14 +23,20 @@ Plan 0019 supersedes only this plan's fully monochrome semantic-state rule:
 neutral chrome and the in-app logo remain grayscale, while approved positive,
 danger, selected, warning, and icon tokens may use scoped adaptive color.
 
+A 2026-07-22 user-directed follow-up supersedes only Decisions 1 and 3: the
+renderer now stores a device-local Auto/Light/Dark scheme choice and Appearance
+shows those three options plus the Glass surface summary. It does not restore
+accents, intensity, surface variants, presets, or typography controls.
+
 ## Decisions
 
-1. The renderer exposes no selectable theme, accent, intensity, surface, or
-   preset. CSS `prefers-color-scheme` is the only appearance switch.
+1. The renderer exposes only Auto, Light, and Dark scheme choices. Auto uses
+   CSS `prefers-color-scheme`; accent, intensity, surface, and preset controls
+   remain absent.
 2. First-party UI chrome and the in-app Bakbak SVG are grayscale. Avatars,
    covers, emoji, camera video, and screen shares retain their source color.
-3. Appearance remains a read-only Settings page showing `Flat`,
-   `Follows system`, and `Roundo`.
+3. Appearance shows the three scheme choices and the `Glass` surface summary.
+   Typography remains fixed and is not presented as a setting.
 4. Existing `bakbak.appearancePreferences.*` local-storage values are ignored.
    The renderer neither reads, migrates, rewrites, nor cleans them up.
 5. Roundo v2.0's variable WOFF2 and SIL OFL notice are committed. One local
@@ -49,7 +55,8 @@ danger, selected, warning, and icon tokens may use scoped adaptive color.
       `theme-color` metadata.
 - [x] Convert first-party CSS and the in-app Bakbak SVG to grayscale without
       filtering user or live media.
-- [x] Replace Appearance controls with the read-only summary.
+- [x] Limit Appearance controls to Auto, Light, and Dark plus the read-only
+      Glass surface summary.
 - [x] Vendor Roundo v2.0 and its OFL notice; remove Cormorant Garamond, League
       Gothic, IBM Plex Mono, and their Fontsource packages.
 - [x] Add regression coverage for grayscale colors, removed theme machinery,

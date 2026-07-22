@@ -3679,3 +3679,119 @@ Gang` at the true window center, and retained panel/Windows controls at the
 - **Next:** Drag both installed panel separators rapidly across their full range
   on macOS, then repeat on Windows and confirm the canvas remains locked to the
   pointer with no blue selection residue.
+
+## 2026-07-22 — Personal, voice, appearance, and soundboard polish
+
+- **Completed:** Replaced the Personal DM header's generic message icon with
+  the selected person's avatar. Made the Personal details rail load and play
+  GIF avatar/cover media while respecting reduced motion and preserving cover
+  focal position. Reworked the new-message member picker so long names remain
+  contained and outside pointer or Escape dismisses it. Added a funny,
+  actionable disconnected voice-room state with a direct rejoin action instead
+  of a blank canvas. Restored device-local Auto, Light, and Dark scheme
+  selection, applied it before React mounts, synchronized theme-color metadata,
+  removed the typography summary, and repaired the responsive Appearance
+  layout. Replaced the soundboard's large stop footer with a bottom-left
+  circular stop control and an active `n/5` count; the floating dock count now
+  uses the same format.
+- **Decisions:** Theme selection is intentionally scheme-only: accent, surface,
+  intensity, preset, and typography controls remain excluded. Auto continues
+  to follow live operating-system changes; invalid stored values fall back to
+  Auto. GIF playback remains disabled under reduced motion. The member picker
+  is a non-modal anchored dialog, so click-away dismissal does not make the
+  rest of the Personal space inert. Unrelated concurrent Bakbak Orbit
+  branding/icon changes were preserved and were not treated as work completed
+  by this task.
+- **Validation:**
+  - Focused strict TypeScript plus Vitest/Node appearance run — passed 7 files
+    with 65 tests and all 4 appearance contract tests.
+  - Mock-browser QA at 1280×800 — passed. The 216 px picker stayed inside the
+    232 px Personal rail with `scrollWidth === clientWidth`, outside click
+    dismissed it, and the DM header exposed the selected participant avatar.
+  - Mock-browser Appearance QA at 1280×800 and 1024×720 — passed. Auto, Light,
+    and Dark each applied the expected computed color scheme; the compact page,
+    canvas, and picker had no horizontal/document overflow; Auto was restored;
+    and the console had no warnings or errors.
+  - `pnpm format:check` — passed; all files match Prettier.
+  - `pnpm lint` — passed with zero warnings.
+  - `pnpm typecheck` — passed both strict TypeScript projects.
+  - `pnpm test` — passed 58 Vitest files with 310 tests and 24/24 Node tests.
+  - `pnpm version:check` — passed at synchronized version `0.16.0`.
+  - `pnpm build` — passed; Vite produced the renderer bundle with the existing
+    non-blocking large-chunk warning. The stylesheet is 146.19 kB (24.14 kB
+    gzip) and the main JavaScript chunk is 1,254.51 kB (346.86 kB gzip).
+  - Final `pnpm security:scan`, changed-diff secret-pattern inspection, and
+    `git diff --check` — passed with no forbidden material or whitespace errors.
+  - `pnpm tauri:build:local` — passed and produced the ad-hoc-signed ARM64
+    `Bakbak.app`; strict deep code-sign verification and Mach-O inspection
+    passed. Notarization was skipped because Apple credentials are absent.
+- **Documentation updated:** Updated the architecture's DM media/picker,
+  disconnected voice, appearance preference, local-storage, and compact
+  sound-stop contracts; amended active plan 0001 and plan 0016's supersession
+  boundary; appended this canonical progress entry.
+- **Known limitations:** The mock profiles do not contain GIF assets, so
+  animated DM avatar/cover loading and focal positioning were verified in
+  component tests rather than the browser preview. The browser path auto-joins
+  selected voice rooms and had no active sound stack, so the disconnected voice
+  state and compact active sound counter were verified in component tests.
+  Real installed GIF playback, explicit-theme native material contrast,
+  post-leave voice copy, and sound-stop behavior still require direct macOS and
+  Windows observation. The local macOS bundle is not notarized.
+- **Next:** In the installed app, open a DM with a GIF avatar/cover, switch all
+  three schemes, leave and rejoin a voice room, and play/stop overlapping sounds;
+  then repeat the interaction and contrast checks on Windows.
+
+## 2026-07-22 — Bakbak Orbit branding and native app icon
+
+- **Completed:** Replaced the messaging-bubble identity with the original
+  generated Bakbak Orbit artwork: two abstract circular conversation forms
+  facing a central spark over a dark aurora surface. Added the 512 px renderer
+  asset, switched the favicon, authentication, invite, loading, and empty
+  Personal identity surfaces to it, regenerated the tracked macOS, Windows,
+  iOS, and Android icon variants from the full-resolution output, and rebuilt
+  the local macOS app. Reworked the server header into a
+  contained 84 px premium brand card with a 46 px artwork tile, active server
+  name, restrained indigo/cyan/coral aura, orbit lines, and fine dot grain.
+  Removed `Friends-only adda` without adding another subtitle.
+- **Decisions:** Kept ordinary glass chrome neutral and treated the generated
+  artwork plus one explicitly delimited CSS brand block as the sole decorative
+  chroma exception. The mark remains decorative beside the visible server name.
+  The two-form silhouette is an original conversation metaphor with an
+  arcade-circle influence, not a Pac-Man, Discord, Gemini, or speech-bubble
+  reproduction. Used the built-in image generator and kept the project-bound
+  result at `public/bakbak-orbit.png`.
+- **Validation:**
+  - Focused ChannelSidebar Vitest — passed 11/11 tests, including artwork
+    presence and retired-tagline absence.
+  - `node --test scripts/monochrome-appearance.test.mjs` — passed 4/4 brand,
+    semantic-colour, font, and appearance guards; ordinary chrome remains
+    grayscale after removing only the marked brand block.
+  - Mock-browser dark QA at 1280×720 and 1024×680 — observed a 232×84 header,
+    loaded 512 px source artwork rendered at 46×46, no `Friends-only adda`, no
+    sidebar overflow, no page overflow, and a 550 px centre canvas at the
+    minimum viewport.
+  - `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and
+    `pnpm version:check` — passed; version remains synchronized at `0.16.0`.
+  - `pnpm test` — passed 58 Vitest files with 310 tests plus 24/24 Node tests.
+  - `pnpm build` — passed; Vite retains the existing non-blocking large-chunk
+    warning. The stylesheet is 146.36 kB (24.24 kB gzip), the main JavaScript
+    chunk is 1,254.51 kB (346.17 kB gzip), and the renderer icon is 312 kB.
+  - `pnpm security:scan`, changed-diff secret-pattern inspection,
+    `git diff --check`, and the rendered-text search — passed with no forbidden
+    material or remaining rendered tagline.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app` with the generated icon bundle. Notarization was skipped because
+    Apple credentials are absent.
+- **Documentation updated:** Added plan 0020 and updated the active plan,
+  architecture identity/appearance contracts, repository structure, visual
+  regression boundary, and this canonical progress log.
+- **Known limitations:** The final macOS Dock/app-switcher/DMG icon and Windows
+  taskbar/installer icon still need human observation. Browser QA covered the
+  dark mock shell; the fixed dark identity card is designed for both schemes but
+  still needs direct light-mode and installed native-material observation. The
+  standard updater-enabled `pnpm tauri build` was not run because protected
+  updater signing material is unavailable locally; the repository-supported
+  local app-only bundle passed instead.
+- **Next:** Open the rebuilt macOS app and inspect the icon in the Dock and app
+  switcher, then confirm the Windows taskbar/NSIS artwork and the header against
+  light native material before the next friend-test build.

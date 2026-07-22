@@ -42,8 +42,9 @@ starts with context instead of archaeological guessing.
 - Place shared UI in `src/components`, service clients in `src/lib`, and the
   application shell/providers in `src/app`.
 - Keep native configuration and Rust code isolated in `src-tauri`.
-- Use one system-adaptive neutral glass interface that follows the operating
-  system's light/dark setting, with scoped semantic status/control colors. A
+- Use one neutral glass interface with device-local Auto, Light, and Dark
+  choices; Auto follows the operating system. Keep scoped semantic
+  status/control colors. A
   48 px app-owned titlebar places the
   Personal/Bakbak switch at the left and `OG Nahan Gang` at the true center;
   independently optional channel and member panels occupy an edge-to-edge
@@ -51,7 +52,9 @@ starts with context instead of archaeological guessing.
   modal, sidebar call block, and auto-hiding floating voice dock. The renderer
   uses the locally bundled Roundo family at comfortable 500–700 product
   weights. A separate multi-server rail remains deferred until multi-server
-  navigation.
+  navigation. Plan 0020 adds one bounded Bakbak Orbit identity exception: its
+  generated artwork and server header may use indigo, cyan, and coral while
+  ordinary chrome stays neutral.
 - Commit `.env.example` only. Use ignored `.env` files locally and
   platform-managed secrets for backend functions.
 
@@ -188,11 +191,13 @@ native-state-synchronized fullscreen are approved under
 `0015-screen-share-reliability-and-call-layout.md`. Plan 0015 supersedes plan
 0014's sidebar Watch and pending cross-room watch flow while retaining explicit
 in-room subscription consent.
-The single system-following flat monochrome appearance, locally bundled Roundo
-typeface, and read-only Appearance summary are approved under
+The single neutral monochrome appearance and locally bundled Roundo typeface
+are approved under
 `0016-flat-monochrome-roundo.md`. Plan 0016 supersedes the visual theme and
 typography portions of plans 0005, 0006, 0009, and 0014 while preserving their
-non-visual behavior.
+non-visual behavior. A 2026-07-22 user-directed follow-up restores only
+device-local Auto/Light/Dark scheme selection and removes the typography
+summary; accents, surface variants, and font controls remain excluded.
 The app-owned cross-platform titlebar, Personal/Bakbak segmented switch,
 rail-free shell, and comfortable Roundo density are approved under
 `0017-space-efficient-titlebar-and-comfortable-roundo.md`. Plan 0017 supersedes
@@ -212,6 +217,11 @@ cover accents are approved under
 plans 0016/0018's fully monochrome semantic-state rule while retaining their
 neutral glass, system light/dark, typography, native material, and layout
 contracts.
+The original Bakbak Orbit icon, renderer identity surfaces, contained premium
+server header, and removal of the old `Friends-only adda` subtitle are approved
+under `0020-bakbak-orbit-branding.md`. Plan 0020 supersedes only the product-logo
+grayscale rule retained by plans 0016/0019; the neutral shell and scoped
+semantic-control rules remain in force.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -309,6 +319,8 @@ contracts.
 - [x] Replace selectable appearances and their persistence with plan 0016's
       flat grayscale system-following CSS, local Roundo v2.0 family, and
       read-only Appearance summary.
+- [x] Restore device-local Auto, Light, and Dark scheme selection without
+      restoring accent, surface, or typography controls.
 - [x] Replace the fixed destination rail with plan 0017's app-owned titlebar,
       Personal/Bakbak segment, rail-free shell, and comfortable renderer-wide
       Roundo density.
@@ -322,6 +334,8 @@ contracts.
       without changing backend or persisted state.
 - [x] Add plan 0019's follow-up member spacing, static user-dock cover, and
       full non-control titlebar dragging with rotating idle/voice title copy.
+- [x] Add plan 0020's Bakbak Orbit app icon, renderer artwork, and contained
+      premium server identity header without recolouring ordinary chrome.
 - [ ] Complete plan 0016's installed dark/light typography and offline-font
       acceptance matrix on macOS and Windows.
 - [ ] Complete plan 0017's installed macOS/Windows titlebar, window-control,
@@ -369,7 +383,8 @@ contracts.
   green.
 - Add focused tests with each behavior change rather than postponing all test
   work until distribution.
-- Reject chromatic first-party CSS/SVG colors, retired theme machinery,
+- Reject chromatic first-party CSS/SVG colors outside plan 0020's explicitly
+  delimited brand block, retired theme machinery,
   product text below 11 px/weight 500, unsupported Roundo weights, and changed
   vendored font bytes in regression tests.
 
