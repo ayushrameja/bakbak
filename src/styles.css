@@ -1379,7 +1379,7 @@ button:active:not(:disabled) {
   cursor: pointer;
 }
 .composer__send {
-  color: white;
+  color: var(--on-accent);
   background: var(--accent);
 }
 .composer__send:disabled {
@@ -1943,7 +1943,7 @@ button:active:not(:disabled) {
   min-width: 18px;
   padding: 2px 4px;
   border-radius: var(--radius-control);
-  color: white;
+  color: var(--on-accent);
   background: var(--accent);
   font-size: 11px;
   font-style: normal;
@@ -2017,9 +2017,9 @@ button:active:not(:disabled) {
   opacity: 0.6;
 }
 .voice-main-controls button.hangup {
-  color: white;
+  color: var(--on-semantic-fill);
   border-color: transparent;
-  background: #f5f5f5;
+  background: var(--semantic-danger);
 }
 .soundboard-card {
   max-width: 900px;
@@ -4060,8 +4060,8 @@ body {
   padding: 0 15px;
   border: 0;
   border-radius: 10px;
-  color: white;
-  background: var(--danger);
+  color: var(--on-semantic-fill);
+  background: var(--semantic-danger);
   cursor: pointer;
   font-weight: 700;
 }
@@ -4636,15 +4636,15 @@ body {
 
 .voice-control-dock__leave {
   width: 54px !important;
-  color: white !important;
-  background: var(--danger) !important;
+  color: var(--on-semantic-fill) !important;
+  background: var(--semantic-danger) !important;
 }
 
 .voice-control-dock__stop-sounds {
   position: relative;
   width: 50px !important;
-  color: white !important;
-  background: var(--danger) !important;
+  color: var(--on-semantic-fill) !important;
+  background: var(--semantic-danger) !important;
 }
 
 .voice-control-dock__stop-sounds span {
@@ -4974,8 +4974,8 @@ body {
   padding: 0 11px;
   border: 0;
   border-radius: var(--radius-control);
-  color: white;
-  background: var(--danger);
+  color: var(--on-semantic-fill);
+  background: var(--semantic-danger);
   cursor: pointer;
   font-size: 11px;
   font-weight: 700;
@@ -5210,7 +5210,7 @@ body {
   min-width: 31px;
   padding: 3px 6px;
   border-radius: 999px;
-  color: white;
+  color: var(--on-accent);
   background: var(--accent);
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.28);
   font-size: 11px;
@@ -7504,14 +7504,30 @@ html[data-window-material="native"] #root {
 .window-titlebar__center {
   min-width: 0;
   padding: 0 var(--space-3);
-  pointer-events: none;
+  cursor: default;
 }
 
 .window-titlebar__center strong {
+  max-width: min(360px, 38vw);
+  overflow: hidden;
   color: var(--text);
   font-size: var(--font-ui);
   font-weight: 700;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  animation: titlebar-message-in 180ms ease both;
+}
+
+@keyframes titlebar-message-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .space-switcher {
@@ -7679,6 +7695,20 @@ html[data-window-material="native"] #root {
   visibility: hidden;
 }
 
+html.is-panel-resizing,
+html.is-panel-resizing * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
+html.is-panel-resizing * {
+  cursor: col-resize !important;
+}
+
+html.is-panel-resizing .desktop-shell {
+  transition: none !important;
+}
+
 .desktop-shell[data-space-transition="true"] .panel-slot__motion--left {
   animation: space-enter-left 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
@@ -7782,5 +7812,470 @@ html[data-window-material="native"] #root {
     opacity: 1;
     transform: none;
     animation: none !important;
+  }
+}
+
+/* 0019 — Discord-inspired semantic controls and member rail */
+:root {
+  --semantic-positive: #23a55a;
+  --semantic-danger: #da373c;
+  --semantic-selected: #5865f2;
+  --semantic-warning: #f0b232;
+  --icon-primary: #f2f3f5;
+  --icon-secondary: #b5bac1;
+  --icon-disabled: color-mix(in srgb, var(--icon-secondary) 55%, transparent);
+  --semantic-positive-soft: color-mix(
+    in srgb,
+    var(--semantic-positive) 16%,
+    transparent
+  );
+  --semantic-danger-soft: color-mix(
+    in srgb,
+    var(--semantic-danger) 16%,
+    transparent
+  );
+  --semantic-selected-soft: color-mix(
+    in srgb,
+    var(--semantic-selected) 18%,
+    transparent
+  );
+  --on-semantic-fill: #fff;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --semantic-positive: #18733e;
+    --semantic-danger: #b9252b;
+    --semantic-selected: #3d49b8;
+    --semantic-warning: #8a5a00;
+    --icon-primary: #1e1f22;
+    --icon-secondary: #4e5058;
+  }
+}
+
+.sidebar-voice-panel {
+  padding: 10px;
+  border-top-color: var(--glass-line);
+  background: var(--glass-strong);
+}
+
+.sidebar-voice-panel__status {
+  gap: 10px;
+}
+
+.sidebar-voice-panel__status strong {
+  color: var(--semantic-positive);
+  font-size: var(--font-meta);
+  font-weight: 700;
+}
+
+.sidebar-voice-panel[data-state="connecting"]
+  .sidebar-voice-panel__status
+  strong,
+.sidebar-voice-panel[data-state="reconnecting"]
+  .sidebar-voice-panel__status
+  strong,
+.sidebar-voice-panel[data-state="connecting"] .sidebar-voice-panel__quality,
+.sidebar-voice-panel[data-state="reconnecting"] .sidebar-voice-panel__quality {
+  color: var(--semantic-warning);
+}
+
+.sidebar-voice-panel[data-state="error"] .sidebar-voice-panel__status strong,
+.sidebar-voice-panel[data-state="error"] .sidebar-voice-panel__quality {
+  color: var(--semantic-danger);
+}
+
+.sidebar-voice-panel__status span {
+  color: var(--icon-secondary);
+  font-size: var(--font-caption);
+}
+
+.sidebar-voice-panel__status .sidebar-voice-panel__leave {
+  width: 32px;
+  height: 32px;
+  color: var(--semantic-danger);
+  background: var(--semantic-danger-soft);
+}
+
+.sidebar-voice-panel__status .sidebar-voice-panel__leave:hover,
+.sidebar-voice-panel__status .sidebar-voice-panel__leave:focus-visible {
+  color: var(--on-semantic-fill);
+  background: var(--semantic-danger);
+}
+
+.sidebar-voice-panel__quality {
+  margin-top: 6px;
+  color: var(--semantic-positive);
+  font-size: var(--font-caption);
+  font-weight: 600;
+}
+
+.sidebar-voice-panel__quality small {
+  color: var(--icon-secondary);
+  background: var(--glass-strong);
+}
+
+.sidebar-voice-panel__actions {
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.sidebar-voice-panel__actions button {
+  height: 34px;
+  border: 0;
+  color: var(--icon-secondary);
+  background: color-mix(in srgb, var(--icon-primary) 7%, transparent);
+}
+
+.sidebar-voice-panel__actions button:hover,
+.sidebar-voice-panel__actions button:focus-visible {
+  color: var(--icon-primary);
+  background: var(--glass-hover);
+}
+
+.sidebar-voice-panel__actions button.is-selected {
+  color: var(--semantic-selected);
+  background: var(--semantic-selected-soft);
+}
+
+.sidebar-voice-panel__actions button:disabled {
+  color: var(--icon-disabled);
+  background: color-mix(in srgb, var(--icon-primary) 4%, transparent);
+  opacity: 1;
+}
+
+.user-dock {
+  position: relative;
+  min-height: 58px;
+  gap: 4px;
+  overflow: hidden;
+  padding: 8px;
+  border-top-color: var(--glass-line);
+  background: var(--glass-strong);
+  isolation: isolate;
+}
+
+.user-dock > :not(.user-dock__cover) {
+  position: relative;
+  z-index: 1;
+}
+
+.user-dock__cover {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0.42;
+}
+
+.user-dock__cover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--glass-strong) 52%, transparent),
+    color-mix(in srgb, var(--glass-strong) 82%, transparent)
+  );
+}
+
+.user-dock__cover img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.user-dock > .user-dock__profile {
+  min-width: 0;
+  min-height: 40px;
+  gap: 8px;
+  padding: 4px;
+}
+
+.user-dock__identity strong {
+  color: var(--text);
+  font-size: var(--font-ui);
+  font-weight: 700;
+}
+
+.user-dock__identity span {
+  color: var(--icon-secondary);
+  font-size: var(--font-caption);
+}
+
+.user-dock > .user-dock__control {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border: 0;
+  color: var(--icon-secondary);
+  background: transparent;
+}
+
+.user-dock > .user-dock__control:hover,
+.user-dock > .user-dock__control:focus-visible {
+  color: var(--icon-primary);
+  background: var(--glass-hover);
+}
+
+.user-dock > .user-dock__control.is-danger {
+  color: var(--semantic-danger);
+  background: var(--semantic-danger-soft);
+}
+
+.user-dock > .user-dock__control:disabled {
+  color: var(--icon-disabled);
+  background: transparent;
+  opacity: 1;
+}
+
+.member-panel {
+  padding-top: 6px;
+}
+
+.member-panel__group {
+  padding: 8px 8px 2px;
+}
+
+.member-panel__group + .member-panel__group {
+  padding-top: 12px;
+}
+
+.member-panel__group h2 {
+  min-height: 20px;
+  align-items: center;
+  margin: 0 6px 4px;
+  color: var(--icon-secondary);
+  font-size: var(--font-caption);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.member-panel__group h2 span {
+  color: var(--faint);
+}
+
+.member-panel__person {
+  position: relative;
+  min-height: 44px;
+  gap: 9px;
+  overflow: hidden;
+  padding: 6px 8px;
+  color: var(--icon-secondary);
+  isolation: isolate;
+}
+
+.member-panel__person + .member-panel__person {
+  margin-top: 5px;
+}
+
+.member-panel__person:hover,
+.member-panel__person:focus-visible,
+.member-panel__person[aria-expanded="true"] {
+  color: var(--icon-primary);
+  background: var(--glass-hover);
+}
+
+.member-panel__cover {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 64%;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    rgb(0 0 0 / 0.75) 42%,
+    #000 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    rgb(0 0 0 / 0.75) 42%,
+    #000 100%
+  );
+  transition: opacity 140ms ease;
+}
+
+.member-panel__cover.has-media {
+  opacity: 0.34;
+}
+
+.member-panel__person:hover .member-panel__cover.has-media,
+.member-panel__person:focus-visible .member-panel__cover.has-media {
+  opacity: 0.48;
+}
+
+.member-panel__cover img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.member-panel__person > .avatar,
+.member-panel__identity,
+.member-panel__admin {
+  position: relative;
+  z-index: 1;
+}
+
+.member-panel__person > .avatar {
+  width: 32px;
+  height: 32px;
+}
+
+.member-panel__identity {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.member-panel__person .member-panel__identity strong {
+  overflow: hidden;
+  color: inherit;
+  font-size: var(--font-ui);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-panel__person .member-panel__presence {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--font-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-panel__person .member-panel__presence.is-in-voice {
+  color: var(--semantic-positive);
+}
+
+.member-panel__person .member-panel__presence.is-streaming {
+  color: var(--semantic-selected);
+}
+
+.member-panel__person > .member-panel__admin {
+  flex: 0 0 auto;
+  color: var(--semantic-warning);
+}
+
+.member-panel__person.is-offline {
+  opacity: 1;
+}
+
+.member-panel__person.is-offline > :not(.member-panel__cover) {
+  opacity: 0.5;
+}
+
+.member-panel__person.is-offline .member-panel__cover.has-media {
+  opacity: 0.18;
+}
+
+.member-panel__empty--all {
+  margin: 18px 14px;
+}
+
+.member-panel .avatar__status--online,
+.user-dock .avatar__status--online {
+  background: var(--semantic-positive);
+}
+
+.member-panel .avatar__status--idle,
+.user-dock .avatar__status--idle {
+  background: var(--semantic-warning);
+}
+
+.voice-control-dock {
+  border-color: var(--glass-line-bright);
+  background: var(--glass-strong);
+}
+
+.voice-control-dock > button,
+.voice-control-dock__more > button {
+  color: var(--icon-secondary);
+}
+
+.voice-control-dock > button:hover,
+.voice-control-dock__more > button:hover,
+.voice-control-dock > button:focus-visible,
+.voice-control-dock__more > button:focus-visible {
+  color: var(--icon-primary);
+  background: var(--glass-hover);
+}
+
+.voice-control-dock > button.is-active,
+.voice-control-dock__more > button.is-active {
+  color: var(--semantic-selected);
+  background: var(--semantic-selected-soft);
+}
+
+.voice-control-dock > button.is-danger,
+.voice-control-dock__menu button.is-danger {
+  color: var(--semantic-danger);
+  background: var(--semantic-danger-soft);
+}
+
+.voice-control-dock > button:disabled,
+.voice-control-dock__more > button:disabled {
+  color: var(--icon-disabled);
+  opacity: 1;
+}
+
+.voice-control-dock .voice-control-dock__leave,
+.voice-control-dock .voice-control-dock__stop-sounds,
+.soundboard-stop-footer button {
+  color: var(--on-semantic-fill) !important;
+  background: var(--semantic-danger) !important;
+}
+
+.soundboard-stop-footer {
+  border-color: var(--semantic-danger);
+  background: var(--semantic-danger-soft);
+}
+
+.voice-control-dock__menu {
+  color: var(--icon-secondary);
+  background: var(--glass-strong);
+}
+
+.voice-control-dock__menu button:hover,
+.voice-control-dock__menu button:focus-visible {
+  color: var(--icon-primary);
+  background: var(--glass-hover);
+}
+
+@media (prefers-color-scheme: light) {
+  .user-dock__cover {
+    opacity: 0.28;
+  }
+
+  .member-panel__cover.has-media {
+    opacity: 0.24;
+  }
+
+  .member-panel__person:hover .member-panel__cover.has-media,
+  .member-panel__person:focus-visible .member-panel__cover.has-media {
+    opacity: 0.34;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .member-panel__cover {
+    transition: none;
   }
 }

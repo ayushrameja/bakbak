@@ -27,23 +27,44 @@ export function PanelResizer({
 
   function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
     if (!enabled) return;
+    event.preventDefault();
     const startX = event.clientX;
     const startValue = value;
-    event.currentTarget.setPointerCapture(event.pointerId);
     const target = event.currentTarget;
+    target.setPointerCapture(event.pointerId);
+    target.focus({ preventScroll: true });
+    window.getSelection()?.removeAllRanges();
+    document.documentElement.classList.add("is-panel-resizing");
+    let finished = false;
     const onMove = (moveEvent: globalThis.PointerEvent) => {
       const delta = moveEvent.clientX - startX;
       apply(startValue + (side === "left" ? delta : -delta));
     };
-    const onEnd = (endEvent: globalThis.PointerEvent) => {
-      target.releasePointerCapture(endEvent.pointerId);
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      document.documentElement.classList.remove("is-panel-resizing");
       target.removeEventListener("pointermove", onMove);
       target.removeEventListener("pointerup", onEnd);
       target.removeEventListener("pointercancel", onEnd);
+      target.removeEventListener("lostpointercapture", finish);
+      window.removeEventListener("pointerup", onEnd);
+      window.removeEventListener("pointercancel", onEnd);
+      window.removeEventListener("blur", finish);
+    };
+    const onEnd = (endEvent: globalThis.PointerEvent) => {
+      if (target.hasPointerCapture(endEvent.pointerId)) {
+        target.releasePointerCapture(endEvent.pointerId);
+      }
+      finish();
     };
     target.addEventListener("pointermove", onMove);
     target.addEventListener("pointerup", onEnd);
     target.addEventListener("pointercancel", onEnd);
+    target.addEventListener("lostpointercapture", finish);
+    window.addEventListener("pointerup", onEnd);
+    window.addEventListener("pointercancel", onEnd);
+    window.addEventListener("blur", finish);
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {

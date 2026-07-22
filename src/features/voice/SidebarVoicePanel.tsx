@@ -51,13 +51,18 @@ export function SidebarVoicePanel({
   const backendLabel = backendLatencyLabel(mode, latency);
 
   return (
-    <section className="sidebar-voice-panel" aria-label="Current voice call">
+    <section
+      className="sidebar-voice-panel"
+      data-state={voice.status}
+      aria-label="Current voice call"
+    >
       <div className="sidebar-voice-panel__status">
         <div>
           <strong>{statusLabel}</strong>
           <span>{voice.channel.name}</span>
         </div>
         <button
+          className="sidebar-voice-panel__leave"
           type="button"
           aria-label="Leave voice"
           onClick={() => void voice.leave()}
@@ -79,7 +84,7 @@ export function SidebarVoicePanel({
       </div>
       <div className="sidebar-voice-panel__actions">
         <button
-          className={voice.cameraEnabled ? "is-active" : ""}
+          className={voice.cameraEnabled ? "is-selected" : ""}
           type="button"
           disabled={!connected || voice.cameraPending}
           aria-label={
@@ -90,7 +95,7 @@ export function SidebarVoicePanel({
           {voice.cameraEnabled ? <VideoOff size={17} /> : <Video size={17} />}
         </button>
         <button
-          className={voice.screenShareEnabled ? "is-active" : ""}
+          className={voice.screenShareEnabled ? "is-selected" : ""}
           type="button"
           disabled={
             !connected ||
@@ -108,7 +113,7 @@ export function SidebarVoicePanel({
           <MonitorUp size={17} />
         </button>
         <button
-          className={soundboardOpen ? "is-active" : ""}
+          className={soundboardOpen ? "is-selected" : ""}
           type="button"
           disabled={!connected}
           aria-label={soundboardOpen ? "Close soundboard" : "Open soundboard"}

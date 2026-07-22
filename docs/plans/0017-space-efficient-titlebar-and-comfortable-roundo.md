@@ -21,6 +21,11 @@ padding, and gutter decisions. It retains the 48 px titlebar, platform window
 controls, comfortable Roundo scale, persisted panel sizing, and 420 px center
 minimum.
 
+Plan 0019's follow-up refinement supersedes only the fixed signed-in title copy.
+The independent center track remains geometrically centered and cycles short
+idle or voice-aware jokes. A corrective follow-up makes the complete non-control
+titlebar surface draggable instead of attaching handlers to selected child spans.
+
 ## Decisions
 
 1. The titlebar is always present. Authentication, invite, and startup states

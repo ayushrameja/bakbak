@@ -46,12 +46,21 @@ describe("SidebarVoicePanel", () => {
     );
 
     expect(screen.getByText("Voice connected")).toBeVisible();
+    expect(
+      screen.getByRole("region", { name: "Current voice call" }),
+    ).toHaveAttribute("data-state", "connected");
     expect(screen.getByText("Good")).toBeVisible();
     expect(
       screen.getByRole("status", {
         name: "Voice quality Good; backend latency Local",
       }),
     ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Stop sharing" })).toHaveClass(
+      "is-selected",
+    );
+    expect(screen.getByRole("button", { name: "Leave voice" })).toHaveClass(
+      "sidebar-voice-panel__leave",
+    );
     await userEvent.click(
       screen.getByRole("button", { name: "Turn camera on" }),
     );
@@ -65,5 +74,38 @@ describe("SidebarVoicePanel", () => {
     expect(stopScreenShare).toHaveBeenCalledOnce();
     expect(onToggleSoundboard).toHaveBeenCalledOnce();
     expect(leave).toHaveBeenCalledOnce();
+  });
+
+  it("labels reconnecting and disables connection-dependent actions", () => {
+    render(
+      <SidebarVoicePanel
+        voice={
+          {
+            status: "reconnecting",
+            connectionQuality: "poor",
+            channel,
+            cameraEnabled: false,
+            cameraPending: false,
+            screenShareEnabled: false,
+            screenSharePending: false,
+            screenShareAvailable: true,
+            leave: vi.fn().mockResolvedValue(undefined),
+          } as unknown as ReturnType<typeof useVoiceRoom>
+        }
+        mode="mock"
+        soundboardOpen={false}
+        onToggleSoundboard={vi.fn()}
+        onOpenScreenShare={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText("Reconnecting")).toHaveLength(2);
+    expect(
+      screen.getByRole("button", { name: "Turn camera on" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Share screen" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Open soundboard" }),
+    ).toBeDisabled();
   });
 });

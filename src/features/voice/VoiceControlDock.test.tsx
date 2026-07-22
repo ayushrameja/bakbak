@@ -68,6 +68,17 @@ describe("VoiceControlDock", () => {
     expect(leave).toHaveBeenCalledOnce();
   });
 
+  it("marks muted and disconnect controls with destructive states", () => {
+    renderDock(createVoice({ muted: true }));
+
+    expect(screen.getByRole("button", { name: "Unmute" })).toHaveClass(
+      "is-danger",
+    );
+    expect(screen.getByRole("button", { name: "Leave voice" })).toHaveClass(
+      "voice-control-dock__leave",
+    );
+  });
+
   it("pins itself while soundboard is open and clears text-channel space", () => {
     vi.useFakeTimers();
     const { rerender } = renderDock(createVoice(), {

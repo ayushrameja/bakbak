@@ -19,6 +19,10 @@ Plan 0018 supersedes this plan's flat/opaque surface decision with
 system-adaptive glass while retaining its grayscale, system light/dark, local
 Roundo, and unfiltered user/live-media contracts.
 
+Plan 0019 supersedes only this plan's fully monochrome semantic-state rule:
+neutral chrome and the in-app logo remain grayscale, while approved positive,
+danger, selected, warning, and icon tokens may use scoped adaptive color.
+
 ## Decisions
 
 1. The renderer exposes no selectable theme, accent, intensity, surface, or

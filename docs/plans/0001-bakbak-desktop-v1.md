@@ -42,8 +42,9 @@ starts with context instead of archaeological guessing.
 - Place shared UI in `src/components`, service clients in `src/lib`, and the
   application shell/providers in `src/app`.
 - Keep native configuration and Rust code isolated in `src-tauri`.
-- Use one system-adaptive monochrome glass interface that follows the operating
-  system's light/dark setting. A 48 px app-owned titlebar places the
+- Use one system-adaptive neutral glass interface that follows the operating
+  system's light/dark setting, with scoped semantic status/control colors. A
+  48 px app-owned titlebar places the
   Personal/Bakbak switch at the left and `OG Nahan Gang` at the true center;
   independently optional channel and member panels occupy an edge-to-edge
   five-track shell around a flexible conversation canvas, centered settings
@@ -204,6 +205,13 @@ approved under `0018-native-glass-edge-to-edge-motion.md`. Plan 0018 supersedes
 plan 0016's flat/opaque surfaces and plan 0017's centered switch, rounded panel,
 outer-padding, and gutter decisions while preserving their typography,
 platform-control, persistence, and minimum-canvas contracts.
+Discord-inspired semantic controls, a shared Personal/server user footer,
+presence-aware In Voice/Online/Offline member grouping, and lazy static member
+cover accents are approved under
+`0019-discord-inspired-controls-and-member-rail.md`. Plan 0019 supersedes only
+plans 0016/0018's fully monochrome semantic-state rule while retaining their
+neutral glass, system light/dark, typography, native material, and layout
+contracts.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -307,6 +315,13 @@ platform-control, persistence, and minimum-canvas contracts.
 - [x] Add plan 0018's native/fallback glass materials, edge-to-edge five-track
       shell, left space switch, fixed center title, bounded motion, and
       activity-revealed scrollbars without changing layout preference v2.
+- [x] Make plan 0018's left/right pointer resizing immediate and suppress text
+      selection only while a panel drag is active.
+- [x] Add plan 0019's adaptive semantic control states, shared sidebar user
+      footer, existing-presence member groups, and lazy static cover accents
+      without changing backend or persisted state.
+- [x] Add plan 0019's follow-up member spacing, static user-dock cover, and
+      full non-control titlebar dragging with rotating idle/voice title copy.
 - [ ] Complete plan 0016's installed dark/light typography and offline-font
       acceptance matrix on macOS and Windows.
 - [ ] Complete plan 0017's installed macOS/Windows titlebar, window-control,
@@ -314,6 +329,8 @@ platform-control, persistence, and minimum-canvas contracts.
 - [ ] Complete plan 0018's light/dark three-resolution browser matrix and
       installed macOS/Windows 10/11 native-material, contrast, startup-flash,
       and window-interaction acceptance matrix.
+- [ ] Complete plan 0019's light/dark three-resolution and 200/240/360 px panel
+      visual matrix plus installed macOS/Windows control/member observation.
 - [ ] Evaluate optional global push-to-talk.
 - [x] Implement Windows process/display-matched audio with build gating and
       video-only fallback.

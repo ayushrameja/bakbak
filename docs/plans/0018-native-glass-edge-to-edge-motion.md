@@ -23,6 +23,10 @@ It preserves plan 0016's grayscale, system light/dark, local Roundo, and
 unfiltered user/live media contracts, and plan 0017's titlebar, platform window
 controls, type scale, 232/240 px panel defaults, and 420 px center minimum.
 
+Plan 0019 supersedes only the preserved fully monochrome semantic-state rule.
+The neutral glass, system light/dark, native-material, layout, motion, and
+unfiltered-media decisions in this plan remain authoritative.
+
 ## Decisions
 
 1. macOS enables transparency, `macOSPrivateApi`,
@@ -55,6 +59,12 @@ controls, type scale, 232/240 px panel defaults, and 420 px center minimum.
 8. Scrollable surfaces use a 6 px transparent track. Hover, focus-within, or
    delegated scroll activity reveals the thumb; scroll activity clears 650 ms
    after the final event. Reduced-motion users receive final layout immediately.
+9. The 220 ms grid transition applies to panel show/hide only. An active pointer
+   resize disables it synchronously so both the panel and conversation canvas
+   track the pointer directly. The drag clears existing selection and applies a
+   temporary document-wide selection guard that is removed on release, cancel,
+   lost capture, or window blur. Keyboard resizing and double-click reset retain
+   their existing behavior.
 
 ## Acceptance criteria
 
@@ -69,6 +79,8 @@ controls, type scale, 232/240 px panel defaults, and 420 px center minimum.
 - [x] Add panel-collapse, space-stagger, one-shot startup, bounded message, and
       reduced-motion behavior.
 - [x] Add auto-hiding 6 px scrollbars and delegated 650 ms scroll activity.
+- [x] Make pointer resizing immediate and prevent accidental document selection
+      during left or right panel drags.
 - [x] Add component, App, native-config, glass/layout, motion, and scrollbar
       regression coverage.
 - [ ] Complete light/dark browser visual QA at 1024×680, 1280×800, and

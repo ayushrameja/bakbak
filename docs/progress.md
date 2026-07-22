@@ -2982,7 +2982,8 @@ src-tauri/Cargo.toml --check`, `pnpm security:scan`, and `git diff --check` —
     production build, and bundle secret scan. Vite retains the non-blocking
     large-chunk warning; main JavaScript is 1,254.45 kB (346.95 kB gzip).
   - `pnpm tauri:build:local` — passed and produced the ad-hoc-signed ARM64
-    `Bakbak.app`; notarization was skipped because Apple credentials are absent.
+    `Bakbak.app`; strict deep code-sign verification and Mach-O inspection
+    passed, while notarization was skipped because Apple credentials are absent.
 - **Documentation updated:** Added plan 0014, updated the active Phase 5 plan,
   architecture, Supabase security/deployment guidance, and this canonical log.
 - **Known limitations:** The additive migration has not been pushed to hosted
@@ -3459,3 +3460,222 @@ Gang` at the true window center, and retained panel/Windows controls at the
 - **Next:** Run the light browser matrix, inspect the rebuilt macOS app over
   varied wallpapers and active/inactive states, then validate the same startup
   and window-interaction matrix on installed Windows 10 and Windows 11 builds.
+
+## 2026-07-22 — Discord-inspired controls and member rail
+
+- **Completed:** Added plan 0019's system-adaptive semantic palette while
+  keeping the glass shell and ordinary chrome neutral. Rebuilt the connected
+  voice footer as a stacked status/action surface, extracted one
+  `SidebarUserDock` for Personal and server spaces, and aligned the retained
+  floating voice dock and soundboard stop action with the same selected,
+  destructive, disabled, and icon states. Reworked the server member rail into
+  compact In Voice, Online, and Offline groups with deterministic sorting,
+  current-call-over-heartbeat deduplication, streaming/channel labels, offline
+  treatment, and lazy authenticated static cover-poster accents that preserve
+  focal position without requesting cover animation. Kept profile opening,
+  panel persistence, call continuity, media authorization, and backend
+  contracts unchanged.
+- **Decisions:** Plan 0019 supersedes only plans 0016/0018's fully monochrome
+  semantic-state clauses. Neutral chrome stays grayscale; only the approved
+  positive, danger, selected, warning, and icon tokens may be chromatic. The
+  current connected/reconnecting call overwrites matching presence activity so
+  local state appears immediately, while activity for unknown voice channels
+  is ignored. Missing or failed cover posters remain neutral and silent.
+- **Validation:**
+  - Focused Vitest and Node contract runs — passed 5 component/App files with
+    22 tests and 7 appearance/glass tests while implementing the change.
+  - Dark mock-browser QA — passed at 1024×680, 1280×800, and 2560×1440 with
+    200/240/360 px side panels, no document overflow, and no console warnings
+    or errors. Verified disconnected and active call hierarchy, In Voice
+    grouping, muted danger state, selected soundboard/pinned dock behavior,
+    visible disconnect/stop controls, correct positive/danger/warning computed
+    colors, offline treatment, and panel resizing/reset. The mock fixtures have
+    no cover posters, so focal positioning, lazy loading, and failure fallback
+    were verified in component tests rather than this visual pass.
+  - `pnpm format:check` — passed; all tracked files match Prettier.
+  - `pnpm lint` — passed with zero warnings.
+  - `pnpm typecheck` — passed both strict TypeScript projects.
+  - `pnpm test` — passed 55 Vitest files with 298 tests and 24/24 Node tests.
+  - `pnpm build` — passed; Vite produced the renderer bundle and retained the
+    existing non-blocking large-chunk warning. The stylesheet is 136.82 kB
+    (22.67 kB gzip) and the main JavaScript chunk is 1,248.28 kB (344.98 kB
+    gzip).
+  - `pnpm security:scan` — passed for `dist` and the existing release bundle.
+  - `pnpm tauri:build:local` — passed and produced the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are absent.
+  - `git diff --check` and a changed-diff secret-pattern inspection — passed.
+- **Documentation updated:** Added plan 0019, recorded its narrow supersession
+  in plans 0001/0016/0018, updated the architecture UI, presence-merge, and
+  profile-media contracts, and appended this canonical progress entry.
+- **Known limitations:** The selected browser exposed only the dark system
+  scheme; light tokens have exact palette/contrast static coverage, but the
+  light visual matrix remains open. Installed macOS material, light-mode,
+  inactive-window, and interaction observation was not performed. Windows 10
+  fallback and Windows 11 Mica/member-rail checks require an installed Windows
+  build. The local macOS bundle is not notarized.
+- **Next:** Run the light browser matrix with cover-bearing fixtures, inspect
+  the rebuilt macOS bundle directly, then repeat the member/control state
+  matrix on installed Windows 10 and Windows 11 builds.
+
+## 2026-07-22 — Member spacing, draggable jokes, and user-dock cover
+
+- **Completed:** Increased the visual separation between compact member cards
+  to 5 px. Made the complete centered title track use the existing native
+  drag/double-click window adapter, added deterministic eight-second idle jokes,
+  and switched immediately to concise room-aware connecting, connected,
+  reconnecting, and error copy when voice state changes. Added the signed-in
+  member's authenticated static cover poster as a focal-positioned background
+  across the shared Personal/server user dock with a neutral contrast gradient.
+  The dock never requests cover animation, and missing or failed posters retain
+  the existing neutral surface.
+- **Decisions:** Title copy rotates locally without persistence, randomness, or
+  backend state so tests and layouts remain deterministic. `OG Nahan Gang`
+  remains the first idle line. The centered track stays independently centered
+  and clips unusually long room names without changing the titlebar grid. The
+  user dock reuses `ProfileMediaCache` and the existing private cover-poster
+  authorization path; no media, voice, database, or preference contract changed.
+- **Validation:**
+  - Focused Vitest run — passed 3 files with 19 titlebar, App, and shared-user-
+    dock tests, including center dragging, title rotation/voice reset, static-
+    only focal cover loading, failure fallback, and existing callbacks.
+  - Focused appearance contract run — passed 7/7 glass and semantic-color tests.
+  - Initial `pnpm lint` — failed on one floating `act(...)` result in the new
+    timer test; the callback now returns nothing. Final lint passed with zero
+    warnings.
+  - Dark mock-browser QA at 1280×720 — passed with a measured 5 px gap between
+    member cards, automatic idle-title rotation, immediate
+    `Queue: chaos connected` copy after joining Queue, an interactive center
+    title surface, no document overflow, and no console warnings or errors. The
+    mock profile has no cover, so the dock cover's focal rendering and failure
+    behavior were verified in component/static tests instead of this screenshot.
+    Browser automation cannot physically drag the native desktop window; the
+    adapter invocation is covered by the component regression.
+  - `pnpm format:check` — passed; all files match Prettier.
+  - `pnpm lint` — passed with zero warnings.
+  - `pnpm typecheck` — passed both strict TypeScript projects.
+  - `pnpm test` — passed 55 Vitest files with 301 tests and 24/24 Node tests.
+  - `pnpm version:check` — passed at synchronized version `0.16.0`.
+  - `pnpm build` — passed; Vite retains the existing non-blocking large-chunk
+    warning. The stylesheet is 137.62 kB (22.79 kB gzip) and the main JavaScript
+    chunk is 1,249.67 kB (345.46 kB gzip).
+  - Final `pnpm security:scan`, `git diff --check`, and changed-diff secret-
+    pattern inspection — passed with no forbidden material.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; strict deep code-sign verification and Mach-O inspection
+    passed. Notarization was skipped because Apple credentials are absent.
+- **Documentation updated:** Updated plans 0001, 0017, and 0019, the titlebar,
+  member-rail, sidebar-media architecture contracts, and this canonical log.
+- **Known limitations:** Direct installed observation is still required for
+  macOS/Windows drag and double-click behavior. Light-mode cover contrast and an
+  actual cover-bearing user dock were not available in the mock browser fixture.
+  The local macOS bundle is not notarized.
+- **Next:** Open the rebuilt macOS bundle to confirm title dragging from the
+  text itself and cover contrast with the signed-in profile, then repeat those
+  checks in light mode and the Windows installed build.
+
+## 2026-07-22 — Full titlebar drag hit-area correction
+
+- **Completed:** Inspected the supplied 15.93-second macOS recording and
+  confirmed the previous fix covered only selected leading, centered, and
+  trailing children rather than the complete 48 px titlebar. Moved mouse-down
+  drag and double-click maximize handling to one header-level boundary so every
+  blank region and non-control descendant delegates to the existing native
+  window adapter. Removed the child-level handlers and explicitly excluded the
+  Personal/Bakbak navigation, panel controls, Windows controls, links, and form
+  controls from drag/maximize handling.
+- **Decisions:** The renderer continues using the narrowly scoped Tauri window
+  adapter; no capability or native command changed. Header event delegation is
+  used instead of relying on empty flex spans whose rendered hit area can
+  collapse. Primary-button drag prevents default text behavior, while control
+  groups retain their normal pointer interaction and never start a drag.
+- **Validation:**
+  - `ffprobe` plus an eight-frame contact sheet of the supplied 1632×1068 H.264
+    recording — confirmed the failed attempts occurred over titlebar regions
+    outside the previously instrumented child surfaces.
+  - Focused `WindowTitlebar` Vitest run — passed 8/8 tests covering direct
+    header, leading, centered text, center track, trailing, and pre-shell drag
+    targets; blank-region double-click maximize; and zero drag/maximize calls
+    from navigation, panel, and window controls.
+  - `node --test scripts/glass-shell.test.mjs` — passed 3/3 contracts and now
+    enforces exactly one titlebar mouse-down/double-click handler plus control
+    target filtering.
+  - Dark mock-browser QA at 1280×720 — the titlebar measured 1280×48 px with
+    `pointer-events: auto`; 40/40 sampled points at both the top and bottom and
+    31 non-control points at mid-height resolved to drag territory, while the
+    remaining nine mid-height samples were intentional controls. No sample was
+    uncovered, the Personal switch remained clickable, and the console had no
+    warnings or errors.
+  - `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and
+    `pnpm version:check` — passed; version remains synchronized at `0.16.0`.
+  - `pnpm test` — passed 55 Vitest files with 302 tests and 24/24 Node tests.
+  - `pnpm build` — passed; Vite retains the existing non-blocking large-chunk
+    warning. The stylesheet is 137.84 kB (22.83 kB gzip) and the main JavaScript
+    chunk is 1,250.39 kB (345.69 kB gzip).
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; strict deep code-sign verification and Mach-O inspection
+    passed. Notarization was skipped because Apple credentials are absent.
+  - Final `pnpm security:scan`, `git diff --check`, and changed-diff secret-
+    pattern inspection — passed with no forbidden material.
+- **Documentation updated:** Corrected the titlebar contract in plans 0001,
+  0017, and 0019, updated the architecture description, and appended this
+  correction rather than rewriting the earlier progress entry.
+- **Known limitations:** Browser automation verifies complete renderer hit-area
+  ownership and component tests verify native adapter calls, but it cannot
+  physically move the installed macOS/Windows window. The rebuilt macOS bundle
+  still requires one direct drag and maximize observation; it is not notarized.
+- **Next:** Launch the rebuilt macOS bundle and drag from the far-left blank
+  area, centered text, upper/lower titlebar edges, and blank space before the
+  panel controls, then repeat the same matrix on Windows.
+
+## 2026-07-22 — Instant panel resizing without selection
+
+- **Completed:** Made left and right pointer resizing bypass the shell's 220 ms
+  grid transition for the exact duration of an active drag, so the side panel
+  and conversation canvas respond to the same current width instead of chasing
+  it. Pointer start now prevents the browser's native selection gesture, clears
+  any existing range, focuses/captures the separator, and applies a temporary
+  document-wide `user-select: none` plus resize cursor. Pointer release,
+  cancellation, lost capture, or window blur removes listeners and restores
+  normal selection and motion. Panel show/hide animation, keyboard arrows,
+  Home/End, double-click reset, persisted widths, and the 200–360 px bounds are
+  unchanged.
+- **Decisions:** The resize guard is a short-lived root class rather than
+  persisted React state, so transition removal happens synchronously before the
+  first movement and adds no render-frame delay. Window-level release/cancel
+  listeners supplement pointer capture for cleanup if a platform delivers the
+  terminal event away from the separator.
+- **Validation:**
+  - Focused Vitest run — passed 2 files with 11 PanelResizer and App layout
+    tests, including pointer delta, focus/capture, selection clearing, active
+    class cleanup, both directions, keyboard bounds, reset, and hidden state.
+  - `node --test scripts/glass-shell.test.mjs` — passed 3/3 shell, resize,
+    glass, motion, and scrollbar contract tests.
+  - Dark mock-browser QA at 1280×720 — observed zero selection ranges and a
+    `0s` grid transition while the resize guard was active, followed by normal
+    `0.22s` collapse motion after cleanup; there was no page overflow or console
+    warning/error. The browser automation backend could not reliably deliver a
+    movement sequence to the captured 9 px separator, so exact pointer delta
+    and terminal-event behavior use the component regression above.
+  - The first full-suite attempt ran all heavyweight jobs concurrently and one
+    existing App draft test exceeded its timeout under contention. Its immediate
+    isolated rerun passed 7/7, and the final sequential `pnpm test` passed 55
+    Vitest files with 302 tests plus 24/24 Node tests.
+  - `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and
+    `pnpm version:check` — passed; version remains synchronized at `0.16.0`.
+  - `pnpm build` — passed; Vite retains the existing non-blocking large-chunk
+    warning. The stylesheet is 137.84 kB (22.83 kB gzip) and the main JavaScript
+    chunk is 1,250.39 kB (345.69 kB gzip).
+  - Final `pnpm security:scan`, `git diff --check`, and changed-diff secret-
+    pattern inspection — passed with no forbidden material.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; strict deep code-sign verification and Mach-O inspection
+    passed. Notarization was skipped because Apple credentials are absent.
+- **Documentation updated:** Updated plan 0018, active plan 0001, the shell and
+  local-preference resize architecture, and this canonical progress log.
+- **Known limitations:** The rebuilt macOS and Windows applications still need
+  direct human observation of continuous pointer feel and selection suppression
+  because the mock browser cannot reproduce native WebView pointer capture
+  perfectly. The local macOS bundle is not notarized.
+- **Next:** Drag both installed panel separators rapidly across their full range
+  on macOS, then repeat on Windows and confirm the canvas remains locked to the
+  pointer with no blue selection residue.

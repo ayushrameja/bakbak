@@ -1,14 +1,4 @@
-import {
-  Hash,
-  HeadphoneOff,
-  Headphones,
-  Mic,
-  MicOff,
-  Pencil,
-  Plus,
-  Settings,
-  Volume2,
-} from "lucide-react";
+import { Hash, Pencil, Plus, Volume2 } from "lucide-react";
 import { Avatar } from "../../components/Avatar";
 import {
   ProfileTrigger,
@@ -27,6 +17,7 @@ import type {
 } from "../../lib/types";
 import { VoiceElapsedTime } from "../voice/VoiceElapsedTime";
 import { SidebarVoicePanel } from "../voice/SidebarVoicePanel";
+import { SidebarUserDock } from "../voice/SidebarUserDock";
 import type { useVoiceRoom } from "../voice/useVoiceRoom";
 
 const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
@@ -303,63 +294,14 @@ export function ChannelSidebar({
         onOpenScreenShare={onOpenScreenShare}
       />
 
-      <div className="user-dock">
-        <ProfileTrigger
-          className="user-dock__profile"
-          member={currentMember}
-          loadMedia={loadProfileMedia}
-          onOpenProfile={onOpenProfile}
-          expanded={openProfileId === currentMember.id}
-          aria-label={`View ${user.displayName}'s profile`}
-        >
-          {({ animationUrl, animated }) => (
-            <>
-              <Avatar
-                user={user}
-                size="small"
-                showStatus
-                animationUrl={animationUrl}
-                animated={animated}
-              />
-              <span className="user-dock__identity">
-                <strong>{user.displayName}</strong>
-                <span>
-                  {voice.status === "connected" ? "In voice" : "Available"}
-                </span>
-              </span>
-            </>
-          )}
-        </ProfileTrigger>
-        {voice.status !== "disconnected" ? (
-          <>
-            <button
-              className={voice.muted ? "is-active" : ""}
-              type="button"
-              disabled={voice.status !== "connected"}
-              onClick={() => void voice.toggleMute()}
-              aria-label={voice.muted ? "Unmute" : "Mute"}
-            >
-              {voice.muted ? <MicOff size={16} /> : <Mic size={16} />}
-            </button>
-            <button
-              className={voice.deafened ? "is-active" : ""}
-              type="button"
-              disabled={voice.status !== "connected"}
-              onClick={() => void voice.toggleDeafen()}
-              aria-label={voice.deafened ? "Undeafen" : "Deafen"}
-            >
-              {voice.deafened ? (
-                <HeadphoneOff size={16} />
-              ) : (
-                <Headphones size={16} />
-              )}
-            </button>
-          </>
-        ) : null}
-        <button type="button" onClick={onOpenSettings} aria-label="Settings">
-          <Settings size={16} />
-        </button>
-      </div>
+      <SidebarUserDock
+        member={currentMember}
+        voice={voice}
+        loadProfileMedia={loadProfileMedia}
+        onOpenProfile={onOpenProfile}
+        openProfileId={openProfileId}
+        onOpenSettings={onOpenSettings}
+      />
     </aside>
   );
 }

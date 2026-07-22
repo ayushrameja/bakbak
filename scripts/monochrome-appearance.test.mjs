@@ -66,8 +66,43 @@ function assertGrayscale(source, label) {
   }
 }
 
-test("first-party CSS and the in-app logo remain monochrome", () => {
-  assertGrayscale(styles, "src/styles.css");
+const semanticTokenValues = {
+  "semantic-positive": ["#23a55a", "#18733e"],
+  "semantic-danger": ["#da373c", "#b9252b"],
+  "semantic-selected": ["#5865f2", "#3d49b8"],
+  "semantic-warning": ["#f0b232", "#8a5a00"],
+  "icon-primary": ["#f2f3f5", "#1e1f22"],
+  "icon-secondary": ["#b5bac1", "#4e5058"],
+};
+
+function contrastRatio(left, right) {
+  const luminance = (value) => {
+    const channels = value
+      .slice(1)
+      .match(/../g)
+      .map((channel) => Number.parseInt(channel, 16) / 255)
+      .map((channel) =>
+        channel <= 0.03928
+          ? channel / 12.92
+          : ((channel + 0.055) / 1.055) ** 2.4,
+      );
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+  };
+  const leftLuminance = luminance(left);
+  const rightLuminance = luminance(right);
+  return (
+    (Math.max(leftLuminance, rightLuminance) + 0.05) /
+    (Math.min(leftLuminance, rightLuminance) + 0.05)
+  );
+}
+
+test("ordinary chrome and the in-app logo remain monochrome", () => {
+  const semanticNames = Object.keys(semanticTokenValues).join("|");
+  const ordinaryStyles = styles.replace(
+    new RegExp(`--(?:${semanticNames}):\\s*#[\\da-f]{3,8};`, "gi"),
+    "",
+  );
+  assertGrayscale(ordinaryStyles, "src/styles.css ordinary chrome");
   assertGrayscale(logo, "public/bakbak.svg");
   assert.doesNotMatch(styles, /\b(?:hsl|hsla|hwb|lab|lch|oklch)\(/i);
 
@@ -80,6 +115,47 @@ test("first-party CSS and the in-app logo remain monochrome", () => {
       );
     }
   }
+});
+
+test("approved semantic colors are system-adaptive and accessible", () => {
+  for (const [name, expectedValues] of Object.entries(semanticTokenValues)) {
+    const actualValues = [
+      ...styles.matchAll(new RegExp(`--${name}:\\s*(#[\\da-f]{6});`, "gi")),
+    ].map((match) => match[1].toLowerCase());
+    assert.deepEqual(actualValues, expectedValues, `${name} token drifted`);
+  }
+
+  const backgrounds = ["#0e0e0e", "#ffffff"];
+  for (const name of [
+    "semantic-positive",
+    "semantic-warning",
+    "icon-primary",
+    "icon-secondary",
+  ]) {
+    semanticTokenValues[name].forEach((value, scheme) =>
+      assert.ok(
+        contrastRatio(value, backgrounds[scheme]) >= 4.5,
+        `${name} lacks text contrast in scheme ${scheme}`,
+      ),
+    );
+  }
+  for (const name of ["semantic-danger", "semantic-selected"]) {
+    semanticTokenValues[name].forEach((value, scheme) =>
+      assert.ok(
+        contrastRatio(value, "#ffffff") >= 4.5,
+        `${name} lacks on-fill contrast in scheme ${scheme}`,
+      ),
+    );
+  }
+
+  assert.match(
+    styles,
+    /\.voice-control-dock \.voice-control-dock__leave,[\s\S]*?color:\s*var\(--on-semantic-fill\)[\s\S]*?background:\s*var\(--semantic-danger\)/,
+  );
+  assert.match(
+    styles,
+    /\.soundboard-stop-footer button\s*{[\s\S]*?color:\s*var\(--on-semantic-fill\)[\s\S]*?background:\s*var\(--semantic-danger\)/,
+  );
 });
 
 test("Roundo is local, pinned, licensed, and limited to supported weights", () => {

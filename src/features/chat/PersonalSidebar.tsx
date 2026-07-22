@@ -1,18 +1,8 @@
-import {
-  HeadphoneOff,
-  Headphones,
-  MessageCirclePlus,
-  Mic,
-  MicOff,
-  KeyRound,
-  Settings,
-  X,
-} from "lucide-react";
+import { KeyRound, MessageCirclePlus, X } from "lucide-react";
 import { Avatar } from "../../components/Avatar";
-import {
-  ProfileTrigger,
-  type LoadProfileMedia,
-  type OpenProfile,
+import type {
+  LoadProfileMedia,
+  OpenProfile,
 } from "../../components/ProfileTrigger";
 import type {
   AppUser,
@@ -21,6 +11,7 @@ import type {
   ServerMember,
 } from "../../lib/types";
 import { SidebarVoicePanel } from "../voice/SidebarVoicePanel";
+import { SidebarUserDock } from "../voice/SidebarUserDock";
 import type { useVoiceRoom } from "../voice/useVoiceRoom";
 import { useState } from "react";
 
@@ -124,62 +115,14 @@ export function PersonalSidebar({
         onToggleSoundboard={onToggleSoundboard}
         onOpenScreenShare={onOpenScreenShare}
       />
-      <div className="user-dock">
-        <ProfileTrigger
-          className="user-dock__profile"
-          member={currentMember}
-          loadMedia={loadProfileMedia}
-          onOpenProfile={onOpenProfile}
-          expanded={openProfileId === currentMember.id}
-        >
-          {({ animationUrl, animated }) => (
-            <>
-              <Avatar
-                user={currentMember}
-                size="small"
-                showStatus
-                animationUrl={animationUrl}
-                animated={animated}
-              />
-              <span className="user-dock__identity">
-                <strong>{user.displayName}</strong>
-                <span>
-                  {voice.status === "connected" ? "In voice" : "Available"}
-                </span>
-              </span>
-            </>
-          )}
-        </ProfileTrigger>
-        {voice.status !== "disconnected" ? (
-          <>
-            <button
-              className={voice.muted ? "is-active" : ""}
-              type="button"
-              disabled={voice.status !== "connected"}
-              onClick={() => void voice.toggleMute()}
-              aria-label={voice.muted ? "Unmute" : "Mute"}
-            >
-              {voice.muted ? <MicOff size={16} /> : <Mic size={16} />}
-            </button>
-            <button
-              className={voice.deafened ? "is-active" : ""}
-              type="button"
-              disabled={voice.status !== "connected"}
-              onClick={() => void voice.toggleDeafen()}
-              aria-label={voice.deafened ? "Undeafen" : "Deafen"}
-            >
-              {voice.deafened ? (
-                <HeadphoneOff size={16} />
-              ) : (
-                <Headphones size={16} />
-              )}
-            </button>
-          </>
-        ) : null}
-        <button type="button" onClick={onOpenSettings} aria-label="Settings">
-          <Settings size={16} />
-        </button>
-      </div>
+      <SidebarUserDock
+        member={currentMember}
+        voice={voice}
+        loadProfileMedia={loadProfileMedia}
+        onOpenProfile={onOpenProfile}
+        openProfileId={openProfileId}
+        onOpenSettings={onOpenSettings}
+      />
       {pickerOpen ? (
         <div className="direct-picker" role="dialog" aria-modal="true">
           <header>

@@ -3,14 +3,16 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const root = new URL("../", import.meta.url);
-const [styles, app, titlebar, chat, scrollbarHook, html] = await Promise.all([
-  readFile(new URL("src/styles.css", root), "utf8"),
-  readFile(new URL("src/app/App.tsx", root), "utf8"),
-  readFile(new URL("src/components/WindowTitlebar.tsx", root), "utf8"),
-  readFile(new URL("src/features/chat/ChatView.tsx", root), "utf8"),
-  readFile(new URL("src/lib/use-auto-hide-scrollbars.ts", root), "utf8"),
-  readFile(new URL("index.html", root), "utf8"),
-]);
+const [styles, app, titlebar, panelResizer, chat, scrollbarHook, html] =
+  await Promise.all([
+    readFile(new URL("src/styles.css", root), "utf8"),
+    readFile(new URL("src/app/App.tsx", root), "utf8"),
+    readFile(new URL("src/components/WindowTitlebar.tsx", root), "utf8"),
+    readFile(new URL("src/components/PanelResizer.tsx", root), "utf8"),
+    readFile(new URL("src/features/chat/ChatView.tsx", root), "utf8"),
+    readFile(new URL("src/lib/use-auto-hide-scrollbars.ts", root), "utf8"),
+    readFile(new URL("index.html", root), "utf8"),
+  ]);
 
 test("glass tokens and native-safe document underlays stay system adaptive", () => {
   assert.match(styles, /--glass-panel:\s*rgba\(0, 0, 0, 0\.68\)/);
@@ -47,6 +49,18 @@ test("shell remains a flush five-track grid with persistent inert side slots", (
     /\.desktop-shell\[data-left-panel\]\[data-right-panel\]/,
   );
   assert.match(styles, /transition:\s*grid-template-columns 220ms/);
+  assert.match(
+    styles,
+    /html\.is-panel-resizing \.desktop-shell\s*{[\s\S]*?transition:\s*none !important/,
+  );
+  assert.match(
+    styles,
+    /html\.is-panel-resizing \*\s*{[\s\S]*?user-select:\s*none !important/,
+  );
+  assert.match(
+    panelResizer,
+    /documentElement\.classList\.add\("is-panel-resizing"\)/,
+  );
   assert.match(styles, /\.panel-resizer\s*{[\s\S]*?width:\s*9px/);
   assert.match(app, /className="panel-slot panel-slot--left"/);
   assert.match(app, /className="panel-slot panel-slot--right"/);
@@ -58,7 +72,23 @@ test("shell remains a flush five-track grid with persistent inert side slots", (
 
 test("titlebar, space motion, startup assembly, and scroll activity retain their timing contracts", () => {
   assert.match(titlebar, /window-titlebar__leading[\s\S]*?<SpaceSwitcher/);
-  assert.match(titlebar, /<strong>OG Nahan Gang<\/strong>/);
+  assert.match(titlebar, /"OG Nahan Gang"[\s\S]*?"Professional yappers"/);
+  assert.match(titlebar, /window-titlebar__center window-titlebar__drag/);
+  assert.match(titlebar, /TITLEBAR_MESSAGE_ROTATION_MS = 8_000/);
+  assert.equal(titlebar.match(/onMouseDown=\{handleDrag\}/g)?.length, 1);
+  assert.equal(
+    titlebar.match(/onDoubleClick=\{handleDoubleClick\}/g)?.length,
+    1,
+  );
+  assert.match(titlebar, /isTitlebarControl\(event\.target\)/);
+  assert.match(
+    styles,
+    /\.member-panel__person \+ \.member-panel__person\s*{[\s\S]*?margin-top:\s*5px/,
+  );
+  assert.match(
+    styles,
+    /\.user-dock__cover\s*{[\s\S]*?position:\s*absolute[\s\S]*?opacity:\s*0\.42/,
+  );
   assert.match(styles, /\.space-switcher\s*{[\s\S]*?width:\s*232px/);
   assert.match(styles, /padding-left:\s*88px/);
   assert.match(styles, /space-enter-center 180ms 40ms/);

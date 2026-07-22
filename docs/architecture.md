@@ -9,9 +9,12 @@ and phase completion belong in the numbered files under `docs/plans`.
 
 As of 2026-07-21, Bakbak has a complete local/mock product path and production
 Supabase and LiveKit adapters. The renderer provides the invite-only welcome
-flow and one shared grayscale glass shell. An always-present 48 px titlebar
-places the 232 px Personal/Bakbak switch at the left and `OG Nahan Gang` at the
-true signed-in window centre without interrupting voice; startup,
+flow and one shared neutral glass shell with scoped semantic control colors. An
+always-present 48 px titlebar
+places the 232 px Personal/Bakbak switch at the left and a rotating idle or
+voice-aware joke at the true signed-in window centre without interrupting
+voice. One titlebar-level event boundary makes every non-control pixel a native
+drag/double-click region; startup,
 authentication, and invite-only states keep a navigation-free titlebar while
 their main content owns product branding. The titlebar's right edge holds both
 side-panel toggles and Windows window controls, leaving the contextual header
@@ -28,15 +31,17 @@ persist widths and visibility per device. Settings is a centered, focus-trapped
 in-app modal with internal scrolling, active-call controls, and confirmed
 logout.
 
-Appearance has one system-adaptive grayscale glass treatment without
-decorative texture, chromatic glow, selectable accents, or heavy shadows. Dark
+Appearance has one system-adaptive neutral glass treatment without decorative
+texture, chromatic glow, selectable accents, or heavy shadows. Dark
 mode uses near-black translucent panels; light mode uses neutral-white
 translucent panels. Primary chrome uses 24 px blur at 120% saturation while
 avatars, covers, emoji, camera video, and screen sharing remain untouched. CSS
 `prefers-color-scheme` applies the operating system's light/dark setting and
 media-qualified `theme-color` metadata keeps host chrome aligned; the renderer
-stores no appearance choice. Accent, presence, warning, danger, and focus use
-grayscale contrast, icons, labels, borders, rings, and opacity. Appearance
+stores no appearance choice. Ordinary chrome and the Bakbak logo remain
+grayscale; scoped Discord-inspired positive, danger, selected, warning, and
+icon tokens identify call controls, presence, streaming, and admin state with
+verified light/dark contrast. Appearance
 remains in Settings as a read-only summary of `Glass`, `Follows system`, and
 `Roundo`. Legacy `bakbak.appearancePreferences.*` values are inert and
 intentionally left in local storage. Roundo v2.0 is served from a committed
@@ -45,7 +50,8 @@ for unsupported glyphs; product UI uses only 500, 600, and 700, never renders
 below 11 px, and gives chat/composer text a 15 px weight-500 baseline. Profiles
 support validated display names, 190-character plain-text
 descriptions, static or GIF avatars, 3:1 static or GIF covers, integer cover
-focal points, and an accessible Discord-style anchored card. Admin-only
+focal points, lazy static member-row cover accents, and an accessible
+Discord-style anchored card. Admin-only
 controls create or rename text and voice channels, while Realtime reconciles
 changes for every member. Ordered channel categories reproduce the visible
 Unlucky Boys layout: 7 categories, 18 text rooms, and 6 voice rooms in the same
@@ -55,7 +61,7 @@ Upgraded clients expose chat, structured individual mentions, account-synced
 unread emphasis, incoming-message sounds, and drafts only for text channels.
 Message alerts now use the same original generated interface-sound controller
 as voice join/leave, screen-share start/stop, reconnect success, and actionable
-communication failure. These cues run under the shared monochrome appearance through the
+communication failure. These cues run under the shared system-adaptive appearance through the
 system output, independently of the selected call/soundboard output.
 Voice-channel message rows, RPC permissions, and read-state data remain intact
 for installed-client compatibility, but the upgraded renderer neither loads,
@@ -343,7 +349,8 @@ bakbak/
 │       ├── 0015-screen-share-reliability-and-call-layout.md
 │       ├── 0016-flat-monochrome-roundo.md
 │       ├── 0017-space-efficient-titlebar-and-comfortable-roundo.md
-│       └── 0018-native-glass-edge-to-edge-motion.md
+│       ├── 0018-native-glass-edge-to-edge-motion.md
+│       └── 0019-discord-inspired-controls-and-member-rail.md
 ├── public/
 │   ├── bakbak.svg                 # renderer favicon/source logo
 │   ├── fonts/roundo/              # pinned Roundo v2.0 variable WOFF2
@@ -388,8 +395,13 @@ The renderer uses a titlebar, three-panel desktop layout, and modal layer:
 
 1. The 48 px titlebar owns window drag behavior. Its left side holds the 232 px
    Personal/Bakbak switch after an 88 px macOS traffic-light safe area, while
-   `OG Nahan Gang` occupies an independent center grid track so unequal edge
-   controls cannot displace it. Unread and active-call markers remain attached
+   a deterministic eight-second idle joke cycle occupies an independent center
+   grid track so unequal edge controls cannot displace it. Connecting,
+   connected, reconnecting, and failed voice states replace the line
+   immediately with room-aware copy. One handler on the complete titlebar starts
+   native drag and double-click maximize from every non-control descendant and
+   blank region; the Personal/Bakbak navigation, panel controls, and Windows
+   controls are explicitly excluded. Unread and active-call markers remain attached
    to their spaces, blocking dialogs disable space and panel navigation while
    leaving native window controls available, and voice fullscreen temporarily
    removes the titlebar. Its right-edge layout controls independently toggle
@@ -397,7 +409,9 @@ The renderer uses a titlebar, three-panel desktop layout, and modal layer:
    it is dedicated to the current conversation or room.
 2. The 232 px channel panel contains seven ordered Unlucky Boys categories with
    18 text rooms and six voice rooms in mixed source order, plus
-   active-call/sidebar controls, signed-in user actions, voice occupancy, and
+   active-call/sidebar controls, a shared Personal/server user footer with the
+   signed-in member's authenticated static cover poster behind its identity and
+   controls, voice occupancy, and
    admin-only create/rename controls. The shelf scrolls independently; admin
    creation adds an uncategorized room because category management is outside
    plan 0012. Occupied rooms show one room-active timer; their compact occupant
@@ -406,11 +420,19 @@ The renderer uses a titlebar, three-panel desktop layout, and modal layer:
 3. The flexible center canvas contains text chat or the voice room. The shell
    has no outer padding, gutters, rounding, outlines, or panel shadows; two
    straight 1 px separators define its edges. Titlebar buttons independently
-   toggle the left and right tracks over 220 ms. Persistent clipping slots keep
-   each side component mounted while hidden, but `inert`, `aria-hidden`, and a
+   toggle the left and right tracks over 220 ms. Pointer resizing temporarily
+   removes that grid transition so the conversation canvas follows every drag
+   update immediately, clears any existing browser selection, and disables
+   selection until pointer release/cancel. Persistent clipping slots keep each
+   side component mounted while hidden, but `inert`, `aria-hidden`, and a
    disabled resizer prevent interaction during the zero-width state.
-4. The 240 px member panel is visible by default and groups online/idle and
-   offline members in normal document flow. It is not a drawer or overlay.
+4. The 240 px member panel is visible by default and groups unique members as
+   In Voice, Online, and Offline in normal document flow, with a visible 5 px
+   separation between its compact member surfaces. Known heartbeat
+   sessions merge with the current LiveKit room so active members appear before
+   the next heartbeat. Rows lazily load static cover posters through the shared
+   authenticated cache, preserve focal positioning, and never request cover
+   animation. It is not a drawer or overlay.
    Space changes replace any in-flight 0/40/80 ms left/center/right entrance
    sequence rather than queueing transitions, while voice and draft ownership
    remains above the animated subtrees.
@@ -446,8 +468,9 @@ The renderer uses a titlebar, three-panel desktop layout, and modal layer:
    seconds and labels the result as backend latency. LiveKit
    `ConnectionQualityChanged` events separately normalize the local participant as
    Unknown/Excellent/Good/Poor; reconnecting display takes precedence. The
-   system-following glass appearance uses grayscale translucency and semantic
-   contrast without decorative chroma. A one-shot renderer-launch assembly
+   system-following glass appearance uses grayscale translucency plus scoped
+   positive, danger, selected, warning, and icon colors without decorative
+   chroma. A one-shot renderer-launch assembly
    completes within 500 ms; panel/space motion and message stagger collapse to
    the final state under reduced motion. Every scroll surface uses a transparent
    6 px track and reveals its thumb on hover, focus, or scroll activity, which
@@ -670,7 +693,10 @@ An invite-management UI is deferred until post-v1.
    and hidden from assistive technology. The invisible 9 px pointer target
    overlaps its 1 px separator; keyboard separators support arrows,
    Shift+arrows, Home/End, and double-click reset and disable immediately with
-   the panel. Runtime maxima clamp the 200–360 px widths so the centre retains
+   the panel. Pointer capture updates the grid without its collapse transition
+   and suppresses document selection only for the active drag. Release,
+   cancellation, capture loss, or window blur always restores normal selection
+   and motion. Runtime maxima clamp the 200–360 px widths so the centre retains
    at least 420 px; hidden panels keep their stored widths.
 4. Personal loads `get_direct_conversations()` activity ordered by the newest
    message. Starting a row calls the canonical shared-membership creation RPC.
@@ -717,8 +743,11 @@ An invite-management UI is deferred until post-v1.
    Auth metadata and best-effort deletes replaced/removed objects.
 5. One bucket/path-keyed cache deduplicates authenticated downloads and revokes
    object URLs on replacement, sign-out, and teardown. Avatar posters load
-   eagerly; compact GIFs load only on identity hover/focus, while cover media
-   loads only for an open profile card or editor. Reduced-motion mode never
+   eagerly; compact GIFs load only on identity hover/focus. Static cover posters
+   load lazily for visible member rows, immediately for the always-visible
+   shared user dock, or on demand for an open profile card or editor; cover
+   animation loads only for the open card/editor. Reduced-motion
+   mode never
    requests GIFs. Realtime generation guards stop stale downloads from
    replacing newer profile state.
 6. Cover framing uses a fixed 3:1 preview. Pointer drag or keyboard arrows
@@ -1333,6 +1362,11 @@ that it has passed.
 
 ## Current limitations and deferred work
 
+- Plan 0019's adaptive semantic control tokens, shared sidebar user dock,
+  presence-aware member groups, and lazy static member-cover accents are
+  implemented with focused component, integration, contrast, and appearance
+  regressions. Dark/light three-resolution and min/default/max panel-width
+  visual QA plus installed macOS/Windows observation remain required.
 - Plan 0018's system-adaptive glass tokens, native/fallback bootstrap, macOS
   material configuration, Windows 11 Mica gate, edge-to-edge five-track shell,
   persistent inert panel slots, centered signed-in title, bounded motion, and
@@ -1341,15 +1375,18 @@ that it has passed.
   vibrancy/Mica, inactive windows, varied-wallpaper contrast, startup flash,
   traffic lights/window controls, shadow, drag/resize/fullscreen, and both
   system schemes. Browser QA cannot prove those native effects.
-- Plan 0017's 48 px titlebar, segmented Personal/Bakbak switch, rail-free
-  geometry, comfortable Roundo scale, platform configurations, adapter tests,
+- Plan 0017's 48 px titlebar, segmented Personal/Bakbak switch, centered
+  draggable context jokes, rail-free geometry, comfortable Roundo scale,
+  platform configurations, adapter tests,
   and dark mock-browser checks at 1024×680, 1280×800, and 2560×1440 are
   implemented. Installed macOS and Windows verification still must cover
   native controls, dragging, maximize/restore, resizing, light/dark modes,
   offline font loading, OS shortcuts, and screen-share cleanup on close.
-- Plan 0016's single system-following grayscale appearance, read-only
+- Plan 0016's single system-following neutral appearance, read-only
   Appearance page, local Roundo bundle, and regression guard pass the complete
   renderer suite, production build, secret scan, and local macOS app build.
+  Plan 0019 now permits only its scoped semantic control tokens; ordinary
+  chrome and the product logo remain grayscale.
   The in-app browser's localhost policy blocked the mock-preview reload, so the
   dark/light 1024×680 and 1280×800 visual matrix plus installed macOS/Windows
   glyph, clipping, wrapping, and offline-network observation remain required.

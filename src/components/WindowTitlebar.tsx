@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import type { AppSpace } from "../features/server/app-space";
+import type { VoiceConnectionStatus } from "../features/voice/useVoiceRoom";
 import {
   createWindowChromeAdapter,
   type WindowChromeAdapter,
@@ -22,6 +23,8 @@ interface WindowTitlebarProps {
   personalUnread: boolean;
   serverUnread: boolean;
   callActive: boolean;
+  callStatus?: VoiceConnectionStatus;
+  callChannelName?: string | null;
   serverAvailable: boolean;
   switchDisabled: boolean;
   onSelectSpace: (space: AppSpace) => void;
@@ -41,6 +44,8 @@ export function WindowTitlebar({
   personalUnread,
   serverUnread,
   callActive,
+  callStatus,
+  callChannelName,
   serverAvailable,
   switchDisabled,
   onSelectSpace,
@@ -52,6 +57,21 @@ export function WindowTitlebar({
     [chromeAdapter],
   );
   const [maximized, setMaximized] = useState(false);
+  const titleStatus = callStatus ?? (callActive ? "connected" : "disconnected");
+  const titleMessages = useMemo(
+    () => getTitlebarMessages(titleStatus, callChannelName),
+    [callChannelName, titleStatus],
+  );
+  const [titleIndex, setTitleIndex] = useState(0);
+
+  useEffect(() => {
+    setTitleIndex(0);
+    if (!showSpaceSwitcher || titleMessages.length < 2) return;
+    const interval = window.setInterval(() => {
+      setTitleIndex((current) => (current + 1) % titleMessages.length);
+    }, TITLEBAR_MESSAGE_ROTATION_MS);
+    return () => window.clearInterval(interval);
+  }, [showSpaceSwitcher, titleMessages]);
 
   useEffect(() => {
     if (adapter.platform !== "windows") return;
@@ -83,11 +103,13 @@ export function WindowTitlebar({
   }
 
   function handleDrag(event: MouseEvent<HTMLElement>) {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || isTitlebarControl(event.target)) return;
+    event.preventDefault();
     run(() => adapter.startDragging());
   }
 
-  function handleDoubleClick() {
+  function handleDoubleClick(event: MouseEvent<HTMLElement>) {
+    if (isTitlebarControl(event.target)) return;
     if (adapter.platform !== "web") {
       run(() => adapter.toggleMaximize());
     }
@@ -98,6 +120,8 @@ export function WindowTitlebar({
       className="window-titlebar"
       data-platform={adapter.platform}
       data-shell={showSpaceSwitcher ? "true" : "false"}
+      onMouseDown={handleDrag}
+      onDoubleClick={handleDoubleClick}
     >
       <div className="window-titlebar__leading">
         {showSpaceSwitcher ? (
@@ -111,21 +135,20 @@ export function WindowTitlebar({
             onSelect={onSelectSpace}
           />
         ) : null}
-        <span
-          className="window-titlebar__drag window-titlebar__drag--leading"
-          onMouseDown={handleDrag}
-          onDoubleClick={handleDoubleClick}
-        />
+        <span className="window-titlebar__drag window-titlebar__drag--leading" />
       </div>
-      <div className="window-titlebar__center">
-        {showSpaceSwitcher ? <strong>OG Nahan Gang</strong> : null}
+      <div
+        className="window-titlebar__center window-titlebar__drag"
+        data-title-state={titleStatus}
+      >
+        {showSpaceSwitcher ? (
+          <strong key={titleMessages[titleIndex]}>
+            {titleMessages[titleIndex]}
+          </strong>
+        ) : null}
       </div>
       <div className="window-titlebar__trailing">
-        <span
-          className="window-titlebar__drag window-titlebar__drag--trailing"
-          onMouseDown={handleDrag}
-          onDoubleClick={handleDoubleClick}
-        />
+        <span className="window-titlebar__drag window-titlebar__drag--trailing" />
         {panelControls ? (
           <div
             className="titlebar-panel-controls"
@@ -203,4 +226,47 @@ export function WindowTitlebar({
       </div>
     </header>
   );
+}
+
+function isTitlebarControl(target: EventTarget): boolean {
+  return (
+    target instanceof Element &&
+    Boolean(
+      target.closest(
+        "button, a, input, select, textarea, [role='navigation'], [role='group']",
+      ),
+    )
+  );
+}
+
+export const TITLEBAR_MESSAGE_ROTATION_MS = 8_000;
+
+function getTitlebarMessages(
+  status: VoiceConnectionStatus,
+  channelName?: string | null,
+): string[] {
+  const room = channelName?.trim() || "Voice";
+  if (status === "connecting") {
+    return [`Calling ${room}…`, "Warming up the yap engine…"];
+  }
+  if (status === "reconnecting") {
+    return ["Reconnecting the gossip…", "Wi-Fi is doing parkour…"];
+  }
+  if (status === "connected") {
+    return [
+      `${room}: chaos connected`,
+      "Mic on, wisdom off",
+      "Live from the yap factory",
+      "Zero agenda, full volume",
+    ];
+  }
+  if (status === "error") {
+    return ["Voice gremlins won this round", "Retry before dignity returns"];
+  }
+  return [
+    "OG Nahan Gang",
+    "Professional yappers",
+    "No agenda, only vibes",
+    "Gossip loading responsibly",
+  ];
 }

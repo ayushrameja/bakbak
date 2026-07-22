@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { WindowChromeAdapter } from "../lib/window-chrome";
-import { WindowTitlebar } from "./WindowTitlebar";
+import { TITLEBAR_MESSAGE_ROTATION_MS, WindowTitlebar } from "./WindowTitlebar";
 
 function createAdapter(
   platform: WindowChromeAdapter["platform"],
@@ -65,6 +65,7 @@ describe("WindowTitlebar", () => {
     expect(spies.minimize).toHaveBeenCalledOnce();
     expect(spies.toggleMaximize).toHaveBeenCalledOnce();
     expect(spies.close).toHaveBeenCalledOnce();
+    expect(spies.startDragging).not.toHaveBeenCalled();
 
     const dragRegion = container.querySelector(
       ".window-titlebar__drag--leading",
@@ -101,32 +102,78 @@ describe("WindowTitlebar", () => {
     });
 
     expect(switcher.parentElement).toHaveClass("window-titlebar__leading");
-    expect(screen.getByText("OG Nahan Gang").parentElement).toHaveClass(
-      "window-titlebar__center",
-    );
+    const centeredTitle = screen.getByText("OG Nahan Gang").parentElement;
+    expect(centeredTitle).toHaveClass("window-titlebar__center");
     expect(container.querySelector(".window-titlebar")).toHaveAttribute(
       "data-platform",
       "macos",
     );
   });
 
-  it("keeps native titlebar dragging and double-click maximize on macOS", () => {
+  it("rotates idle jokes and switches immediately to voice context", () => {
+    vi.useFakeTimers();
+    const { adapter } = createAdapter("web");
+    const view = renderTitlebar(adapter);
+    expect(screen.getByText("OG Nahan Gang")).toBeVisible();
+
+    act(() => {
+      vi.advanceTimersByTime(TITLEBAR_MESSAGE_ROTATION_MS);
+    });
+    expect(screen.getByText("Professional yappers")).toBeVisible();
+
+    view.rerender(
+      <WindowTitlebar
+        showSpaceSwitcher
+        activeSpace="server"
+        personalUnread={false}
+        serverUnread={false}
+        callActive
+        callStatus="connected"
+        callChannelName="Queue"
+        serverAvailable
+        switchDisabled={false}
+        onSelectSpace={vi.fn()}
+        chromeAdapter={adapter}
+      />,
+    );
+    expect(screen.getByText("Queue: chaos connected")).toBeVisible();
+    view.unmount();
+    vi.useRealTimers();
+  });
+
+  it("uses every non-control titlebar region for native dragging and maximize", () => {
     const { adapter, spies } = createAdapter("macos");
     const { container } = renderTitlebar(adapter);
-    const dragRegion = container.querySelector(
-      ".window-titlebar__drag--leading",
-    );
-    expect(dragRegion).not.toBeNull();
-    fireEvent.mouseDown(dragRegion!, { button: 0 });
-    fireEvent.doubleClick(dragRegion!);
-    expect(spies.startDragging).toHaveBeenCalledOnce();
-    expect(spies.toggleMaximize).toHaveBeenCalledOnce();
+    const titlebar = container.querySelector(".window-titlebar");
+    const leading = container.querySelector(".window-titlebar__leading");
+    const center = container.querySelector(".window-titlebar__center");
+    const trailing = container.querySelector(".window-titlebar__trailing");
+    const titleText = screen.getByText("OG Nahan Gang");
+    const dragTargets = [titlebar, leading, center, trailing, titleText];
+
+    dragTargets.forEach((target) => {
+      expect(target).not.toBeNull();
+      fireEvent.mouseDown(target!, { button: 0 });
+    });
+    expect(spies.startDragging).toHaveBeenCalledTimes(dragTargets.length);
+
+    fireEvent.mouseDown(screen.getByRole("button", { name: "Personal" }), {
+      button: 0,
+    });
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Personal" }));
+    expect(spies.startDragging).toHaveBeenCalledTimes(dragTargets.length);
+    expect(spies.toggleMaximize).not.toHaveBeenCalled();
+
+    [titlebar, leading, center, trailing].forEach((target) => {
+      fireEvent.doubleClick(target!);
+    });
+    expect(spies.toggleMaximize).toHaveBeenCalledTimes(4);
   });
 
   it("puts both panel toggles at the right side of the titlebar", async () => {
     const onToggleLeftPanel = vi.fn();
     const onToggleRightPanel = vi.fn();
-    const { adapter } = createAdapter("web");
+    const { adapter, spies } = createAdapter("web");
     render(
       <WindowTitlebar
         showSpaceSwitcher
@@ -158,11 +205,12 @@ describe("WindowTitlebar", () => {
     );
     expect(onToggleLeftPanel).toHaveBeenCalledOnce();
     expect(onToggleRightPanel).toHaveBeenCalledOnce();
+    expect(spies.startDragging).not.toHaveBeenCalled();
   });
 
   it("keeps the pre-shell titlebar free of branding and navigation", () => {
-    const { adapter } = createAdapter("web");
-    render(
+    const { adapter, spies } = createAdapter("web");
+    const { container } = render(
       <WindowTitlebar
         showSpaceSwitcher={false}
         activeSpace="server"
@@ -175,6 +223,10 @@ describe("WindowTitlebar", () => {
         chromeAdapter={adapter}
       />,
     );
+    fireEvent.mouseDown(container.querySelector(".window-titlebar")!, {
+      button: 0,
+    });
+    expect(spies.startDragging).toHaveBeenCalledOnce();
     expect(screen.queryByLabelText("Bakbak")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("navigation", { name: "Bakbak spaces" }),

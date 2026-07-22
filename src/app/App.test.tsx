@@ -193,6 +193,11 @@ describe("App navigation state", () => {
     await waitFor(() =>
       expect(callRegion).toHaveTextContent("Voice connected"),
     );
+    expect(screen.getByText("Crash: chaos connected")).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: /In Voice — \d+/ }),
+    ).toBeVisible();
+    expect(screen.getByRole("group", { name: "User controls" })).toBeVisible();
   });
 
   it("switches Personal and Bakbak without interrupting the active call", async () => {
@@ -217,6 +222,7 @@ describe("App navigation state", () => {
       screen.getByRole("heading", { name: "Your conversations live here" }),
     ).toBeVisible();
     expect(callRegion).toHaveTextContent("Queue");
+    expect(screen.getByRole("group", { name: "User controls" })).toBeVisible();
 
     await userEvent.click(
       screen.getByRole("button", { name: "Bakbak server" }),

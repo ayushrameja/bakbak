@@ -32,7 +32,10 @@ import {
   EMPTY_MESSAGE_DRAFT,
   segmentsToFallback,
 } from "../features/chat/message-content";
-import { MemberPanel } from "../features/server/MemberPanel";
+import {
+  MemberPanel,
+  type MemberVoiceActivity,
+} from "../features/server/MemberPanel";
 import type { AppSpace } from "../features/server/app-space";
 import {
   loadInterfaceSoundPreferences,
@@ -841,6 +844,55 @@ export default function App() {
         : [];
     });
   }, [voiceSessions, workspace]);
+  const memberVoiceActivities = useMemo<MemberVoiceActivity[]>(() => {
+    if (!workspace) return [];
+    const memberIds = new Set(workspace.members.map((member) => member.id));
+    const channelNames = new Map(
+      workspace.channels
+        .filter((channel) => channel.kind === "voice")
+        .map((channel) => [channel.id, channel.name]),
+    );
+    const activityByUserId = new Map<string, MemberVoiceActivity>();
+
+    voiceSessions.forEach((session) => {
+      const channelName = channelNames.get(session.channelId);
+      if (!channelName || !memberIds.has(session.userId)) return;
+      activityByUserId.set(session.userId, {
+        userId: session.userId,
+        channelName,
+        isStreaming: session.isStreaming,
+      });
+    });
+
+    const currentChannel = visibleVoice.channel;
+    const currentCallActive =
+      currentChannel &&
+      (visibleVoice.status === "connected" ||
+        visibleVoice.status === "reconnecting") &&
+      channelNames.has(currentChannel.id);
+    if (currentCallActive) {
+      const streamingUserIds = new Set(
+        visibleVoice.screenShares.map((share) => share.ownerId),
+      );
+      if (visibleVoice.screenShareEnabled && signedInUserId) {
+        streamingUserIds.add(signedInUserId);
+      }
+      const currentUserIds = new Set([
+        ...(signedInUserId ? [signedInUserId] : []),
+        ...visibleVoice.participants.map((participant) => participant.id),
+      ]);
+      currentUserIds.forEach((userId) => {
+        if (!memberIds.has(userId)) return;
+        activityByUserId.set(userId, {
+          userId,
+          channelName: currentChannel.name,
+          isStreaming: streamingUserIds.has(userId),
+        });
+      });
+    }
+
+    return [...activityByUserId.values()];
+  }, [signedInUserId, visibleVoice, voiceSessions, workspace]);
 
   useEffect(() => {
     selectedChannelIdRef.current = selectedChannelId;
@@ -1514,6 +1566,8 @@ export default function App() {
           personalUnread={personalUnread}
           serverUnread={unreadChannelIds.size > 0}
           callActive={voice.status !== "disconnected"}
+          callStatus={voice.status}
+          callChannelName={voice.channel?.name ?? null}
           serverAvailable={Boolean(workspace)}
           switchDisabled={blockingDialogOpen}
           onSelectSpace={handleSelectSpace}
@@ -1938,6 +1992,7 @@ export default function App() {
           ) : workspace ? (
             <MemberPanel
               members={workspace.members}
+              voiceActivities={memberVoiceActivities}
               loadProfileMedia={loadProfileMedia}
               onOpenProfile={handleOpenProfile}
               openProfileId={openProfile?.memberId ?? null}
