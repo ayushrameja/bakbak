@@ -3,125 +3,122 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 
 export const SAMPLE_RATE = 48_000;
-export const SOUND_SPECS = {
-  "message-received": { duration: 0.16, seed: 1101 },
-  "voice-self-join": { duration: 0.42, seed: 2201 },
-  "voice-self-leave": { duration: 0.32, seed: 2202 },
-  "voice-remote-join": { duration: 0.22, seed: 3301 },
-  "voice-remote-leave": { duration: 0.2, seed: 3302 },
-  "screen-share-start": { duration: 0.44, seed: 4401 },
-  "screen-share-stop": { duration: 0.3, seed: 4402 },
-  "reconnect-success": { duration: 0.34, seed: 5501 },
-  "communication-failure": { duration: 0.38, seed: 6601 },
-};
+const SECOND_HARMONIC_GAIN = 10 ** (-18 / 20);
+const TARGET_PEAK = 10 ** (-6 / 20);
 
-function seededRandom(seed) {
-  let state = seed >>> 0;
-  return () => {
-    state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
-    return state / 0x1_0000_0000;
-  };
-}
+export const SOUND_SPECS = {
+  "message-sent": {
+    duration: 0.12,
+    notes: [
+      { frequency: 620, start: 0, length: 0.095, amplitude: 0.72 },
+      { frequency: 880, start: 0.045, length: 0.075, amplitude: 0.58 },
+    ],
+  },
+  "message-received": {
+    duration: 0.16,
+    notes: [
+      { frequency: 740, start: 0, length: 0.13, amplitude: 0.68 },
+      { frequency: 990, start: 0.055, length: 0.105, amplitude: 0.55 },
+    ],
+  },
+  "microphone-mute": {
+    duration: 0.15,
+    notes: [
+      { frequency: 620, start: 0, length: 0.11, amplitude: 0.65 },
+      { frequency: 440, start: 0.05, length: 0.1, amplitude: 0.68 },
+    ],
+  },
+  "microphone-unmute": {
+    duration: 0.15,
+    notes: [
+      { frequency: 440, start: 0, length: 0.11, amplitude: 0.65 },
+      { frequency: 620, start: 0.05, length: 0.1, amplitude: 0.68 },
+    ],
+  },
+  "voice-self-join": {
+    duration: 0.34,
+    notes: [
+      { frequency: 262, start: 0, length: 0.22, amplitude: 0.5 },
+      { frequency: 330, start: 0.07, length: 0.23, amplitude: 0.5 },
+      { frequency: 392, start: 0.15, length: 0.19, amplitude: 0.55 },
+    ],
+  },
+  "voice-self-leave": {
+    duration: 0.28,
+    notes: [
+      { frequency: 392, start: 0, length: 0.19, amplitude: 0.55 },
+      { frequency: 330, start: 0.055, length: 0.18, amplitude: 0.5 },
+      { frequency: 262, start: 0.11, length: 0.17, amplitude: 0.5 },
+    ],
+  },
+  "voice-remote-join": {
+    duration: 0.19,
+    notes: [
+      { frequency: 330, start: 0, length: 0.145, amplitude: 0.66 },
+      { frequency: 440, start: 0.06, length: 0.13, amplitude: 0.56 },
+    ],
+  },
+  "voice-remote-leave": {
+    duration: 0.18,
+    notes: [
+      { frequency: 440, start: 0, length: 0.135, amplitude: 0.6 },
+      { frequency: 330, start: 0.055, length: 0.125, amplitude: 0.62 },
+    ],
+  },
+  "screen-share-start": {
+    duration: 0.38,
+    notes: [
+      { frequency: 392, start: 0, length: 0.25, amplitude: 0.42 },
+      { frequency: 523, start: 0.085, length: 0.25, amplitude: 0.45 },
+      { frequency: 659, start: 0.17, length: 0.21, amplitude: 0.5 },
+    ],
+  },
+  "screen-share-stop": {
+    duration: 0.3,
+    notes: [
+      { frequency: 659, start: 0, length: 0.2, amplitude: 0.5 },
+      { frequency: 523, start: 0.06, length: 0.2, amplitude: 0.45 },
+      { frequency: 392, start: 0.12, length: 0.18, amplitude: 0.46 },
+    ],
+  },
+  "reconnect-success": {
+    duration: 0.3,
+    notes: [
+      { frequency: 440, start: 0, length: 0.18, amplitude: 0.5 },
+      { frequency: 554, start: 0.07, length: 0.18, amplitude: 0.5 },
+      { frequency: 659, start: 0.14, length: 0.16, amplitude: 0.55 },
+    ],
+  },
+  "communication-failure": {
+    duration: 0.32,
+    notes: [
+      { frequency: 247, start: 0, length: 0.22, amplitude: 0.58 },
+      { frequency: 220, start: 0.11, length: 0.21, amplitude: 0.62 },
+    ],
+  },
+};
 
 function smoothstep(edge0, edge1, value) {
   const position = Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0)));
   return position * position * (3 - 2 * position);
 }
 
-function envelope(time, duration, attack = 0.012, release = 0.055) {
+function envelope(time, duration, attack, release) {
   const rise = smoothstep(0, attack, time);
   const fall = 1 - smoothstep(duration - release, duration, time);
   return rise * fall;
 }
 
-function oscillator(type, frequency, time) {
-  const phase = time * frequency;
-  if (type === "square") return Math.sin(phase * Math.PI * 2) >= 0 ? 1 : -1;
-  if (type === "triangle")
-    return 2 * Math.abs(2 * (phase - Math.floor(phase + 0.5))) - 1;
-  return Math.sin(phase * Math.PI * 2);
-}
-
-function chirp(type, from, to, time, duration) {
-  const rate = (to - from) / duration;
-  const phase = from * time + 0.5 * rate * time * time;
-  return oscillator(type, 1, phase);
-}
-
-function pulse(time, start, length) {
-  if (time < start || time >= start + length) return 0;
-  const local = time - start;
-  return envelope(local, length, 0.004, Math.min(0.035, length * 0.45));
-}
-
-function synthesize(name, time, duration, noise) {
-  const grit = noise() * 2 - 1;
-  switch (name) {
-    case "message-received":
-      return (
-        chirp("sine", 590, 1_030, time, duration) * 0.72 +
-        chirp("triangle", 1_180, 1_720, time, duration) * 0.18 +
-        grit * 0.035
-      );
-    case "voice-self-join":
-      return (
-        chirp("triangle", 145, 330, time, duration) * 0.43 +
-        chirp("sine", 420, 760, time, duration) * 0.32 +
-        oscillator("square", 1_120, time) *
-          pulse(time, duration - 0.09, 0.055) *
-          0.17 +
-        grit * 0.045
-      );
-    case "voice-self-leave":
-      return (
-        chirp("triangle", 360, 128, time, duration) * 0.5 +
-        chirp("sine", 720, 290, time, duration) * 0.25 +
-        grit * 0.04
-      );
-    case "voice-remote-join":
-      return (
-        chirp("triangle", 190, 360, time, duration) * 0.47 +
-        oscillator("square", 780, time) * pulse(time, 0.105, 0.055) * 0.2 +
-        grit * 0.055
-      );
-    case "voice-remote-leave":
-      return (
-        chirp("triangle", 300, 155, time, duration) * 0.5 +
-        oscillator("square", 510, time) * pulse(time, 0.018, 0.038) * 0.13 +
-        grit * 0.04
-      );
-    case "screen-share-start":
-      return (
-        chirp("sine", 115, 820, time, duration) * 0.37 +
-        chirp("triangle", 290, 1_460, time, duration) * 0.27 +
-        oscillator("square", 1_630, time) *
-          pulse(time, duration - 0.08, 0.052) *
-          0.12 +
-        grit * 0.045
-      );
-    case "screen-share-stop":
-      return (
-        chirp("sine", 760, 120, time, duration) * 0.42 +
-        chirp("triangle", 1_240, 260, time, duration) * 0.22 +
-        grit * 0.04
-      );
-    case "reconnect-success":
-      return (
-        oscillator("sine", 540, time) * pulse(time, 0.015, 0.105) * 0.53 +
-        oscillator("triangle", 810, time) * pulse(time, 0.175, 0.125) * 0.42 +
-        grit * 0.025
-      );
-    case "communication-failure":
-      return (
-        chirp("triangle", 245, 205, time, duration) * 0.31 +
-        oscillator("sine", 269, time) * 0.27 +
-        oscillator("sine", 354, time) * 0.2 +
-        oscillator("square", 73, time) * 0.07 +
-        grit * 0.055
-      );
-    default:
-      throw new Error(`Unknown interface sound: ${name}`);
-  }
+function renderNote(time, note) {
+  const localTime = time - note.start;
+  if (localTime < 0 || localTime >= note.length) return 0;
+  const attack = Math.min(0.012, Math.max(0.008, note.length * 0.1));
+  const release = Math.min(0.09, Math.max(0.045, note.length * 0.35));
+  const phase = localTime * note.frequency * Math.PI * 2;
+  const tone = Math.sin(phase) + Math.sin(phase * 2) * SECOND_HARMONIC_GAIN;
+  return (
+    tone * note.amplitude * envelope(localTime, note.length, attack, release)
+  );
 }
 
 export function renderSound(name) {
@@ -129,21 +126,19 @@ export function renderSound(name) {
   if (!spec) throw new Error(`Missing interface sound specification: ${name}`);
   const sampleCount = Math.round(spec.duration * SAMPLE_RATE);
   const samples = new Float64Array(sampleCount);
-  const random = seededRandom(spec.seed);
-  let filtered = 0;
   let peak = 0;
 
   for (let index = 0; index < sampleCount; index += 1) {
     const time = index / SAMPLE_RATE;
-    const raw = synthesize(name, time, spec.duration, random);
-    filtered += 0.42 * (raw - filtered);
-    const fade = envelope(time, spec.duration, 0.006, 0.012);
-    const value = filtered * fade;
+    const value = spec.notes.reduce(
+      (sample, note) => sample + renderNote(time, note),
+      0,
+    );
     samples[index] = value;
     peak = Math.max(peak, Math.abs(value));
   }
 
-  const scale = peak > 0 ? 0.82 / peak : 1;
+  const scale = peak > 0 ? TARGET_PEAK / peak : 1;
   const pcm = new Int16Array(sampleCount);
   for (let index = 0; index < sampleCount; index += 1) {
     pcm[index] = Math.round(

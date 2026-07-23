@@ -1,6 +1,13 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { interfaceSoundController } from "../features/settings/interface-sounds";
 import App from "./App";
 
 vi.mock("../lib/env", () => ({
@@ -234,6 +241,7 @@ describe("App navigation state", () => {
   });
 
   it("creates and sends a mock DM without a read-state render loop", async () => {
+    const interfaceSound = vi.spyOn(interfaceSoundController, "play");
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {
       // React render-loop errors are asserted below.
     });
@@ -262,8 +270,77 @@ describe("App navigation state", () => {
           String(message).includes("Maximum update depth exceeded"),
         ),
       ).toBe(false);
+      expect(
+        interfaceSound.mock.calls.filter(
+          ([event]) => event.type === "message-sent",
+        ),
+      ).toHaveLength(1);
     } finally {
+      interfaceSound.mockRestore();
       consoleError.mockRestore();
+    }
+  });
+
+  it("plays the outgoing cue once after a mock channel message commits", async () => {
+    const interfaceSound = vi.spyOn(interfaceSoundController, "play");
+    try {
+      render(<App />);
+      await userEvent.click(
+        screen.getByRole("button", { name: "Enter the preview" }),
+      );
+      const composer = await screen.findByRole("combobox", {
+        name: "Message #spawn",
+      });
+      await userEvent.type(composer, "Soft plucks, loud opinions.");
+      await userEvent.click(
+        screen.getByRole("button", { name: "Send message" }),
+      );
+
+      expect(
+        await screen.findByText("Soft plucks, loud opinions."),
+      ).toBeVisible();
+      await waitFor(() =>
+        expect(
+          interfaceSound.mock.calls.filter(
+            ([event]) => event.type === "message-sent",
+          ),
+        ).toHaveLength(1),
+      );
+    } finally {
+      interfaceSound.mockRestore();
+    }
+  });
+
+  it("does not play the outgoing cue when a channel message fails", async () => {
+    const interfaceSound = vi.spyOn(interfaceSoundController, "play");
+    let timeoutSpy: { mockRestore(): void } | null = null;
+    try {
+      render(<App />);
+      await userEvent.click(
+        screen.getByRole("button", { name: "Enter the preview" }),
+      );
+      const composer = await screen.findByRole("combobox", {
+        name: "Message #spawn",
+      });
+      await userEvent.type(composer, "This one should bounce.");
+      const realSetTimeout = window.setTimeout.bind(window);
+      timeoutSpy = vi
+        .spyOn(window, "setTimeout")
+        .mockImplementation((handler, timeout) => {
+          if (timeout === 240) throw new Error("mock send failed");
+          return realSetTimeout(handler, timeout);
+        });
+      fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+      expect(await screen.findByText("mock send failed")).toBeVisible();
+      expect(
+        interfaceSound.mock.calls.filter(
+          ([event]) => event.type === "message-sent",
+        ),
+      ).toHaveLength(0);
+    } finally {
+      timeoutSpy?.mockRestore();
+      interfaceSound.mockRestore();
     }
   });
 

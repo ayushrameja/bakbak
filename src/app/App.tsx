@@ -1803,6 +1803,7 @@ export default function App() {
                 Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
             ),
         );
+        handleCommunicationEffect({ type: "message-sent" });
       } catch (caught) {
         updateDirectThread(
           conversationId,
@@ -1820,7 +1821,13 @@ export default function App() {
         setDirectSending(false);
       }
     },
-    [dataFreshness, selectedConversation, updateDirectThread, user],
+    [
+      dataFreshness,
+      handleCommunicationEffect,
+      selectedConversation,
+      updateDirectThread,
+      user,
+    ],
   );
 
   const handleSend = useCallback(
@@ -1952,6 +1959,7 @@ export default function App() {
           }));
           void markLiveChannelRead(channelId, saved.id).catch(() => undefined);
         }
+        handleCommunicationEffect({ type: "message-sent" });
       } catch (caught) {
         updateChannelThread(
           channelId,
@@ -1969,7 +1977,13 @@ export default function App() {
         setSending(false);
       }
     },
-    [dataFreshness, selectedChannel, updateChannelThread, user],
+    [
+      dataFreshness,
+      handleCommunicationEffect,
+      selectedChannel,
+      updateChannelThread,
+      user,
+    ],
   );
 
   const handleChannelDelete = useCallback(

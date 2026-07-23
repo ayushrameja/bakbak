@@ -1675,7 +1675,10 @@ export function useVoiceRoom(
     }
     mutedRef.current = nextMuted;
     setMuted(nextMuted);
-  }, [refreshParticipants, status]);
+    emitCommunicationEffect({
+      type: nextMuted ? "microphone-muted" : "microphone-unmuted",
+    });
+  }, [emitCommunicationEffect, refreshParticipants, status]);
 
   const toggleDeafen = useCallback(async () => {
     if (status !== "connected") return;

@@ -1088,6 +1088,7 @@ describe("useVoiceRoom join lifecycle", () => {
   });
 
   it("mutes and reuses speech when the soundboard microphone publication arrives first", async () => {
+    const effects = vi.fn();
     const microphone = createLocalAudioTrackDouble();
     const soundboardTrack = createLocalAudioTrackDouble();
     const microphoneReady = deferred<typeof microphone>();
@@ -1112,7 +1113,9 @@ describe("useVoiceRoom join lifecycle", () => {
     supabaseState.invoke
       .mockResolvedValueOnce(tokenResponse)
       .mockResolvedValueOnce(tokenResponse);
-    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+    const { result } = renderHook(() =>
+      useVoiceRoom(user, "live", mockSoundboardController, effects),
+    );
 
     let firstJoin!: Promise<void>;
     act(() => {
@@ -1155,6 +1158,7 @@ describe("useVoiceRoom join lifecycle", () => {
     expect(microphone.isMuted).toBe(true);
     expect(result.current.muted).toBe(true);
     expect(result.current.participants[0]?.isMuted).toBe(true);
+    expect(effects).toHaveBeenCalledWith({ type: "microphone-muted" });
 
     await act(async () => {
       await firstSoundboardPublication?.unmute();
@@ -1169,6 +1173,7 @@ describe("useVoiceRoom join lifecycle", () => {
     expect(speechPublication?.unmute).toHaveBeenCalledOnce();
     expect(result.current.muted).toBe(false);
     expect(result.current.participants[0]?.isMuted).toBe(false);
+    expect(effects).toHaveBeenCalledWith({ type: "microphone-unmuted" });
 
     await act(async () => {
       await result.current.toggleMute();
@@ -1196,8 +1201,11 @@ describe("useVoiceRoom join lifecycle", () => {
   });
 
   it("keeps the current state and reports an error when speech mute fails", async () => {
+    const effects = vi.fn();
     supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
-    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+    const { result } = renderHook(() =>
+      useVoiceRoom(user, "live", mockSoundboardController, effects),
+    );
 
     await act(async () => {
       await result.current.join(lounge);
@@ -1220,6 +1228,7 @@ describe("useVoiceRoom join lifecycle", () => {
     expect(result.current.inputDeviceError).toContain(
       "could not mute the microphone",
     );
+    expect(effects).not.toHaveBeenCalledWith({ type: "microphone-muted" });
     expect(room?.localParticipant.setMicrophoneEnabled).not.toHaveBeenCalled();
   });
 

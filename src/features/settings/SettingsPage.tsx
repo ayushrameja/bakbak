@@ -1502,8 +1502,8 @@ function AudioSettings(props: SettingsPageProps) {
                 <div>
                   <h4 id="interface-sounds-title">Interface sounds</h4>
                   <p>
-                    Original cues use the system output, separately from call
-                    audio.
+                    Modern original Bakbak cues use the system output,
+                    separately from call audio.
                   </p>
                 </div>
                 <button

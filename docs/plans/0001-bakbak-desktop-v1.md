@@ -293,6 +293,9 @@ deletion, and authenticated poster caching are approved under
 - [x] Add the deterministic original interface sound pack, universal
       device-local controls, and typed message/voice/screen/status event routing
       under plan 0009.
+- [x] Replace plan 0009's retro synthesis with plan 0023's original soft,
+      rounded twelve-cue pack and add committed-send plus successful
+      microphone-mute/unmute feedback.
 - [ ] Complete plan 0009's installed-app multi-client audio acceptance matrix.
 - [x] Add a private operator-managed sound bucket with server-member reads.
 - [x] Fetch, revision-cache, and play the hosted sound pack in the renderer.

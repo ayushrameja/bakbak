@@ -7,7 +7,7 @@ and phase completion belong in the numbered files under `docs/plans`.
 
 ## Current implementation state
 
-As of 2026-07-23, Bakbak has a complete local/mock product path and production
+As of 2026-07-24, Bakbak has a complete local/mock product path and production
 Supabase and LiveKit adapters. The renderer provides the invite-only welcome
 flow and one shared neutral glass shell with scoped semantic control colors. An
 always-present 48 px titlebar
@@ -71,10 +71,11 @@ mixed order. This layout imports no Discord messages or credentials.
 
 Upgraded clients expose chat, structured individual mentions, account-synced
 unread emphasis, incoming-message sounds, and drafts only for text channels.
-Message alerts now use the same original generated interface-sound controller
-as voice join/leave, screen-share start/stop, reconnect success, and actionable
-communication failure. These cues run under the shared system-adaptive appearance through the
-system output, independently of the selected call/soundboard output.
+One original soft, rounded interface-sound controller covers committed message
+send, incoming messages, successful microphone mute/unmute, self/remote voice
+join/leave, local/remote screen-share start/stop, reconnect success, and
+actionable communication failure. These cues run through the system output,
+independently of the selected call/soundboard output.
 Voice-channel message rows, RPC permissions, and read-state data remain intact
 for installed-client compatibility, but the upgraded renderer neither loads,
 subscribes to, sends, drafts, notifies, nor shows unread state for them. No
@@ -432,7 +433,9 @@ bakbak/
 │       ├── 0018-native-glass-edge-to-edge-motion.md
 │       ├── 0019-discord-inspired-controls-and-member-rail.md
 │       ├── 0020-bakbak-orbit-branding.md
-│       └── 0021-instant-workspace-local-cache-and-voice-acceleration.md
+│       ├── 0021-instant-workspace-local-cache-and-voice-acceleration.md
+│       ├── 0022-rich-messaging-media-replies-stickers.md
+│       └── 0023-modern-interface-audio.md
 ├── public/
 │   ├── bakbak-orbit.png           # generated favicon/native-icon source frame
 │   ├── brand-noise.svg            # theme-tinted brand-surface noise tile
@@ -905,7 +908,7 @@ An invite-management UI is deferred until post-v1.
    refreshes device enumeration because macOS WebKit can reveal named speakers
    only after capture permission. Microphone and output tests acquire only
    temporary resources and release them when stopped or unmounted. Preview
-   buttons activate and play one interface-sound category representative
+   buttons activate and play one modern interface-sound category representative
    through the system output.
 8. Settings is a modal overlay over the current canvas. It traps focus, restores
    the opener on close, exposes compact active-call controls, and confirms
@@ -1078,8 +1081,9 @@ An invite-management UI is deferred until post-v1.
     canceled joins, and unexpected disconnects never imitate a normal leave.
     The initial remote roster and share publications are baselined before later
     remote participant/share events become eligible. Native share companions
-    are excluded from voice-person events. Reconnect and actionable failure use
-    Status events rather than leave.
+    are excluded from voice-person events. Successful local microphone
+    mute/unmute emits only after publication state changes. Reconnect and
+    actionable failure use Status events rather than leave.
 
 ### Desktop screen share
 
@@ -1268,9 +1272,9 @@ dependency. Its SHA-256 is
 `74481965a428478803e36f6aaf21d163c36c5c8fc2cb27029dfbf1f9fb6f5a65`;
 the upstream/download record and SIL Open Font License 1.1 notice live under
 `third_party/roundo`. Every WAV under `public/interface-sounds` is original
-Bakbak project output from the checked-in deterministic
-oscillator/filter/envelope/seeded-noise generator.
-The assets contain no recordings or third-party samples. The microphone
+Bakbak project output from the checked-in deterministic sine-pluck and
+rounded-envelope generator. The modern pack contains no recordings, third-party
+samples, square/triangle oscillators, or seeded grit. The microphone
 worklet bundles `@jitsi/rnnoise-wasm` `0.2.1` and its RNNoise 0.2 synchronous
 model; Jitsi's Apache/MIT notice and Xiph.Org's BSD 3-Clause notice ship under
 `public/vendor/rnnoise`.
@@ -1584,10 +1588,11 @@ that it has passed.
   two-account media/Realtime/outsider matrix remain required before
   distribution.
 - Plan 0016 retires plan 0009's Signal Red visuals and appearance persistence
-  while retaining its generated sound pack, sound controller, preferences, and
-  typed lifecycle routing. Installed-app multi-client audio observation remains
-  required for rapid messages, simultaneous joins/leaves, screen sharing,
-  reconnect, deafen, and a call output different from the system output.
+  while plan 0023 replaces its retro synthesis with a modern twelve-cue pack.
+  The controller, preferences, and typed lifecycle routing remain. Installed-app
+  multi-client audio observation is still required for rapid messages,
+  simultaneous joins/leaves, mute/unmute, screen sharing, reconnect, deafen,
+  and a call output different from the system output.
 - The Warm Adda renderer, profile/avatar services, channel RPCs, and policies
   are implemented, and migration
   `202607120003_profile_avatars_and_channel_management.sql` is deployed to the

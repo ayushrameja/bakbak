@@ -4417,3 +4417,48 @@ supabase/functions/tests` — passed 37/37 tests, including media request
   local macOS host; the base-config regression covers the configuration path
   missing from that runner, and the hosted PR check still needs to rerun.
 - **Next:** Push the fix and rerun PR #33's locked Rust check on Ubuntu.
+
+## 2026-07-24 — Replace retro cues with modern interface audio
+
+- **Completed:** Replaced the nine retro interface WAVs with an original,
+  deterministic twelve-cue pack built from soft sine plucks, quiet second
+  harmonics, rounded envelopes, and approximately -6 dBFS peaks. Added
+  committed message-send and successful microphone mute/unmute events alongside
+  the modernized message-receive, voice join/leave, screen-share start/stop,
+  reconnect, and failure cues. Updated the Settings description while
+  preserving system-output routing and the existing preference schema.
+- **Decisions:** Kept soundboard clips, microphone processing, voice effects,
+  LiveKit contracts, and native code outside this renderer-only change. Outgoing
+  messages play only after channel or DM commit, mute/unmute plays only after
+  the publication change succeeds, and remote screen-share entry continues to
+  mean another participant starts presenting rather than watching. The pack is
+  newly generated Bakbak work and contains no Discord or third-party samples.
+- **Validation:**
+  - `node --test scripts/generate-interface-sounds.test.mjs` — passed 1/1
+    deterministic asset contract for twelve exact names/durations, 48 kHz
+    16-bit mono PCM, fades, peak bounds, and the sub-1 MB ceiling; the committed
+    pack totals approximately 292 KB.
+  - Focused Vitest run for `App`, `interface-sounds`, and `useVoiceRoom` —
+    passed 3 files with 44/44 tests, including committed channel/DM sends,
+    failed-send silence, successful mute/unmute, failed-mute silence, gains,
+    throttling, and remote deafen behavior.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects,
+    70 Vitest files with 350 tests, 25/25 Node contract tests, synchronized
+    version `0.16.0`, production renderer build, and bundle secret scan. Vite
+    retained the existing non-blocking large-chunk warning.
+  - `cargo check --locked --manifest-path src-tauri/Cargo.toml` — passed.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+  - `git diff --check` — passed.
+- **Documentation updated:** Added plan 0023, marked its implemented Phase 5
+  scope in plan 0001, updated the current architecture and sound ownership
+  contract, and appended this canonical progress entry.
+- **Known limitations:** Automated checks validate lifecycle timing, binary
+  format, amplitude, determinism, and packaging but cannot judge the perceived
+  tone. Installed macOS and Windows two-client auditory QA remains required for
+  rapid messages, roster churn, mute/unmute, local/remote sharing, reconnect,
+  deafen, headphones, and separate system/call outputs.
+- **Next:** Audition all four Settings previews plus message send/receive and
+  mute/unmute in the rebuilt macOS app, tune only the generator if needed, then
+  run the same two-client matrix on Windows.
