@@ -98,6 +98,32 @@ function renderSettings(
 }
 
 describe("SettingsPage", () => {
+  it("reports account cache usage and confirms local clearing", async () => {
+    const onClearCachedData = vi.fn().mockResolvedValue(undefined);
+    renderSettings("storage", {
+      dataFreshness: "offline",
+      cacheStats: {
+        messageBytes: 2048,
+        messageCount: 42,
+        profileMediaBytes: 3 * 1024 * 1024,
+        profileMediaCount: 7,
+        totalBytes: 3 * 1024 * 1024 + 2048,
+      },
+      onClearCachedData,
+    });
+
+    expect(screen.getByText("42 recent messages")).toBeVisible();
+    expect(screen.getByText("3.0 MiB")).toBeVisible();
+    expect(screen.getByText("Offline saved data")).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Clear cached data" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Clear cached data" }),
+    );
+    await waitFor(() => expect(onClearCachedData).toHaveBeenCalledOnce());
+  });
+
   it("saves a trimmed display name without requiring a unique handle", async () => {
     const onSaveProfile = vi.fn().mockResolvedValue({});
     renderSettings("profile", { onSaveProfile });

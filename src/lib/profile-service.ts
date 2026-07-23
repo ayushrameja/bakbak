@@ -198,13 +198,21 @@ export async function downloadProfileMediaObjectUrl(
   fallbackUrl: string | null = null,
 ): Promise<string | null> {
   if (!path) return fallbackUrl;
+  const data = await downloadProfileMediaBlob(bucket, path);
+  return typeof URL.createObjectURL === "function"
+    ? URL.createObjectURL(data)
+    : fallbackUrl;
+}
+
+export async function downloadProfileMediaBlob(
+  bucket: typeof AVATAR_BUCKET | typeof COVER_BUCKET,
+  path: string,
+): Promise<Blob> {
   const { data, error } = await getSupabaseClient()
     .storage.from(bucket)
     .download(path);
   if (error) throw error;
-  return typeof URL.createObjectURL === "function"
-    ? URL.createObjectURL(data)
-    : fallbackUrl;
+  return data;
 }
 
 export function downloadAvatarObjectUrl(

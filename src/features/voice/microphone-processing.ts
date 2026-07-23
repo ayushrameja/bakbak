@@ -14,6 +14,43 @@ export const MICROPHONE_PROCESSING_UNAVAILABLE =
   "Enhanced cleanup is unavailable in this runtime. Bakbak kept the built-in microphone cleanup active.";
 
 const loadedWorklets = new WeakMap<AudioContext, Promise<void>>();
+let sharedAudioContext: AudioContext | null = null;
+
+function getSharedAudioContext(): AudioContext {
+  if (sharedAudioContext && sharedAudioContext.state !== "closed") {
+    return sharedAudioContext;
+  }
+  const context = new AudioContext({
+    latencyHint: "interactive",
+    sampleRate: REQUIRED_SAMPLE_RATE,
+  });
+  if (context.sampleRate !== REQUIRED_SAMPLE_RATE) {
+    void context.close();
+    throw new Error(
+      `Enhanced microphone processing requires ${REQUIRED_SAMPLE_RATE} Hz audio.`,
+    );
+  }
+  sharedAudioContext = context;
+  return context;
+}
+
+export async function prewarmMicrophoneProcessing(): Promise<boolean> {
+  if (!isMicrophoneProcessingSupported()) return false;
+  try {
+    const context = getSharedAudioContext();
+    await context.resume();
+    await loadMicrophoneWorklet(context);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function releaseMicrophoneProcessing(): Promise<void> {
+  const context = sharedAudioContext;
+  sharedAudioContext = null;
+  await context?.close().catch(() => undefined);
+}
 
 export class BakbakMicrophoneProcessor implements TrackProcessor<
   Track.Kind.Audio,
@@ -31,16 +68,7 @@ export class BakbakMicrophoneProcessor implements TrackProcessor<
 
   constructor(preferences: MicrophoneProcessingPreferences) {
     this.preferences = preferences;
-    this.audioContext = new AudioContext({
-      latencyHint: "interactive",
-      sampleRate: REQUIRED_SAMPLE_RATE,
-    });
-    if (this.audioContext.sampleRate !== REQUIRED_SAMPLE_RATE) {
-      void this.audioContext.close();
-      throw new Error(
-        `Enhanced microphone processing requires ${REQUIRED_SAMPLE_RATE} Hz audio.`,
-      );
-    }
+    this.audioContext = getSharedAudioContext();
   }
 
   async init(options: AudioProcessorOptions): Promise<void> {
@@ -78,8 +106,8 @@ export class BakbakMicrophoneProcessor implements TrackProcessor<
     await this.audioContext.resume();
   }
 
-  async destroy(): Promise<void> {
-    if (this.destroyed) return;
+  destroy(): Promise<void> {
+    if (this.destroyed) return Promise.resolve();
     this.destroyed = true;
     this.node?.port.postMessage({ type: "destroy" });
     this.source?.disconnect();
@@ -89,7 +117,7 @@ export class BakbakMicrophoneProcessor implements TrackProcessor<
     this.source = null;
     this.node = null;
     this.destination = null;
-    await this.audioContext.close().catch(() => undefined);
+    return Promise.resolve();
   }
 
   setPreferences(preferences: MicrophoneProcessingPreferences): void {

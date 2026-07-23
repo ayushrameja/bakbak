@@ -3919,3 +3919,123 @@ Gang` at the true window center, and retained panel/Windows controls at the
 - **Next:** Open the installed soundboard in both schemes, play two overlapping
   sounds, and confirm the bottom-right Stop plus `2/5` remain clear while
   scrolling the final row.
+
+## 2026-07-23 — Add instant local workspace cache and voice acceleration
+
+- **Completed:** Added the user-scoped `bakbak-cache` IndexedDB database for
+  normalized account state, confirmed thread history, and profile-media blobs.
+  Restored the last text channel or Personal DM stale-while-revalidate, kept
+  per-thread in-session history, added cursor pagination and stable message
+  merging, progressively hydrated visible profile media through memory,
+  IndexedDB, then Supabase Storage, and introduced a clearly marked read-only
+  cached/offline state with online, focus, and bounded-backoff recovery.
+  Added Data & storage usage, retention copy, and confirmation-protected
+  current-account clearing. Accelerated voice preparation with immediate
+  keyboard focus, 75 ms hover dwell, a reusable prewarmed 48 kHz RNNoise
+  AudioContext, host-scoped ten-minute relay hints, and identifier-free stage
+  timings.
+- **Decisions:** Kept Supabase RLS, current membership, Storage policy,
+  Realtime, and LiveKit authorization authoritative; cached records only paint
+  the interface. Retained cache across logout but isolated every key by Bakbak
+  user ID. Persisted only the newest 200 confirmed messages per thread and
+  capped profile media at 256 MiB per account with least-recently-used pruning.
+  Kept soundboard caching separate and never persisted LiveKit tokens, rooms,
+  tracks, credentials, optimistic messages, or object URLs.
+- **Validation:**
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects, 62
+    Vitest files with 325 tests, 24/24 Node contract tests, synchronized version
+    `0.16.0`, the production renderer build, and the bundle secret scan. Vite
+    retained the existing non-blocking large-chunk warning.
+  - Mock-browser QA — passed the Data & storage layout, current usage and
+    freshness presentation, 200-message/256 MiB policy copy, two-step clear
+    confirmation, safe cancellation, and zero browser warnings or errors.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are absent.
+- **Documentation updated:** Added plan 0021, linked its delivery from the
+  active desktop-v1 plan, updated architecture data flow/security and cache
+  contracts, added the README privacy/retention explanation, and appended this
+  canonical progress entry.
+- **Known limitations:** The 300 ms cached-startup, 100 ms room-switch, 1.5
+  second prepared-voice, and 3 second cold-voice targets still require ten
+  installed runs with median, p95, and failure records on macOS and Windows.
+  Installed offline restore/reconnect/clear acceptance also remains pending on
+  both platforms. The local macOS bundle is not notarized.
+- **Next:** Run the plan 0021 installed performance matrix on macOS and Windows,
+  record median/p95 plus exact failures, and tune only stages that miss their
+  target.
+
+## 2026-07-23 — Recover stale cached profile covers
+
+- **Completed:** Replaced raw cached cover `<img>` elements with one shared
+  profile-media image boundary across the member rail, signed-in user dock,
+  profile popover, and Personal details panel. A WebKit decode failure now
+  removes the broken frame immediately, evicts that account/bucket/path from
+  memory and IndexedDB, coalesces concurrent recovery requests, and retries the
+  authenticated Storage object once. A second failure or pathless legacy-image
+  failure stays on the neutral fallback instead of showing the native blue
+  question-mark icon.
+- **Decisions:** Recovered only the exact failed media revision rather than
+  clearing the account cache or slowing every successful cache hit with an
+  eager decode probe. Limited recovery to one network retry per mounted image
+  so a deleted or genuinely invalid source cannot loop or hammer private
+  Storage. Kept retry authorization on the existing Supabase Storage path.
+- **Validation:**
+  - Focused profile-media Vitest run — passed 6 files with 21 tests, including
+    stale-path eviction, Storage refresh, one-retry behavior, final neutral
+    fallback, profile popover, member rail, user dock, and Personal details.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects, 63
+    Vitest files with 328 tests, 24/24 Node contract tests, synchronized version
+    `0.16.0`, the production renderer build, and bundle secret scan. Vite kept
+    the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are absent.
+- **Documentation updated:** Updated the profile-media lifecycle and failure
+  recovery contract in architecture and appended this canonical progress entry.
+- **Known limitations:** The exact private covers shown in the report are not
+  available in mock mode, so their successful authenticated retry still needs
+  one installed-app observation. The local macOS bundle is not notarized, and
+  Windows WebView2 observation remains pending.
+- **Next:** Open the rebuilt installed app, revisit the reported member rail,
+  user dock, and Bhindi profile, and confirm each stale cached cover refreshes
+  once without a question-mark placeholder.
+
+## 2026-07-23 — Replace the server logo with a Beta version chip
+
+- **Completed:** Removed the animated Bakbak mark from the channel-panel server
+  header and replaced it with an accessible `BETA` / `v0.16.0` release chip
+  beside the current server name. Added one renderer version constant sourced
+  directly from `package.json`, so the chip follows future synchronized release
+  bumps instead of carrying a second hardcoded version. Preserved the solid
+  theme-responsive header surface, restrained noise, orbit texture, and logo
+  use on the app icon and larger authentication/loading identity screens.
+- **Decisions:** Limited removal to the compact server header shown in the
+  report rather than deleting Bakbak's product icon globally. Used a 30 px
+  pill with an internal divider, tabular version numerals, the existing Roundo
+  11 px readability floor, and truncation only for unusually long server names.
+  Kept the complete release context in an accessible label.
+- **Validation:**
+  - Focused `ChannelSidebar` Vitest run — passed 11/11 tests, including the
+    current version, Beta label, retired tagline, and absent header-mark
+    contracts.
+  - `node --test scripts/monochrome-appearance.test.mjs` — passed 4/4 branding,
+    semantic-color, Roundo, and appearance contracts.
+  - Mock-browser QA at 1280×720 — passed in Dark and Light. The header measured
+    232×80 px and the chip 100.77×30 px; `BETA v0.16.0` and the complete mock
+    server name, The Corner, rendered without a logo or horizontal overflow.
+    Dark resolved to `rgb(16, 17, 20)` with 0.14 noise opacity; Light resolved
+    to `rgb(242, 240, 233)` with 0.10 noise opacity. Appearance was restored to
+    Auto after testing.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects, 63
+    Vitest files with 328 tests, 24/24 Node contract tests, synchronized version
+    `0.16.0`, production renderer build, and bundle secret scan. Vite retained
+    the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are absent.
+- **Documentation updated:** Updated the current architecture, active desktop-v1
+  plan, plan 0020 visual contract, and this canonical progress log.
+- **Known limitations:** The compact header still needs one installed
+  macOS/Windows native-material observation. The local macOS bundle is not
+  notarized.
+- **Next:** Confirm the Beta/version chip against real native light and dark
+  materials, then let the synchronized release tooling supply the next version
+  automatically.

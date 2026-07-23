@@ -72,6 +72,11 @@ export interface ConversationMessage {
   pending?: boolean;
 }
 
+export interface MessageCursor {
+  createdAt: string;
+  id: string;
+}
+
 export interface ChatMessage extends ConversationMessage {
   channelId: string;
 }

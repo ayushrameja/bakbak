@@ -42,6 +42,8 @@ interface ChatViewProps {
   draft: MessageDraft;
   onDraftChange: (draft: MessageDraft) => void;
   onSend: (draft: MessageDraft) => Promise<void>;
+  readOnlyReason?: string | null;
+  onLoadOlder?: () => Promise<void>;
   loadProfileMedia?: LoadProfileMedia;
   onOpenProfile?: OpenProfile;
   openProfileId?: string | null;
@@ -56,6 +58,8 @@ export function ChatView({
   draft,
   onDraftChange,
   onSend,
+  readOnlyReason = null,
+  onLoadOlder,
   loadProfileMedia = emptyProfileMediaLoader,
   onOpenProfile = ignoreProfileOpen,
   openProfileId = null,
@@ -75,6 +79,8 @@ export function ChatView({
       draft={draft}
       onDraftChange={onDraftChange}
       onSend={onSend}
+      readOnlyReason={readOnlyReason}
+      {...(onLoadOlder ? { onLoadOlder } : {})}
       loadProfileMedia={loadProfileMedia}
       onOpenProfile={onOpenProfile}
       openProfileId={openProfileId}
@@ -91,6 +97,8 @@ interface ConversationViewProps {
   draft: MessageDraft;
   onDraftChange: (draft: MessageDraft) => void;
   onSend: (draft: MessageDraft) => Promise<void>;
+  readOnlyReason?: string | null;
+  onLoadOlder?: () => Promise<void>;
   loadProfileMedia?: LoadProfileMedia;
   onOpenProfile?: OpenProfile;
   openProfileId?: string | null;
@@ -105,6 +113,8 @@ export function ConversationView({
   draft,
   onDraftChange,
   onSend,
+  readOnlyReason = null,
+  onLoadOlder,
   loadProfileMedia = emptyProfileMediaLoader,
   onOpenProfile = ignoreProfileOpen,
   openProfileId = null,
@@ -235,6 +245,16 @@ export function ConversationView({
           </span>
         </div>
 
+        {onLoadOlder && messages.length >= 50 ? (
+          <button
+            className="secondary-button message-list__older"
+            type="button"
+            onClick={() => void onLoadOlder()}
+          >
+            Load older messages
+          </button>
+        ) : null}
+
         {messages.length === 0 ? (
           <div className="empty-conversation">
             <span>There is an admirably suspicious amount of peace here.</span>
@@ -328,6 +348,11 @@ export function ConversationView({
       </div>
 
       <div className="composer-wrap">
+        {readOnlyReason ? (
+          <p className="composer-status" role="status">
+            {readOnlyReason}
+          </p>
+        ) : null}
         {mentionQuery && suggestions.length > 0 ? (
           <div
             className="mention-suggestions"
@@ -376,6 +401,7 @@ export function ConversationView({
             aria-expanded={Boolean(mentionQuery && suggestions.length)}
             aria-autocomplete="list"
             role="combobox"
+            disabled={Boolean(readOnlyReason)}
             value={draft.text}
             onChange={(event) => {
               const next = updateDraftText(draft, event.target.value);
@@ -397,9 +423,10 @@ export function ConversationView({
             }}
             onKeyDown={handleComposerKeyDown}
             placeholder={
-              target.kind === "channel"
+              readOnlyReason ??
+              (target.kind === "channel"
                 ? `Message #${target.name}`
-                : `Message ${target.member.displayName}`
+                : `Message ${target.member.displayName}`)
             }
             maxLength={4000}
           />
@@ -407,7 +434,7 @@ export function ConversationView({
             type="submit"
             className="composer__send"
             aria-label="Send message"
-            disabled={!draft.text.trim() || sending}
+            disabled={Boolean(readOnlyReason) || !draft.text.trim() || sending}
           >
             <Send size={17} />
           </button>

@@ -1,11 +1,11 @@
 import { Hash, Pencil, Plus, Volume2 } from "lucide-react";
 import { Avatar } from "../../components/Avatar";
-import { BakbakMotionMark } from "../../components/BakbakMotionMark";
 import {
   ProfileTrigger,
   type LoadProfileMedia,
   type OpenProfile,
 } from "../../components/ProfileTrigger";
+import { APP_VERSION } from "../../lib/app-version";
 import type {
   AppUser,
   Channel,
@@ -38,7 +38,7 @@ interface ChannelSidebarProps {
   soundboardOpen: boolean;
   canManageChannels: boolean;
   onSelect: (channel: Channel) => void;
-  onPrepareVoiceChannel: (channel: Channel) => void;
+  onPrepareVoiceChannel: (channel: Channel, immediate?: boolean) => void;
   onCreateChannel: (kind: ChannelKind) => void;
   onRenameChannel: (channel: Channel) => void;
   onOpenSettings: () => void;
@@ -166,7 +166,7 @@ export function ChannelSidebar({
             className={`channel-row ${selectedChannelId === channel.id ? "active" : ""}`}
             type="button"
             onPointerEnter={() => onPrepareVoiceChannel(channel)}
-            onFocus={() => onPrepareVoiceChannel(channel)}
+            onFocus={() => onPrepareVoiceChannel(channel, true)}
             onClick={() => onSelect(channel)}
           >
             <Volume2 size={17} />
@@ -234,7 +234,13 @@ export function ChannelSidebar({
   return (
     <aside className="channel-sidebar" id="context-panel">
       <header className="server-switcher server-brand">
-        <BakbakMotionMark className="server-brand__mark" />
+        <div
+          className="server-brand__release"
+          aria-label={`Beta release, version ${APP_VERSION}`}
+        >
+          <strong>BETA</strong>
+          <span>v{APP_VERSION}</span>
+        </div>
         <div className="server-brand__wordmark">
           <strong>{server.name}</strong>
         </div>

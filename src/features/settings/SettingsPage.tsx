@@ -1,5 +1,6 @@
 import {
   Camera,
+  Database,
   Headphones,
   Laptop,
   LogOut,
@@ -12,6 +13,7 @@ import {
   RefreshCw,
   Square,
   Sun,
+  Trash2,
   UserRound,
   Volume2,
   VolumeX,
@@ -28,6 +30,7 @@ import {
 import { Avatar } from "../../components/Avatar";
 import type { LoadProfileMedia } from "../../components/ProfileTrigger";
 import type { AppUser } from "../../lib/types";
+import type { CacheStats, DataFreshness } from "../../lib/local-cache";
 import type { AppearancePreference } from "./appearance-preferences";
 import {
   AVATAR_BUCKET,
@@ -55,7 +58,7 @@ import { setAudioElementOutput } from "../voice/media-devices";
 
 const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
 
-export type SettingsSection = "profile" | "audio" | "appearance";
+export type SettingsSection = "profile" | "audio" | "appearance" | "storage";
 
 export interface ProfileSaveInput {
   displayName: string;
@@ -84,6 +87,9 @@ interface SettingsPageProps {
   microphoneProcessingError: string | null;
   interfaceSoundPreferences: InterfaceSoundPreferences;
   appearancePreference: AppearancePreference;
+  cacheStats?: CacheStats;
+  dataFreshness?: DataFreshness;
+  readOnly?: boolean;
   inputError: string | null;
   outputError: string | null;
   cameraError: string | null;
@@ -107,6 +113,7 @@ interface SettingsPageProps {
     preferences: InterfaceSoundPreferences,
   ) => void;
   onAppearancePreferenceChange: (preference: AppearancePreference) => void;
+  onClearCachedData?: () => Promise<void>;
   onPreviewInterfaceSound: (category: InterfaceSoundCategory) => void;
   onToggleMute: () => void;
   onToggleDeafen: () => void;
@@ -238,6 +245,12 @@ export function SettingsPage(props: SettingsPageProps) {
               label="Appearance"
               onClick={() => props.onSectionChange("appearance")}
             />
+            <SettingsNavButton
+              active={props.section === "storage"}
+              icon={<Database size={17} />}
+              label="Data & storage"
+              onClick={() => props.onSectionChange("storage")}
+            />
             <div className="settings-nav__spacer" />
             {props.voiceStatus !== "disconnected" ? (
               <div className="settings-call-strip">
@@ -295,6 +308,7 @@ export function SettingsPage(props: SettingsPageProps) {
                 user={props.user}
                 onSave={props.onSaveProfile}
                 loadMedia={props.loadProfileMedia ?? emptyProfileMediaLoader}
+                readOnly={props.readOnly ?? false}
               />
             ) : null}
             {props.section === "audio" ? <AudioSettings {...props} /> : null}
@@ -302,6 +316,21 @@ export function SettingsPage(props: SettingsPageProps) {
               <AppearanceSettings
                 preference={props.appearancePreference}
                 onChange={props.onAppearancePreferenceChange}
+              />
+            ) : null}
+            {props.section === "storage" ? (
+              <DataStorageSettings
+                stats={
+                  props.cacheStats ?? {
+                    messageBytes: 0,
+                    messageCount: 0,
+                    profileMediaBytes: 0,
+                    profileMediaCount: 0,
+                    totalBytes: 0,
+                  }
+                }
+                freshness={props.dataFreshness ?? "fresh"}
+                onClear={props.onClearCachedData ?? (() => Promise.resolve())}
               />
             ) : null}
           </div>
@@ -378,6 +407,126 @@ function SettingsNavButton({
   );
 }
 
+function DataStorageSettings({
+  stats,
+  freshness,
+  onClear,
+}: {
+  stats: CacheStats;
+  freshness: DataFreshness;
+  onClear: () => Promise<void>;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const freshnessLabel = {
+    loading: "Loading",
+    cached: "Saved data, syncing",
+    fresh: "Up to date",
+    offline: "Offline saved data",
+  }[freshness];
+
+  async function clear() {
+    setClearing(true);
+    setError(null);
+    try {
+      await onClear();
+      setConfirming(false);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Bakbak could not clear the cache.",
+      );
+    } finally {
+      setClearing(false);
+    }
+  }
+
+  return (
+    <div className="settings-panel data-storage-settings">
+      <div className="settings-panel__heading">
+        <span className="eyebrow">Data & storage</span>
+        <h2>Fast, local, and politely bounded</h2>
+        <p>
+          Bakbak keeps recent conversations and profile media on this computer
+          so returning does not require a dramatic loading montage.
+        </p>
+      </div>
+      <div className="storage-summary-grid">
+        <section>
+          <span>Conversation cache</span>
+          <strong>{formatBytes(stats.messageBytes)}</strong>
+          <small>{stats.messageCount} recent messages</small>
+        </section>
+        <section>
+          <span>Profile media</span>
+          <strong>{formatBytes(stats.profileMediaBytes)}</strong>
+          <small>{stats.profileMediaCount} cached files</small>
+        </section>
+        <section>
+          <span>Current state</span>
+          <strong>{freshnessLabel}</strong>
+          <small>Cloud access rules always remain authoritative</small>
+        </section>
+      </div>
+      <div className="storage-policy">
+        <Database size={18} aria-hidden="true" />
+        <p>
+          Up to 200 messages per conversation and 256 MiB of least-recently-used
+          profile media are retained for this Bakbak account after logout.
+        </p>
+      </div>
+      {error ? (
+        <p className="settings-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {confirming ? (
+        <div className="storage-clear-confirm" role="alert">
+          <p>
+            Remove this account&apos;s saved conversations and profile media
+            from this computer? Cloud data and preferences stay put.
+          </p>
+          <div>
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={clearing}
+              onClick={() => setConfirming(false)}
+            >
+              Keep cache
+            </button>
+            <button
+              className="danger-button"
+              type="button"
+              disabled={clearing}
+              onClick={() => void clear()}
+            >
+              <Trash2 size={16} />
+              {clearing ? "Clearing…" : "Clear cached data"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => setConfirming(true)}
+        >
+          <Trash2 size={16} /> Clear cached data
+        </button>
+      )}
+    </div>
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
 function useObjectUrlCleanup(url: string | null) {
   useEffect(
     () => () => {
@@ -391,10 +540,12 @@ function ProfileSettings({
   user,
   onSave,
   loadMedia,
+  readOnly,
 }: {
   user: AppUser;
   onSave: SettingsPageProps["onSaveProfile"];
   loadMedia: LoadProfileMedia;
+  readOnly: boolean;
 }) {
   const reducedMotion = useReducedMotion();
   const [displayName, setDisplayName] = useState(user.displayName);
@@ -835,10 +986,15 @@ function ProfileSettings({
         <button
           className="primary-button"
           type="submit"
-          disabled={saving || preparingMedia !== null || !dirty}
+          disabled={readOnly || saving || preparingMedia !== null || !dirty}
         >
           {saving ? "Saving…" : "Save profile"}
         </button>
+        {readOnly ? (
+          <p className="settings-error" role="status">
+            Reconnect before saving profile changes.
+          </p>
+        ) : null}
       </div>
     </form>
   );

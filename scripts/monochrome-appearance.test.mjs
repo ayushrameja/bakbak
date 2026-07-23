@@ -132,10 +132,9 @@ test("ordinary chrome stays monochrome while motion branding remains contained",
   assert.deepEqual(brandAccentValues, ["#c5f76d", "#5d7a18"]);
   assert.doesNotMatch(brandMotion, /(?:linear|radial)-gradient\(/i);
   assert.match(brandMotion, /url\("\/brand-noise\.svg"\)/);
-  assert.match(
-    channelSidebar,
-    /<BakbakMotionMark className="server-brand__mark"/,
-  );
+  assert.doesNotMatch(channelSidebar, /server-brand__mark/);
+  assert.match(channelSidebar, /className="server-brand__release"/);
+  assert.match(channelSidebar, /v\{APP_VERSION\}/);
   assert.match(motionMark, /bakbak-motion-mark__jaw--top/);
   assert.match(motionMark, /bakbak-motion-mark__dot--near/);
   assert.match(

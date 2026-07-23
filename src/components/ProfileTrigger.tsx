@@ -11,6 +11,7 @@ import { useReducedMotion } from "../lib/use-reduced-motion";
 export type LoadProfileMedia = (
   bucket: typeof AVATAR_BUCKET | "profile-covers",
   path: string | null,
+  options?: { refresh?: boolean },
 ) => Promise<string | null>;
 
 export type OpenProfile = (member: ServerMember, anchor: HTMLElement) => void;

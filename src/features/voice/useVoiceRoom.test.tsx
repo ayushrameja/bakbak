@@ -401,6 +401,7 @@ const tokenResponse = {
 
 describe("useVoiceRoom join lifecycle", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     void liveKitState.connectResults.splice(0);
     liveKitState.rooms.splice(0);
     liveKitState.instances.splice(0);
@@ -670,6 +671,27 @@ describe("useVoiceRoom join lifecycle", () => {
     expect(liveKitState.rooms[0]).toBe(preparedRoom);
     expect(liveKitState.createLocalAudioTrack).toHaveBeenCalledOnce();
     expect(result.current.status).toBe("connected");
+  });
+
+  it("starts keyboard-focus preparation without the pointer dwell", async () => {
+    vi.useFakeTimers();
+    supabaseState.invoke.mockResolvedValueOnce({
+      data: {
+        ...tokenResponse.data,
+        expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+      },
+      error: null,
+    });
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+
+    act(() => result.current.prepareVoiceChannel(lounge, true));
+    await act(async () => {
+      vi.advanceTimersByTime(0);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(supabaseState.invoke).toHaveBeenCalledOnce();
   });
 
   it("consumes preparation while its token request is still in flight", async () => {

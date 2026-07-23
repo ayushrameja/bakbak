@@ -1,6 +1,7 @@
 import { HeadphoneOff, Headphones, Mic, MicOff, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Avatar } from "../../components/Avatar";
+import { ProfileMediaImage } from "../../components/ProfileMediaImage";
 import {
   ProfileTrigger,
   type LoadProfileMedia,
@@ -123,7 +124,10 @@ function SidebarUserCover({
   if (!coverUrl) return null;
   return (
     <span className="user-dock__cover" aria-hidden="true">
-      <img
+      <ProfileMediaImage
+        bucket={COVER_BUCKET}
+        loadMedia={loadProfileMedia}
+        path={member.coverPath}
         src={coverUrl}
         alt=""
         loading="lazy"

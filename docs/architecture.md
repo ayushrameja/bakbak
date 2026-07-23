@@ -29,7 +29,9 @@ Both side panels remain mounted but become inert while independently hidden;
 pointer/keyboard resizing stays within 200–360 px and v2 layout preferences
 persist widths and visibility per device. Settings is a centered, focus-trapped
 in-app modal with internal scrolling, active-call controls, and confirmed
-logout.
+logout. Its Data & storage section reports the current account's bounded
+conversation/profile cache, freshness, and confirmed local clearing without
+removing cloud data, authentication, or device/appearance preferences.
 
 Appearance has one neutral glass treatment without global decorative texture,
 chromatic glow, selectable accents, or heavy shadows. A device-local scheme
@@ -41,10 +43,13 @@ mode uses neutral-white translucent panels. Primary chrome uses 24 px blur at
 remain untouched. Ordinary chrome remains grayscale. The Bakbak motion identity
 uses a minimal open ring facing three message particles: a generated static
 raster drives the favicon and native icon bundle, while a code-native SVG
-animates the jaws and particles on renderer identity surfaces. Its solid server
-header, fine monochrome noise, border, mark surface, and orbit lines respond to
-the active light/dark scheme. Only the nearest particle uses a bounded lime
-accent; the identity has no gradient, glow, or character face. Scoped
+animates the jaws and particles on authentication, invite, loading, and empty
+Personal surfaces. The server header intentionally omits that logo: it pairs
+the current server name with a compact `BETA` chip whose `vX.Y.Z` value comes
+from the renderer's package metadata. Its solid surface, fine monochrome noise,
+border, and orbit lines respond to the active light/dark scheme. Only the
+nearest particle on animated-mark surfaces uses a bounded lime accent; the
+identity has no gradient, glow, or character face. Scoped
 Discord-inspired
 positive, danger, selected, warning, and
 icon tokens identify call controls, presence, streaming, and admin state with
@@ -136,6 +141,14 @@ audio revision, and decodes ready clips into memory. `created_by = null`
 identifies operator-managed sounds; uploaders and matching server admins may
 update only labels and emoji. Favorites are owner-private rows and Realtime
 publishes catalog changes plus the signed-in user's stars.
+
+The separate `bakbak-cache` IndexedDB database stores account-scoped workspace
+metadata, recent channel/DM messages, and authenticated profile-media blobs.
+It renders only after the Supabase session identifies its owner, remains a
+display cache rather than an authorization source, and stays after logout until
+that account clears it. Threads retain the newest 200 confirmed messages.
+Profile media uses bucket/path revisions and a 256 MiB per-account
+least-recently-used ceiling.
 
 Member upload sources may be common `audio/*` or `video/*` files up to 25 MiB.
 The upload modal uses native metadata/playback for preview and selection, then
@@ -236,7 +249,8 @@ clean local schema, invite, RLS, presence, Storage, catalog, structured-message,
 read-state, rich-profile, soundboard favorite, and member-upload suite passes
 288 assertions. Voice
 connections retry once with relay-only ICE after a normal peer-connection
-failure, remember a successful relay fallback for ten minutes in memory, and
+failure, remember a successful relay fallback for ten minutes in
+LiveKit-host-scoped device storage, and
 report a specific TURN/TLS diagnostic if both routes fail. The
 tracked token function now accepts an optional backward-compatible purpose.
 Ordinary voice tokens permit microphone, camera, LiveKit data, and video-only
@@ -316,7 +330,8 @@ approved.
 | Layer                | Technology                        | Responsibility                                                                       |
 | -------------------- | --------------------------------- | ------------------------------------------------------------------------------------ |
 | Package/tooling      | pnpm, TypeScript                  | Dependency management and strict static types                                        |
-| Renderer             | React, Vite                       | Desktop UI and local interaction state                                               |
+| Renderer             | React, Vite                       | Desktop UI, local interaction state, and stale-while-revalidate restoration          |
+| Local read cache     | IndexedDB                         | User-scoped workspace, recent messages, and bounded authenticated profile media      |
 | Desktop shell        | Tauri 2, Rust                     | Native window, packaging, capabilities, and later tray/desktop integrations          |
 | Identity/data        | Supabase Auth, Postgres, Realtime | Accounts, membership, channels, messages, invites, and realtime chat                 |
 | Trusted backend      | Supabase Edge Functions           | Membership-checked LiveKit tokens and managed sound publication/deletion             |
@@ -362,7 +377,8 @@ bakbak/
 │       ├── 0017-space-efficient-titlebar-and-comfortable-roundo.md
 │       ├── 0018-native-glass-edge-to-edge-motion.md
 │       ├── 0019-discord-inspired-controls-and-member-rail.md
-│       └── 0020-bakbak-orbit-branding.md
+│       ├── 0020-bakbak-orbit-branding.md
+│       └── 0021-instant-workspace-local-cache-and-voice-acceleration.md
 ├── public/
 │   ├── bakbak-orbit.png           # generated favicon/native-icon source frame
 │   ├── brand-noise.svg            # theme-tinted brand-surface noise tile
@@ -484,8 +500,9 @@ The renderer uses a titlebar, three-panel desktop layout, and modal layer:
    Unknown/Excellent/Good/Poor; reconnecting display takes precedence. The
    selected glass scheme uses grayscale translucency plus scoped
    positive, danger, selected, warning, and icon colors. Renderer identity
-   surfaces use the animated Bakbak motion mark; the server header contains its
-   theme-responsive noise/orbit texture and single lime particle accent. A
+   screens use the animated Bakbak motion mark. The server header contains the
+   theme-responsive noise/orbit texture, current server name, and a compact
+   package-version-backed `BETA` chip without repeating the logo. A
    one-shot renderer-launch assembly
    completes within 500 ms; panel/space motion and message stagger collapse to
    the final state under reduced motion. Every scroll surface uses a transparent
@@ -501,6 +518,12 @@ The renderer is untrusted for authorization purposes. It may hold a user's
 Supabase session, use the public Supabase credential, request permitted data,
 connect to LiveKit with a short-lived participant token, and download permitted
 sound objects. It must never contain a service-role key or LiveKit API secret.
+The renderer's per-account IndexedDB read cache relies on the operating-system
+account rather than application encryption. It may contain already-authorized
+workspace, message, and profile-media copies, but never invite codes, bearer
+tokens, authorization headers, LiveKit tokens, service credentials, presence
+authority, or pending optimistic sends. A backend denial purges inaccessible
+cached scopes.
 
 ### Tauri shell
 
@@ -701,7 +724,9 @@ An invite-management UI is deferred until post-v1.
    to Personal; neither history nor membership resolves to InviteGate.
 2. The context panel swaps the Personal conversation list and server channel
    shelf while retaining the shared user footer and current-call controls.
-   Settings remains an overlay and does not become a rail destination.
+   Settings remains an overlay and does not become a rail destination. The
+   last selected server text channel or Personal DM is cached per account;
+   voice rooms are deliberately never restored or auto-joined.
 3. Layout preferences v2 store visibility plus context/details widths. A stable
    five-track CSS grid uses two 1 px separator tracks for every visibility
    combination; hidden panel and divider tracks animate to zero without being
@@ -714,24 +739,39 @@ An invite-management UI is deferred until post-v1.
    cancellation, capture loss, or window blur always restores normal selection
    and motion. Runtime maxima clamp the 200–360 px widths so the centre retains
    at least 420 px; hidden panels keep their stored widths.
-4. Personal loads `get_direct_conversations()` activity ordered by the newest
+4. After Auth resolves the user ID, the renderer reads that account's
+   normalized IndexedDB snapshot and may paint it as cached data. It then
+   revalidates workspace, membership, profiles, DM summaries, unread state, and
+   Realtime. A failed revalidation retains a visibly offline, read-only cache;
+   online, visible-window, and ten-second backoff signals retry. Authorization
+   denial removes the inaccessible cached scope instead of treating it as
+   authority.
+5. Personal loads `get_direct_conversations()` activity ordered by the newest
    message. Starting a row calls the canonical shared-membership creation RPC.
    Direct messages use a true direct `ConversationTarget`, never a fabricated
    server channel.
-5. Each direct conversation owns an in-memory draft and optimistic message.
+6. Each direct conversation owns an in-memory draft and optimistic message.
    Send failure removes the optimistic row and restores the submitted draft.
    Participant-authorized Realtime inserts update an open conversation,
    refresh ordering/unread state, and use the existing incoming-message sound.
-6. Selecting a conversation loads its RLS-filtered history and advances the
+7. Selecting a conversation renders its memory/IndexedDB thread immediately,
+   then requests rows after its newest `(created_at, id)` cursor. A cache miss
+   requests the newest 50; upward pagination requests 50 before the earliest
+   cursor. Realtime/query/optimistic results merge by stable ID, while only the
+   newest 200 confirmed rows persist.
+8. Selecting a conversation loads its RLS-filtered history and advances the
    signed-in participant's monotonic read state when visible. Private read-state
    Realtime refreshes Personal unread markers.
-7. The details panel resolves the other participant's profile and private media
+9. The details panel resolves the other participant's profile and private media
    through shared-server or established-DM policy. Former members may use the
    reversible invite action while keeping established conversations. The DM
    conversation row and header hydrate that participant's private avatar poster
    through the shared profile-media cache, while the details rail plays their
    GIF avatar and cover unless reduced motion is enabled. The Personal member
    picker truncates long names and dismisses on outside pointer or Escape.
+   Media resolves memory first, then the user-scoped IndexedDB blob, then
+   authenticated Storage. Workspace metadata publishes before avatar hydration,
+   so a slow image cannot hold the shell hostage.
 
 ### Profile, appearance, and modal settings
 
@@ -762,15 +802,21 @@ An invite-management UI is deferred until post-v1.
    `<user UUID>/<generated UUID>` before one profile-row update. Any failure
    removes every newly uploaded object. Success mirrors the display name into
    Auth metadata and best-effort deletes replaced/removed objects.
-5. One bucket/path-keyed cache deduplicates authenticated downloads and revokes
-   object URLs on replacement, sign-out, and teardown. Avatar posters load
-   eagerly; compact GIFs load only on identity hover/focus. Static cover posters
+5. A memory plus user-scoped IndexedDB bucket/path cache deduplicates
+   authenticated downloads and revokes object URLs on replacement, account
+   change, clearing, and teardown. Workspace metadata publishes before avatar
+   posters hydrate progressively; compact GIFs load only on identity
+   hover/focus. Static cover posters
    load lazily for visible member rows, immediately for the always-visible
    shared user dock, or on demand for an open profile card or editor; cover
    animation loads only for the open card/editor. Reduced-motion
    mode never
-   requests GIFs. Realtime generation guards stop stale downloads from
-   replacing newer profile state.
+   requests GIFs. If WebKit cannot decode a cached object URL, every shared
+   profile-media surface removes the failed image immediately, evicts that
+   account/bucket/path entry, retries authenticated Storage once, and otherwise
+   keeps the neutral fallback instead of exposing a native broken-image icon.
+   Realtime generation guards stop stale downloads from replacing newer
+   profile state.
 6. Cover framing uses a fixed 3:1 preview. Pointer drag or keyboard arrows
    update integer focal coordinates; Shift moves by a larger step and Reset
    returns to 50/50.
@@ -790,7 +836,9 @@ An invite-management UI is deferred until post-v1.
    the opener on close, exposes compact active-call controls, and confirms
    logout. Closing discards staged profile edits and revokes preview URLs; a
    failed save leaves the draft intact for retry. A failed logout leaves the
-   overlay open with an inline error.
+   overlay open with an inline error. Data & storage reports current-account
+   message/media usage, the 200-message/256 MiB policy, freshness, and a
+   confirmation-protected cache clear action.
 
 ### Channel management
 
@@ -812,9 +860,12 @@ An invite-management UI is deferred until post-v1.
 
 ### Text-channel chat and voice-message compatibility
 
-1. A member selects a text channel. The upgraded renderer loads messages,
-   activity, drafts, and Realtime subscriptions only for known text-channel
-   IDs.
+1. A member selects a text channel. The upgraded renderer paints its
+   user-scoped memory/IndexedDB thread immediately, then loads rows after the
+   newest `(created_at, id)` cursor or the newest 50 on a miss. Upward
+   pagination reads 50 older rows; only the newest 200 confirmed rows persist.
+   Activity, drafts, and Realtime subscriptions remain limited to known
+   text-channel IDs.
 2. RLS verifies server membership. The deployed RPCs and schema still permit
    voice-channel messages for older clients, but upgraded clients do not expose
    that surface or create invisible voice unread state.
@@ -822,8 +873,9 @@ An invite-management UI is deferred until post-v1.
    `send_message`. Postgres validates membership, segment shape, size, and each
    mention before deriving the author and plain-text fallback.
 4. Supabase Realtime broadcasts the committed row to authorized clients.
-5. Clients reconcile realtime events with the loaded message list without
-   duplicating optimistic messages.
+5. Clients reconcile cached, query, realtime, and optimistic events by stable
+   ID and deterministic timestamp/ID order. Pending optimistic rows never
+   persist.
 6. A committed message from another user plays a short local notification tone.
    `get_channel_activity` compares the latest message with the account's private
    marker so unread emphasis follows the signed-in user across clients.
@@ -834,8 +886,9 @@ An invite-management UI is deferred until post-v1.
    plain text; selecting a member from the accessible `@` combobox stores that
    member ID. Rendering resolves the current Realtime profile name and uses the
    segment fallback only when the member is no longer visible.
-9. Composer drafts are controlled by the application shell in a per-channel
-   map, so switching rooms or opening settings preserves unfinished messages.
+9. Composer drafts and loaded thread maps are controlled by the application
+   shell per channel, so switching rooms or opening settings preserves
+   unfinished and already-rendered conversation state.
 
 ### Application presence
 
@@ -864,8 +917,8 @@ An invite-management UI is deferred until post-v1.
 
 ### Voice room
 
-1. Live workspace load prepares the public LiveKit endpoint. Pointer hover or
-   keyboard focus held for 150 ms prepares only the newest voice channel by
+1. Live workspace load prepares the public LiveKit endpoint. A 75 ms pointer
+   dwell or immediate keyboard focus prepares only the newest voice channel by
    requesting one five-minute token and calling `Room.prepareConnection`.
    Preparation never requests microphone access, joins, or publishes presence;
    stale candidates and tokens within 30 seconds of expiry are discarded.
@@ -880,7 +933,9 @@ An invite-management UI is deferred until post-v1.
 4. Microphone capture requests mono 48 kHz input with WebRTC echo
    cancellation, noise suppression, and automatic gain control. When enhanced
    cleanup or a voice effect is selected, a LiveKit `TrackProcessor` routes
-   capture through a dedicated AudioContext and AudioWorklet. The worklet
+   capture through a shared 48 kHz AudioContext and AudioWorklet. After the
+   first trusted gesture, Bakbak loads that worklet without requesting a
+   microphone, then reuses the context for preview and voice. The worklet
    bridges 128-sample render quanta into 480-sample RNNoise frames, then applies
    the selected sender-side effect. Unsupported initialization keeps the raw
    capture track and records a non-fatal Settings warning.
@@ -894,8 +949,8 @@ An invite-management UI is deferred until post-v1.
    stopping it, disconnects the old room, republishes it into the new room,
    and preserves its processor plus mute/deafen state. Input-device changes
    restart the processor on the replacement source. Leave, sign-out, a failed
-   switch, and teardown stop every retained or pending microphone and close
-   its processing context immediately.
+   switch, and teardown stop every retained or pending microphone. Sign-out and
+   application teardown close the shared processing context.
 7. The renderer generation-gates all token, connection, and microphone work so
    a stale attempt can disconnect only its own room. A compact polite status
    loader announces authorization, connection, microphone, or soundboard work;
@@ -919,11 +974,13 @@ An invite-management UI is deferred until post-v1.
     pause and detach the selected-speaker monitor, stop its MediaStream tracks,
     close its Web Audio context, disconnect the room, and release local tracks.
 11. If direct WebRTC fails and relay succeeds, later joins prefer relay for ten
-    minutes in memory. Relay-first failure retries direct; expiry periodically
-    restores direct probing. A total failure is reported as a TURN/TLS or local
-    network-policy problem rather than token/authentication failure.
-12. Development builds record preparation, authorization, connection,
-    microphone, soundboard, and total timing without identifiers or tokens.
+    minutes using only a non-sensitive LiveKit-host-scoped expiry. Relay-first
+    failure retries direct; direct success or expiry clears the hint. A total
+    failure is reported as a TURN/TLS or local network-policy problem rather
+    than token/authentication failure.
+12. Development diagnostics record preparation, authorization, connection,
+    microphone capture/processing/publication, output routing, soundboard, and
+    total timing without identifiers or tokens.
 13. `CommunicationEffectEvent` is emitted only after lifecycle truth: self join
     follows the complete connected gate; normal self leave requires an explicit
     user leave; switches emit only the destination join; sign-out, teardown,

@@ -4,6 +4,7 @@ import type {
   DirectConversation,
   DirectMessage,
   MessageSegment,
+  MessageCursor,
   ServerMember,
 } from "./types";
 
@@ -149,16 +150,35 @@ export async function getOrCreateDirectConversation(
 
 export async function loadDirectMessages(
   conversationId: string,
+  options: {
+    before?: MessageCursor;
+    after?: MessageCursor;
+    limit?: number;
+  } = {},
 ): Promise<DirectMessage[]> {
-  const { data, error } = await getSupabaseClient()
+  const newestFirst = !options.after;
+  let query = getSupabaseClient()
     .from("direct_messages")
     .select("id,conversation_id,author_id,body,content,created_at")
-    .eq("conversation_id", conversationId)
-    .order("created_at")
-    .limit(200)
+    .eq("conversation_id", conversationId);
+  if (options.before) {
+    query = query.or(
+      `created_at.lt.${options.before.createdAt},and(created_at.eq.${options.before.createdAt},id.lt.${options.before.id})`,
+    );
+  }
+  if (options.after) {
+    query = query.or(
+      `created_at.gt.${options.after.createdAt},and(created_at.eq.${options.after.createdAt},id.gt.${options.after.id})`,
+    );
+  }
+  const { data, error } = await query
+    .order("created_at", { ascending: !newestFirst })
+    .order("id", { ascending: !newestFirst })
+    .limit(options.limit ?? 50)
     .returns<DirectMessageRow[]>();
   if (error) throw error;
-  return data.map(directMessageFromRow);
+  const messages = data.map(directMessageFromRow);
+  return newestFirst ? messages.reverse() : messages;
 }
 
 export async function sendDirectMessage(

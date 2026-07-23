@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { APP_VERSION } from "../../lib/app-version";
 import type {
   AppUser,
   Channel,
@@ -89,7 +90,11 @@ describe("ChannelSidebar room shelf", () => {
 
     expect(screen.getByText("Bakbak")).toBeVisible();
     expect(screen.queryByText("Friends-only adda")).not.toBeInTheDocument();
-    expect(container.querySelector(".server-brand__mark svg")).toBeVisible();
+    expect(
+      screen.getByLabelText(`Beta release, version ${APP_VERSION}`),
+    ).toBeVisible();
+    expect(screen.getByText(`v${APP_VERSION}`)).toBeVisible();
+    expect(container.querySelector(".server-brand__mark")).toBeNull();
   });
 
   it("shows create and rename controls only to admins", async () => {
@@ -212,7 +217,7 @@ describe("ChannelSidebar room shelf", () => {
     fireEvent.focus(button);
 
     expect(onPrepareVoiceChannel).toHaveBeenCalledTimes(2);
-    expect(onPrepareVoiceChannel).toHaveBeenLastCalledWith(voiceChannel);
+    expect(onPrepareVoiceChannel).toHaveBeenLastCalledWith(voiceChannel, true);
   });
 
   it("shows voice occupants without joining the room", () => {

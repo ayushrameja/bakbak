@@ -47,6 +47,21 @@ Tauri configuration intentionally enables release updater artifacts.
 Mock mode is selected by `VITE_DATA_MODE=mock`; it never connects to Supabase
 or LiveKit.
 
+## Local cache and privacy
+
+Live mode keeps a bounded, per-account IndexedDB read cache for the workspace,
+the newest 200 messages in each visited channel or DM, and up to 256 MiB of
+least-recently-used profile media. It restores only after Supabase identifies
+the signed-in user, then revalidates against RLS and Realtime. If Supabase is
+temporarily unreachable, saved data remains visible in a clearly marked
+read-only mode.
+
+This cache remains on the computer after logout and relies on the operating
+system account for protection; it is not application-encrypted. Use
+**Settings → Data & storage → Clear cached data** to remove the current Bakbak
+account's saved conversations and profile media without deleting cloud data,
+authentication settings, or device preferences.
+
 ## Connect Supabase and LiveKit
 
 1. Create a Supabase project, link it with the current Supabase CLI, inspect

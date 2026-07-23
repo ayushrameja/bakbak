@@ -7,6 +7,7 @@ import type {
   ChannelCategory,
   ChatMessage,
   MessageSegment,
+  MessageCursor,
   ServerMember,
   WorkspaceSnapshot,
 } from "./types";
@@ -237,16 +238,35 @@ export async function loadLiveWorkspace(
 
 export async function loadLiveMessages(
   channelId: string,
+  options: {
+    before?: MessageCursor;
+    after?: MessageCursor;
+    limit?: number;
+  } = {},
 ): Promise<ChatMessage[]> {
-  const { data, error } = await getSupabaseClient()
+  const newestFirst = !options.after;
+  let query = getSupabaseClient()
     .from("messages")
     .select("id,channel_id,author_id,body,content,created_at")
-    .eq("channel_id", channelId)
-    .order("created_at")
-    .limit(200)
+    .eq("channel_id", channelId);
+  if (options.before) {
+    query = query.or(
+      `created_at.lt.${options.before.createdAt},and(created_at.eq.${options.before.createdAt},id.lt.${options.before.id})`,
+    );
+  }
+  if (options.after) {
+    query = query.or(
+      `created_at.gt.${options.after.createdAt},and(created_at.eq.${options.after.createdAt},id.gt.${options.after.id})`,
+    );
+  }
+  const { data, error } = await query
+    .order("created_at", { ascending: !newestFirst })
+    .order("id", { ascending: !newestFirst })
+    .limit(options.limit ?? 50)
     .returns<MessageRow[]>();
   if (error) throw error;
-  return data.map(messageFromRow);
+  const messages = data.map(messageFromRow);
+  return newestFirst ? messages.reverse() : messages;
 }
 
 export async function sendLiveMessage(

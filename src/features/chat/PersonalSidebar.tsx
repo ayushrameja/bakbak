@@ -33,6 +33,7 @@ interface PersonalSidebarProps {
   openProfileId: string | null;
   inviteAvailable?: boolean;
   onOpenInvite?: () => void;
+  readOnly?: boolean;
 }
 
 export function PersonalSidebar({
@@ -53,6 +54,7 @@ export function PersonalSidebar({
   openProfileId,
   inviteAvailable = false,
   onOpenInvite = () => undefined,
+  readOnly = false,
 }: PersonalSidebarProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -101,12 +103,17 @@ export function PersonalSidebar({
           aria-expanded={pickerOpen}
           aria-controls="direct-message-picker"
           onClick={() => setPickerOpen((open) => !open)}
-          disabled={availableMembers.length === 0}
+          disabled={readOnly || availableMembers.length === 0}
         >
           <MessageCirclePlus size={17} />
         </button>
         {inviteAvailable ? (
-          <button type="button" onClick={onOpenInvite} aria-label="Use invite">
+          <button
+            type="button"
+            onClick={onOpenInvite}
+            aria-label="Use invite"
+            disabled={readOnly}
+          >
             <KeyRound size={16} />
           </button>
         ) : null}
@@ -181,6 +188,7 @@ export function PersonalSidebar({
                 type="button"
                 key={member.id}
                 aria-label={member.displayName}
+                disabled={readOnly}
                 onClick={() => {
                   void onStartConversation(member).then(() =>
                     setPickerOpen(false),

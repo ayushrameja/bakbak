@@ -1,6 +1,7 @@
 import { Crown, MessageCircle, UsersRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Avatar } from "../../components/Avatar";
+import { ProfileMediaImage } from "../../components/ProfileMediaImage";
 import type { LoadProfileMedia } from "../../components/ProfileTrigger";
 import { AVATAR_BUCKET, COVER_BUCKET } from "../../lib/profile-service";
 import type { ServerMember } from "../../lib/types";
@@ -87,8 +88,11 @@ export function DirectPersonPanel({
     >
       <div className="direct-person-panel__cover">
         {coverUrl ? (
-          <img
+          <ProfileMediaImage
+            bucket={COVER_BUCKET}
             className="direct-person-panel__cover-poster"
+            loadMedia={loadProfileMedia}
+            path={member.coverPath}
             src={coverUrl}
             alt=""
             style={{
@@ -97,8 +101,11 @@ export function DirectPersonPanel({
           />
         ) : null}
         {coverAnimationUrl ? (
-          <img
+          <ProfileMediaImage
+            bucket={COVER_BUCKET}
             className="direct-person-panel__cover-animation"
+            loadMedia={loadProfileMedia}
+            path={member.coverAnimationPath}
             src={coverAnimationUrl}
             alt=""
             style={{

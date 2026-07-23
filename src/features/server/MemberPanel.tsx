@@ -1,6 +1,7 @@
 import { Crown, MonitorUp, Volume2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Avatar } from "../../components/Avatar";
+import { ProfileMediaImage } from "../../components/ProfileMediaImage";
 import {
   ProfileTrigger,
   type LoadProfileMedia,
@@ -224,7 +225,10 @@ function MemberCoverPoster({
       aria-hidden="true"
     >
       {coverUrl ? (
-        <img
+        <ProfileMediaImage
+          bucket={COVER_BUCKET}
+          loadMedia={loadProfileMedia}
+          path={member.coverPath}
           src={coverUrl}
           alt=""
           loading="lazy"
