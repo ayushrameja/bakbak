@@ -1,5 +1,6 @@
 import { Hash, Pencil, Plus, Volume2 } from "lucide-react";
 import { Avatar } from "../../components/Avatar";
+import { BakbakMotionMark } from "../../components/BakbakMotionMark";
 import {
   ProfileTrigger,
   type LoadProfileMedia,
@@ -233,7 +234,7 @@ export function ChannelSidebar({
   return (
     <aside className="channel-sidebar" id="context-panel">
       <header className="server-switcher server-brand">
-        <img className="server-brand__mark" src="/bakbak-orbit.png" alt="" />
+        <BakbakMotionMark className="server-brand__mark" />
         <div className="server-brand__wordmark">
           <strong>{server.name}</strong>
         </div>

@@ -52,8 +52,9 @@ starts with context instead of archaeological guessing.
   modal, sidebar call block, and auto-hiding floating voice dock. The renderer
   uses the locally bundled Roundo family at comfortable 500–700 product
   weights. A separate multi-server rail remains deferred until multi-server
-  navigation. Plan 0020 adds one bounded Bakbak Orbit identity exception: its
-  generated artwork and server header may use indigo, cyan, and coral while
+  navigation. Plan 0020 adds one bounded Bakbak motion identity exception: its
+  generated native artwork, animated renderer mark, theme-responsive
+  server-header texture, and single lime particle accent remain isolated while
   ordinary chrome stays neutral.
 - Commit `.env.example` only. Use ignored `.env` files locally and
   platform-managed secrets for backend functions.
@@ -217,11 +218,11 @@ cover accents are approved under
 plans 0016/0018's fully monochrome semantic-state rule while retaining their
 neutral glass, system light/dark, typography, native material, and layout
 contracts.
-The original Bakbak Orbit icon, renderer identity surfaces, contained premium
-server header, and removal of the old `Friends-only adda` subtitle are approved
-under `0020-bakbak-orbit-branding.md`. Plan 0020 supersedes only the product-logo
-grayscale rule retained by plans 0016/0019; the neutral shell and scoped
-semantic-control rules remain in force.
+The minimal Bakbak motion icon, animated renderer identity surfaces,
+theme-responsive textured server header, and removal of the old `Friends-only
+adda` subtitle are approved under `0020-bakbak-orbit-branding.md`. Plan 0020
+supersedes only the product-logo grayscale rule retained by plans 0016/0019;
+the neutral shell and scoped semantic-control rules remain in force.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -334,8 +335,9 @@ semantic-control rules remain in force.
       without changing backend or persisted state.
 - [x] Add plan 0019's follow-up member spacing, static user-dock cover, and
       full non-control titlebar dragging with rotating idle/voice title copy.
-- [x] Add plan 0020's Bakbak Orbit app icon, renderer artwork, and contained
-      premium server identity header without recolouring ordinary chrome.
+- [x] Add plan 0020's minimal motion app icon, animated renderer mark, and
+      theme-responsive textured server identity header without recolouring
+      ordinary chrome.
 - [ ] Complete plan 0016's installed dark/light typography and offline-font
       acceptance matrix on macOS and Windows.
 - [ ] Complete plan 0017's installed macOS/Windows titlebar, window-control,

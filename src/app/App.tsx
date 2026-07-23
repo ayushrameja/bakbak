@@ -8,9 +8,10 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { ProfilePopover } from "../components/ProfilePopover";
 import { Avatar } from "../components/Avatar";
+import { BakbakMotionMark } from "../components/BakbakMotionMark";
 import { PanelResizer } from "../components/PanelResizer";
+import { ProfilePopover } from "../components/ProfilePopover";
 import type {
   LoadProfileMedia,
   OpenProfile,
@@ -28,6 +29,7 @@ import {
 import { ChatView, ConversationView } from "../features/chat/ChatView";
 import { DirectPersonPanel } from "../features/chat/DirectPersonPanel";
 import { PersonalSidebar } from "../features/chat/PersonalSidebar";
+import { hydrateDirectConversationAvatars } from "../features/chat/direct-conversation-media";
 import {
   draftToSegments,
   EMPTY_MESSAGE_DRAFT,
@@ -455,6 +457,11 @@ export default function App() {
     try {
       const conversations =
         appConfig.dataMode === "mock" ? [] : await loadDirectConversations();
+      const conversationsWithAvatars = await hydrateDirectConversationAvatars(
+        conversations,
+        workspace?.members ?? [],
+        loadProfileMedia,
+      );
       setDirectConversations((current) => {
         const statuses = new Map(
           current.map((conversation) => [
@@ -462,7 +469,7 @@ export default function App() {
             conversation.otherMember.status,
           ]),
         );
-        return conversations.map((conversation) => ({
+        return conversationsWithAvatars.map((conversation) => ({
           ...conversation,
           otherMember: {
             ...conversation.otherMember,
@@ -480,14 +487,16 @@ export default function App() {
         }));
       });
       setSelectedConversationId((current) =>
-        conversations.some((conversation) => conversation.id === current)
+        conversationsWithAvatars.some(
+          (conversation) => conversation.id === current,
+        )
           ? current
-          : (conversations[0]?.id ?? null),
+          : (conversationsWithAvatars[0]?.id ?? null),
       );
     } finally {
       setDirectHistoryLoading(false);
     }
-  }, [signedInUserId, workspace]);
+  }, [loadProfileMedia, signedInUserId, workspace]);
 
   useEffect(() => {
     if (!signedInUserId) return;
@@ -1614,7 +1623,7 @@ export default function App() {
   if (authLoading) {
     return renderAppFrame(
       <main className="app-loading">
-        <img className="brand-mark" src="/bakbak-orbit.png" alt="" />
+        <BakbakMotionMark className="brand-mark" />
         <h1>Opening Bakbak</h1>
         <p>Checking whether you already have a seat…</p>
       </main>,
@@ -1660,7 +1669,7 @@ export default function App() {
   if (activeSpace === "server" && (!workspace || !selectedChannel)) {
     return renderAppFrame(
       <main className="app-loading">
-        <img className="brand-mark" src="/bakbak-orbit.png" alt="" />
+        <BakbakMotionMark className="brand-mark" />
         <h1>{appError ? "The door is stuck" : "Setting the room up"}</h1>
         <p>
           {appError ??
@@ -1873,7 +1882,7 @@ export default function App() {
               />
             ) : activeSpace === "personal" ? (
               <section className="personal-home">
-                <img src="/bakbak-orbit.png" alt="" />
+                <BakbakMotionMark className="personal-home__mark" />
                 <span className="eyebrow">Personal lounge</span>
                 <h2>Your conversations live here</h2>
                 <p>

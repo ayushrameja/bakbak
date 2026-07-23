@@ -181,7 +181,7 @@ describe("Soundboard", () => {
     ).toBeVisible();
   });
 
-  it("exposes volume and the dedicated stop footer", async () => {
+  it("exposes volume and the standalone stop control", async () => {
     const { onStopAll, onVolumeChange } = renderSoundboard();
     fireEvent.change(
       screen.getByRole("slider", { name: "Soundboard volume" }),
@@ -189,9 +189,14 @@ describe("Soundboard", () => {
     );
     expect(onVolumeChange).toHaveBeenCalledWith(0.4);
     expect(screen.getByText("2/5")).toBeVisible();
-    await userEvent.click(
-      screen.getByRole("button", { name: "Stop my sounds (2/5 playing)" }),
+    const stopButton = screen.getByRole("button", {
+      name: "Stop my sounds (2/5 playing)",
+    });
+    expect(stopButton.closest(".soundboard-stop-control")).toBeInstanceOf(
+      HTMLDivElement,
     );
+    expect(stopButton.closest("footer")).toBeNull();
+    await userEvent.click(stopButton);
     expect(onStopAll).toHaveBeenCalledOnce();
   });
 

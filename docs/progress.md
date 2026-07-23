@@ -3795,3 +3795,127 @@ Gang` at the true window center, and retained panel/Windows controls at the
 - **Next:** Open the rebuilt macOS app and inspect the icon in the Dock and app
   switcher, then confirm the Windows taskbar/NSIS artwork and the header against
   light native material before the next friend-test build.
+
+## 2026-07-23 — Hydrate Direct Message avatars
+
+- **Completed:** Fixed Personal conversation rows that showed initials even
+  when the other participant had an uploaded avatar. Direct-conversation
+  results now resolve their private `avatar_path` through the existing
+  profile-media cache before entering application state, so the left DM list
+  and selected-conversation header share the real poster URL. Matching
+  already-downloaded workspace avatars are reused.
+- **Decisions:** Kept avatar hydration outside the presentational sidebar so
+  every consumer of the selected direct participant receives the same resolved
+  media. A failed private-media download remains non-blocking and falls back to
+  initials, preserving access to the conversation.
+- **Validation:**
+  - Focused avatar/sidebar/details Vitest run — passed 3 files with 6 tests,
+    including private-path download, workspace-avatar reuse, and graceful
+    failure coverage.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects, 59
+    Vitest files with 313 tests, 24/24 Node contract tests, synchronized version
+    `0.16.0`, the production renderer build, and the bundle secret scan. Vite
+    retained the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are absent.
+  - Final `git diff --check` and changed-diff secret-pattern inspection —
+    passed.
+- **Documentation updated:** Documented private DM avatar-poster hydration in
+  the application-shell data flow and appended this canonical progress entry.
+- **Known limitations:** The live signed-in account and private Storage path
+  were not available to the automated browser fixture, so the exact Bhindi and
+  Thanda Admin posters still need a quick installed-app visual confirmation.
+  The local macOS bundle is not notarized.
+- **Next:** Reopen Personal in the installed app and confirm both uploaded
+  posters appear in the left DM list and selected-conversation header.
+
+## 2026-07-23 — Replace Orbit with minimal motion branding
+
+- **Completed:** Replaced the colorful Bakbak Orbit treatment with a generated
+  flat native/favicon frame built from one open conversation ring and three
+  particles. Added the reusable code-native `BakbakMotionMark` SVG to
+  authentication, invite, loading, empty-Personal, and server identity
+  surfaces; its jaws chomp and particles advance while reduced-motion users
+  receive a static mark. Regenerated the complete Tauri macOS, Windows, iOS,
+  and Android icon bundle. Rebuilt the server identity header as a solid,
+  gradient-free surface with light/dark-responsive ink, paper, border, orbit,
+  mark, lime-particle accent, and fine monochrome noise.
+- **Decisions:** Kept the desktop icon as a static, legible frame because native
+  shells do not provide one portable animated-icon contract; the renderer owns
+  the actual motion. Used an original open-ring conversation metaphor instead
+  of a character face or direct Pac-Man copy. Kept the texture in a separate
+  turbulence SVG so CSS can tint its blend and opacity per scheme without
+  baking another fixed background into the interface.
+- **Validation:**
+  - Focused motion-mark and channel-sidebar Vitest run — passed 2 files with 12
+    tests.
+  - `node --test scripts/monochrome-appearance.test.mjs` — passed 4/4 motion
+    branding, semantic-color, Roundo, and appearance contracts, including the
+    no-gradient, noise, bounded-accent, and reduced-motion guards.
+  - Mock-browser QA at 1280×720 and 1024×680 — passed. The header measured
+    232×80 px with a 48 px mark; the jaw transform changed over 360 ms; dark
+    used a solid `rgb(16, 17, 20)` surface with 0.14 noise opacity; light used
+    `rgb(242, 240, 233)` with ink `rgb(21, 22, 25)`, lime
+    `rgb(93, 122, 24)`, and 0.10 noise opacity. No gradient, page/sidebar
+    overflow, console warning, or console error was present.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects, 60
+    Vitest files with 314 tests, 24/24 Node contract tests, synchronized version
+    `0.16.0`, production renderer build, and bundle secret scan before a
+    separate concurrent soundboard edit entered the shared tree. On that final
+    shared tree, lint, both TypeScript projects, the same 314/24 tests,
+    production build, and bundle secret scan passed again; the repository-wide
+    format recheck failed only on that unrelated
+    `src/features/soundboard/Soundboard.test.tsx` edit. An explicit check of all
+    branding files passed.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are absent.
+  - Full-resolution inspection of `src-tauri/icons/icon.png` — passed for
+    centered geometry, safe margins, clean silhouette, and restrained grain.
+- **Documentation updated:** Updated the current architecture, active v1 plan,
+  and plan 0020 visual/acceptance contracts; appended this canonical progress
+  entry.
+- **Known limitations:** Native desktop icons remain static by platform
+  contract. The rebuilt icon still needs final installed Dock/app-switcher and
+  Windows taskbar/installer observation; the local macOS bundle is not
+  notarized. A concurrent soundboard test edit remains unformatted and was
+  preserved rather than modified as part of this branding task.
+- **Next:** Open the rebuilt app for the installed macOS icon check, then verify
+  the Windows taskbar and installer artwork before the next friend-test build.
+
+## 2026-07-23 — Float the soundboard stop control
+
+- **Completed:** Removed the soundboard's dedicated stop footer and replaced it
+  with a standalone circular control over the drawer's bottom-right corner.
+  The optional active `n/5` count now sits immediately to the button's left,
+  while a compact radial scrim fades from transparent into the active theme's
+  dark or light glass. The existing voice-control dock remains the full
+  bottom-bar treatment.
+- **Decisions:** Kept the stop control mounted and disabled at zero sounds so
+  its location stays predictable. The scrim is pointer-transparent except for
+  the button, and the scrolling sound list keeps enough trailing space that the
+  overlay cannot hide the final sound row.
+- **Validation:**
+  - Focused Soundboard Vitest — passed 9/9 tests, including the new standalone
+    non-footer contract and stop behavior.
+  - `node --test scripts/monochrome-appearance.test.mjs` — passed 4/4
+    appearance and semantic-control contracts.
+  - Mock-browser QA in Dark and Light — passed. The stop button remained the
+    rightmost item at an 11 px drawer-edge gap, the active `1/5` count rendered
+    to its left, and computed scrim colors resolved to black and white
+    respectively. The browser console had no warnings or errors; Auto theme was
+    restored after validation.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects, 60
+    Vitest files with 314 tests, 24/24 Node contract tests, synchronized version
+    `0.16.0`, the production renderer build, and the bundle secret scan. Vite
+    retained the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are absent.
+  - Final `git diff --check` and changed-diff secret inspection — passed.
+- **Documentation updated:** Updated the soundboard runtime contract and plan
+  0007's completed stopping-control criterion; appended this canonical progress
+  entry.
+- **Known limitations:** The corner fade still needs direct observation over
+  native macOS and Windows material. The local macOS bundle is not notarized.
+- **Next:** Open the installed soundboard in both schemes, play two overlapping
+  sounds, and confirm the bottom-right Stop plus `2/5` remain clear while
+  scrolling the final row.

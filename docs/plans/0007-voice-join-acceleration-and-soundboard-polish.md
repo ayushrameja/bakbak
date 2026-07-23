@@ -69,8 +69,9 @@ fallback. Blank canvases have been dismissed for chronic absenteeism.
 - [x] Allow repeated sounds, re-enable playback as soon as any sound finishes
       or fails, and defensively render only the newest five remote activities
       from older clients.
-- [x] Add a sticky soundboard footer with `N/5 playing` and a prominent red
-      “Stop my sounds” action.
+- [x] Add a standalone bottom-right soundboard stop action over a
+      theme-responsive corner fade, with `N/5` immediately to its left and no
+      dedicated footer row.
 - [x] Add the same emergency stop to the global voice dock and pin the dock
       while local sounds are active.
 - [x] Keep both controls on the existing immediate local clear plus reliable

@@ -89,9 +89,7 @@ describe("ChannelSidebar room shelf", () => {
 
     expect(screen.getByText("Bakbak")).toBeVisible();
     expect(screen.queryByText("Friends-only adda")).not.toBeInTheDocument();
-    expect(
-      container.querySelector('.server-brand__mark[src="/bakbak-orbit.png"]'),
-    ).toBeVisible();
+    expect(container.querySelector(".server-brand__mark svg")).toBeVisible();
   });
 
   it("shows create and rename controls only to admins", async () => {

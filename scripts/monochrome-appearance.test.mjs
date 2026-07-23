@@ -5,6 +5,7 @@ import test from "node:test";
 
 const stylesUrl = new URL("../src/styles.css", import.meta.url);
 const brandAssetUrl = new URL("../public/bakbak-orbit.png", import.meta.url);
+const brandNoiseUrl = new URL("../public/brand-noise.svg", import.meta.url);
 const fontUrl = new URL(
   "../public/fonts/roundo/Roundo-Variable.woff2",
   import.meta.url,
@@ -19,13 +20,18 @@ const channelSidebarUrl = new URL(
   "../src/features/channels/ChannelSidebar.tsx",
   import.meta.url,
 );
+const motionMarkUrl = new URL(
+  "../src/components/BakbakMotionMark.tsx",
+  import.meta.url,
+);
 
-const [styles, app, settings, channelSidebar, font, license] =
+const [styles, app, settings, channelSidebar, motionMark, font, license] =
   await Promise.all([
     readFile(stylesUrl, "utf8"),
     readFile(appUrl, "utf8"),
     readFile(settingsUrl, "utf8"),
     readFile(channelSidebarUrl, "utf8"),
+    readFile(motionMarkUrl, "utf8"),
     readFile(fontUrl),
     readFile(licenseUrl, "utf8"),
   ]);
@@ -101,26 +107,42 @@ function contrastRatio(left, right) {
   );
 }
 
-test("ordinary chrome stays monochrome while brand chroma remains contained", async () => {
-  const brandChromaPattern =
-    /\/\* BRAND-CHROMA-START[\s\S]*?\/\* BRAND-CHROMA-END \*\//;
-  const brandChroma = styles.match(brandChromaPattern)?.[0];
-  assert.ok(brandChroma, "the contained Bakbak brand block is missing");
+test("ordinary chrome stays monochrome while motion branding remains contained", async () => {
+  const brandMotionPattern =
+    /\/\* BRAND-MOTION-START[\s\S]*?\/\* BRAND-MOTION-END \*\//;
+  const brandMotion = styles.match(brandMotionPattern)?.[0];
+  assert.ok(brandMotion, "the contained Bakbak motion block is missing");
 
   const semanticNames = Object.keys(semanticTokenValues).join("|");
   const ordinaryStyles = styles
-    .replace(brandChromaPattern, "")
+    .replace(brandMotionPattern, "")
     .replace(
       new RegExp(`--(?:${semanticNames}):\\s*#[\\da-f]{3,8};`, "gi"),
       "",
     );
   assertGrayscale(ordinaryStyles, "src/styles.css ordinary chrome");
   assert.doesNotMatch(styles, /\b(?:hsl|hsla|hwb|lab|lch|oklch)\(/i);
-  assert.match(brandChroma, /--brand-indigo:\s*#7469ff;/);
-  assert.match(brandChroma, /--brand-cyan:\s*#20d8ee;/);
-  assert.match(brandChroma, /--brand-coral:\s*#ff716f;/);
-  assert.match(channelSidebar, /src="\/bakbak-orbit\.png"/);
-  await access(brandAssetUrl);
+  const brandAccentValues = [
+    ...new Set(
+      [...brandMotion.matchAll(/--brand-accent:\s*(#[\da-f]{6});/gi)].map(
+        (match) => match[1].toLowerCase(),
+      ),
+    ),
+  ];
+  assert.deepEqual(brandAccentValues, ["#c5f76d", "#5d7a18"]);
+  assert.doesNotMatch(brandMotion, /(?:linear|radial)-gradient\(/i);
+  assert.match(brandMotion, /url\("\/brand-noise\.svg"\)/);
+  assert.match(
+    channelSidebar,
+    /<BakbakMotionMark className="server-brand__mark"/,
+  );
+  assert.match(motionMark, /bakbak-motion-mark__jaw--top/);
+  assert.match(motionMark, /bakbak-motion-mark__dot--near/);
+  assert.match(
+    brandMotion,
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.bakbak-motion-mark__jaw,[\s\S]*?\.bakbak-motion-mark__dot[\s\S]*?animation:\s*none;/,
+  );
+  await Promise.all([access(brandAssetUrl), access(brandNoiseUrl)]);
 
   for (const match of styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     if (/avatar|cover|emoji|participant-video|screen-share/i.test(match[1])) {
@@ -174,7 +196,7 @@ test("approved semantic colors are system-adaptive and accessible", () => {
   );
   assert.match(
     styles,
-    /\.soundboard-stop-footer button\s*{[\s\S]*?color:\s*var\(--on-semantic-fill\)[\s\S]*?background:\s*var\(--semantic-danger\)/,
+    /\.soundboard-stop-control button\s*{[\s\S]*?color:\s*var\(--on-semantic-fill\)[\s\S]*?background:\s*var\(--semantic-danger\)/,
   );
 });
 

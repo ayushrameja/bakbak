@@ -353,7 +353,7 @@ export function Soundboard({
         </p>
       ) : null}
 
-      <footer className="soundboard-stop-footer">
+      <div className="soundboard-stop-control">
         <button
           type="button"
           disabled={activeLocalSoundCount === 0}
@@ -370,7 +370,7 @@ export function Soundboard({
         ) : (
           <span className="visually-hidden">No sounds playing</span>
         )}
-      </footer>
+      </div>
 
       {editingSound ? (
         <EditSoundModal

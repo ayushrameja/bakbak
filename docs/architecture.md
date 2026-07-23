@@ -38,10 +38,14 @@ the explicit choices apply before React mounts and update the matching
 `theme-color` metadata. Dark mode uses near-black translucent panels; light
 mode uses neutral-white translucent panels. Primary chrome uses 24 px blur at
 120% saturation while avatars, covers, emoji, camera video, and screen sharing
-remain untouched. Ordinary chrome remains grayscale. The original
-Bakbak Orbit identity is the sole decorative chroma exception: its generated
-artwork and contained server header use indigo, cyan, and coral over a fixed ink
-surface with restrained grain and orbit lines. Scoped Discord-inspired
+remain untouched. Ordinary chrome remains grayscale. The Bakbak motion identity
+uses a minimal open ring facing three message particles: a generated static
+raster drives the favicon and native icon bundle, while a code-native SVG
+animates the jaws and particles on renderer identity surfaces. Its solid server
+header, fine monochrome noise, border, mark surface, and orbit lines respond to
+the active light/dark scheme. Only the nearest particle uses a bounded lime
+accent; the identity has no gradient, glow, or character face. Scoped
+Discord-inspired
 positive, danger, selected, warning, and
 icon tokens identify call controls, presence, streaming, and admin state with
 verified light/dark contrast. Appearance Settings exposes only the three scheme
@@ -103,9 +107,12 @@ without moving it from System or Bakbak. Uploaders and server admins may edit
 labels/emoji or delete member sounds, while only admins manage operator sounds.
 The drawer retains persisted global volume, per-participant volume, overlapping
 activity badges, retry states, and stop-all. A sender reserves at most five
-pending/active sounds; the drawer uses a bottom-left circular stop action with
-an active `n/5` counter, the global dock keeps its compact stop action, and
-upgraded clients clamp remote activity to the newest five events.
+pending/active sounds; the drawer overlays a standalone bottom-right circular
+stop action on a theme-responsive transparent-to-dark/light corner scrim, with
+the active `n/5` counter immediately to its left. The drawer has no dedicated
+stop footer; the global voice dock remains the full bottom-bar treatment and
+keeps its compact stop action. Upgraded clients clamp remote activity to the
+newest five events.
 Participant tiles replace a camera-off
 avatar with the newest sound emoji or overlay it on camera video, with overlap
 counting and reduced-motion behavior. Deafen suppresses remote speech and local/incoming soundboard
@@ -357,7 +364,8 @@ bakbak/
 │       ├── 0019-discord-inspired-controls-and-member-rail.md
 │       └── 0020-bakbak-orbit-branding.md
 ├── public/
-│   ├── bakbak-orbit.png           # generated renderer/native-icon source artwork
+│   ├── bakbak-orbit.png           # generated favicon/native-icon source frame
+│   ├── brand-noise.svg            # theme-tinted brand-surface noise tile
 │   ├── fonts/roundo/              # pinned Roundo v2.0 variable WOFF2
 │   ├── interface-sounds/          # generated original 48 kHz mono WAV cues
 │   └── vendor/
@@ -367,7 +375,7 @@ bakbak/
 ├── third_party/roundo/             # Roundo source record and SIL OFL notice
 ├── src/
 │   ├── app/                       # application shell, routing, providers
-│   ├── components/                # reusable presentation components
+│   ├── components/                # reusable UI, including the SVG motion mark
 │   ├── features/
 │   │   ├── auth/
 │   │   ├── server/
@@ -475,8 +483,9 @@ The renderer uses a titlebar, three-panel desktop layout, and modal layer:
    `ConnectionQualityChanged` events separately normalize the local participant as
    Unknown/Excellent/Good/Poor; reconnecting display takes precedence. The
    selected glass scheme uses grayscale translucency plus scoped
-   positive, danger, selected, warning, and icon colors. The server identity
-   header alone uses the Bakbak Orbit artwork and bounded brand chroma. A
+   positive, danger, selected, warning, and icon colors. Renderer identity
+   surfaces use the animated Bakbak motion mark; the server header contains its
+   theme-responsive noise/orbit texture and single lime particle accent. A
    one-shot renderer-launch assembly
    completes within 500 ms; panel/space motion and message stagger collapse to
    the final state under reduced motion. Every scroll surface uses a transparent
@@ -719,7 +728,8 @@ An invite-management UI is deferred until post-v1.
 7. The details panel resolves the other participant's profile and private media
    through shared-server or established-DM policy. Former members may use the
    reversible invite action while keeping established conversations. The DM
-   header uses that participant's avatar, while the details rail plays their
+   conversation row and header hydrate that participant's private avatar poster
+   through the shared profile-media cache, while the details rail plays their
    GIF avatar and cover unless reduced motion is enabled. The Personal member
    picker truncates long names and dismisses on outside pointer or Escape.
 
@@ -1399,8 +1409,9 @@ that it has passed.
   and removes the typography summary. Accent, surface, and font controls remain
   absent. The appearance regression guard covers the scheme-only preference.
   Plan 0019 permits its scoped semantic control tokens, and plan 0020 permits
-  decorative chroma only in the generated product artwork and explicitly
-  delimited server-header brand block; ordinary chrome remains grayscale.
+  one lime particle accent only in the generated product artwork and explicitly
+  delimited server-header motion-brand block; ordinary chrome remains
+  grayscale.
   The in-app browser's localhost policy blocked the mock-preview reload, so the
   dark/light 1024×680 and 1280×800 visual matrix plus installed macOS/Windows
   glyph, clipping, wrapping, and offline-network observation remain required.
