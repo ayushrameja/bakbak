@@ -587,10 +587,12 @@ The shared main-window geometry remains 1280×800 with a 1024×680 minimum,
 resizing, and label `main` across the base, macOS, and Windows configurations.
 macOS uses the overlay titlebar with hidden native title and a 16 px horizontal,
 24 px vertical traffic-light inset that centres the controls in the 48 px bar.
-It enables `macOSPrivateApi`, a transparent window, native shadow, and the
-`underWindowBackground` effect with active/inactive-state following. Windows
-disables native decorations while retaining the native shadow and transparent
-webview, exposes renderer minimize, toggle-maximize, close, drag, and
+The base Tauri config enables `macOSPrivateApi` so plain cross-platform Cargo
+checks validate the matching `macos-private-api` feature; the macOS override
+also retains that allowlist while applying a transparent window, native shadow,
+and the `underWindowBackground` effect with active/inactive-state following.
+Windows disables native decorations while retaining the native shadow and
+transparent webview, exposes renderer minimize, toggle-maximize, close, drag, and
 maximize-state reconciliation through an injectable adapter, and applies Mica
 from Rust only when `windows-version` reports build 22000 or newer. Before
 React loads, Rust injects `data-window-material="native|fallback"`; native

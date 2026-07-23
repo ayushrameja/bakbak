@@ -32,6 +32,7 @@ test("macOS and Windows titlebar configs retain the shared main-window contract"
     }
   }
 
+  assert.equal(base.app.macOSPrivateApi, true);
   assert.equal(macos.app.windows[0].decorations, true);
   assert.equal(macos.app.macOSPrivateApi, true);
   assert.equal(macos.app.windows[0].transparent, true);

@@ -4388,3 +4388,32 @@ supabase/functions/tests` — passed 37/37 tests, including media request
   Windows installed validation remains part of the pending plan 0022 matrix.
 - **Next:** Open the rebuilt `Bakbak.app` and confirm the username dock and
   message bar remain centred on the same footer line with the reported account.
+
+## 2026-07-24 — Repair the Linux Tauri feature allowlist check
+
+- **Completed:** Added `app.macOSPrivateApi: true` to the base Tauri
+  configuration so plain cross-platform Cargo builds see the allowlist required
+  by the enabled `tauri/macos-private-api` feature. Preserved the macOS override
+  and added a native-config regression assertion for the base configuration.
+- **Decisions:** Kept the private API enabled because Bakbak's approved macOS
+  glass treatment depends on it. Duplicating the allowlist in the base and
+  macOS-specific configurations preserves the platform override contract while
+  allowing the Ubuntu `cargo check` job to validate the dependency features.
+- **Validation:**
+  - `node --test scripts/window-chrome-config.test.mjs` — passed 3/3 tests.
+  - `cargo check --locked --manifest-path src-tauri/Cargo.toml` — passed.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects,
+    70 Vitest files with 347 tests, 25/25 Node contract tests, synchronized
+    version `0.16.0`, the production renderer build, and bundle secret scan.
+    Vite retained the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+  - `git diff --check` — passed.
+- **Documentation updated:** Updated the Tauri shell contract in
+  `docs/architecture.md` and appended this canonical progress entry. The active
+  plan scope and acceptance state did not change.
+- **Known limitations:** The exact Ubuntu runner cannot be executed on the
+  local macOS host; the base-config regression covers the configuration path
+  missing from that runner, and the hosted PR check still needs to rerun.
+- **Next:** Push the fix and rerun PR #33's locked Rust check on Ubuntu.
