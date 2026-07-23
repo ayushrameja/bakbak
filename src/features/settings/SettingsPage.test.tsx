@@ -107,7 +107,9 @@ describe("SettingsPage", () => {
         messageCount: 42,
         profileMediaBytes: 3 * 1024 * 1024,
         profileMediaCount: 7,
-        totalBytes: 3 * 1024 * 1024 + 2048,
+        messageMediaBytes: 512 * 1024,
+        messageMediaCount: 3,
+        totalBytes: 3 * 1024 * 1024 + 512 * 1024 + 2048,
       },
       onClearCachedData,
     });

@@ -1,14 +1,27 @@
-import { Send, Sparkles } from "lucide-react";
+import {
+  CirclePlus,
+  MessageSquareReply,
+  Send,
+  Smile,
+  SmilePlus,
+  Sparkles,
+  Sticker as StickerIcon,
+  Trash2,
+  X,
+} from "lucide-react";
 import {
   useEffect,
   useMemo,
   useRef,
   useState,
+  type ClipboardEvent,
   type CSSProperties,
+  type DragEvent,
   type FormEvent,
   type KeyboardEvent,
 } from "react";
 import { Avatar } from "../../components/Avatar";
+import { Modal } from "../../components/Modal";
 import {
   ProfileTrigger,
   type LoadProfileMedia,
@@ -21,14 +34,30 @@ import type {
   ConversationMessage,
   ConversationTarget,
   MessageDraft,
+  MessagePresentation,
   ServerMember,
+  Sticker,
 } from "../../lib/types";
+import {
+  registerGiphyAction,
+  resolveGiphyAssets,
+  toGiphyPresentation,
+  type GiphyAsset,
+} from "../../lib/giphy-service";
 import {
   EMPTY_MESSAGE_DRAFT,
   findMentionQuery,
   insertMention,
   updateDraftText,
 } from "./message-content";
+import {
+  MAX_MESSAGE_ATTACHMENTS,
+  prepareMessageAttachment,
+} from "./message-media";
+import { EmojiPicker } from "./EmojiPicker";
+import { GiphyPicker } from "./GiphyPicker";
+import { RichMessageMedia } from "./RichMessageMedia";
+import { StickerPicker } from "./StickerPicker";
 
 const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
 const ignoreProfileOpen: OpenProfile = () => undefined;
@@ -47,6 +76,12 @@ interface ChatViewProps {
   loadProfileMedia?: LoadProfileMedia;
   onOpenProfile?: OpenProfile;
   openProfileId?: string | null;
+  stickers?: Sticker[];
+  currentUserIsAdmin?: boolean;
+  onDeleteMessage?: (messageId: string) => Promise<void>;
+  onReact?: (messageId: string, stickerId: string) => Promise<void>;
+  onUploadSticker?: (file: File, label: string) => Promise<void>;
+  onArchiveSticker?: (stickerId: string) => Promise<void>;
 }
 
 export function ChatView({
@@ -63,6 +98,12 @@ export function ChatView({
   loadProfileMedia = emptyProfileMediaLoader,
   onOpenProfile = ignoreProfileOpen,
   openProfileId = null,
+  stickers = [],
+  currentUserIsAdmin = false,
+  onDeleteMessage,
+  onReact,
+  onUploadSticker,
+  onArchiveSticker,
 }: ChatViewProps) {
   return (
     <ConversationView
@@ -84,6 +125,12 @@ export function ChatView({
       loadProfileMedia={loadProfileMedia}
       onOpenProfile={onOpenProfile}
       openProfileId={openProfileId}
+      stickers={stickers}
+      currentUserIsAdmin={currentUserIsAdmin}
+      {...(onDeleteMessage ? { onDeleteMessage } : {})}
+      {...(onReact ? { onReact } : {})}
+      {...(onUploadSticker ? { onUploadSticker } : {})}
+      {...(onArchiveSticker ? { onArchiveSticker } : {})}
     />
   );
 }
@@ -102,6 +149,12 @@ interface ConversationViewProps {
   loadProfileMedia?: LoadProfileMedia;
   onOpenProfile?: OpenProfile;
   openProfileId?: string | null;
+  stickers?: Sticker[];
+  currentUserIsAdmin?: boolean;
+  onDeleteMessage?: (messageId: string) => Promise<void>;
+  onReact?: (messageId: string, stickerId: string) => Promise<void>;
+  onUploadSticker?: (file: File, label: string) => Promise<void>;
+  onArchiveSticker?: (stickerId: string) => Promise<void>;
 }
 
 export function ConversationView({
@@ -118,12 +171,36 @@ export function ConversationView({
   loadProfileMedia = emptyProfileMediaLoader,
   onOpenProfile = ignoreProfileOpen,
   openProfileId = null,
+  stickers = [],
+  currentUserIsAdmin = false,
+  onDeleteMessage,
+  onReact,
+  onUploadSticker,
+  onArchiveSticker,
 }: ConversationViewProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
   const [mentionQuery, setMentionQuery] =
     useState<ReturnType<typeof findMentionQuery>>(null);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
+  const [picker, setPicker] = useState<
+    "emoji" | "giphy" | "sticker" | { reactionMessageId: string } | null
+  >(null);
+  const [preparingMedia, setPreparingMedia] = useState(false);
+  const [mediaError, setMediaError] = useState<string | null>(null);
+  const [giphyAssets, setGiphyAssets] = useState(
+    () => new Map<string, GiphyAsset>(),
+  );
+  const [selectedGiphyAsset, setSelectedGiphyAsset] =
+    useState<GiphyAsset | null>(null);
+  const [deleteRequest, setDeleteRequest] = useState<{
+    messageId: string;
+    pending: boolean;
+    hasMedia: boolean;
+  } | null>(null);
+  const [deletingMessage, setDeletingMessage] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const membersById = useMemo(
     () => new Map(members.map((member) => [member.id, member])),
     [members],
@@ -150,6 +227,67 @@ export function ConversationView({
       })
       .slice(0, 8);
   }, [members, mentionQuery]);
+  const stickersById = useMemo(
+    () => new Map(stickers.map((sticker) => [sticker.id, sticker])),
+    [stickers],
+  );
+  const visibleMessages = useMemo(
+    () => messages.filter((message) => !message.deletedAt),
+    [messages],
+  );
+  const giphyHistoryIds = useMemo(
+    () =>
+      visibleMessages.flatMap((message) =>
+        message.presentation?.kind === "giphy"
+          ? [message.presentation.assetId]
+          : [],
+      ),
+    [visibleMessages],
+  );
+  const draftGiphyId =
+    draft.presentation?.kind === "giphy" ? draft.presentation.assetId : null;
+
+  useEffect(() => {
+    if (!giphyHistoryIds.length) {
+      setGiphyAssets(new Map());
+      return;
+    }
+    let cancelled = false;
+    void resolveGiphyAssets(giphyHistoryIds)
+      .then((assets) => {
+        if (!cancelled) {
+          setGiphyAssets(new Map(assets.map((asset) => [asset.id, asset])));
+        }
+      })
+      .catch((caught) => {
+        if (!cancelled) {
+          setMediaError(
+            caught instanceof Error
+              ? caught.message
+              : "GIPHY history could not be loaded.",
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [giphyHistoryIds]);
+
+  useEffect(() => {
+    if (!draftGiphyId) {
+      setSelectedGiphyAsset(null);
+      return;
+    }
+    let cancelled = false;
+    void resolveGiphyAssets([draftGiphyId])
+      .then(([asset]) => {
+        if (!cancelled && asset) setSelectedGiphyAsset(asset);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [draftGiphyId]);
 
   useEffect(() => {
     const list = listRef.current;
@@ -165,14 +303,124 @@ export function ConversationView({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!draft.text.trim() || sending) return;
-    const submitted = draft;
+    if (!isSendable(draft) || sending || preparingMedia) return;
+    await submitDraft(draft);
+  }
+
+  async function submitDraft(submitted: MessageDraft) {
+    const submittedGiphy =
+      submitted.presentation?.kind === "giphy" &&
+      selectedGiphyAsset?.id === submitted.presentation.assetId
+        ? selectedGiphyAsset
+        : null;
     onDraftChange(EMPTY_MESSAGE_DRAFT);
+    setSelectedGiphyAsset(null);
     setMentionQuery(null);
+    setPicker(null);
     try {
       await onSend(submitted);
+      if (submittedGiphy) registerGiphyAction(submittedGiphy, "onsent");
     } catch {
       onDraftChange(submitted);
+      setSelectedGiphyAsset(submittedGiphy);
+    }
+  }
+
+  async function addFiles(files: readonly File[]) {
+    if (draft.presentation) {
+      setMediaError("Remove the selected GIF or sticker before adding files.");
+      return;
+    }
+    const remaining =
+      MAX_MESSAGE_ATTACHMENTS - (draft.attachments?.length ?? 0);
+    if (remaining <= 0) {
+      setMediaError("A message can include up to four attachments.");
+      return;
+    }
+    setPreparingMedia(true);
+    setMediaError(null);
+    try {
+      const prepared = [];
+      for (const file of files.slice(0, remaining)) {
+        prepared.push(await prepareMessageAttachment(file));
+      }
+      onDraftChange({
+        ...draft,
+        attachments: [...(draft.attachments ?? []), ...prepared],
+      });
+    } catch (caught) {
+      setMediaError(
+        caught instanceof Error
+          ? caught.message
+          : "That media could not be prepared.",
+      );
+    } finally {
+      setPreparingMedia(false);
+    }
+  }
+
+  function beginReply(message: ConversationMessage) {
+    const author = membersById.get(message.authorId);
+    onDraftChange({
+      ...draft,
+      replyTo: {
+        id: message.id,
+        authorId: message.authorId,
+        authorName:
+          author?.displayName ??
+          (message.authorId === currentUser.id
+            ? currentUser.displayName
+            : "Former friend"),
+        body: message.body,
+        deleted: false,
+      },
+      notifyReplyAuthor: message.authorId !== currentUser.id,
+    });
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }
+
+  async function sendPresentation(presentation: MessagePresentation) {
+    const submitted: MessageDraft = {
+      ...EMPTY_MESSAGE_DRAFT,
+      replyTo: draft.replyTo ?? null,
+      notifyReplyAuthor: draft.notifyReplyAuthor ?? true,
+      presentation,
+    };
+    try {
+      await onSend(submitted);
+      onDraftChange(EMPTY_MESSAGE_DRAFT);
+      setPicker(null);
+    } catch {
+      setMediaError("That sticker or GIF did not send.");
+    }
+  }
+
+  function stageGiphy(asset: GiphyAsset) {
+    setMediaError(null);
+    setSelectedGiphyAsset(asset);
+    onDraftChange({
+      ...draft,
+      presentation: toGiphyPresentation(asset),
+    });
+    setPicker(null);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }
+
+  async function confirmDeleteMessage() {
+    if (!deleteRequest || !onDeleteMessage) return;
+    setDeletingMessage(true);
+    setDeleteError(null);
+    try {
+      await onDeleteMessage(deleteRequest.messageId);
+      setDeleteRequest(null);
+    } catch (caught) {
+      setDeleteError(
+        caught instanceof Error
+          ? caught.message
+          : "That message could not be deleted.",
+      );
+    } finally {
+      setDeletingMessage(false);
     }
   }
 
@@ -200,7 +448,27 @@ export function ConversationView({
     });
   }
 
+  function insertEmoji(emoji: string) {
+    const input = inputRef.current;
+    const start = input?.selectionStart ?? draft.text.length;
+    const end = input?.selectionEnd ?? start;
+    const nextText = `${draft.text.slice(0, start)}${emoji}${draft.text.slice(end)}`;
+    const cursor = start + emoji.length;
+    onDraftChange(updateDraftText(draft, nextText));
+    setMentionQuery(null);
+    setPicker(null);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(cursor, cursor);
+    });
+  }
+
   function handleComposerKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Escape" && draft.replyTo) {
+      event.preventDefault();
+      onDraftChange({ ...draft, replyTo: null, notifyReplyAuthor: true });
+      return;
+    }
     if (!mentionQuery || suggestions.length === 0) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -245,7 +513,7 @@ export function ConversationView({
           </span>
         </div>
 
-        {onLoadOlder && messages.length >= 50 ? (
+        {onLoadOlder && visibleMessages.length >= 50 ? (
           <button
             className="secondary-button message-list__older"
             type="button"
@@ -255,14 +523,14 @@ export function ConversationView({
           </button>
         ) : null}
 
-        {messages.length === 0 ? (
+        {visibleMessages.length === 0 ? (
           <div className="empty-conversation">
             <span>There is an admirably suspicious amount of peace here.</span>
             <p>Send the first message before someone schedules a meeting.</p>
           </div>
         ) : null}
 
-        {messages.map((message, index) => {
+        {visibleMessages.map((message, index) => {
           const author =
             membersById.get(message.authorId) ??
             (message.authorId === currentUser.id ? currentUser : null);
@@ -271,14 +539,15 @@ export function ConversationView({
             (message.authorId === currentUser.id
               ? { ...currentUser, role: "member" }
               : null);
-          const previous = messages[index - 1];
+          const previous = visibleMessages[index - 1];
           const grouped =
             previous?.authorId === message.authorId &&
             Date.parse(message.createdAt) - Date.parse(previous.createdAt) <
               5 * 60 * 1000;
           return (
             <article
-              className={`message ${grouped ? "message--grouped" : ""} ${message.pending ? "message--pending" : ""}`}
+              id={`message-${message.id}`}
+              className={`message ${grouped ? "message--grouped" : ""} ${message.pending ? "message--pending" : ""} ${message.replyNotifiesAuthor && message.reply?.authorId === currentUser.id ? "message--notifies-current-user" : ""}`}
               key={message.id}
               style={
                 {
@@ -331,6 +600,68 @@ export function ConversationView({
                     {message.pending ? <span>sending</span> : null}
                   </header>
                 ) : null}
+                <div className="message__actions" aria-label="Message actions">
+                  <button
+                    type="button"
+                    onClick={() => beginReply(message)}
+                    aria-label="Reply to message"
+                  >
+                    <MessageSquareReply size={15} />
+                  </button>
+                  {onReact && stickers.length ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPicker({ reactionMessageId: message.id })
+                      }
+                      aria-label="React with a sticker"
+                    >
+                      <SmilePlus size={15} />
+                    </button>
+                  ) : null}
+                  {onDeleteMessage && message.authorId === currentUser.id ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeleteError(null);
+                        setDeleteRequest({
+                          messageId: message.id,
+                          pending: Boolean(message.pending),
+                          hasMedia: Boolean(
+                            message.attachments?.length || message.presentation,
+                          ),
+                        });
+                      }}
+                      aria-label={
+                        message.pending ? "Cancel upload" : "Delete message"
+                      }
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  ) : null}
+                </div>
+                {message.reply ? (
+                  <button
+                    type="button"
+                    className="message-reply-preview"
+                    onClick={() =>
+                      document
+                        .getElementById(`message-${message.reply?.id}`)
+                        ?.scrollIntoView({ block: "center" })
+                    }
+                  >
+                    <MessageSquareReply size={13} />
+                    <strong>
+                      {message.reply.deleted
+                        ? "Original message deleted"
+                        : (membersById.get(message.reply.authorId ?? "")
+                            ?.displayName ?? "Former friend")}
+                    </strong>
+                    {!message.reply.deleted ? (
+                      <span>{message.reply.body}</span>
+                    ) : null}
+                  </button>
+                ) : null}
                 <p>
                   <MessageContent
                     message={message}
@@ -341,6 +672,66 @@ export function ConversationView({
                     openProfileId={openProfileId}
                   />
                 </p>
+                <RichMessageMedia
+                  message={message}
+                  stickersById={stickersById}
+                  giphy={
+                    message.presentation?.kind === "giphy"
+                      ? (giphyAssets.get(message.presentation.assetId) ?? null)
+                      : null
+                  }
+                />
+                {message.pending && message.attachments?.length ? (
+                  <progress
+                    className="message-upload-progress"
+                    value={
+                      message.attachments.reduce(
+                        (total, attachment) =>
+                          total + (attachment.uploadProgress ?? 0),
+                        0,
+                      ) / message.attachments.length
+                    }
+                    max={1}
+                    aria-label="Upload progress"
+                  />
+                ) : null}
+                {message.reactions?.length ? (
+                  <div
+                    className="message-reactions"
+                    aria-label="Sticker reactions"
+                  >
+                    {message.reactions.map((reaction) => {
+                      const sticker = stickersById.get(reaction.stickerId);
+                      if (!sticker) return null;
+                      const reacted = reaction.userIds.includes(currentUser.id);
+                      return (
+                        <button
+                          type="button"
+                          className={reacted ? "is-active" : ""}
+                          key={reaction.stickerId}
+                          onClick={() =>
+                            onReact?.(message.id, reaction.stickerId)
+                          }
+                          title={reaction.userIds
+                            .map(
+                              (id) =>
+                                membersById.get(id)?.displayName ??
+                                (id === currentUser.id
+                                  ? currentUser.displayName
+                                  : "Former friend"),
+                            )
+                            .join(", ")}
+                        >
+                          <img
+                            src={sticker.posterUrl ?? undefined}
+                            alt={sticker.label}
+                          />
+                          <span>{reaction.count}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </div>
             </article>
           );
@@ -352,6 +743,109 @@ export function ConversationView({
           <p className="composer-status" role="status">
             {readOnlyReason}
           </p>
+        ) : null}
+        {mediaError ? (
+          <p className="composer-status" role="alert">
+            {mediaError}
+          </p>
+        ) : null}
+        {draft.replyTo ? (
+          <div className="composer-reply">
+            <MessageSquareReply size={15} />
+            <span>
+              Replying to <strong>{draft.replyTo.authorName}</strong>
+            </span>
+            {draft.replyTo.authorId !== currentUser.id ? (
+              <label>
+                <input
+                  type="checkbox"
+                  checked={draft.notifyReplyAuthor ?? true}
+                  onChange={(event) =>
+                    onDraftChange({
+                      ...draft,
+                      notifyReplyAuthor: event.target.checked,
+                    })
+                  }
+                />
+                Notify
+              </label>
+            ) : null}
+            <button
+              type="button"
+              onClick={() =>
+                onDraftChange({
+                  ...draft,
+                  replyTo: null,
+                  notifyReplyAuthor: true,
+                })
+              }
+              aria-label="Cancel reply"
+            >
+              <X size={15} />
+            </button>
+          </div>
+        ) : null}
+        {draft.presentation?.kind === "giphy" ? (
+          <div className="composer-giphy-preview">
+            {selectedGiphyAsset?.id === draft.presentation.assetId ? (
+              selectedGiphyAsset.previewUrl.includes(".mp4") ? (
+                <video
+                  src={selectedGiphyAsset.previewUrl}
+                  poster={selectedGiphyAsset.stillUrl}
+                  muted
+                  autoPlay
+                  loop
+                  playsInline
+                />
+              ) : (
+                <img
+                  src={selectedGiphyAsset.previewUrl}
+                  alt={draft.presentation.altText}
+                />
+              )
+            ) : (
+              <div aria-label="Loading GIF preview">GIF</div>
+            )}
+            <span>{draft.presentation.title || "GIPHY selection"}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedGiphyAsset(null);
+                onDraftChange({ ...draft, presentation: null });
+              }}
+              aria-label="Remove selected GIPHY asset"
+            >
+              <X size={15} />
+            </button>
+          </div>
+        ) : null}
+        {draft.attachments?.length ? (
+          <div className="composer-attachments">
+            {draft.attachments.map((attachment) => (
+              <div key={attachment.id}>
+                <img src={attachment.previewUrl} alt="" />
+                <span>{attachment.file.name}</span>
+                {attachment.status === "uploading" ? (
+                  <progress value={attachment.progress} max={1} />
+                ) : null}
+                <button
+                  type="button"
+                  aria-label={`Remove ${attachment.file.name}`}
+                  onClick={() => {
+                    URL.revokeObjectURL(attachment.previewUrl);
+                    onDraftChange({
+                      ...draft,
+                      attachments: draft.attachments!.filter(
+                        (item) => item.id !== attachment.id,
+                      ),
+                    });
+                  }}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
         ) : null}
         {mentionQuery && suggestions.length > 0 ? (
           <div
@@ -380,7 +874,68 @@ export function ConversationView({
             ))}
           </div>
         ) : null}
-        <form className="composer" onSubmit={handleSubmit}>
+        {picker === "giphy" ? (
+          <GiphyPicker onClose={() => setPicker(null)} onSelect={stageGiphy} />
+        ) : picker === "emoji" ? (
+          <EmojiPicker onClose={() => setPicker(null)} onSelect={insertEmoji} />
+        ) : picker === "sticker" ? (
+          <StickerPicker
+            stickers={stickers}
+            currentUserId={currentUser.id}
+            currentUserIsAdmin={currentUserIsAdmin}
+            onClose={() => setPicker(null)}
+            onSelect={(sticker) =>
+              void sendPresentation({
+                kind: "sticker",
+                stickerId: sticker.id,
+              })
+            }
+            {...(onUploadSticker ? { onUpload: onUploadSticker } : {})}
+            {...(onArchiveSticker ? { onArchive: onArchiveSticker } : {})}
+          />
+        ) : picker && typeof picker === "object" ? (
+          <StickerPicker
+            reactionMode
+            stickers={stickers}
+            currentUserId={currentUser.id}
+            currentUserIsAdmin={currentUserIsAdmin}
+            onClose={() => setPicker(null)}
+            onSelect={(sticker) => {
+              void onReact?.(picker.reactionMessageId, sticker.id);
+              setPicker(null);
+            }}
+          />
+        ) : null}
+        <form
+          className="composer"
+          onSubmit={handleSubmit}
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event: DragEvent<HTMLFormElement>) => {
+            event.preventDefault();
+            void addFiles([...event.dataTransfer.files]);
+          }}
+        >
+          <input
+            ref={attachmentInputRef}
+            className="visually-hidden"
+            type="file"
+            multiple
+            accept="image/png,image/jpeg,image/webp,image/gif,video/mp4"
+            onChange={(event) => {
+              void addFiles([...(event.target.files ?? [])]);
+              event.target.value = "";
+            }}
+          />
+          <button
+            type="button"
+            className="composer__attachment"
+            aria-label="Add attachment"
+            title="Add attachment"
+            disabled={Boolean(readOnlyReason) || preparingMedia}
+            onClick={() => attachmentInputRef.current?.click()}
+          >
+            <CirclePlus size={20} />
+          </button>
           <input
             ref={inputRef}
             aria-label={
@@ -422,6 +977,13 @@ export function ConversationView({
               }
             }}
             onKeyDown={handleComposerKeyDown}
+            onPaste={(event: ClipboardEvent<HTMLInputElement>) => {
+              const files = [...event.clipboardData.files];
+              if (files.length) {
+                event.preventDefault();
+                void addFiles(files);
+              }
+            }}
             placeholder={
               readOnlyReason ??
               (target.kind === "channel"
@@ -430,17 +992,122 @@ export function ConversationView({
             }
             maxLength={4000}
           />
-          <button
-            type="submit"
-            className="composer__send"
-            aria-label="Send message"
-            disabled={Boolean(readOnlyReason) || !draft.text.trim() || sending}
-          >
-            <Send size={17} />
-          </button>
+          <div className="composer__actions">
+            <button
+              type="button"
+              className="composer__gif"
+              aria-label="Open GIPHY"
+              aria-expanded={picker === "giphy"}
+              title="GIFs"
+              disabled={Boolean(readOnlyReason)}
+              onClick={() =>
+                setPicker((current) => (current === "giphy" ? null : "giphy"))
+              }
+            >
+              <span aria-hidden="true">GIF</span>
+            </button>
+            <button
+              type="button"
+              aria-label="Open Bakbak stickers"
+              aria-expanded={picker === "sticker"}
+              title="Bakbak stickers"
+              disabled={Boolean(readOnlyReason)}
+              onClick={() =>
+                setPicker((current) =>
+                  current === "sticker" ? null : "sticker",
+                )
+              }
+            >
+              <StickerIcon size={19} />
+            </button>
+            <button
+              type="button"
+              aria-label="Open emoji picker"
+              aria-expanded={picker === "emoji"}
+              title="Emoji"
+              disabled={Boolean(readOnlyReason)}
+              onClick={() =>
+                setPicker((current) => (current === "emoji" ? null : "emoji"))
+              }
+            >
+              <Smile size={20} />
+            </button>
+            <button
+              type="submit"
+              className="composer__send"
+              aria-label="Send message"
+              title="Send message"
+              disabled={
+                Boolean(readOnlyReason) ||
+                !isSendable(draft) ||
+                sending ||
+                preparingMedia
+              }
+            >
+              <Send size={18} />
+            </button>
+          </div>
         </form>
       </div>
+      {deleteRequest ? (
+        <Modal
+          eyebrow={
+            deleteRequest.pending
+              ? "Upload in progress"
+              : "This can’t be undone"
+          }
+          title={deleteRequest.pending ? "Cancel upload?" : "Delete message?"}
+          description={
+            deleteRequest.pending
+              ? "The pending message and its uploads will be removed."
+              : deleteRequest.hasMedia
+                ? "This removes the message and uploaded media for everyone. Replies will show that the original was deleted."
+                : "This removes the message for everyone. Replies will show that the original was deleted."
+          }
+          size="compact"
+          onClose={() => {
+            if (!deletingMessage) setDeleteRequest(null);
+          }}
+        >
+          <div className="message-delete-confirm">
+            {deleteError ? (
+              <p className="settings-error" role="alert">
+                {deleteError}
+              </p>
+            ) : null}
+            <div className="message-delete-confirm__actions">
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={deletingMessage}
+                onClick={() => setDeleteRequest(null)}
+              >
+                {deleteRequest.pending ? "Keep uploading" : "Keep message"}
+              </button>
+              <button
+                className="danger-button"
+                type="button"
+                disabled={deletingMessage}
+                onClick={() => void confirmDeleteMessage()}
+              >
+                <Trash2 size={16} />
+                {deletingMessage
+                  ? "Deleting…"
+                  : deleteRequest.pending
+                    ? "Cancel upload"
+                    : "Delete"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
     </section>
+  );
+}
+
+function isSendable(draft: MessageDraft): boolean {
+  return Boolean(
+    draft.text.trim() || draft.attachments?.length || draft.presentation,
   );
 }
 

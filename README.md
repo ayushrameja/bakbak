@@ -51,7 +51,9 @@ or LiveKit.
 
 Live mode keeps a bounded, per-account IndexedDB read cache for the workspace,
 the newest 200 messages in each visited channel or DM, and up to 256 MiB of
-least-recently-used profile media. It restores only after Supabase identifies
+least-recently-used profile media plus 256 MiB of authenticated message/sticker
+posters. Full videos, animated originals, and GIPHY assets are never stored
+offline. It restores only after Supabase identifies
 the signed-in user, then revalidates against RLS and Realtime. If Supabase is
 temporarily unreachable, saved data remains visible in a clearly marked
 read-only mode.
@@ -59,8 +61,8 @@ read-only mode.
 This cache remains on the computer after logout and relies on the operating
 system account for protection; it is not application-encrypted. Use
 **Settings → Data & storage → Clear cached data** to remove the current Bakbak
-account's saved conversations and profile media without deleting cloud data,
-authentication settings, or device preferences.
+account's saved conversations, profile media, and message posters without
+deleting cloud data, authentication settings, or device preferences.
 
 ## Connect Supabase and LiveKit
 
@@ -77,11 +79,16 @@ authentication settings, or device preferences.
 4. Deploy `supabase/functions/soundboard-manage` with JWT verification enabled.
    It uses platform-managed Supabase credentials; no service-role key belongs
    in a renderer environment file.
-5. Follow `supabase/admin/README.md` to create and assign the first admin, then
+5. For rich messaging, deploy `supabase/functions/message-media-manage` and
+   then `supabase/functions/sticker-manage`, both with JWT verification
+   enabled. The additive rich-messaging migration must be applied first.
+6. Follow `supabase/admin/README.md` to create and assign the first admin, then
    issue an invite. Plaintext invite codes are returned once and never stored.
-6. Copy `.env.example` to an ignored `.env`, set the three public service
-   values, and change `VITE_DATA_MODE` to `live`. Restart or rebuild after
-   changing these values because Vite embeds them at build time.
+7. Copy `.env.example` to an ignored `.env`, set the public service values,
+   optionally add the public GIPHY beta key to `VITE_GIPHY_API_KEY`, and change
+   `VITE_DATA_MODE` to `live`. Without that key, the GIPHY picker explains why
+   it is disabled; uploads and Bakbak stickers still work. Restart or rebuild
+   after changing these values because Vite embeds them at build time.
 
 Every `VITE_*` value is public in the compiled desktop renderer. Never place a
 LiveKit secret or Supabase service-role key there.
@@ -163,6 +170,7 @@ Release builds require these GitHub Actions repository variables:
 - `VITE_SUPABASE_ANON_KEY`
 - `VITE_LIVEKIT_URL`
 - `VITE_BACKEND_REGION`
+- `VITE_GIPHY_API_KEY`
 
 They also require `TAURI_SIGNING_PRIVATE_KEY` and
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` as GitHub Actions secrets. The committed

@@ -7,7 +7,7 @@ and phase completion belong in the numbered files under `docs/plans`.
 
 ## Current implementation state
 
-As of 2026-07-21, Bakbak has a complete local/mock product path and production
+As of 2026-07-23, Bakbak has a complete local/mock product path and production
 Supabase and LiveKit adapters. The renderer provides the invite-only welcome
 flow and one shared neutral glass shell with scoped semantic control colors. An
 always-present 48 px titlebar
@@ -80,6 +80,27 @@ for installed-client compatibility, but the upgraded renderer neither loads,
 subscribes to, sends, drafts, notifies, nor shows unread state for them. No
 destructive database migration accompanies this client-only boundary.
 
+Text channels and Personal DMs now share the plan 0022 rich-message boundary.
+A draft may contain structured text/mentions plus up to four private
+image/GIF/H.264 MP4 attachments, one standalone Bakbak sticker, or one GIPHY
+GIF/sticker with an optional text caption, and may quote one visible message
+in the same thread. The shared Discord-shaped composer keeps attachment on the
+left, text in the flexible centre, and supported GIF, Bakbak sticker, searchable
+native emoji, and send actions on the right. Emoji insertion respects the
+current text selection and preserves structured mention ranges. In its resting
+state, the composer wrapper and sidebar user dock share a 68 px footer band;
+the 52 px message bar receives an even 8 px vertical inset so both surfaces
+share one centre line across the panel separator.
+Replies notify the other author by default, self/deleted/former-author
+notifications are disabled by the database, and author deletion leaves a
+scrubbed tombstone so read pointers and reply references remain valid. Message
+hover/focus actions provide Reply, Bakbak sticker reaction, and author-only
+Delete. Message INSERT/UPDATE and sticker/reaction events hydrate the complete
+row before replacing the cache, avoiding cross-table Realtime ordering
+assumptions. Existing `send_message` and `send_direct_message` remain available
+for installed-client compatibility; v2 sends generate `[Image]`, `[Video]`,
+`[GIF]`, or `[Sticker]` fallback bodies.
+
 Voice rooms retain locally persisted microphone/speaker/camera selection,
 opt-in 720p camera calls, sidebar occupancy with elapsed timers, mute/deafen,
 per-participant volume, remote-track audio/video rendering, autoplay recovery,
@@ -148,7 +169,28 @@ It renders only after the Supabase session identifies its owner, remains a
 display cache rather than an authorization source, and stays after logout until
 that account clears it. Threads retain the newest 200 confirmed messages.
 Profile media uses bucket/path revisions and a 256 MiB per-account
-least-recently-used ceiling.
+least-recently-used ceiling. Schema v2 adds a separate 256 MiB/account LRU for
+authenticated message and sticker posters. Cached message metadata strips
+transient object URLs; full video, original animated media, GIPHY URLs, and
+GIPHY assets are never persisted. Data & storage clearing removes both media
+caches without touching cloud content.
+
+Private `message-media` and `message-stickers` Storage buckets back rich
+messages. The authenticated `message-media-manage` Edge Function reserves
+UUID paths, issues signed resumable-upload tokens, cleans stale reservations,
+cancels failures, and removes authored-message objects after the trusted
+deletion RPC. The renderer sends those scoped tokens to Storage's signed TUS
+endpoint at `/storage/v1/upload/resumable/sign` with only the public project key
+and `x-signature`; it has no direct object-insert policy. Publication links
+every uploaded object in the same transaction as its message and verifies both
+reserved objects exist. The
+`sticker-manage` function validates bounded PNG/WebP/GIF files, publishes
+member stickers under transactional 25/member, 200/server, and 1 GiB/user
+quotas, and lets uploaders or server admins archive them. Referenced archived
+stickers remain readable for history. GIPHY requests go directly from the
+renderer with rating `r`, the `messaging_non_clips` bundle, 20-result pages,
+required attribution and analytics; only provider IDs and display metadata are
+stored.
 
 Member upload sources may be common `audio/*` or `video/*` files up to 25 MiB.
 The upload modal uses native metadata/playback for preview and selection, then
@@ -211,6 +253,18 @@ from v3 to v2 writes and legacy column reads when pointed at an older or
 rolled-back project. The clean reset, hosted schema lint, and 288-assertion
 pgTAP suite pass. Hosted admin/member/outsider and installed multi-client
 acceptance remain open.
+
+The additive `202607230001_rich_messaging.sql` migration is implemented,
+validated, and deployed to the hosted project. It preserves the legacy send
+RPCs, adds v2 channel/DM message contracts, private attachment reservations,
+the server sticker catalog, partial-unique sticker reactions, soft deletion,
+poster/original Storage RLS, deleted-message-aware activity, transactional
+quotas, and Realtime publication. The `message-media-manage` and
+`sticker-manage` functions are also deployed; unauthenticated hosted probes
+return HTTP 401. The clean local reset and 331-assertion pgTAP suite pass. The
+GitHub Actions `VITE_GIPHY_API_KEY` repository variable, renderer rollout,
+hosted two-account acceptance, and installed macOS/Windows acceptance remain
+open.
 
 The additive
 `202607130001_voice_chat_mentions_and_read_state.sql` migration is implemented,
@@ -327,18 +381,18 @@ approved.
 
 ## Technology stack
 
-| Layer                | Technology                        | Responsibility                                                                       |
-| -------------------- | --------------------------------- | ------------------------------------------------------------------------------------ |
-| Package/tooling      | pnpm, TypeScript                  | Dependency management and strict static types                                        |
-| Renderer             | React, Vite                       | Desktop UI, local interaction state, and stale-while-revalidate restoration          |
-| Local read cache     | IndexedDB                         | User-scoped workspace, recent messages, and bounded authenticated profile media      |
-| Desktop shell        | Tauri 2, Rust                     | Native window, packaging, capabilities, and later tray/desktop integrations          |
-| Identity/data        | Supabase Auth, Postgres, Realtime | Accounts, membership, channels, messages, invites, and realtime chat                 |
-| Trusted backend      | Supabase Edge Functions           | Membership-checked LiveKit tokens and managed sound publication/deletion             |
-| Object media         | Supabase Storage                  | Private sound packs, profile posters, and GIF animations with RLS-filtered access    |
-| Local microphone DSP | Web Audio, RNNoise WebAssembly    | Off-thread enhanced cleanup plus opt-in sender-side voice effects                    |
-| Voice/data transport | LiveKit                           | Voice rooms, participant state, processed speech, soundboard audio, and control data |
-| Validation/testing   | Zod, Vitest, Testing Library      | Boundary validation and unit/component tests                                         |
+| Layer                | Technology                        | Responsibility                                                                            |
+| -------------------- | --------------------------------- | ----------------------------------------------------------------------------------------- |
+| Package/tooling      | pnpm, TypeScript                  | Dependency management and strict static types                                             |
+| Renderer             | React, Vite                       | Desktop UI, local interaction state, and stale-while-revalidate restoration               |
+| Local read cache     | IndexedDB                         | User-scoped workspace, recent messages, and bounded authenticated profile/message posters |
+| Desktop shell        | Tauri 2, Rust                     | Native window, packaging, capabilities, and later tray/desktop integrations               |
+| Identity/data        | Supabase Auth, Postgres, Realtime | Accounts, membership, channels, messages, invites, and realtime chat                      |
+| Trusted backend      | Supabase Edge Functions           | Membership-checked voice tokens plus managed sound/message/sticker media                  |
+| Object media         | Supabase Storage                  | Private sound, profile, message, video, and sticker objects with RLS-filtered access      |
+| Local microphone DSP | Web Audio, RNNoise WebAssembly    | Off-thread enhanced cleanup plus opt-in sender-side voice effects                         |
+| Voice/data transport | LiveKit                           | Voice rooms, participant state, processed speech, soundboard audio, and control data      |
+| Validation/testing   | Zod, Vitest, Testing Library      | Boundary validation and unit/component tests                                              |
 
 There is one pnpm application, not a frontend/backend monorepo. `package.json`
 pins pnpm `11.3.0` through `packageManager` so local installs and GitHub Actions
@@ -624,24 +678,27 @@ soundboard volume multiplied by the existing participant volume.
 All identifiers are UUIDs unless noted otherwise. Exact migrations become
 authoritative once Phase 2 starts.
 
-| Entity                  | Key fields and constraints                                                                                                                                                                           | Access intent                                                                              |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `profiles`              | `id` references `auth.users`; 1–50 character display name; 0–190 character description; legacy `avatar_url`; owner-prefixed avatar/cover poster and GIF paths; integer 0–100 cover focal coordinates | User updates their row; shared-server members read member-facing fields                    |
-| `servers`               | owner/admin reference, name, timestamps                                                                                                                                                              | Members of the server can read it                                                          |
-| `memberships`           | unique `(server_id, user_id)`; v1 admin/member role                                                                                                                                                  | A user can read memberships for servers they belong to                                     |
-| `channel_categories`    | `server_id`, trimmed 1–80 character name, unique ordered position                                                                                                                                    | Members read their server categories; trusted migrations manage them                       |
-| `channels`              | `server_id`, optional category ID, trimmed 1–80 character name, category-local or uncategorized position, immutable `text` or `voice` type                                                           | Members read; matching admins create/rename only through RPCs                              |
-| `messages`              | text/voice channel ID, author ID, plain-text body, nullable structured text/mention content, timestamps                                                                                              | Members read accessible channels; validated inserts use the message RPC                    |
-| `channel_read_states`   | private user/channel key, monotonic last-read message pointer and timestamp                                                                                                                          | The owner reads through RLS; membership-checked RPCs advance/query state                   |
-| `direct_conversations`  | canonical ordered participant pair, unique pair, creation/activity timestamps                                                                                                                        | Only either established participant can select; creation uses a shared-membership RPC      |
-| `direct_messages`       | conversation ID, server-derived author, 1–4,000 character body, structured participant-only text/mentions                                                                                            | Only participants read; validated security-definer RPC writes                              |
-| `direct_read_states`    | private user/conversation key, monotonic last-read message pointer and timestamp                                                                                                                     | Only the owner selects; participant-checked RPC advances                                   |
-| `invite_codes`          | server ID, one-way code digest, creator, expiry, redemption fields                                                                                                                                   | No broad client read policy; redeemed atomically through a controlled function             |
-| `presence_heartbeats`   | unique server/user row, last seen, nullable voice channel/join time, LIVE boolean constrained to voice occupancy                                                                                     | Members can read server rows; only security-definer heartbeat RPCs can write               |
-| `soundboard_categories` | server ID, name, ordered position, sole upload-target flag                                                                                                                                           | Members read; trusted server setup manages categories                                      |
-| `soundboard_sounds`     | server/category, label, emoji, Storage path, duration, order, revision, nullable creator, created time                                                                                               | Members read; uploader/admin label and emoji updates only                                  |
-| `soundboard_favorites`  | private user/server/sound key and created time; cascading server/sound/owner references                                                                                                              | The signed-in owner alone selects, inserts, or deletes                                     |
-| `storage.objects`       | private `soundboard/<server UUID>/<file-or-uploader/uuid.wav>`, `avatars/<owner UUID>/<asset UUID>`, and `profile-covers/<owner UUID>/<asset UUID>` objects                                          | Sound writes use trusted server code; profile owners write/delete; server or DM peers read |
+| Entity                      | Key fields and constraints                                                                                                                                                                           | Access intent                                                                                              |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `profiles`                  | `id` references `auth.users`; 1–50 character display name; 0–190 character description; legacy `avatar_url`; owner-prefixed avatar/cover poster and GIF paths; integer 0–100 cover focal coordinates | User updates their row; shared-server members read member-facing fields                                    |
+| `servers`                   | owner/admin reference, name, timestamps                                                                                                                                                              | Members of the server can read it                                                                          |
+| `memberships`               | unique `(server_id, user_id)`; v1 admin/member role                                                                                                                                                  | A user can read memberships for servers they belong to                                                     |
+| `channel_categories`        | `server_id`, trimmed 1–80 character name, unique ordered position                                                                                                                                    | Members read their server categories; trusted migrations manage them                                       |
+| `channels`                  | `server_id`, optional category ID, trimmed 1–80 character name, category-local or uncategorized position, immutable `text` or `voice` type                                                           | Members read; matching admins create/rename only through RPCs                                              |
+| `messages`                  | channel/author, compatibility body, structured content, reply/notify metadata, presentation, soft-delete timestamp                                                                                   | Members read accessible channels; validated legacy/v2 RPCs derive authorship                               |
+| `channel_read_states`       | private user/channel key, monotonic last-read message pointer and timestamp                                                                                                                          | The owner reads through RLS; membership-checked RPCs advance/query state                                   |
+| `direct_conversations`      | canonical ordered participant pair, unique pair, creation/activity timestamps                                                                                                                        | Only either established participant can select; creation uses a shared-membership RPC                      |
+| `direct_messages`           | conversation/author, compatibility body, structured content, reply/notify metadata, presentation, soft-delete timestamp                                                                              | Established participants read; validated legacy/v2 RPCs write                                              |
+| `direct_read_states`        | private user/conversation key, monotonic last-read message pointer and timestamp                                                                                                                     | Only the owner selects; participant-checked RPC advances                                                   |
+| `message_attachments`       | private reservation target, uploader, kind/limits, original/poster paths, optional channel/DM message link, lifecycle timestamps                                                                     | RLS permits current channel members or established DM participants; trusted functions reserve/delete       |
+| `stickers`                  | server/uploader, label, poster/optional animation paths, dimensions, active/archive lifecycle                                                                                                        | Current members see the catalog; referenced history stays readable; renderer has no mutation grants        |
+| `message_sticker_reactions` | exactly one channel/DM message, server sticker, reactor, timestamp; partial uniqueness indexes                                                                                                       | Authorized viewers select; the cap-enforcing toggle RPC alone mutates                                      |
+| `invite_codes`              | server ID, one-way code digest, creator, expiry, redemption fields                                                                                                                                   | No broad client read policy; redeemed atomically through a controlled function                             |
+| `presence_heartbeats`       | unique server/user row, last seen, nullable voice channel/join time, LIVE boolean constrained to voice occupancy                                                                                     | Members can read server rows; only security-definer heartbeat RPCs can write                               |
+| `soundboard_categories`     | server ID, name, ordered position, sole upload-target flag                                                                                                                                           | Members read; trusted server setup manages categories                                                      |
+| `soundboard_sounds`         | server/category, label, emoji, Storage path, duration, order, revision, nullable creator, created time                                                                                               | Members read; uploader/admin label and emoji updates only                                                  |
+| `soundboard_favorites`      | private user/server/sound key and created time; cascading server/sound/owner references                                                                                                              | The signed-in owner alone selects, inserts, or deletes                                                     |
+| `storage.objects`           | private sound/profile objects plus `message-media/<uploader>/<uuid>/{original,poster}` and server sticker paths                                                                                      | Trusted functions write message/sticker media; RLS authorizes current channel or retained DM/history reads |
 
 Initial admin membership and initial invite codes are managed with reviewed SQL.
 An invite-management UI is deferred until post-v1.
@@ -659,6 +716,17 @@ An invite-management UI is deferred until post-v1.
   channel and every mentioned profile against the caller's server membership,
   limits the generated fallback to 4,000 characters and 25 mentions, and writes
   both structured content and an older-client body.
+- `send_message_v2` and `send_direct_message_v2` add same-thread replies,
+  atomic attachment finalization, one validated sticker/GIPHY presentation,
+  notification coercion, and compatibility fallback bodies. Bakbak stickers
+  remain standalone; GIPHY presentations may carry structured text. Empty
+  messages, cross-thread replies, missing uploaded objects, mixed attachment
+  and presentation drafts, and more than four attachments are rejected.
+- Sticker reactions use one trusted toggle that verifies current membership,
+  enforces five distinct stickers per user and twenty per message under an
+  advisory lock, and never changes activity or unread state. Author deletion
+  scrubs content, removes reactions, revokes attachment reads, and excludes the
+  tombstone from latest/unread calculations without deleting the row.
 - Channel read states are private to their owner. Clients cannot write the
   table directly; `mark_channel_read` requires channel membership and can only
   advance a pointer, while `get_channel_activity` exposes activity for one of
@@ -742,10 +810,11 @@ An invite-management UI is deferred until post-v1.
 4. After Auth resolves the user ID, the renderer reads that account's
    normalized IndexedDB snapshot and may paint it as cached data. It then
    revalidates workspace, membership, profiles, DM summaries, unread state, and
-   Realtime. A failed revalidation retains a visibly offline, read-only cache;
-   online, visible-window, and ten-second backoff signals retry. Authorization
-   denial removes the inaccessible cached scope instead of treating it as
-   authority.
+   Realtime. A connectivity failure retains a visibly offline, read-only cache;
+   online, visible-window, and ten-second backoff signals retry. API contract,
+   authorization, and query failures remain actionable alerts and do not mark
+   the entire app offline. Authorization denial removes the inaccessible
+   cached scope instead of treating it as authority.
 5. Personal loads `get_direct_conversations()` activity ordered by the newest
    message. Starting a row calls the canonical shared-membership creation RPC.
    Direct messages use a true direct `ConversationTarget`, never a fabricated
@@ -758,7 +827,11 @@ An invite-management UI is deferred until post-v1.
    then requests rows after its newest `(created_at, id)` cursor. A cache miss
    requests the newest 50; upward pagination requests 50 before the earliest
    cursor. Realtime/query/optimistic results merge by stable ID, while only the
-   newest 200 confirmed rows persist.
+   newest 200 confirmed rows persist. Rich channel and DM selects read the
+   scalar `reply_to_id`, then hydrate the unique parent IDs through a second
+   authorized query. This avoids PostgREST's ambiguous reverse-array result for
+   the recursive reply relationship and prevents empty arrays from rendering
+   as phantom “Former friend” replies.
 8. Selecting a conversation loads its RLS-filtered history and advances the
    signed-in participant's monotonic read state when visible. Private read-state
    Realtime refreshes Personal unread markers.
@@ -869,26 +942,42 @@ An invite-management UI is deferred until post-v1.
 2. RLS verifies server membership. The deployed RPCs and schema still permit
    voice-channel messages for older clients, but upgraded clients do not expose
    that surface or create invisible voice unread state.
-3. A submitted structured draft becomes exact text/mention segments and calls
-   `send_message`. Postgres validates membership, segment shape, size, and each
-   mention before deriving the author and plain-text fallback.
-4. Supabase Realtime broadcasts the committed row to authorized clients.
-5. Clients reconcile cached, query, realtime, and optimistic events by stable
+3. A submitted draft stages media locally. MP4Box rejects non-H.264 video,
+   non-AAC optional audio, excessive duration, or excessive resolution. On
+   send, TUS uploads each reserved original/poster with progress and retry;
+   only after every object succeeds does the v2 RPC atomically publish the
+   message. A failed attempt retains the complete draft for retry.
+4. Plain structured text may still call the compatible legacy RPC. Replies,
+   attachments, Bakbak stickers, and GIPHY presentations call the v2 RPC.
+   GIPHY selections are staged in the composer, where the user may add text
+   before sending; Bakbak sticker sends remain standalone. Postgres validates
+   membership/participation, segment shape, reply scope, presentation metadata,
+   reservation ownership, object existence, and quotas.
+5. Supabase Realtime broadcasts INSERT/UPDATE plus sticker/reaction changes.
+   The receiver hydrates the affected message by ID before cache replacement.
+6. Clients reconcile cached, query, realtime, and optimistic events by stable
    ID and deterministic timestamp/ID order. Pending optimistic rows never
    persist.
-6. A committed message from another user plays a short local notification tone.
+7. A committed message from another user plays a short local notification tone.
    `get_channel_activity` compares the latest message with the account's private
    marker so unread emphasis follows the signed-in user across clients.
-7. A visible selected text chat advances the marker through
+8. A visible selected text chat advances the marker through
    `mark_channel_read`. Realtime read-state changes refresh the activity
    snapshot on other signed-in clients.
-8. Mention ranges are atomic draft metadata. Editing through one converts it to
+9. Mention ranges are atomic draft metadata. Editing through one converts it to
    plain text; selecting a member from the accessible `@` combobox stores that
    member ID. Rendering resolves the current Realtime profile name and uses the
    segment fallback only when the member is no longer visible.
-9. Composer drafts and loaded thread maps are controlled by the application
-   shell per channel, so switching rooms or opening settings preserves
-   unfinished and already-rendered conversation state.
+10. Composer drafts and loaded thread maps are controlled by the application
+    shell per channel, so switching rooms or opening settings preserves
+    unfinished and already-rendered conversation state.
+11. The shared channel/DM composer exposes only implemented actions: attachment
+    at the leading edge and GIPHY, Bakbak stickers, searchable native emoji, and
+    send at the trailing edge. Choosing an emoji replaces the current selection,
+    updates structured mention offsets through the normal draft-text boundary,
+    and restores focus to the message input. With no staged preview, its wrapper
+    and the context-panel user dock use the same 68 px footer height; the 52 px
+    composer is vertically inset by 8 px while rich previews grow upward.
 
 ### Application presence
 
@@ -1372,6 +1461,7 @@ credential in a `VITE_*` variable.
 | `VITE_SUPABASE_ANON_KEY` | Supabase public/anonymous client credential; RLS remains mandatory             | No      |
 | `VITE_LIVEKIT_URL`       | Public LiveKit WebSocket URL                                                   | No      |
 | `VITE_BACKEND_REGION`    | Public label for the deployed Supabase backend, currently Canada Central       | No      |
+| `VITE_GIPHY_API_KEY`     | Public GIPHY beta API key for direct GIF/sticker search and analytics          | No      |
 
 ### Edge Function managed values
 

@@ -6,11 +6,23 @@ import type {
   ChannelActivity,
   ChannelCategory,
   ChatMessage,
+  MessagePresentation,
   MessageSegment,
   MessageCursor,
   ServerMember,
   WorkspaceSnapshot,
 } from "./types";
+import {
+  attachReplyRows,
+  CHANNEL_RICH_SELECT,
+  parseAttachments,
+  parseMessageContent,
+  parsePresentation,
+  parseReactions,
+  parseReply,
+  type RichReplyRow,
+  type RichMessageRow,
+} from "./rich-message-row";
 
 interface ServerRow {
   id: string;
@@ -51,7 +63,7 @@ interface ProfileRow {
   description: string;
 }
 
-interface MessageRow {
+interface MessageRow extends RichMessageRow {
   id: string;
   channel_id: string;
   author_id: string;
@@ -74,39 +86,6 @@ interface ChannelReadStateRow {
   updated_at: string;
 }
 
-function parseMessageContent(value: unknown): MessageSegment[] | null {
-  if (!Array.isArray(value)) return null;
-  const rawSegments = value as unknown[];
-  const segments: MessageSegment[] = [];
-  for (const segment of rawSegments) {
-    if (!segment || typeof segment !== "object" || !("type" in segment)) {
-      return null;
-    }
-    if (
-      segment.type === "text" &&
-      "text" in segment &&
-      typeof segment.text === "string"
-    ) {
-      segments.push({ type: "text", text: segment.text });
-    } else if (
-      segment.type === "mention" &&
-      "user_id" in segment &&
-      "fallback" in segment &&
-      typeof segment.user_id === "string" &&
-      typeof segment.fallback === "string"
-    ) {
-      segments.push({
-        type: "mention",
-        userId: segment.user_id,
-        fallback: segment.fallback,
-      });
-    } else {
-      return null;
-    }
-  }
-  return segments;
-}
-
 export class MissingMembershipError extends Error {
   constructor() {
     super("This account is not a member of a Bakbak server yet.");
@@ -122,6 +101,12 @@ function messageFromRow(row: MessageRow): ChatMessage {
     body: row.body,
     content: parseMessageContent(row.content),
     createdAt: row.created_at,
+    presentation: parsePresentation(row.presentation),
+    attachments: parseAttachments(row.attachments),
+    reply: parseReply(row.reply),
+    replyNotifiesAuthor: row.reply_notifies_author ?? false,
+    reactions: parseReactions(row.reaction_rows),
+    deletedAt: row.deleted_at ?? null,
   };
 }
 
@@ -247,7 +232,7 @@ export async function loadLiveMessages(
   const newestFirst = !options.after;
   let query = getSupabaseClient()
     .from("messages")
-    .select("id,channel_id,author_id,body,content,created_at")
+    .select(CHANNEL_RICH_SELECT)
     .eq("channel_id", channelId);
   if (options.before) {
     query = query.or(
@@ -265,31 +250,85 @@ export async function loadLiveMessages(
     .limit(options.limit ?? 50)
     .returns<MessageRow[]>();
   if (error) throw error;
-  const messages = data.map(messageFromRow);
+  const messages = (await hydrateChannelReplyRows(data)).map(messageFromRow);
   return newestFirst ? messages.reverse() : messages;
 }
 
 export async function sendLiveMessage(
   channelId: string,
   content: MessageSegment[],
+  options: {
+    replyToId?: string | null;
+    notifyReplyAuthor?: boolean;
+    attachmentIds?: string[];
+    presentation?: MessagePresentation | null;
+  } = {},
 ): Promise<ChatMessage> {
+  const rich =
+    Boolean(options.replyToId) ||
+    Boolean(options.attachmentIds?.length) ||
+    Boolean(options.presentation);
+  const rpcName = rich ? "send_message_v2" : "send_message";
+  const serialized = content.map((segment) =>
+    segment.type === "text"
+      ? segment
+      : {
+          type: "mention",
+          user_id: segment.userId,
+          fallback: segment.fallback,
+        },
+  );
   const { data, error } = await getSupabaseClient()
-    .rpc("send_message", {
+    .rpc(rpcName, {
       p_channel_id: channelId,
-      p_content: content.map((segment) =>
-        segment.type === "text"
-          ? segment
-          : {
-              type: "mention",
-              user_id: segment.userId,
-              fallback: segment.fallback,
-            },
-      ),
+      p_content: serialized,
+      ...(rich && {
+        p_reply_to_id: options.replyToId ?? null,
+        p_reply_notifies_author: options.notifyReplyAuthor ?? true,
+        p_attachment_ids: options.attachmentIds ?? [],
+        p_presentation: serializePresentation(options.presentation ?? null),
+      }),
     })
-    .select("id,channel_id,author_id,body,content,created_at")
+    .select(
+      "id,channel_id,author_id,body,content,created_at,presentation,reply_notifies_author,deleted_at",
+    )
     .single<MessageRow>();
   if (error) throw error;
-  return messageFromRow(data);
+  return rich ? await loadLiveMessageById(data.id) : messageFromRow(data);
+}
+
+export async function loadLiveMessageById(
+  messageId: string,
+): Promise<ChatMessage> {
+  const { data, error } = await getSupabaseClient()
+    .from("messages")
+    .select(CHANNEL_RICH_SELECT)
+    .eq("id", messageId)
+    .single<MessageRow>();
+  if (error) throw error;
+  const [hydrated] = await hydrateChannelReplyRows([data]);
+  if (!hydrated) throw new Error("The message could not be hydrated.");
+  return messageFromRow(hydrated);
+}
+
+async function hydrateChannelReplyRows(
+  messages: readonly MessageRow[],
+): Promise<MessageRow[]> {
+  const replyIds = [
+    ...new Set(
+      messages.flatMap((message) =>
+        message.reply_to_id ? [message.reply_to_id] : [],
+      ),
+    ),
+  ];
+  if (!replyIds.length) return attachReplyRows(messages, []);
+  const { data, error } = await getSupabaseClient()
+    .from("messages")
+    .select("id,author_id,body,deleted_at")
+    .in("id", replyIds)
+    .returns<RichReplyRow[]>();
+  if (error) throw error;
+  return attachReplyRows(messages, data);
 }
 
 export async function loadLiveChannelActivity(
@@ -362,16 +401,40 @@ export function subscribeToLiveMessages(
     .on<MessageRow>(
       "postgres_changes",
       {
-        event: "INSERT",
+        event: "*",
         schema: "public",
         table: "messages",
         filter: `channel_id=eq.${channelId}`,
       },
-      (payload) => onMessage(messageFromRow(payload.new)),
+      (payload) => {
+        const row = payload.new;
+        if (!row || !("id" in row)) return;
+        void loadLiveMessageById(row.id)
+          .then(onMessage)
+          .catch(() => onMessage(messageFromRow(row)));
+      },
     )
     .subscribe();
 
   return () => {
     void supabase.removeChannel(channel);
+  };
+}
+
+function serializePresentation(
+  presentation: MessagePresentation | null,
+): Record<string, unknown> | null {
+  if (!presentation) return null;
+  if (presentation.kind === "sticker") {
+    return { kind: "sticker", sticker_id: presentation.stickerId };
+  }
+  return {
+    kind: "giphy",
+    asset_id: presentation.assetId,
+    asset_kind: presentation.assetKind,
+    title: presentation.title,
+    alt_text: presentation.altText,
+    width: presentation.width,
+    height: presentation.height,
   };
 }

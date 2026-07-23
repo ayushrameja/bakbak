@@ -228,6 +228,10 @@ User-scoped stale-while-revalidate workspace/message/profile caching, read-only
 offline restoration, Data & storage controls, and safe voice prewarming are
 approved under
 `0021-instant-workspace-local-cache-and-voice-acceleration.md`.
+Discord-style rich channel/DM messaging, private image/GIF/H.264 MP4
+attachments, GIPHY sends, Bakbak stickers/reactions, quoted replies, author
+deletion, and authenticated poster caching are approved under
+`0022-rich-messaging-media-replies-stickers.md`.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -349,6 +353,12 @@ approved under
 - [ ] Complete plan 0021's ten-run cached-startup, channel-switch, warm/cold
       voice, offline, and account-isolation acceptance on installed macOS and
       Windows clients.
+- [x] Implement plan 0022's compatible v2 channel/DM contracts, resumable
+      private media pipeline, Bakbak sticker catalog/reactions, GIPHY picker,
+      quoted replies, author deletion, Realtime hydration, and cache v2.
+- [ ] Deploy plan 0022 in compatibility order and complete its hosted
+      two-account plus installed macOS/Windows media/GIPHY/reply/reaction/cache
+      acceptance matrix.
 - [ ] Complete plan 0016's installed dark/light typography and offline-font
       acceptance matrix on macOS and Windows.
 - [ ] Complete plan 0017's installed macOS/Windows titlebar, window-control,

@@ -35,6 +35,7 @@ import {
   EMPTY_MESSAGE_DRAFT,
   segmentsToFallback,
 } from "../features/chat/message-content";
+import { prepareStickerUpload } from "../features/chat/message-media";
 import {
   MemberPanel,
   type MemberVoiceActivity,
@@ -84,6 +85,7 @@ import {
 import { sessionToAppUser, signOut } from "../lib/auth-service";
 import { useAutoHideScrollbars } from "../lib/use-auto-hide-scrollbars";
 import type { CommunicationEffectEvent } from "../lib/communication-effects";
+import { isConnectivityError } from "../lib/connectivity";
 import {
   createLiveChannel,
   reconcileChannels,
@@ -103,11 +105,17 @@ import {
   getOrCreateDirectConversation,
   loadDirectConversations,
   loadDirectMessages,
+  loadDirectMessageById,
   markDirectConversationRead,
   sendDirectMessage,
   subscribeToDirectMessages,
   subscribeToDirectReadStates,
 } from "../lib/direct-message-service";
+import {
+  cleanupStaleMessageAttachments,
+  deleteRichMessage,
+  uploadMessageAttachments,
+} from "../lib/message-media-service";
 import { mockCurrentUser, mockMessages, mockWorkspace } from "../lib/mock-data";
 import { getSupabaseClient } from "../lib/supabase";
 import {
@@ -120,6 +128,15 @@ import {
 } from "../lib/profile-service";
 import { ProfileMediaCache } from "../lib/profile-media-cache";
 import {
+  archiveSticker,
+  downloadStickerMedia,
+  loadStickers,
+  subscribeToStickerReactions,
+  subscribeToStickers,
+  toggleStickerReaction,
+  uploadSticker,
+} from "../lib/sticker-service";
+import {
   subscribeToServerPresence,
   type ServerPresenceSubscription,
   type VoicePresenceSession,
@@ -129,15 +146,19 @@ import type {
   Channel,
   ChannelKind,
   ChatMessage,
+  ConversationMessage,
   DirectConversation,
   DirectMessage,
+  MessageAttachment,
   MessageDraft,
   ServerMember,
+  Sticker,
   WorkspaceSnapshot,
   VoiceRoomOccupant,
 } from "../lib/types";
 import {
   loadLiveChannelActivity,
+  loadLiveMessageById,
   loadLiveMessages,
   loadLiveWorkspace,
   markLiveChannelRead,
@@ -158,6 +179,72 @@ interface OpenProfileState {
 }
 
 const localCache = new BakbakCache();
+
+function draftFallbackBody(draft: MessageDraft): string {
+  const text = segmentsToFallback(draftToSegments(draft));
+  if (text) return text;
+  const firstAttachment = draft.attachments?.[0];
+  if (firstAttachment) {
+    if (firstAttachment.kind === "video") return "[Video]";
+    if (firstAttachment.kind === "gif") return "[GIF]";
+    return "[Image]";
+  }
+  if (draft.presentation?.kind === "giphy") {
+    return draft.presentation.assetKind === "sticker" ? "[Sticker]" : "[GIF]";
+  }
+  if (draft.presentation?.kind === "sticker") return "[Sticker]";
+  return "";
+}
+
+function optimisticAttachments(draft: MessageDraft): MessageAttachment[] {
+  return (draft.attachments ?? []).map((attachment) => ({
+    id: attachment.id,
+    kind: attachment.kind,
+    mimeType: attachment.file.type,
+    byteSize: attachment.file.size,
+    width: attachment.width,
+    height: attachment.height,
+    durationMs: attachment.durationMs,
+    objectPath: "",
+    posterPath: "",
+    objectUrl: attachment.previewUrl,
+    posterUrl: attachment.previewUrl,
+    uploadProgress: attachment.progress,
+  }));
+}
+
+function toggleMockReaction<T extends ConversationMessage>(
+  messages: T[],
+  messageId: string,
+  stickerId: string,
+  userId: string,
+): T[] {
+  return messages.map((message) => {
+    if (message.id !== messageId) return message;
+    const existing = message.reactions?.find(
+      (reaction) => reaction.stickerId === stickerId,
+    );
+    const userIds = existing?.userIds.includes(userId)
+      ? existing.userIds.filter((id) => id !== userId)
+      : [...(existing?.userIds ?? []), userId];
+    const reactions = [
+      ...(message.reactions ?? []).filter(
+        (reaction) => reaction.stickerId !== stickerId,
+      ),
+      ...(userIds.length
+        ? [
+            {
+              stickerId,
+              userIds,
+              count: userIds.length,
+              reactedByCurrentUser: userIds.includes(userId),
+            },
+          ]
+        : []),
+    ];
+    return { ...message, reactions };
+  });
+}
 
 export default function App() {
   const [user, setUser] = useState<AppUser | null>(null);
@@ -182,6 +269,7 @@ export default function App() {
     typeof window === "undefined" ? 1280 : window.innerWidth,
   );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [stickers, setStickers] = useState<Sticker[]>([]);
   const [sending, setSending] = useState(false);
   const [appError, setAppError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<AppView>("channel");
@@ -223,6 +311,8 @@ export default function App() {
     messageCount: 0,
     profileMediaBytes: 0,
     profileMediaCount: 0,
+    messageMediaBytes: 0,
+    messageMediaCount: 0,
     totalBytes: 0,
   });
   const selectedChannelIdRef = useRef(selectedChannelId);
@@ -233,6 +323,9 @@ export default function App() {
     null,
   );
   const avatarObjectUrlsRef = useRef(new Map<string, string>());
+  const stickerObjectUrlsRef = useRef(new Map<string, string[]>());
+  const offlineStickerHydrationAttemptsRef = useRef(new Set<string>());
+  const uploadAbortControllersRef = useRef(new Map<string, AbortController>());
   const profileMediaCacheRef = useRef(new ProfileMediaCache(localCache));
   const profileUpdateSequenceRef = useRef(new Map<string, number>());
   const voiceDeafenedRef = useRef(false);
@@ -432,6 +525,8 @@ export default function App() {
         messageCount: 0,
         profileMediaBytes: 0,
         profileMediaCount: 0,
+        messageMediaBytes: 0,
+        messageMediaCount: 0,
         totalBytes: 0,
       });
       return;
@@ -528,6 +623,7 @@ export default function App() {
             lastDestinationRef.current = cached.lastDestination;
             setWorkspace(cached.workspace);
             setDirectConversations(cached.directConversations);
+            setStickers(cached.stickers ?? []);
             setDirectHistoryLoading(false);
             if (cached.workspace) applyCurrentMember(cached.workspace);
             const destination = cached.lastDestination;
@@ -613,7 +709,7 @@ export default function App() {
             setWorkspace(null);
             setSelectedChannelId("");
             setDataFreshness("fresh");
-          } else if (restoredCache) {
+          } else if (restoredCache && isConnectivityError(caught)) {
             setDataFreshness("offline");
             setAppError(null);
             return;
@@ -882,6 +978,140 @@ export default function App() {
     });
   }, [workspaceServerId]);
 
+  const refreshStickers = useCallback(async () => {
+    if (appConfig.dataMode !== "live" || !workspaceServerId) return;
+    const catalog = await loadStickers(workspaceServerId);
+    const hydrated = await Promise.all(
+      catalog.map(async (sticker) => {
+        try {
+          const [poster, animation] = await Promise.all([
+            downloadStickerMedia(sticker.posterPath, true),
+            sticker.animationPath
+              ? downloadStickerMedia(sticker.animationPath)
+              : Promise.resolve(null),
+          ]);
+          const posterUrl = URL.createObjectURL(poster);
+          const animationUrl = animation
+            ? URL.createObjectURL(animation)
+            : null;
+          return {
+            ...sticker,
+            posterUrl,
+            animationUrl,
+            objectUrls: animationUrl ? [posterUrl, animationUrl] : [posterUrl],
+          };
+        } catch {
+          return { ...sticker, objectUrls: [] as string[] };
+        }
+      }),
+    );
+    for (const urls of stickerObjectUrlsRef.current.values()) {
+      urls.forEach((url) => URL.revokeObjectURL(url));
+    }
+    stickerObjectUrlsRef.current.clear();
+    hydrated.forEach((sticker) => {
+      stickerObjectUrlsRef.current.set(sticker.id, sticker.objectUrls);
+    });
+    setStickers(
+      hydrated.map((sticker) => {
+        const next = { ...sticker } as Sticker & { objectUrls?: string[] };
+        delete next.objectUrls;
+        return next;
+      }),
+    );
+  }, [workspaceServerId]);
+
+  useEffect(() => {
+    if (appConfig.dataMode !== "live" || !workspaceServerId) {
+      setStickers([]);
+      return;
+    }
+    void refreshStickers().catch(() => undefined);
+    const unsubscribeStickers = subscribeToStickers(
+      workspaceServerId,
+      () => void refreshStickers().catch(() => undefined),
+    );
+    const unsubscribeReactions = subscribeToStickerReactions((messageId) => {
+      void loadLiveMessageById(messageId)
+        .then((message) =>
+          updateChannelThread(message.channelId, (current) =>
+            mergeMessages(
+              current.filter((item) => item.id !== message.id),
+              [message],
+            ),
+          ),
+        )
+        .catch(() => undefined);
+      void loadDirectMessageById(messageId)
+        .then((message) =>
+          updateDirectThread(message.conversationId, (current) =>
+            mergeMessages(
+              current.filter((item) => item.id !== message.id),
+              [message],
+            ),
+          ),
+        )
+        .catch(() => undefined);
+    });
+    return () => {
+      unsubscribeStickers();
+      unsubscribeReactions();
+    };
+  }, [
+    refreshStickers,
+    updateChannelThread,
+    updateDirectThread,
+    workspaceServerId,
+  ]);
+
+  useEffect(() => {
+    if (
+      dataFreshness !== "offline" ||
+      !stickers.some(
+        (sticker) =>
+          sticker.posterPath &&
+          !sticker.posterUrl &&
+          !offlineStickerHydrationAttemptsRef.current.has(sticker.id),
+      )
+    ) {
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(
+      stickers.map(async (sticker) => {
+        if (
+          !sticker.posterPath ||
+          sticker.posterUrl ||
+          offlineStickerHydrationAttemptsRef.current.has(sticker.id)
+        ) {
+          return sticker;
+        }
+        offlineStickerHydrationAttemptsRef.current.add(sticker.id);
+        try {
+          const poster = await downloadStickerMedia(sticker.posterPath, true);
+          if (cancelled) return sticker;
+          const posterUrl = URL.createObjectURL(poster);
+          const urls = stickerObjectUrlsRef.current.get(sticker.id) ?? [];
+          stickerObjectUrlsRef.current.set(sticker.id, [...urls, posterUrl]);
+          return { ...sticker, posterUrl, animationUrl: null };
+        } catch {
+          return sticker;
+        }
+      }),
+    ).then((hydrated) => {
+      if (!cancelled) setStickers(hydrated);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [dataFreshness, stickers]);
+
+  useEffect(() => {
+    offlineStickerHydrationAttemptsRef.current.clear();
+    if (appConfig.dataMode !== "live" || !signedInUserId) return;
+    void cleanupStaleMessageAttachments().catch(() => undefined);
+  }, [signedInUserId]);
+
   const activeVoiceChannelId =
     voice.channel &&
     (voice.status === "connected" || voice.status === "reconnecting")
@@ -1137,6 +1367,7 @@ export default function App() {
           userId: signedInUserId,
           workspace,
           directConversations,
+          stickers,
           lastDestination: lastDestinationRef.current,
         })
         .then(() => localCache.stats(signedInUserId))
@@ -1149,6 +1380,7 @@ export default function App() {
     selectedChannel,
     selectedConversationId,
     signedInUserId,
+    stickers,
     workspace,
   ]);
 
@@ -1295,7 +1527,10 @@ export default function App() {
         }
       } catch (caught) {
         if (!cancelled) {
-          if (channelThreadsRef.current.get(selectedMessageChannelId)?.length) {
+          if (
+            channelThreadsRef.current.get(selectedMessageChannelId)?.length &&
+            isConnectivityError(caught)
+          ) {
             setDataFreshness("offline");
           } else {
             setAppError(
@@ -1311,7 +1546,12 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [selectedMessageChannelId, signedInUserId, updateChannelThread]);
+  }, [
+    selectedMessageChannelId,
+    signedInUserId,
+    updateChannelThread,
+    workspaceRevision,
+  ]);
 
   useEffect(() => {
     if (
@@ -1374,7 +1614,10 @@ export default function App() {
         }
       } catch (caught) {
         if (!cancelled) {
-          if (directThreadsRef.current.get(selectedConversationId)?.length) {
+          if (
+            directThreadsRef.current.get(selectedConversationId)?.length &&
+            isConnectivityError(caught)
+          ) {
             setDataFreshness("offline");
           } else {
             setAppError(
@@ -1390,7 +1633,12 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [selectedConversationId, signedInUserId, updateDirectThread]);
+  }, [
+    selectedConversationId,
+    signedInUserId,
+    updateDirectThread,
+    workspaceRevision,
+  ]);
 
   useEffect(() => {
     if (
@@ -1427,7 +1675,7 @@ export default function App() {
       }
       const conversationId = selectedConversation.id;
       const content = draftToSegments(draft);
-      const body = segmentsToFallback(content);
+      const body = draftFallbackBody(draft);
       if (!body) return;
       setDirectSending(true);
       setAppError(null);
@@ -1439,6 +1687,14 @@ export default function App() {
         body,
         content,
         createdAt: new Date().toISOString(),
+        presentation: draft.presentation ?? null,
+        attachments: optimisticAttachments(draft),
+        reply: draft.replyTo ?? null,
+        replyNotifiesAuthor:
+          Boolean(draft.replyTo) &&
+          draft.replyTo?.authorId !== user.id &&
+          (draft.notifyReplyAuthor ?? true),
+        reactions: [],
         pending: true,
       };
       updateDirectThread(
@@ -1446,7 +1702,65 @@ export default function App() {
         (current) => mergeMessages(current, [optimistic]),
         false,
       );
+      const uploadController =
+        appConfig.dataMode === "live" && draft.attachments?.length
+          ? new AbortController()
+          : null;
+      if (uploadController) {
+        uploadAbortControllersRef.current.set(optimisticId, uploadController);
+      }
       try {
+        const attachmentIds =
+          appConfig.dataMode === "live" && draft.attachments?.length
+            ? await uploadMessageAttachments(
+                "direct",
+                conversationId,
+                draft.attachments,
+                (attachmentId, progress) => {
+                  setDirectDrafts((current) => ({
+                    ...current,
+                    [conversationId]: {
+                      ...(current[conversationId] ?? draft),
+                      attachments: (
+                        current[conversationId]?.attachments ??
+                        draft.attachments ??
+                        []
+                      ).map((attachment) =>
+                        attachment.id === attachmentId
+                          ? {
+                              ...attachment,
+                              progress,
+                              status: "uploading",
+                            }
+                          : attachment,
+                      ),
+                    },
+                  }));
+                  updateDirectThread(
+                    conversationId,
+                    (current) =>
+                      current.map((message) =>
+                        message.id === optimisticId
+                          ? {
+                              ...message,
+                              attachments: (message.attachments ?? []).map(
+                                (attachment) =>
+                                  attachment.id === attachmentId
+                                    ? {
+                                        ...attachment,
+                                        uploadProgress: progress,
+                                      }
+                                    : attachment,
+                              ),
+                            }
+                          : message,
+                      ),
+                    false,
+                  );
+                },
+                uploadController?.signal,
+              )
+            : [];
         const saved =
           appConfig.dataMode === "mock"
             ? {
@@ -1454,7 +1768,12 @@ export default function App() {
                 id: `direct-${crypto.randomUUID()}`,
                 pending: false,
               }
-            : await sendDirectMessage(conversationId, content);
+            : await sendDirectMessage(conversationId, content, {
+                replyToId: draft.replyTo?.id ?? null,
+                notifyReplyAuthor: draft.notifyReplyAuthor ?? true,
+                attachmentIds,
+                presentation: draft.presentation ?? null,
+              });
         updateDirectThread(conversationId, (current) =>
           mergeMessages(
             current.filter(
@@ -1497,6 +1816,7 @@ export default function App() {
         );
         throw caught;
       } finally {
+        uploadAbortControllersRef.current.delete(optimisticId);
         setDirectSending(false);
       }
     },
@@ -1511,7 +1831,7 @@ export default function App() {
       }
       const channelId = selectedChannel.id;
       const content = draftToSegments(draft);
-      const body = segmentsToFallback(content);
+      const body = draftFallbackBody(draft);
       if (!body) return;
       setSending(true);
       setAppError(null);
@@ -1523,6 +1843,14 @@ export default function App() {
         body,
         content,
         createdAt: new Date().toISOString(),
+        presentation: draft.presentation ?? null,
+        attachments: optimisticAttachments(draft),
+        reply: draft.replyTo ?? null,
+        replyNotifiesAuthor:
+          Boolean(draft.replyTo) &&
+          draft.replyTo?.authorId !== user.id &&
+          (draft.notifyReplyAuthor ?? true),
+        reactions: [],
         pending: true,
       };
       updateChannelThread(
@@ -1530,7 +1858,65 @@ export default function App() {
         (current) => mergeMessages(current, [optimistic]),
         false,
       );
+      const uploadController =
+        appConfig.dataMode === "live" && draft.attachments?.length
+          ? new AbortController()
+          : null;
+      if (uploadController) {
+        uploadAbortControllersRef.current.set(optimisticId, uploadController);
+      }
       try {
+        const attachmentIds =
+          appConfig.dataMode === "live" && draft.attachments?.length
+            ? await uploadMessageAttachments(
+                "channel",
+                channelId,
+                draft.attachments,
+                (attachmentId, progress) => {
+                  setDrafts((current) => ({
+                    ...current,
+                    [channelId]: {
+                      ...(current[channelId] ?? draft),
+                      attachments: (
+                        current[channelId]?.attachments ??
+                        draft.attachments ??
+                        []
+                      ).map((attachment) =>
+                        attachment.id === attachmentId
+                          ? {
+                              ...attachment,
+                              progress,
+                              status: "uploading",
+                            }
+                          : attachment,
+                      ),
+                    },
+                  }));
+                  updateChannelThread(
+                    channelId,
+                    (current) =>
+                      current.map((message) =>
+                        message.id === optimisticId
+                          ? {
+                              ...message,
+                              attachments: (message.attachments ?? []).map(
+                                (attachment) =>
+                                  attachment.id === attachmentId
+                                    ? {
+                                        ...attachment,
+                                        uploadProgress: progress,
+                                      }
+                                    : attachment,
+                              ),
+                            }
+                          : message,
+                      ),
+                    false,
+                  );
+                },
+                uploadController?.signal,
+              )
+            : [];
         if (appConfig.dataMode === "mock") {
           await new Promise((resolve) => window.setTimeout(resolve, 240));
           updateChannelThread(channelId, (current) =>
@@ -1545,7 +1931,12 @@ export default function App() {
             ),
           );
         } else {
-          const saved = await sendLiveMessage(channelId, content);
+          const saved = await sendLiveMessage(channelId, content, {
+            replyToId: draft.replyTo?.id ?? null,
+            notifyReplyAuthor: draft.notifyReplyAuthor ?? true,
+            attachmentIds,
+            presentation: draft.presentation ?? null,
+          });
           updateChannelThread(channelId, (current) =>
             mergeMessages(
               current.filter(
@@ -1574,10 +1965,176 @@ export default function App() {
         setAppError(message);
         throw caught;
       } finally {
+        uploadAbortControllersRef.current.delete(optimisticId);
         setSending(false);
       }
     },
     [dataFreshness, selectedChannel, updateChannelThread, user],
+  );
+
+  const handleChannelDelete = useCallback(
+    async (messageId: string) => {
+      if (!selectedMessageChannelId) return;
+      if (messageId.startsWith("pending-")) {
+        uploadAbortControllersRef.current.get(messageId)?.abort();
+        updateChannelThread(
+          selectedMessageChannelId,
+          (current) => current.filter((message) => message.id !== messageId),
+          false,
+        );
+        return;
+      }
+      if (appConfig.dataMode === "live") {
+        await deleteRichMessage("channel", messageId);
+      }
+      updateChannelThread(selectedMessageChannelId, (current) =>
+        current.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                body: "",
+                content: [],
+                presentation: null,
+                attachments: [],
+                reactions: [],
+                deletedAt: new Date().toISOString(),
+              }
+            : message,
+        ),
+      );
+    },
+    [selectedMessageChannelId, updateChannelThread],
+  );
+
+  const handleDirectDelete = useCallback(
+    async (messageId: string) => {
+      if (!selectedConversationId) return;
+      if (messageId.startsWith("pending-")) {
+        uploadAbortControllersRef.current.get(messageId)?.abort();
+        updateDirectThread(
+          selectedConversationId,
+          (current) => current.filter((message) => message.id !== messageId),
+          false,
+        );
+        return;
+      }
+      if (appConfig.dataMode === "live") {
+        await deleteRichMessage("direct", messageId);
+      }
+      updateDirectThread(selectedConversationId, (current) =>
+        current.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                body: "",
+                content: [],
+                presentation: null,
+                attachments: [],
+                reactions: [],
+                deletedAt: new Date().toISOString(),
+              }
+            : message,
+        ),
+      );
+    },
+    [selectedConversationId, updateDirectThread],
+  );
+
+  const handleChannelReaction = useCallback(
+    async (messageId: string, stickerId: string) => {
+      if (!selectedMessageChannelId || !user) return;
+      if (appConfig.dataMode === "live") {
+        await toggleStickerReaction("channel", messageId, stickerId);
+        const hydrated = await loadLiveMessageById(messageId);
+        updateChannelThread(hydrated.channelId, (current) =>
+          mergeMessages(
+            current.filter((message) => message.id !== hydrated.id),
+            [hydrated],
+          ),
+        );
+        return;
+      }
+      updateChannelThread(selectedMessageChannelId, (current) =>
+        toggleMockReaction(current, messageId, stickerId, user.id),
+      );
+    },
+    [selectedMessageChannelId, updateChannelThread, user],
+  );
+
+  const handleDirectReaction = useCallback(
+    async (messageId: string, stickerId: string) => {
+      if (!selectedConversationId || !user) return;
+      if (appConfig.dataMode === "live") {
+        await toggleStickerReaction("direct", messageId, stickerId);
+        const hydrated = await loadDirectMessageById(messageId);
+        updateDirectThread(hydrated.conversationId, (current) =>
+          mergeMessages(
+            current.filter((message) => message.id !== hydrated.id),
+            [hydrated],
+          ),
+        );
+        return;
+      }
+      updateDirectThread(selectedConversationId, (current) =>
+        toggleMockReaction(current, messageId, stickerId, user.id),
+      );
+    },
+    [selectedConversationId, updateDirectThread, user],
+  );
+
+  const handleStickerUpload = useCallback(
+    async (file: File, label: string) => {
+      if (!workspaceServerId || !user) return;
+      const prepared = await prepareStickerUpload(file);
+      if (appConfig.dataMode === "live") {
+        await uploadSticker(
+          workspaceServerId,
+          label,
+          prepared.poster,
+          prepared.animation,
+        );
+        await refreshStickers();
+        return;
+      }
+      const posterUrl = URL.createObjectURL(prepared.poster);
+      const animationUrl = prepared.animation
+        ? URL.createObjectURL(prepared.animation)
+        : null;
+      setStickers((current) => [
+        ...current,
+        {
+          id: `sticker-${crypto.randomUUID()}`,
+          serverId: workspaceServerId,
+          label,
+          posterPath: "",
+          animationPath: animationUrl ? "" : null,
+          width: prepared.width,
+          height: prepared.height,
+          createdBy: user.id,
+          enabled: true,
+          createdAt: new Date().toISOString(),
+          posterUrl,
+          animationUrl,
+        },
+      ]);
+    },
+    [refreshStickers, user, workspaceServerId],
+  );
+
+  const handleStickerArchive = useCallback(
+    async (stickerId: string) => {
+      if (appConfig.dataMode === "live") {
+        await archiveSticker(stickerId);
+        await refreshStickers();
+        return;
+      }
+      setStickers((current) =>
+        current.map((sticker) =>
+          sticker.id === stickerId ? { ...sticker, enabled: false } : sticker,
+        ),
+      );
+    },
+    [refreshStickers],
   );
 
   const handleLoadOlderChannelMessages = useCallback(async () => {
@@ -1639,6 +2196,8 @@ export default function App() {
       messageCount: 0,
       profileMediaBytes: 0,
       profileMediaCount: 0,
+      messageMediaBytes: 0,
+      messageMediaCount: 0,
       totalBytes: 0,
     });
     if (dataFreshness === "offline") {
@@ -2302,6 +2861,12 @@ export default function App() {
                 loadProfileMedia={loadProfileMedia}
                 onOpenProfile={handleOpenProfile}
                 openProfileId={openProfile?.memberId ?? null}
+                stickers={stickers}
+                currentUserIsAdmin={workspace?.currentUserRole === "admin"}
+                onDeleteMessage={handleDirectDelete}
+                onReact={handleDirectReaction}
+                onUploadSticker={handleStickerUpload}
+                onArchiveSticker={handleStickerArchive}
               />
             ) : activeSpace === "personal" ? (
               <section className="personal-home">
@@ -2339,6 +2904,12 @@ export default function App() {
                 loadProfileMedia={loadProfileMedia}
                 onOpenProfile={handleOpenProfile}
                 openProfileId={openProfile?.memberId ?? null}
+                stickers={stickers}
+                currentUserIsAdmin={workspace.currentUserRole === "admin"}
+                onDeleteMessage={handleChannelDelete}
+                onReact={handleChannelReaction}
+                onUploadSticker={handleStickerUpload}
+                onArchiveSticker={handleStickerArchive}
               />
             ) : selectedChannel && workspace ? (
               <VoiceRoom

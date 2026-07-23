@@ -108,3 +108,15 @@ test("titlebar, space motion, startup assembly, and scroll activity retain their
   assert.match(scrollbarHook, /SCROLLBAR_IDLE_DELAY_MS = 650/);
   assert.match(scrollbarHook, /classList\.add\("is-scrolling"\)/);
 });
+
+test("conversation and identity footers share one vertical rhythm", () => {
+  assert.match(styles, /--conversation-footer-height:\s*68px/);
+  assert.match(
+    styles,
+    /\.composer-wrap\s*{[\s\S]*?min-height:\s*var\(--conversation-footer-height\);[\s\S]*?padding:\s*var\(--space-2\) var\(--space-6\)/,
+  );
+  assert.match(
+    styles,
+    /\.user-dock\s*{[\s\S]*?min-height:\s*var\(--conversation-footer-height\)/,
+  );
+});

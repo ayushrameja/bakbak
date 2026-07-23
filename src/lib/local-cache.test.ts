@@ -90,6 +90,62 @@ describe("BakbakCache", () => {
     });
   });
 
+  it("keeps only authenticated posters in the bounded rich-media LRU", async () => {
+    const cache = new BakbakCache(new IDBFactory(), 256, 7);
+    await cache.writeMessageMedia(
+      userId,
+      "message-media",
+      "old-poster",
+      new Blob(["1234"]),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    await cache.writeMessageMedia(
+      userId,
+      "message-stickers",
+      "new-poster",
+      new Blob(["5678"]),
+    );
+
+    await expect(
+      cache.readMessageMedia(userId, "message-media", "old-poster"),
+    ).resolves.toBeNull();
+    await expect(
+      cache.readMessageMedia(userId, "message-stickers", "new-poster"),
+    ).resolves.not.toBeNull();
+    expect(await cache.stats(userId)).toMatchObject({
+      messageMediaBytes: 4,
+      messageMediaCount: 1,
+    });
+  });
+
+  it("strips transient full-media URLs while retaining rich metadata", () => {
+    const normalized = normalizeMessagesForCache([
+      {
+        ...mockMessages[0]!,
+        attachments: [
+          {
+            id: "attachment",
+            kind: "video" as const,
+            mimeType: "video/mp4",
+            byteSize: 123,
+            width: 640,
+            height: 360,
+            durationMs: 2_000,
+            objectPath: "private/original.mp4",
+            posterPath: "private/poster.webp",
+            objectUrl: "blob:original",
+            posterUrl: "blob:poster",
+          },
+        ],
+      },
+    ]);
+    expect(normalized[0]?.attachments?.[0]).not.toHaveProperty("objectUrl");
+    expect(normalized[0]?.attachments?.[0]).not.toHaveProperty("posterUrl");
+    expect(normalized[0]?.attachments?.[0]?.posterPath).toBe(
+      "private/poster.webp",
+    );
+  });
+
   it("clears only the requested account", async () => {
     const cache = new BakbakCache(new IDBFactory());
     const conversation = {

@@ -4082,3 +4082,309 @@ Gang` at the true window center, and retained panel/Windows controls at the
   notarized.
 - **Next:** Confirm the refined `β · vX.Y.Z` chip against real native light and
   dark materials during the next installed-app pass.
+
+## 2026-07-23 — Implement rich messaging, media, replies, and stickers
+
+- **Completed:** Implemented plan 0022 across text channels and Personal DMs.
+  Added compatible v2 rich-message contracts, same-thread replies with
+  notification coercion, author soft deletion, private attachment
+  reservations/finalization, server Bakbak stickers, sticker reactions,
+  deleted-message-aware activity, and Realtime hydration. Added private
+  `message-media` and `message-stickers` buckets plus authenticated
+  `message-media-manage` and `sticker-manage` Edge Functions. The shared
+  composer now supports staged/pasted/dropped images and GIFs, validated H.264
+  MP4, resumable progress/cancellation/retry, quoted replies, standalone
+  Bakbak stickers, direct GIPHY GIF/sticker search, and accessible message
+  actions. Rendering includes responsive media, static-first/reduced-motion
+  behavior, expanded images, lazy videos with offscreen pause, reaction pills,
+  deleted-parent placeholders, and offline labels. IndexedDB schema v2 adds a
+  256 MiB/account authenticated message/sticker poster LRU while excluding
+  videos, animated originals, transient URLs, and GIPHY assets. Existing GIF
+  avatar/cover behavior was not changed.
+- **Decisions:** Kept `send_message` and `send_direct_message` untouched for
+  installed-client rollback and generated compatibility bodies in v2. Kept
+  GIPHY entirely client-direct with rating `r`, `messaging_non_clips`,
+  20-result pages, attribution/analytics, ID-only persistence, 100-ID history
+  batches, session/in-flight deduplication, and a disabled missing-key state.
+  Used signed TUS reservations rather than renderer Storage grants, client-side
+  MP4Box inspection rather than extending the audio-only FFmpeg core, advisory
+  locks for quota/reaction races, and archived referenced stickers while
+  hard-deleting only unreferenced sticker assets.
+- **Validation:**
+  - Initial `pnpm check` — failed only because `src/app/App.tsx` needed
+    Prettier after the last upload-progress edit; formatted it and reran.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects, 66
+    Vitest files with 337 tests, 24/24 Node contract tests, synchronized
+    version `0.16.0`, production renderer build, and bundle secret scan. Vite
+    retained the existing non-blocking large-chunk warning; MP4Box is a lazy
+    130.33 kB chunk.
+  - `pnpm dlx supabase@latest db reset` — passed from a clean local database
+    with migration `202607230001_rich_messaging.sql`.
+  - `pnpm dlx supabase@latest test db` — passed 13 files and 331 pgTAP
+    assertions, including admin/member/outsider RLS, reply isolation,
+    attachment object finalization, sticker ownership/archive history,
+    reaction uniqueness/user cap, deletion tombstones, activity recalculation,
+    and Realtime publication.
+  - `deno test --allow-env --config supabase/deno.json
+supabase/functions/tests` — passed 37/37 tests, including media request
+    authentication/limits/lifecycle and PNG/GIF/WebP sticker inspection.
+  - Mock browser smoke at 1280×720 and 1024×680 — passed channel rendering,
+    GIPHY missing-key explanation, empty Bakbak sticker management, reply bar
+    with default Notify, sent quoted reply, picker/composer bounds, and no
+    horizontal overflow or console warnings/errors.
+  - `pnpm tauri build` — compiled and ad-hoc signed `Bakbak.app`, then failed
+    while running the local DMG wrapper. `pnpm tauri:build:local` passed and
+    rebuilt the ARM64 app bundle; notarization was skipped because Apple
+    credentials are absent.
+  - `pnpm dlx supabase@latest db push --dry-run` — passed and listed only
+    `202607230001_rich_messaging.sql`.
+  - `pnpm dlx supabase@latest db push` — passed and deployed the additive rich
+    messaging migration to the linked hosted project.
+  - `pnpm dlx supabase@latest functions deploy message-media-manage --use-api`
+    and `sticker-manage --use-api` — passed for hosted project
+    `ezdwfqcmrofcemmfzxgl`; unauthenticated probes to both functions returned
+    HTTP 401.
+  - `pnpm dlx supabase@latest migration list` — passed; local and hosted
+    migration history match through `202607230001`.
+  - GitHub Actions repository-variable inspection — confirmed
+    `VITE_GIPHY_API_KEY` is not configured; no secret value was read or
+    invented.
+- **Documentation updated:** Added plan 0022; updated architecture, the active
+  v1 plan, root/Supabase setup and deployment documentation, release GIPHY
+  build configuration, `.env.example`, Data & storage privacy copy, and this
+  canonical progress entry.
+- **Known limitations:** The GitHub Actions `VITE_GIPHY_API_KEY` repository
+  variable is not configured, so the renderer has not been released. Real
+  GIPHY attribution/analytics/CSP delivery and 429 behavior still require that
+  beta key. The two-account channel/DM Realtime/media/deletion matrix, real
+  H.264/AAC playback, reduced-motion/offline cache, existing GIF avatar/cover
+  regression, Windows installed test, and full macOS installed test remain
+  pending. The local DMG wrapper failure and missing signing/notarization
+  credentials remain packaging limitations.
+- **Next:** Configure the public `VITE_GIPHY_API_KEY` GitHub Actions repository
+  variable, run the plan 0022 hosted two-account and installed macOS/Windows
+  acceptance matrix, then release the renderer.
+
+## 2026-07-23 — Repair rich-message loading and false offline state
+
+- **Completed:** Reproduced the reported cached-DM/offline screen against local
+  PostgREST and found that both channel and DM rich selects used generated
+  self-constraint-name hints that PostgREST rejected with `PGRST200`, despite
+  the reply foreign keys existing. Switched both reply embeds to the accepted
+  `reply_to_id` column hint. Added connectivity-error classification so
+  PostgREST/API contract failures remain actionable alerts instead of placing
+  the entire app into read-only offline mode. Thread refreshes now participate
+  in the existing workspace reconnect revision, allowing genuine network
+  failures to retry after connectivity returns.
+- **Decisions:** Kept the deployed database and Edge Functions unchanged; the
+  fault was in the renderer's PostgREST select syntax. Retained HTTP 401 for
+  unauthenticated function and table probes because protected resources must
+  require an authenticated Supabase session.
+- **Validation:**
+  - Original anonymous local rich-DM and channel REST queries — reproduced
+    `PGRST200` because PostgREST could not resolve
+    `*_reply_to_id_fkey` as a self-relation hint.
+  - Corrected complete anonymous rich-DM REST query — reached the expected
+    table authorization boundary with HTTP 401 and no `PGRST200`, confirming
+    that PostgREST resolved replies, attachments, and reactions before denying
+    the unauthenticated read.
+  - Focused Vitest run — passed 3 files and 6 tests covering relationship hints,
+    connectivity classification, and existing DM behavior.
+  - Initial final `pnpm check` — failed only because
+    `src/lib/connectivity.test.ts` needed Prettier after the last assertion;
+    formatted it and reran.
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 68 Vitest files
+    with 341 tests, 24/24 Node contract tests, version synchronization,
+    production build, and bundle secret scan.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+- **Documentation updated:** Updated the cached/offline and rich-reply query
+  contracts in architecture and appended this canonical progress entry.
+- **Known limitations:** The rebuilt app still needs the signed-in account's
+  installed-app observation against hosted Supabase. Windows installed
+  validation, full plan 0022 two-account acceptance, and the GIPHY repository
+  variable remain pending.
+- **Next:** Quit the previously running build, open the rebuilt app, verify
+  channel and DM refresh/send while signed in, then continue the plan 0022
+  rollout matrix.
+
+## 2026-07-23 — Repair signed resumable message uploads
+
+- **Completed:** Reproduced the reported TUS HTTP 403 from its response text
+  and traced it to the renderer posting a valid signed upload token to
+  Storage's ordinary `/upload/resumable` endpoint. Switched hosted and local
+  message uploads to Supabase's signed
+  `/storage/v1/upload/resumable/sign` route, using the public project key and
+  scoped `x-signature` header. Removed the unnecessary user bearer header from
+  the signed object transfer while retaining authenticated reservation,
+  cancellation, finalization, and cleanup. Added a concise retry/sign-in
+  message for future TUS authorization failures instead of exposing the raw
+  transport exception.
+- **Decisions:** Preserved the no-insert RLS policy for renderers; widening
+  Storage INSERT access would bypass reservation limits and atomic message
+  publication. Kept the deployed management function unchanged because it
+  already generated correct path-scoped upload tokens.
+- **Validation:**
+  - Focused Vitest run — passed 2 files and 5 tests for media preparation plus
+    signed hosted/local endpoints, public-key/signature headers, and readable
+    TUS authorization errors.
+  - Initial `pnpm check` — failed at lint because the first TUS response parser
+    used an unsafe function cast; replaced it with a strict type guard and
+    reran.
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 69 Vitest files
+    with 344 tests, 24/24 Node contract tests, version synchronization,
+    production build, and bundle secret scan.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+- **Documentation updated:** Updated the signed message-media upload boundary
+  in architecture and appended this canonical progress entry.
+- **Known limitations:** A signed-in installed-app retry against hosted Storage
+  is still required. Windows installed validation, full plan 0022 two-account
+  acceptance, and the GIPHY repository variable remain pending.
+- **Next:** Quit the previous build, open the rebuilt app, retry the image send
+  in `#wallpapers`, then exercise cancellation/retry and one DM upload.
+
+## 2026-07-23 — Repair reply attribution, deletion, and GIPHY composing
+
+- **Completed:** Removed the phantom “Former friend” row from ordinary rich
+  messages by replacing the recursive PostgREST reply embed with explicit
+  scalar `reply_to_id` hydration for both channel and DM history/Realtime
+  detail loads. Replaced the renderer's native delete prompt with an accessible
+  in-app confirmation dialog that awaits the delete request and displays
+  backend failures. Enlarged the GIPHY picker to a 680 px desktop maximum with
+  stable 150 px result rows. GIPHY selections now stage in the composer with a
+  removable preview, accept an optional text caption, preserve the draft after
+  failure, and register send analytics only after publication. Added and
+  deployed additive channel/DM v2 RPC wrappers that accept validated GIPHY
+  presentations with structured text while preserving standalone Bakbak
+  stickers and installed-client compatibility.
+- **Decisions:** Hydrated reply parents in a second authorized query because
+  PostgREST exposes the recursive reverse relation as an array, where an empty
+  array had been mistaken for a reply object. Used the shared Modal component
+  instead of `window.confirm` so delete behavior is consistent in Tauri
+  WebViews. Kept Bakbak stickers immediate and standalone, but treated GIPHY
+  assets like staged attachment content so users explicitly send them with or
+  without text.
+- **Validation:**
+  - Focused ESLint plus Vitest — passed 3 files and 8 tests covering explicit
+    reply hydration, rejection of empty reply arrays, staged GIPHY captions and
+    analytics, and confirmation-gated deletion.
+  - In-app browser mock-mode QA — passed: the delete dialog rendered with Keep
+    and Delete actions; the GIPHY picker measured 680×593 px with three 214 px
+    columns. Live GIPHY results were intentionally unavailable under the fake
+    visual-test key; the mocked interaction test covered selection and caption
+    send.
+  - `pnpm dlx supabase@latest db reset` — passed with migration
+    `202607230002_giphy_captions.sql`.
+  - `pnpm dlx supabase@latest test db` — passed 13 pgTAP files and 335
+    assertions, including channel and DM GIPHY-caption publication.
+  - `pnpm dlx supabase@latest db push --dry-run` — passed and identified only
+    `202607230002_giphy_captions.sql`.
+  - `pnpm dlx supabase@latest db push` — passed; the additive GIPHY-caption RPC
+    migration was applied to the linked hosted project.
+  - `pnpm dlx supabase@latest migration list` — passed; local and hosted
+    histories match through `202607230002`.
+  - Initial `pnpm check` — stopped at one unsafe-assignment lint finding in the
+    new GIPHY interaction test; replaced the matcher-derived `any` value with a
+    typed captured draft.
+  - Final `pnpm check` — passed formatting, lint, strict TypeScript, 70 Vitest
+    files with 346 tests, 24/24 Node contract tests, version synchronization,
+    production build, and bundle secret scan.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+  - `git diff --check` — passed.
+- **Documentation updated:** Updated architecture and plan 0022 for explicit
+  reply-parent hydration, staged/captioned GIPHY sends, and the preserved
+  standalone Bakbak-sticker boundary; appended this canonical progress entry.
+- **Known limitations:** The real `VITE_GIPHY_API_KEY` GitHub Actions variable
+  remains unconfigured, so a release build cannot exercise real GIPHY
+  attribution/analytics. Hosted two-account confirmation for deletion,
+  channel/DM captioned GIF sends, and Windows installed acceptance remain
+  pending. The local macOS build is ad-hoc signed and not notarized.
+- **Next:** Quit the previously running app, open the rebuilt
+  `src-tauri/target/release/bundle/macos/Bakbak.app`, then verify one channel
+  and one DM GIPHY-caption send plus confirmed deletion with two signed-in
+  accounts.
+
+## 2026-07-23 — Refine the message composer, emoji picker, and delete dialog
+
+- **Completed:** Reorganized the shared channel/DM composer into one
+  Discord-shaped bar with attachment at the leading edge, a flexible message
+  field, and GIF, Bakbak sticker, emoji, and send actions at the trailing edge.
+  Added a searchable five-category Unicode emoji picker that inserts at the
+  active text selection, updates mention offsets through the existing
+  structured-draft boundary, and restores input focus. Simplified the delete
+  confirmation from three repetitions of “Delete message” to one clear
+  irreversible-action label, a concise title/description, and distinct Keep
+  and Delete actions. Added 18–20 px of body/action inset so dialog buttons no
+  longer touch the outer border.
+- **Decisions:** Kept only implemented composer tools instead of copying
+  Discord's unsupported gift/application buttons. Used platform-rendered
+  Unicode emoji without a new dependency or custom artwork. Preserved the
+  explicit send button for pointer and assistive-technology users while Enter
+  continues to submit from the message field.
+- **Validation:**
+  - Focused ESLint plus Vitest — passed 2 chat files and 6 tests, including
+    cursor-position emoji insertion, picker dismissal, GIPHY staging, and
+    confirmation-gated deletion.
+  - Mock in-app browser QA at 1280×800 and 1024×680 — passed composer, emoji
+    picker, and delete-dialog visual/interaction checks. At the minimum
+    viewport, the composer measured 502 px wide, its action strip remained
+    inside the bar, the 388×401 px emoji picker remained fully in bounds,
+    document width stayed exactly 1024 px, and the console reported no
+    warnings or errors.
+  - Initial `pnpm check` — failed only because the GIF badge used a forbidden
+    10 px product-text size; changed it to the approved 11 px caption token.
+  - Final `pnpm check` — passed formatting, lint, both strict TypeScript
+    projects, 70 Vitest files with 347 tests, 24/24 Node contract tests,
+    synchronized version `0.16.0`, production renderer build, and bundle
+    secret scan. Vite retained the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+- **Documentation updated:** Updated the current architecture and plan 0022
+  composer contracts, and appended this canonical progress entry.
+- **Known limitations:** The picker intentionally starts with a curated common
+  Unicode set; recent emoji, skin-tone variants, and the complete Unicode
+  catalog are not yet included. Installed macOS/Windows light/dark observation
+  remains part of the pending plan 0022 acceptance matrix. The local macOS
+  bundle is ad-hoc signed and not notarized.
+- **Next:** Exercise the composer, picker, and confirmation once in the rebuilt
+  installed macOS app, then continue the plan 0022 two-account channel/DM
+  acceptance matrix.
+
+## 2026-07-23 — Align the composer and sidebar footer
+
+- **Completed:** Replaced the composer's asymmetric zero-top/20 px bottom
+  padding and the user dock's independent 58 px height with one shared 68 px
+  conversation-footer token. The resting 52 px message bar now has an even
+  8 px vertical inset, while the sidebar username dock fills the same footer
+  band. Added a shell regression that preserves the shared geometry.
+- **Decisions:** Aligned the footer surfaces by height and centre line instead
+  of fixing the entire composer area to one row; reply, attachment, and GIPHY
+  previews can still grow upward without compressing the message input.
+- **Validation:**
+  - Focused `glass-shell` contract test — passed 4/4 checks, including the new
+    shared conversation/identity footer rhythm.
+  - Mock in-app browser QA at 1280×800 — passed with both footer bands at
+    68 px and centre y=766; the 52 px composer measured y=740–792 with 8 px
+    above and below. At 1024×680, both bands shared centre y=646, document
+    width stayed exactly 1024 px, and the console reported no warnings or
+    errors.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects,
+    70 Vitest files with 347 tests, 25/25 Node contract tests, synchronized
+    version `0.16.0`, production renderer build, and bundle secret scan. Vite
+    retained the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+- **Documentation updated:** Updated the current architecture and plan 0022
+  footer-alignment contract, and appended this canonical progress entry.
+- **Known limitations:** The rebuilt app still needs direct installed-macOS
+  observation against the user's exact long display name and cover artwork.
+  Windows installed validation remains part of the pending plan 0022 matrix.
+- **Next:** Open the rebuilt `Bakbak.app` and confirm the username dock and
+  message bar remain centred on the same footer line with the reported account.

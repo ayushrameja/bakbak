@@ -112,6 +112,8 @@ pnpm dlx supabase@latest db push
 pnpm dlx supabase@latest migration list
 pnpm dlx supabase@latest functions deploy livekit-token --use-api
 pnpm dlx supabase@latest functions deploy soundboard-manage --use-api
+pnpm dlx supabase@latest functions deploy message-media-manage --use-api
+pnpm dlx supabase@latest functions deploy sticker-manage --use-api
 ```
 
 Plan 0014's additive DM/LIVE migration is deployed. Older clients continue
@@ -163,6 +165,33 @@ do not add client upload policies or put a service-role credential in the
 renderer. Deploy the migration before `soundboard-manage`, then run linked lint,
 an unauthenticated 401 probe, member/outsider upload probes, uploader/admin/
 other-member delete probes, and a final Storage/catalog cleanup check.
+
+Rich messaging adds migration `202607230001_rich_messaging.sql`, private
+`message-media` and `message-stickers` buckets, compatible v2 channel/DM send
+RPCs, attachment reservations, server stickers/reactions, replies, and
+author-owned soft deletion. Apply the migration first, deploy
+`message-media-manage`, then deploy `sticker-manage`; only after those succeed
+should a plan 0022 renderer be distributed. Both functions keep JWT
+verification enabled and use the platform-provided service role only inside the
+Edge runtime.
+
+`message-media-manage` verifies claims and channel membership or retained DM
+participation before issuing signed TUS upload tokens. Reservations consume the
+1 GiB member quota until cancelled, cleaned after 24 hours, published, or
+deleted. The v2 send transaction verifies both objects exist before linking up
+to four attachments, so a partial upload never becomes a message.
+`sticker-manage` validates bounded PNG/WebP/GIF input, preserves a static
+poster for animation, and enforces 25 active stickers/member and 200/server.
+Uploaders and server admins archive active stickers; referenced rows and
+objects remain available to authorized history.
+
+Validate the complete backend locally with:
+
+```sh
+pnpm dlx supabase@latest db reset
+pnpm dlx supabase@latest test db
+deno test --allow-env --config supabase/deno.json supabase/functions/tests
+```
 
 Keep `verify_jwt = true` from `supabase/config.toml`. Set `LIVEKIT_URL`,
 `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` through the hosted Edge Function

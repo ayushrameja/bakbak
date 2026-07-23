@@ -1,17 +1,20 @@
 import type {
   ConversationMessage,
   DirectConversation,
+  Sticker,
   WorkspaceSnapshot,
 } from "./types";
 
 const DATABASE_NAME = "bakbak-cache";
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const ACCOUNT_STORE = "account_state";
 const THREAD_STORE = "threads";
 const PROFILE_MEDIA_STORE = "profile_media";
+const MESSAGE_MEDIA_STORE = "message_media";
 
 export const MAX_CACHED_MESSAGES_PER_THREAD = 200;
 export const MAX_PROFILE_MEDIA_BYTES_PER_ACCOUNT = 256 * 1024 * 1024;
+export const MAX_MESSAGE_MEDIA_BYTES_PER_ACCOUNT = 256 * 1024 * 1024;
 
 export type DataFreshness = "loading" | "cached" | "fresh" | "offline";
 export type CachedThreadKind = "channel" | "direct";
@@ -24,6 +27,7 @@ export interface CachedAccountState {
   userId: string;
   workspace: WorkspaceSnapshot | null;
   directConversations: DirectConversation[];
+  stickers?: Sticker[];
   lastDestination: CachedDestination | null;
   cachedAt: string;
 }
@@ -47,11 +51,23 @@ export interface CachedProfileMedia {
   lastAccessedAt: number;
 }
 
+export interface CachedMessageMedia {
+  key: string;
+  userId: string;
+  bucket: "message-media" | "message-stickers";
+  path: string;
+  blob: Blob;
+  size: number;
+  lastAccessedAt: number;
+}
+
 export interface CacheStats {
   messageBytes: number;
   messageCount: number;
   profileMediaBytes: number;
   profileMediaCount: number;
+  messageMediaBytes: number;
+  messageMediaCount: number;
   totalBytes: number;
 }
 
@@ -65,6 +81,8 @@ const emptyStats = (): CacheStats => ({
   messageCount: 0,
   profileMediaBytes: 0,
   profileMediaCount: 0,
+  messageMediaBytes: 0,
+  messageMediaCount: 0,
   totalBytes: 0,
 });
 
@@ -83,6 +101,14 @@ function threadKey(
 function mediaKey(
   userId: string,
   bucket: CachedProfileMedia["bucket"],
+  path: string,
+): string {
+  return `${userId}:${bucket}:${path}`;
+}
+
+function messageMediaKey(
+  userId: string,
+  bucket: CachedMessageMedia["bucket"],
   path: string,
 ): string {
   return `${userId}:${bucket}:${path}`;
@@ -142,6 +168,14 @@ export function normalizeDirectConversationsForCache(
   }));
 }
 
+export function normalizeStickersForCache(stickers: Sticker[]): Sticker[] {
+  return stickers.map((sticker) => ({
+    ...sticker,
+    posterUrl: null,
+    animationUrl: null,
+  }));
+}
+
 export function normalizeMessagesForCache<T extends ConversationMessage>(
   messages: readonly T[],
 ): T[] {
@@ -149,7 +183,15 @@ export function normalizeMessagesForCache<T extends ConversationMessage>(
     .filter((message) => !message.pending)
     .sort(compareMessages)
     .slice(-MAX_CACHED_MESSAGES_PER_THREAD)
-    .map((message) => ({ ...message }));
+    .map((message) => ({
+      ...message,
+      attachments: message.attachments?.map((attachment) => {
+        const cached = { ...attachment };
+        delete cached.objectUrl;
+        delete cached.posterUrl;
+        return cached;
+      }),
+    }));
 }
 
 export function compareMessages(
@@ -176,6 +218,7 @@ export class BakbakCache {
   constructor(
     private readonly factory: IDBFactory | undefined = globalThis.indexedDB,
     private readonly profileMediaByteLimit = MAX_PROFILE_MEDIA_BYTES_PER_ACCOUNT,
+    private readonly messageMediaByteLimit = MAX_MESSAGE_MEDIA_BYTES_PER_ACCOUNT,
   ) {}
 
   async readAccountState(userId: string): Promise<CachedAccountState | null> {
@@ -206,6 +249,7 @@ export class BakbakCache {
         directConversations: normalizeDirectConversationsForCache(
           input.directConversations,
         ),
+        stickers: normalizeStickersForCache(input.stickers ?? []),
         cachedAt: new Date().toISOString(),
       } satisfies CachedAccountState);
       await waitForTransaction(transaction);
@@ -315,6 +359,51 @@ export class BakbakCache {
     ]);
   }
 
+  async readMessageMedia(
+    userId: string,
+    bucket: CachedMessageMedia["bucket"],
+    path: string,
+  ): Promise<Blob | null> {
+    const value = await this.withDatabase(async (database) => {
+      const request = database
+        .transaction(MESSAGE_MEDIA_STORE)
+        .objectStore(MESSAGE_MEDIA_STORE)
+        .get(messageMediaKey(userId, bucket, path));
+      return (
+        ((await requestResult(request)) as CachedMessageMedia | undefined) ??
+        null
+      );
+    }, null);
+    if (!value) return null;
+    void this.touchMessageMedia(value);
+    return value.blob;
+  }
+
+  async writeMessageMedia(
+    userId: string,
+    bucket: CachedMessageMedia["bucket"],
+    path: string,
+    blob: Blob,
+  ): Promise<void> {
+    await this.withDatabase(async (database) => {
+      const transaction = database.transaction(
+        MESSAGE_MEDIA_STORE,
+        "readwrite",
+      );
+      transaction.objectStore(MESSAGE_MEDIA_STORE).put({
+        key: messageMediaKey(userId, bucket, path),
+        userId,
+        bucket,
+        path,
+        blob,
+        size: blob.size,
+        lastAccessedAt: Date.now(),
+      } satisfies CachedMessageMedia);
+      await waitForTransaction(transaction);
+    }, undefined);
+    await this.pruneMessageMedia(userId);
+  }
+
   async retainProfileMedia(
     userId: string,
     references: readonly ProfileMediaReference[],
@@ -343,7 +432,7 @@ export class BakbakCache {
 
   async stats(userId: string): Promise<CacheStats> {
     return await this.withDatabase(async (database) => {
-      const [threads, media] = await Promise.all([
+      const [threads, media, messageMedia] = await Promise.all([
         requestResult(
           database.transaction(THREAD_STORE).objectStore(THREAD_STORE).getAll(),
         ) as Promise<CachedThread[]>,
@@ -353,9 +442,18 @@ export class BakbakCache {
             .objectStore(PROFILE_MEDIA_STORE)
             .getAll(),
         ) as Promise<CachedProfileMedia[]>,
+        requestResult(
+          database
+            .transaction(MESSAGE_MEDIA_STORE)
+            .objectStore(MESSAGE_MEDIA_STORE)
+            .getAll(),
+        ) as Promise<CachedMessageMedia[]>,
       ]);
       const scopedThreads = threads.filter((item) => item.userId === userId);
       const scopedMedia = media.filter((item) => item.userId === userId);
+      const scopedMessageMedia = messageMedia.filter(
+        (item) => item.userId === userId,
+      );
       const messageBytes = scopedThreads.reduce(
         (total, thread) =>
           total +
@@ -363,6 +461,10 @@ export class BakbakCache {
         0,
       );
       const profileMediaBytes = scopedMedia.reduce(
+        (total, item) => total + item.size,
+        0,
+      );
+      const messageMediaBytes = scopedMessageMedia.reduce(
         (total, item) => total + item.size,
         0,
       );
@@ -374,14 +476,16 @@ export class BakbakCache {
         ),
         profileMediaBytes,
         profileMediaCount: scopedMedia.length,
-        totalBytes: messageBytes + profileMediaBytes,
+        messageMediaBytes,
+        messageMediaCount: scopedMessageMedia.length,
+        totalBytes: messageBytes + profileMediaBytes + messageMediaBytes,
       };
     }, emptyStats());
   }
 
   async clearAccount(userId: string): Promise<void> {
     await this.withDatabase(async (database) => {
-      const [accountStates, threads, media] = await Promise.all([
+      const [accountStates, threads, media, messageMedia] = await Promise.all([
         requestResult(
           database
             .transaction(ACCOUNT_STORE)
@@ -397,14 +501,21 @@ export class BakbakCache {
             .objectStore(PROFILE_MEDIA_STORE)
             .getAll(),
         ) as Promise<CachedProfileMedia[]>,
+        requestResult(
+          database
+            .transaction(MESSAGE_MEDIA_STORE)
+            .objectStore(MESSAGE_MEDIA_STORE)
+            .getAll(),
+        ) as Promise<CachedMessageMedia[]>,
       ]);
       const transaction = database.transaction(
-        [ACCOUNT_STORE, THREAD_STORE, PROFILE_MEDIA_STORE],
+        [ACCOUNT_STORE, THREAD_STORE, PROFILE_MEDIA_STORE, MESSAGE_MEDIA_STORE],
         "readwrite",
       );
       const accountStore = transaction.objectStore(ACCOUNT_STORE);
       const threadStore = transaction.objectStore(THREAD_STORE);
       const mediaStore = transaction.objectStore(PROFILE_MEDIA_STORE);
+      const messageMediaStore = transaction.objectStore(MESSAGE_MEDIA_STORE);
       accountStates
         .filter((item) => item.userId === userId)
         .forEach((item) => accountStore.delete(item.key));
@@ -414,6 +525,9 @@ export class BakbakCache {
       media
         .filter((item) => item.userId === userId)
         .forEach((item) => mediaStore.delete(item.key));
+      messageMedia
+        .filter((item) => item.userId === userId)
+        .forEach((item) => messageMediaStore.delete(item.key));
       await waitForTransaction(transaction);
     }, undefined);
   }
@@ -445,6 +559,28 @@ export class BakbakCache {
     }, undefined);
   }
 
+  private async pruneMessageMedia(userId: string): Promise<void> {
+    await this.withDatabase(async (database) => {
+      const all = (await requestResult(
+        database
+          .transaction(MESSAGE_MEDIA_STORE)
+          .objectStore(MESSAGE_MEDIA_STORE)
+          .getAll(),
+      )) as CachedMessageMedia[];
+      const scoped = all
+        .filter((item) => item.userId === userId)
+        .sort((left, right) => left.lastAccessedAt - right.lastAccessedAt);
+      let total = scoped.reduce((sum, item) => sum + item.size, 0);
+      const expired: string[] = [];
+      for (const item of scoped) {
+        if (total <= this.messageMediaByteLimit) break;
+        expired.push(item.key);
+        total -= item.size;
+      }
+      await this.deleteKeys(MESSAGE_MEDIA_STORE, expired);
+    }, undefined);
+  }
+
   private async touchProfileMedia(value: CachedProfileMedia): Promise<void> {
     await this.withDatabase(async (database) => {
       const transaction = database.transaction(
@@ -455,6 +591,20 @@ export class BakbakCache {
         ...value,
         lastAccessedAt: Date.now(),
       } satisfies CachedProfileMedia);
+      await waitForTransaction(transaction);
+    }, undefined);
+  }
+
+  private async touchMessageMedia(value: CachedMessageMedia): Promise<void> {
+    await this.withDatabase(async (database) => {
+      const transaction = database.transaction(
+        MESSAGE_MEDIA_STORE,
+        "readwrite",
+      );
+      transaction.objectStore(MESSAGE_MEDIA_STORE).put({
+        ...value,
+        lastAccessedAt: Date.now(),
+      } satisfies CachedMessageMedia);
       await waitForTransaction(transaction);
     }, undefined);
   }
@@ -500,6 +650,9 @@ export class BakbakCache {
         }
         if (!database.objectStoreNames.contains(PROFILE_MEDIA_STORE)) {
           database.createObjectStore(PROFILE_MEDIA_STORE, { keyPath: "key" });
+        }
+        if (!database.objectStoreNames.contains(MESSAGE_MEDIA_STORE)) {
+          database.createObjectStore(MESSAGE_MEDIA_STORE, { keyPath: "key" });
         }
       };
       request.onsuccess = () => resolve(request.result);

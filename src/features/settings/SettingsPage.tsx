@@ -326,6 +326,8 @@ export function SettingsPage(props: SettingsPageProps) {
                     messageCount: 0,
                     profileMediaBytes: 0,
                     profileMediaCount: 0,
+                    messageMediaBytes: 0,
+                    messageMediaCount: 0,
                     totalBytes: 0,
                   }
                 }
@@ -465,6 +467,11 @@ function DataStorageSettings({
           <small>{stats.profileMediaCount} cached files</small>
         </section>
         <section>
+          <span>Message posters</span>
+          <strong>{formatBytes(stats.messageMediaBytes)}</strong>
+          <small>{stats.messageMediaCount} cached previews</small>
+        </section>
+        <section>
           <span>Current state</span>
           <strong>{freshnessLabel}</strong>
           <small>Cloud access rules always remain authoritative</small>
@@ -473,8 +480,10 @@ function DataStorageSettings({
       <div className="storage-policy">
         <Database size={18} aria-hidden="true" />
         <p>
-          Up to 200 messages per conversation and 256 MiB of least-recently-used
-          profile media are retained for this Bakbak account after logout.
+          Up to 200 messages per conversation, 256 MiB of profile media, and 256
+          MiB of least-recently-used authenticated message and sticker posters
+          are retained. Full videos, animated originals, and GIPHY assets never
+          enter the offline cache.
         </p>
       </div>
       {error ? (
