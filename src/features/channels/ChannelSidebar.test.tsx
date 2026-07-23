@@ -94,6 +94,14 @@ describe("ChannelSidebar room shelf", () => {
       screen.getByLabelText(`Beta release, version ${APP_VERSION}`),
     ).toBeVisible();
     expect(screen.getByText(`v${APP_VERSION}`)).toBeVisible();
+    expect(screen.getByText("β")).toBeVisible();
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.classList.contains("server-brand__release") === true &&
+          element.textContent?.trim() === `β · v${APP_VERSION}`,
+      ),
+    ).toBeVisible();
     expect(container.querySelector(".server-brand__mark")).toBeNull();
   });
 

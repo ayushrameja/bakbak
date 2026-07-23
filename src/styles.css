@@ -3220,7 +3220,7 @@ button:active:not(:disabled) {
   isolation: isolate;
   min-height: 80px;
   justify-content: flex-start;
-  gap: 12px;
+  gap: 9px;
   overflow: hidden;
   padding: 12px 14px;
   border-bottom-color: var(--brand-line);
@@ -3270,21 +3270,25 @@ button:active:not(:disabled) {
   background: var(--brand-panel-raised);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
   line-height: 1;
   white-space: nowrap;
 }
 
-.server-brand__release strong {
+.server-brand__release-symbol {
   color: var(--brand-ink);
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.09em;
 }
 
-.server-brand__release > span:last-child {
-  padding-left: 6px;
-  border-left: 1px solid var(--brand-line);
+.server-brand__release-dot {
+  padding: 0 5px;
+  color: var(--brand-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.server-brand__release-version {
   color: var(--brand-muted);
   font-size: 11px;
   font-weight: 600;
@@ -3303,7 +3307,7 @@ button:active:not(:disabled) {
   color: var(--brand-ink);
   font-size: 18px;
   font-weight: 700;
-  letter-spacing: -0.045em;
+  letter-spacing: 0;
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;

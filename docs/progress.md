@@ -4039,3 +4039,46 @@ Gang` at the true window center, and retained panel/Windows controls at the
 - **Next:** Confirm the Beta/version chip against real native light and dark
   materials, then let the synchronized release tooling supply the next version
   automatically.
+
+## 2026-07-23 — Refine the server header release chip
+
+- **Completed:** Replaced the shouty `BETA` / `v0.16.0` header badge with a
+  quieter Bakbak wordmark plus compact `β · v0.16.0` release chip. Kept the
+  version sourced from `package.json`, preserved the no-logo server header, and
+  retained the theme-responsive solid surface, noise, and orbit treatment.
+- **Decisions:** Made Bakbak the fixed brand text in the identity header rather
+  than repeating the mock server name, because this header is now product
+  branding instead of multi-server navigation. Used the visible beta symbol for
+  polish while keeping the accessible label as `Beta release, version 0.16.0`.
+  Added real spaces around the dot so copied/inspected text matches the visual
+  `β · vX.Y.Z` contract.
+- **Validation:**
+  - Focused `ChannelSidebar` Vitest run — passed 11/11 tests, including the
+    Bakbak wordmark, `β · v0.16.0` chip text, accessible beta/version label,
+    retired tagline, and absent header-logo contracts.
+  - `node --test scripts/monochrome-appearance.test.mjs` — passed 4/4 branding,
+    semantic-color, Roundo, and appearance contracts.
+  - Mock-browser QA at 1280×720 — passed in Dark and Light. The header measured
+    232×80 px, the chip measured 76.41×30 px, `β · v0.16.0` rendered with
+    `Beta release, version 0.16.0`, no logo appeared, and there was no page or
+    sidebar horizontal overflow. Dark resolved to `rgb(16, 17, 20)` with 0.14
+    noise opacity; Light was selected through Settings and resolved to
+    `rgb(242, 240, 233)` with 0.10 noise opacity. Appearance was restored to
+    Auto after testing.
+  - Initial `pnpm check` — failed at Prettier for
+    `src/features/channels/ChannelSidebar.tsx`; formatted the touched files and
+    reran.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects, 63
+    Vitest files with 328 tests, 24/24 Node contract tests, synchronized
+    version `0.16.0`, production renderer build, and bundle secret scan. Vite
+    retained the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+- **Documentation updated:** Updated the current architecture, active
+  desktop-v1 plan, plan 0020 visual contract, and this canonical progress log.
+- **Known limitations:** The compact header still needs one installed
+  macOS/Windows native-material observation. The local macOS bundle is not
+  notarized.
+- **Next:** Confirm the refined `β · vX.Y.Z` chip against real native light and
+  dark materials during the next installed-app pass.

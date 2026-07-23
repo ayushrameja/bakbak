@@ -233,16 +233,24 @@ export function ChannelSidebar({
 
   return (
     <aside className="channel-sidebar" id="context-panel">
-      <header className="server-switcher server-brand">
+      <header
+        className="server-switcher server-brand"
+        aria-label={`${server.name} workspace brand`}
+      >
+        <div className="server-brand__wordmark">
+          <strong>Bakbak</strong>
+        </div>
         <div
           className="server-brand__release"
           aria-label={`Beta release, version ${APP_VERSION}`}
         >
-          <strong>BETA</strong>
-          <span>v{APP_VERSION}</span>
-        </div>
-        <div className="server-brand__wordmark">
-          <strong>{server.name}</strong>
+          <span className="server-brand__release-symbol" aria-hidden="true">
+            β
+          </span>
+          <span className="server-brand__release-dot" aria-hidden="true">
+            {" · "}
+          </span>
+          <span className="server-brand__release-version">v{APP_VERSION}</span>
         </div>
       </header>
       <nav className="channel-nav" aria-label="Channels">

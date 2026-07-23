@@ -54,8 +54,8 @@ starts with context instead of archaeological guessing.
   weights. A separate multi-server rail remains deferred until multi-server
   navigation. Plan 0020 adds one bounded Bakbak motion identity exception: its
   generated native artwork, animated identity-screen mark, theme-responsive
-  server-header texture, package-version-backed Beta chip, and single lime
-  particle accent remain isolated while ordinary chrome stays neutral.
+  server-header texture, package-version-backed `β · vX.Y.Z` chip, and single
+  lime particle accent remain isolated while ordinary chrome stays neutral.
 - Commit `.env.example` only. Use ignored `.env` files locally and
   platform-managed secrets for backend functions.
 

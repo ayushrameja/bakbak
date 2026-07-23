@@ -45,8 +45,8 @@ uses a minimal open ring facing three message particles: a generated static
 raster drives the favicon and native icon bundle, while a code-native SVG
 animates the jaws and particles on authentication, invite, loading, and empty
 Personal surfaces. The server header intentionally omits that logo: it pairs
-the current server name with a compact `BETA` chip whose `vX.Y.Z` value comes
-from the renderer's package metadata. Its solid surface, fine monochrome noise,
+a fixed Bakbak wordmark with a compact `β · vX.Y.Z` chip whose value comes from
+the renderer's package metadata. Its solid surface, fine monochrome noise,
 border, and orbit lines respond to the active light/dark scheme. Only the
 nearest particle on animated-mark surfaces uses a bounded lime accent; the
 identity has no gradient, glow, or character face. Scoped
@@ -501,8 +501,8 @@ The renderer uses a titlebar, three-panel desktop layout, and modal layer:
    selected glass scheme uses grayscale translucency plus scoped
    positive, danger, selected, warning, and icon colors. Renderer identity
    screens use the animated Bakbak motion mark. The server header contains the
-   theme-responsive noise/orbit texture, current server name, and a compact
-   package-version-backed `BETA` chip without repeating the logo. A
+   theme-responsive noise/orbit texture, a Bakbak wordmark, and a compact
+   package-version-backed `β · vX.Y.Z` chip without repeating the logo. A
    one-shot renderer-launch assembly
    completes within 500 ms; panel/space motion and message stagger collapse to
    the final state under reduced motion. Every scroll surface uses a transparent
