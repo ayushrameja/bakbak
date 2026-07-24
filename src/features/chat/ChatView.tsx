@@ -14,7 +14,9 @@ import {
   X,
 } from "lucide-react";
 import {
+  useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -31,6 +33,7 @@ import {
   type LoadProfileMedia,
   type OpenProfile,
 } from "../../components/ProfileTrigger";
+import type { OpenUserContextMenu } from "../../components/UserContextMenu";
 import type {
   AppUser,
   Channel,
@@ -68,6 +71,7 @@ import { StickerPicker } from "./StickerPicker";
 
 const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
 const ignoreProfileOpen: OpenProfile = () => undefined;
+const BOTTOM_SCROLL_THRESHOLD = 96;
 
 interface ChatViewProps {
   channel: Channel;
@@ -79,9 +83,10 @@ interface ChatViewProps {
   onDraftChange: (draft: MessageDraft) => void;
   onSend: (draft: MessageDraft) => Promise<void>;
   readOnlyReason?: string | null;
-  onLoadOlder?: () => Promise<void>;
+  onLoadOlder?: () => Promise<number>;
   loadProfileMedia?: LoadProfileMedia;
   onOpenProfile?: OpenProfile;
+  onOpenUserContextMenu?: OpenUserContextMenu | undefined;
   openProfileId?: string | null;
   stickers?: Sticker[];
   currentUserIsAdmin?: boolean;
@@ -104,6 +109,7 @@ export function ChatView({
   onLoadOlder,
   loadProfileMedia = emptyProfileMediaLoader,
   onOpenProfile = ignoreProfileOpen,
+  onOpenUserContextMenu,
   openProfileId = null,
   stickers = [],
   currentUserIsAdmin = false,
@@ -136,6 +142,7 @@ export function ChatView({
       {...(onLoadOlder ? { onLoadOlder } : {})}
       loadProfileMedia={loadProfileMedia}
       onOpenProfile={onOpenProfile}
+      onOpenUserContextMenu={onOpenUserContextMenu}
       openProfileId={openProfileId}
       stickers={stickers}
       currentUserIsAdmin={currentUserIsAdmin}
@@ -158,9 +165,10 @@ interface ConversationViewProps {
   onSend: (draft: MessageDraft) => Promise<void>;
   automationOnly?: boolean;
   readOnlyReason?: string | null;
-  onLoadOlder?: () => Promise<void>;
+  onLoadOlder?: () => Promise<number>;
   loadProfileMedia?: LoadProfileMedia;
   onOpenProfile?: OpenProfile;
+  onOpenUserContextMenu?: OpenUserContextMenu | undefined;
   openProfileId?: string | null;
   stickers?: Sticker[];
   currentUserIsAdmin?: boolean;
@@ -184,6 +192,7 @@ export function ConversationView({
   onLoadOlder,
   loadProfileMedia = emptyProfileMediaLoader,
   onOpenProfile = ignoreProfileOpen,
+  onOpenUserContextMenu,
   openProfileId = null,
   stickers = [],
   currentUserIsAdmin = false,
@@ -215,6 +224,19 @@ export function ConversationView({
   } | null>(null);
   const [deletingMessage, setDeletingMessage] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [newMessageCount, setNewMessageCount] = useState(0);
+  const nearBottomRef = useRef(true);
+  const previousThreadRef = useRef<{
+    targetId: string;
+    messageIds: string[];
+  }>({ targetId: target.id, messageIds: [] });
+  const historyAnchorRef = useRef<{
+    targetId: string;
+    firstMessageId: string;
+    scrollHeight: number;
+    scrollTop: number;
+  } | null>(null);
   const membersById = useMemo(
     () => new Map(members.map((member) => [member.id, member])),
     [members],
@@ -303,17 +325,97 @@ export function ConversationView({
     };
   }, [draftGiphyId]);
 
-  useEffect(() => {
+  const visibleMessageIds = useMemo(
+    () => visibleMessages.map((message) => message.id),
+    [visibleMessages],
+  );
+  const visibleMessageKey = visibleMessageIds.join("|");
+
+  const isNearBottom = useCallback((list: HTMLDivElement) => {
+    return (
+      list.scrollHeight - list.clientHeight - list.scrollTop <=
+      BOTTOM_SCROLL_THRESHOLD
+    );
+  }, []);
+
+  const jumpToBottom = useCallback(() => {
     const list = listRef.current;
     if (!list) return;
-    if (typeof list.scrollTo === "function") {
-      list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
-    } else {
+    list.scrollTop = list.scrollHeight;
+    nearBottomRef.current = true;
+    setNewMessageCount(0);
+  }, []);
+
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const previous = previousThreadRef.current;
+    const targetChanged = previous.targetId !== target.id;
+    const previousLastId = previous.messageIds.at(-1);
+    const previousLastIndex = previousLastId
+      ? visibleMessageIds.indexOf(previousLastId)
+      : -1;
+    const appendedCount =
+      previousLastIndex >= 0
+        ? visibleMessageIds.length - previousLastIndex - 1
+        : 0;
+    const anchor = historyAnchorRef.current;
+
+    if (targetChanged || previous.messageIds.length === 0) {
       list.scrollTop = list.scrollHeight;
+      nearBottomRef.current = true;
+      historyAnchorRef.current = null;
+      setNewMessageCount(0);
+    } else if (
+      anchor?.targetId === target.id &&
+      visibleMessageIds.includes(anchor.firstMessageId) &&
+      visibleMessageIds[0] !== anchor.firstMessageId
+    ) {
+      list.scrollTop =
+        anchor.scrollTop + (list.scrollHeight - anchor.scrollHeight);
+      nearBottomRef.current = isNearBottom(list);
+      historyAnchorRef.current = null;
+      if (appendedCount > 0 && !nearBottomRef.current) {
+        setNewMessageCount((current) => current + appendedCount);
+      }
+    } else if (appendedCount > 0) {
+      if (nearBottomRef.current) {
+        list.scrollTop = list.scrollHeight;
+        setNewMessageCount(0);
+      } else {
+        setNewMessageCount((current) => current + appendedCount);
+      }
     }
-  }, [messages, target.id]);
+
+    previousThreadRef.current = {
+      targetId: target.id,
+      messageIds: visibleMessageIds,
+    };
+  }, [isNearBottom, target.id, visibleMessageIds, visibleMessageKey]);
 
   useEffect(() => setActiveSuggestion(0), [mentionQuery?.query]);
+
+  async function handleLoadOlder() {
+    const list = listRef.current;
+    const firstMessageId = visibleMessageIds[0];
+    if (!list || !firstMessageId || !onLoadOlder || loadingOlder) return;
+    historyAnchorRef.current = {
+      targetId: target.id,
+      firstMessageId,
+      scrollHeight: list.scrollHeight,
+      scrollTop: list.scrollTop,
+    };
+    setLoadingOlder(true);
+    try {
+      const loadedCount = await onLoadOlder();
+      if (loadedCount === 0) historyAnchorRef.current = null;
+    } catch (caught) {
+      historyAnchorRef.current = null;
+      throw caught;
+    } finally {
+      setLoadingOlder(false);
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -506,321 +608,363 @@ export function ConversationView({
 
   return (
     <section className="chat-view">
-      <div className="message-list" ref={listRef}>
+      <div className="message-list-shell">
         <div
-          className={`conversation-flow ${visibleMessages.length === 0 ? "conversation-flow--empty" : "conversation-flow--filled"}`}
+          className="message-list"
+          ref={listRef}
+          onScroll={(event) => {
+            const nearBottom = isNearBottom(event.currentTarget);
+            nearBottomRef.current = nearBottom;
+            if (nearBottom) setNewMessageCount(0);
+          }}
         >
-          <div className="channel-intro">
-            <div className="channel-intro__root">
-              <span className="channel-intro__icon">
-                {target.kind === "channel" &&
-                target.purpose !== "system-releases" &&
-                target.purpose !== "system-general"
-                  ? "#"
-                  : target.kind === "direct"
-                    ? "@"
-                    : "•"}
-              </span>
-              <span className="channel-intro__state">
-                <i aria-hidden="true" />
-                {visibleMessages.length === 0
-                  ? "Quiet room"
-                  : "Conversation flowing"}
+          <div
+            className={`conversation-flow ${visibleMessages.length === 0 ? "conversation-flow--empty" : "conversation-flow--filled"}`}
+          >
+            <div className="channel-intro">
+              <div className="channel-intro__root">
+                <span className="channel-intro__icon">
+                  {target.kind === "channel" &&
+                  target.purpose !== "system-releases" &&
+                  target.purpose !== "system-general"
+                    ? "#"
+                    : target.kind === "direct"
+                      ? "@"
+                      : "•"}
+                </span>
+                <span className="channel-intro__state">
+                  <i aria-hidden="true" />
+                  {visibleMessages.length === 0
+                    ? "Quiet room"
+                    : "Conversation flowing"}
+                </span>
+              </div>
+              <h2>
+                {target.kind === "channel"
+                  ? `Welcome to #${target.name}`
+                  : `Your conversation with ${target.member.displayName}`}
+              </h2>
+              <p>
+                {target.kind === "channel"
+                  ? target.topic || "This is where the conversation begins."
+                  : "A private conversation between the two of you."}
+              </p>
+              <span className="channel-intro__meta">
+                <Sparkles size={15} />{" "}
+                {target.kind === "channel"
+                  ? automationOnly
+                    ? "Automation-only · members can view"
+                    : "Private room · friends only"
+                  : "Direct message · participants only"}
               </span>
             </div>
-            <h2>
-              {target.kind === "channel"
-                ? `Welcome to #${target.name}`
-                : `Your conversation with ${target.member.displayName}`}
-            </h2>
-            <p>
-              {target.kind === "channel"
-                ? target.topic || "This is where the conversation begins."
-                : "A private conversation between the two of you."}
-            </p>
-            <span className="channel-intro__meta">
-              <Sparkles size={15} />{" "}
-              {target.kind === "channel"
-                ? automationOnly
-                  ? "Automation-only · members can view"
-                  : "Private room · friends only"
-                : "Direct message · participants only"}
-            </span>
-          </div>
 
-          <div className="conversation-thread">
-            {onLoadOlder && visibleMessages.length >= 50 ? (
-              <button
-                className="secondary-button message-list__older"
-                type="button"
-                onClick={() => void onLoadOlder()}
-              >
-                Load older messages
-              </button>
-            ) : null}
-
-            {visibleMessages.length === 0 ? (
-              <div
-                className="empty-conversation"
-                role="status"
-                aria-label="This conversation has no messages yet"
-              >
-                <span className="empty-conversation__spark" aria-hidden="true">
-                  <Sparkles size={17} />
-                </span>
-                <div>
-                  <span className="empty-conversation__eyebrow">
-                    {target.kind === "channel"
-                      ? `#${target.name} is listening`
-                      : `${target.member.displayName} is one message away`}
-                  </span>
-                  <strong>The first branch is yours.</strong>
-                  <p>
-                    Drop a thought, a plan, or a gloriously unnecessary opinion.
-                  </p>
-                </div>
-              </div>
-            ) : null}
-
-            {visibleMessages.map((message, index) => {
-              if ((message.messageKind ?? "member") === "system") {
-                const systemEvent = message.systemEvent ?? null;
-                return (
-                  <SystemMessage
-                    key={message.id}
-                    message={message}
-                    event={systemEvent}
-                    member={
-                      systemEvent?.type === "member_joined"
-                        ? (membersById.get(systemEvent.memberId) ?? null)
-                        : null
-                    }
-                  />
-                );
-              }
-              const author =
-                (message.authorId ? membersById.get(message.authorId) : null) ??
-                (message.authorId === currentUser.id ? currentUser : null);
-              const authorMember =
-                (message.authorId ? membersById.get(message.authorId) : null) ??
-                (message.authorId === currentUser.id
-                  ? { ...currentUser, role: "member" }
-                  : null);
-              const previous = visibleMessages[index - 1];
-              const grouped =
-                previous?.authorId === message.authorId &&
-                Date.parse(message.createdAt) - Date.parse(previous.createdAt) <
-                  5 * 60 * 1000;
-              return (
-                <article
-                  id={`message-${message.id}`}
-                  className={`message ${grouped ? "message--grouped" : ""} ${message.pending ? "message--pending" : ""} ${message.replyNotifiesAuthor && message.reply?.authorId === currentUser.id ? "message--notifies-current-user" : ""}`}
-                  key={message.id}
-                  style={
-                    {
-                      "--startup-order": Math.min(index, 7),
-                    } as CSSProperties
-                  }
+            <div className="conversation-thread">
+              {onLoadOlder && visibleMessages.length >= 50 ? (
+                <button
+                  className="secondary-button message-list__older"
+                  type="button"
+                  disabled={loadingOlder}
+                  onClick={() => void handleLoadOlder()}
                 >
-                  {!grouped ? (
-                    authorMember ? (
-                      <ProfileTrigger
-                        className="message__profile-avatar"
-                        member={authorMember}
-                        loadMedia={loadProfileMedia}
-                        onOpenProfile={onOpenProfile}
-                        expanded={openProfileId === authorMember.id}
-                        aria-label={`View ${authorMember.displayName}'s profile`}
-                      >
-                        {({ animationUrl, animated }) => (
-                          <Avatar
-                            user={authorMember}
-                            size="medium"
-                            animationUrl={animationUrl}
-                            animated={animated}
-                          />
-                        )}
-                      </ProfileTrigger>
-                    ) : (
-                      <Avatar user={fallbackUser} size="medium" />
-                    )
-                  ) : (
-                    <time>{formatTime(message.createdAt)}</time>
-                  )}
-                  <div className="message__body">
-                    {!grouped ? (
-                      <header>
-                        {authorMember ? (
-                          <ProfileTrigger
-                            className="message__profile-name"
-                            member={authorMember}
-                            loadMedia={loadProfileMedia}
-                            onOpenProfile={onOpenProfile}
-                            expanded={openProfileId === authorMember.id}
-                          >
-                            {() => <strong>{authorMember.displayName}</strong>}
-                          </ProfileTrigger>
-                        ) : (
-                          <strong>
-                            {author?.displayName ?? "Former friend"}
-                          </strong>
-                        )}
-                        <time>{formatMessageDate(message.createdAt)}</time>
-                        {message.pending ? <span>sending</span> : null}
-                      </header>
-                    ) : null}
-                    <div
-                      className="message__actions"
-                      aria-label="Message actions"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => beginReply(message)}
-                        aria-label="Reply to message"
-                      >
-                        <MessageSquareReply size={15} />
-                      </button>
-                      {onReact && stickers.length ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setPicker({ reactionMessageId: message.id })
-                          }
-                          aria-label="React with a sticker"
-                        >
-                          <SmilePlus size={15} />
-                        </button>
-                      ) : null}
-                      {onDeleteMessage &&
-                      message.authorId === currentUser.id ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDeleteError(null);
-                            setDeleteRequest({
-                              messageId: message.id,
-                              pending: Boolean(message.pending),
-                              hasMedia: Boolean(
-                                message.attachments?.length ||
-                                message.presentation,
-                              ),
-                            });
-                          }}
-                          aria-label={
-                            message.pending ? "Cancel upload" : "Delete message"
-                          }
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      ) : null}
-                    </div>
-                    {message.reply ? (
-                      <button
-                        type="button"
-                        className="message-reply-preview"
-                        onClick={() =>
-                          document
-                            .getElementById(`message-${message.reply?.id}`)
-                            ?.scrollIntoView({ block: "center" })
-                        }
-                      >
-                        <MessageSquareReply size={13} />
-                        <strong>
-                          {message.reply.deleted
-                            ? "Original message deleted"
-                            : (membersById.get(message.reply.authorId ?? "")
-                                ?.displayName ?? "Former friend")}
-                        </strong>
-                        {!message.reply.deleted ? (
-                          <span>{message.reply.body}</span>
-                        ) : null}
-                      </button>
-                    ) : null}
+                  {loadingOlder
+                    ? "Loading older messages…"
+                    : "Load older messages"}
+                </button>
+              ) : null}
+
+              {visibleMessages.length === 0 ? (
+                <div
+                  className="empty-conversation"
+                  role="status"
+                  aria-label="This conversation has no messages yet"
+                >
+                  <span
+                    className="empty-conversation__spark"
+                    aria-hidden="true"
+                  >
+                    <Sparkles size={17} />
+                  </span>
+                  <div>
+                    <span className="empty-conversation__eyebrow">
+                      {target.kind === "channel"
+                        ? `#${target.name} is listening`
+                        : `${target.member.displayName} is one message away`}
+                    </span>
+                    <strong>The first branch is yours.</strong>
                     <p>
-                      <MessageContent
-                        message={message}
-                        membersById={membersById}
-                        currentUserId={currentUser.id}
-                        loadProfileMedia={loadProfileMedia}
-                        onOpenProfile={onOpenProfile}
-                        openProfileId={openProfileId}
-                      />
+                      Drop a thought, a plan, or a gloriously unnecessary
+                      opinion.
                     </p>
-                    <RichMessageMedia
+                  </div>
+                </div>
+              ) : null}
+
+              {visibleMessages.map((message, index) => {
+                if ((message.messageKind ?? "member") === "system") {
+                  const systemEvent = message.systemEvent ?? null;
+                  return (
+                    <SystemMessage
+                      key={message.id}
                       message={message}
-                      stickersById={stickersById}
-                      giphy={
-                        message.presentation?.kind === "giphy"
-                          ? (giphyAssets.get(message.presentation.assetId) ??
-                            null)
+                      event={systemEvent}
+                      member={
+                        systemEvent?.type === "member_joined"
+                          ? (membersById.get(systemEvent.memberId) ?? null)
                           : null
                       }
                     />
-                    {message.linkPreview ? (
-                      <LinkPreviewCard preview={message.linkPreview} />
-                    ) : null}
-                    {message.pending && message.attachments?.length ? (
-                      <progress
-                        className="message-upload-progress"
-                        value={
-                          message.attachments.reduce(
-                            (total, attachment) =>
-                              total + (attachment.uploadProgress ?? 0),
-                            0,
-                          ) / message.attachments.length
-                        }
-                        max={1}
-                        aria-label="Upload progress"
-                      />
-                    ) : null}
-                    {message.reactions?.length ? (
-                      <div
-                        className="message-reactions"
-                        aria-label="Sticker reactions"
-                      >
-                        {message.reactions.map((reaction) => {
-                          const sticker = stickersById.get(reaction.stickerId);
-                          if (!sticker) return null;
-                          const reacted = reaction.userIds.includes(
-                            currentUser.id,
-                          );
-                          return (
-                            <button
-                              type="button"
-                              className={reacted ? "is-active" : ""}
-                              key={reaction.stickerId}
-                              onClick={() =>
-                                onReact?.(message.id, reaction.stickerId)
-                              }
-                              title={reaction.userIds
-                                .map(
-                                  (id) =>
-                                    membersById.get(id)?.displayName ??
-                                    (id === currentUser.id
-                                      ? currentUser.displayName
-                                      : "Former friend"),
-                                )
-                                .join(", ")}
+                  );
+                }
+                const author =
+                  (message.authorId
+                    ? membersById.get(message.authorId)
+                    : null) ??
+                  (message.authorId === currentUser.id ? currentUser : null);
+                const authorMember =
+                  (message.authorId
+                    ? membersById.get(message.authorId)
+                    : null) ??
+                  (message.authorId === currentUser.id
+                    ? { ...currentUser, role: "member" }
+                    : null);
+                const previous = visibleMessages[index - 1];
+                const grouped =
+                  previous?.authorId === message.authorId &&
+                  Date.parse(message.createdAt) -
+                    Date.parse(previous.createdAt) <
+                    5 * 60 * 1000;
+                return (
+                  <article
+                    id={`message-${message.id}`}
+                    className={`message ${grouped ? "message--grouped" : ""} ${message.pending ? "message--pending" : ""} ${message.replyNotifiesAuthor && message.reply?.authorId === currentUser.id ? "message--notifies-current-user" : ""}`}
+                    key={message.id}
+                    style={
+                      {
+                        "--startup-order": Math.min(index, 7),
+                      } as CSSProperties
+                    }
+                  >
+                    {!grouped ? (
+                      authorMember ? (
+                        <ProfileTrigger
+                          className="message__profile-avatar"
+                          member={authorMember}
+                          loadMedia={loadProfileMedia}
+                          onOpenProfile={onOpenProfile}
+                          onOpenContextMenu={onOpenUserContextMenu}
+                          expanded={openProfileId === authorMember.id}
+                          aria-label={`View ${authorMember.displayName}'s profile`}
+                        >
+                          {({ animationUrl, animated }) => (
+                            <Avatar
+                              user={authorMember}
+                              size="medium"
+                              animationUrl={animationUrl}
+                              animated={animated}
+                            />
+                          )}
+                        </ProfileTrigger>
+                      ) : (
+                        <Avatar user={fallbackUser} size="medium" />
+                      )
+                    ) : (
+                      <time>{formatTime(message.createdAt)}</time>
+                    )}
+                    <div className="message__body">
+                      {!grouped ? (
+                        <header>
+                          {authorMember ? (
+                            <ProfileTrigger
+                              className="message__profile-name"
+                              member={authorMember}
+                              loadMedia={loadProfileMedia}
+                              onOpenProfile={onOpenProfile}
+                              onOpenContextMenu={onOpenUserContextMenu}
+                              expanded={openProfileId === authorMember.id}
                             >
-                              <img
-                                src={sticker.posterUrl ?? undefined}
-                                alt={sticker.label}
-                              />
-                              <span>{reaction.count}</span>
-                            </button>
-                          );
-                        })}
+                              {() => (
+                                <strong>{authorMember.displayName}</strong>
+                              )}
+                            </ProfileTrigger>
+                          ) : (
+                            <strong>
+                              {author?.displayName ?? "Former friend"}
+                            </strong>
+                          )}
+                          <time>{formatMessageDate(message.createdAt)}</time>
+                          {message.pending ? <span>sending</span> : null}
+                        </header>
+                      ) : null}
+                      <div
+                        className="message__actions"
+                        aria-label="Message actions"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => beginReply(message)}
+                          aria-label="Reply to message"
+                        >
+                          <MessageSquareReply size={15} />
+                        </button>
+                        {onReact && stickers.length ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPicker({ reactionMessageId: message.id })
+                            }
+                            aria-label="React with a sticker"
+                          >
+                            <SmilePlus size={15} />
+                          </button>
+                        ) : null}
+                        {onDeleteMessage &&
+                        message.authorId === currentUser.id ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeleteError(null);
+                              setDeleteRequest({
+                                messageId: message.id,
+                                pending: Boolean(message.pending),
+                                hasMedia: Boolean(
+                                  message.attachments?.length ||
+                                  message.presentation,
+                                ),
+                              });
+                            }}
+                            aria-label={
+                              message.pending
+                                ? "Cancel upload"
+                                : "Delete message"
+                            }
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        ) : null}
                       </div>
-                    ) : null}
-                  </div>
-                </article>
-              );
-            })}
-            {visibleMessages.length > 0 ? (
-              <span className="conversation-thread__end" aria-hidden="true" />
-            ) : null}
+                      {message.reply ? (
+                        <button
+                          type="button"
+                          className="message-reply-preview"
+                          onClick={() =>
+                            document
+                              .getElementById(`message-${message.reply?.id}`)
+                              ?.scrollIntoView({ block: "center" })
+                          }
+                        >
+                          <MessageSquareReply size={13} />
+                          <strong>
+                            {message.reply.deleted
+                              ? "Original message deleted"
+                              : (membersById.get(message.reply.authorId ?? "")
+                                  ?.displayName ?? "Former friend")}
+                          </strong>
+                          {!message.reply.deleted ? (
+                            <span>{message.reply.body}</span>
+                          ) : null}
+                        </button>
+                      ) : null}
+                      <p>
+                        <MessageContent
+                          message={message}
+                          membersById={membersById}
+                          currentUserId={currentUser.id}
+                          loadProfileMedia={loadProfileMedia}
+                          onOpenProfile={onOpenProfile}
+                          onOpenUserContextMenu={onOpenUserContextMenu}
+                          openProfileId={openProfileId}
+                        />
+                      </p>
+                      <RichMessageMedia
+                        message={message}
+                        stickersById={stickersById}
+                        giphy={
+                          message.presentation?.kind === "giphy"
+                            ? (giphyAssets.get(message.presentation.assetId) ??
+                              null)
+                            : null
+                        }
+                      />
+                      {message.linkPreview ? (
+                        <LinkPreviewCard preview={message.linkPreview} />
+                      ) : null}
+                      {message.pending && message.attachments?.length ? (
+                        <progress
+                          className="message-upload-progress"
+                          value={
+                            message.attachments.reduce(
+                              (total, attachment) =>
+                                total + (attachment.uploadProgress ?? 0),
+                              0,
+                            ) / message.attachments.length
+                          }
+                          max={1}
+                          aria-label="Upload progress"
+                        />
+                      ) : null}
+                      {message.reactions?.length ? (
+                        <div
+                          className="message-reactions"
+                          aria-label="Sticker reactions"
+                        >
+                          {message.reactions.map((reaction) => {
+                            const sticker = stickersById.get(
+                              reaction.stickerId,
+                            );
+                            if (!sticker) return null;
+                            const reacted = reaction.userIds.includes(
+                              currentUser.id,
+                            );
+                            return (
+                              <button
+                                type="button"
+                                className={reacted ? "is-active" : ""}
+                                key={reaction.stickerId}
+                                onClick={() =>
+                                  onReact?.(message.id, reaction.stickerId)
+                                }
+                                title={reaction.userIds
+                                  .map(
+                                    (id) =>
+                                      membersById.get(id)?.displayName ??
+                                      (id === currentUser.id
+                                        ? currentUser.displayName
+                                        : "Former friend"),
+                                  )
+                                  .join(", ")}
+                              >
+                                <img
+                                  src={sticker.posterUrl ?? undefined}
+                                  alt={sticker.label}
+                                />
+                                <span>{reaction.count}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
+                  </article>
+                );
+              })}
+              {visibleMessages.length > 0 ? (
+                <span className="conversation-thread__end" aria-hidden="true" />
+              ) : null}
+            </div>
           </div>
         </div>
+        {newMessageCount > 0 ? (
+          <button
+            className="message-list__new"
+            type="button"
+            onClick={jumpToBottom}
+          >
+            {newMessageCount === 1
+              ? "1 new message"
+              : `${newMessageCount} new messages`}
+          </button>
+        ) : null}
       </div>
 
       {automationOnly ? (
@@ -1220,6 +1364,7 @@ function MessageContent({
   currentUserId,
   loadProfileMedia,
   onOpenProfile,
+  onOpenUserContextMenu,
   openProfileId,
 }: {
   message: ConversationMessage;
@@ -1227,6 +1372,7 @@ function MessageContent({
   currentUserId: string;
   loadProfileMedia: LoadProfileMedia;
   onOpenProfile: OpenProfile;
+  onOpenUserContextMenu?: OpenUserContextMenu | undefined;
   openProfileId: string | null;
 }) {
   if (!message.content) return <LinkedText text={message.body} />;
@@ -1244,6 +1390,7 @@ function MessageContent({
         member={member}
         loadMedia={loadProfileMedia}
         onOpenProfile={onOpenProfile}
+        onOpenContextMenu={onOpenUserContextMenu}
         expanded={openProfileId === member.id}
         aria-label={`View ${member.displayName}'s profile`}
       >

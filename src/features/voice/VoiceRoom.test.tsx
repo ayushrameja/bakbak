@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppUser, Channel, ServerMember } from "../../lib/types";
 import { mockSoundboardController } from "../soundboard/mock-catalog";
 import { VoiceRoom } from "./VoiceRoom";
@@ -139,6 +139,7 @@ function createVoice(
     toggleDeafen: vi.fn().mockResolvedValue(undefined),
     resumeAudio: vi.fn().mockResolvedValue(undefined),
     setParticipantVolume: vi.fn(),
+    toggleParticipantMute: vi.fn(),
     refreshDevices: vi.fn().mockResolvedValue(undefined),
     setInputDevice: vi.fn().mockResolvedValue(undefined),
     setEnhancedNoiseSuppression: vi.fn().mockResolvedValue(undefined),
@@ -169,6 +170,10 @@ describe("VoiceRoom", () => {
     tauriWindow.onFocusChanged.mockClear();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("replaces the disconnected blank canvas with a rejoin invitation", async () => {
     const voice = createVoice({ status: "disconnected", channel: null });
     render(
@@ -185,6 +190,108 @@ describe("VoiceRoom", () => {
       screen.getByRole("button", { name: `Rejoin ${channel.name}` }),
     );
     expect(voice.join).toHaveBeenCalledWith(channel);
+  });
+
+  it("waits for the requested owner's authoritative share, then watches and focuses it", async () => {
+    const request = {
+      requestId: 1,
+      ownerId: friend.id,
+      channelId: channel.id,
+    };
+    const onStreamWatchHandled = vi.fn();
+    const connectingVoice = createVoice({ status: "connecting" });
+    const view = render(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={connectingVoice}
+        onOpenSettings={vi.fn()}
+        streamWatchRequest={request}
+        onStreamWatchHandled={onStreamWatchHandled}
+      />,
+    );
+    expect(connectingVoice.watchScreenShare).not.toHaveBeenCalled();
+
+    const connectedVoice = createVoice({ screenShares: [] });
+    view.rerender(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={connectedVoice}
+        onOpenSettings={vi.fn()}
+        streamWatchRequest={request}
+        onStreamWatchHandled={onStreamWatchHandled}
+      />,
+    );
+    expect(connectedVoice.watchScreenShare).not.toHaveBeenCalled();
+
+    const share = {
+      id: "share-mira",
+      ownerId: friend.id,
+      displayName: friend.displayName,
+      isLocal: false,
+      joinedAt: null,
+      track: { attach: vi.fn(), detach: vi.fn() },
+      audioPublished: true,
+      paused: false,
+    };
+    const discoveredVoice = createVoice({ screenShares: [share] });
+    view.rerender(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={discoveredVoice}
+        onOpenSettings={vi.fn()}
+        streamWatchRequest={request}
+        onStreamWatchHandled={onStreamWatchHandled}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(discoveredVoice.watchScreenShare).toHaveBeenCalledWith(share.id),
+    );
+    expect(onStreamWatchHandled).toHaveBeenCalledWith(1, "opened");
+    expect(screen.getByLabelText("Screen share stage")).toBeVisible();
+  });
+
+  it("times out a pending stream watch without subscribing another share", () => {
+    vi.useFakeTimers();
+    const otherShare = {
+      id: "share-somebody-else",
+      ownerId: "user-3",
+      displayName: "Jo",
+      isLocal: false,
+      joinedAt: null,
+      track: { attach: vi.fn(), detach: vi.fn() },
+      audioPublished: false,
+      paused: false,
+    };
+    const voice = createVoice({ screenShares: [otherShare] });
+    const onStreamWatchHandled = vi.fn();
+    render(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={voice}
+        onOpenSettings={vi.fn()}
+        streamWatchRequest={{
+          requestId: 2,
+          ownerId: friend.id,
+          channelId: channel.id,
+        }}
+        onStreamWatchHandled={onStreamWatchHandled}
+      />,
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(9_999);
+    });
+    expect(onStreamWatchHandled).not.toHaveBeenCalled();
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(onStreamWatchHandled).toHaveBeenCalledWith(2, "missing");
+    expect(voice.watchScreenShare).not.toHaveBeenCalled();
   });
 
   it("focuses any share, toggles OS fullscreen, and keeps focus after Escape", async () => {

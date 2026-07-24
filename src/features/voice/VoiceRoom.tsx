@@ -21,6 +21,7 @@ import {
   type LoadProfileMedia,
   type OpenProfile,
 } from "../../components/ProfileTrigger";
+import type { OpenUserContextMenu } from "../../components/UserContextMenu";
 import type { AppUser, Channel, ServerMember } from "../../lib/types";
 import { ParticipantVideo } from "./ParticipantVideo";
 import { ScreenShareStage } from "./ScreenShareStage";
@@ -33,6 +34,12 @@ const ignoreProfileOpen: OpenProfile = () => undefined;
 type MediaTarget =
   { kind: "participant"; id: string } | { kind: "screen"; id: string };
 
+export interface StreamWatchRequest {
+  requestId: number;
+  ownerId: string;
+  channelId: string;
+}
+
 interface VoiceRoomProps {
   channel: Channel;
   user: AppUser;
@@ -41,7 +48,13 @@ interface VoiceRoomProps {
   onOpenSettings: () => void;
   loadProfileMedia?: LoadProfileMedia;
   onOpenProfile?: OpenProfile;
+  onOpenUserContextMenu?: OpenUserContextMenu | undefined;
   openProfileId?: string | null;
+  streamWatchRequest?: StreamWatchRequest | null;
+  onStreamWatchHandled?: (
+    requestId: number,
+    outcome: "opened" | "missing",
+  ) => void;
 }
 
 export function VoiceRoom({
@@ -52,7 +65,10 @@ export function VoiceRoom({
   onOpenSettings,
   loadProfileMedia = emptyProfileMediaLoader,
   onOpenProfile = ignoreProfileOpen,
+  onOpenUserContextMenu,
   openProfileId = null,
+  streamWatchRequest = null,
+  onStreamWatchHandled,
 }: VoiceRoomProps) {
   const isThisRoom = voice.channel?.id === channel.id;
   const isConnected = isThisRoom && voice.status === "connected";
@@ -65,6 +81,7 @@ export function VoiceRoom({
     useState(true);
   const fullscreenRef = useRef(false);
   const fullscreenControlsTimerRef = useRef<number | null>(null);
+  const handledStreamWatchRef = useRef<number | null>(null);
   const {
     participants: voiceParticipants,
     screenShares,
@@ -182,6 +199,70 @@ export function VoiceRoom({
     screenShares,
     stopWatchingScreenShare,
     voiceParticipants,
+  ]);
+
+  useEffect(() => {
+    if (
+      !streamWatchRequest ||
+      streamWatchRequest.channelId !== channel.id ||
+      !isConnected ||
+      handledStreamWatchRef.current === streamWatchRequest.requestId
+    ) {
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      if (handledStreamWatchRef.current === streamWatchRequest.requestId) {
+        return;
+      }
+      handledStreamWatchRef.current = streamWatchRequest.requestId;
+      onStreamWatchHandled?.(streamWatchRequest.requestId, "missing");
+    }, 10_000);
+    return () => window.clearTimeout(timeout);
+  }, [channel.id, isConnected, onStreamWatchHandled, streamWatchRequest]);
+
+  useEffect(() => {
+    if (
+      !streamWatchRequest ||
+      streamWatchRequest.channelId !== channel.id ||
+      !isConnected ||
+      handledStreamWatchRef.current === streamWatchRequest.requestId
+    ) {
+      return;
+    }
+    const share = screenShares.find(
+      (candidate) =>
+        !candidate.isLocal && candidate.ownerId === streamWatchRequest.ownerId,
+    );
+    if (!share) return;
+    handledStreamWatchRef.current = streamWatchRequest.requestId;
+    voice.watchScreenShare(share.id);
+    setFocusedTarget({ kind: "screen", id: share.id });
+    onStreamWatchHandled?.(streamWatchRequest.requestId, "opened");
+  }, [
+    channel.id,
+    isConnected,
+    onStreamWatchHandled,
+    screenShares,
+    streamWatchRequest,
+    voice,
+  ]);
+
+  useEffect(() => {
+    if (
+      streamWatchRequest?.channelId === channel.id &&
+      isThisRoom &&
+      voice.status === "error" &&
+      handledStreamWatchRef.current !== streamWatchRequest.requestId
+    ) {
+      handledStreamWatchRef.current = streamWatchRequest.requestId;
+      onStreamWatchHandled?.(streamWatchRequest.requestId, "missing");
+    }
+  }, [
+    channel.id,
+    isThisRoom,
+    onStreamWatchHandled,
+    streamWatchRequest,
+    voice.status,
   ]);
 
   useEffect(() => {
@@ -404,6 +485,7 @@ export function VoiceRoom({
                     voice={voice}
                     loadProfileMedia={loadProfileMedia}
                     onOpenProfile={onOpenProfile}
+                    onOpenUserContextMenu={onOpenUserContextMenu}
                     openProfileId={openProfileId}
                     onFocus={returnToGallery}
                     focused
@@ -455,6 +537,7 @@ export function VoiceRoom({
                   voice={voice}
                   loadProfileMedia={loadProfileMedia}
                   onOpenProfile={onOpenProfile}
+                  onOpenUserContextMenu={onOpenUserContextMenu}
                   openProfileId={openProfileId}
                   onFocus={() =>
                     focusTarget({ kind: "participant", id: participant.id })
@@ -487,6 +570,7 @@ function ParticipantCard({
   voice,
   loadProfileMedia,
   onOpenProfile,
+  onOpenUserContextMenu,
   openProfileId,
   onFocus,
   focused = false,
@@ -497,6 +581,7 @@ function ParticipantCard({
   voice: ReturnType<typeof useVoiceRoom>;
   loadProfileMedia: LoadProfileMedia;
   onOpenProfile: OpenProfile;
+  onOpenUserContextMenu?: OpenUserContextMenu | undefined;
   openProfileId: string | null;
   onFocus?: () => void;
   focused?: boolean;
@@ -529,6 +614,20 @@ function ParticipantCard({
         }
       }}
       onKeyDown={(event) => {
+        if (
+          profileMember &&
+          onOpenUserContextMenu &&
+          (event.key === "ContextMenu" ||
+            (event.shiftKey && event.key === "F10"))
+        ) {
+          event.preventDefault();
+          const rect = event.currentTarget.getBoundingClientRect();
+          onOpenUserContextMenu(profileMember, event.currentTarget, {
+            clientX: rect.left,
+            clientY: rect.bottom,
+          });
+          return;
+        }
         if (onFocus && (event.key === "Enter" || event.key === " ")) {
           event.preventDefault();
           onFocus();
@@ -536,6 +635,20 @@ function ParticipantCard({
       }}
       role={onFocus ? "button" : undefined}
       tabIndex={onFocus ? 0 : undefined}
+      onContextMenu={(event) => {
+        if (
+          event.defaultPrevented ||
+          !profileMember ||
+          !onOpenUserContextMenu
+        ) {
+          return;
+        }
+        event.preventDefault();
+        onOpenUserContextMenu(profileMember, event.currentTarget, {
+          clientX: event.clientX,
+          clientY: event.clientY,
+        });
+      }}
     >
       <div className="participant-card__media">
         {participant.cameraEnabled && participant.cameraTrack ? (
@@ -572,6 +685,7 @@ function ParticipantCard({
                 member={profileMember}
                 loadMedia={loadProfileMedia}
                 onOpenProfile={onOpenProfile}
+                onOpenContextMenu={onOpenUserContextMenu}
                 expanded={openProfileId === profileMember.id}
                 aria-label={`View ${displayName}'s profile`}
               >
@@ -598,6 +712,7 @@ function ParticipantCard({
             member={profileMember}
             loadMedia={loadProfileMedia}
             onOpenProfile={onOpenProfile}
+            onOpenContextMenu={onOpenUserContextMenu}
             expanded={openProfileId === profileMember.id}
           >
             {() => <strong>{displayName}</strong>}

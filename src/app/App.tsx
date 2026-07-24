@@ -10,12 +10,18 @@ import {
 } from "react";
 import { Avatar } from "../components/Avatar";
 import { BakbakMark } from "../components/BakbakMark";
+import { LoadingScreen } from "../components/LoadingScreen";
 import { PanelResizer } from "../components/PanelResizer";
 import { ProfilePopover } from "../components/ProfilePopover";
 import type {
   LoadProfileMedia,
   OpenProfile,
 } from "../components/ProfileTrigger";
+import {
+  UserContextMenu,
+  type OpenUserContextMenu,
+  type UserContextMenuRequest,
+} from "../components/UserContextMenu";
 import { WindowTitlebar } from "../components/WindowTitlebar";
 import { AuthScreen } from "../features/auth/AuthScreen";
 import { InviteGate } from "../features/auth/InviteGate";
@@ -81,7 +87,10 @@ import {
 import { useSoundboardCatalog } from "../features/soundboard/useSoundboardCatalog";
 import { ScreenShareDialog } from "../features/voice/ScreenShareDialog";
 import { VoiceControlDock } from "../features/voice/VoiceControlDock";
-import { VoiceRoom } from "../features/voice/VoiceRoom";
+import {
+  VoiceRoom,
+  type StreamWatchRequest,
+} from "../features/voice/VoiceRoom";
 import { useVoiceRoom } from "../features/voice/useVoiceRoom";
 import {
   prewarmMicrophoneProcessing,
@@ -306,6 +315,11 @@ export default function App() {
   const [drafts, setDrafts] = useState<Record<string, MessageDraft>>({});
   const [screenShareDialogOpen, setScreenShareDialogOpen] = useState(false);
   const [openProfile, setOpenProfile] = useState<OpenProfileState | null>(null);
+  const [userContextMenu, setUserContextMenu] =
+    useState<UserContextMenuRequest | null>(null);
+  const [streamWatchRequest, setStreamWatchRequest] =
+    useState<StreamWatchRequest | null>(null);
+  const streamWatchSequenceRef = useRef(0);
   const [needsInvite, setNeedsInvite] = useState(false);
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
   const [unreadChannelIds, setUnreadChannelIds] = useState<ReadonlySet<string>>(
@@ -447,8 +461,22 @@ export default function App() {
     [signedInUserId],
   );
   const handleOpenProfile = useCallback<OpenProfile>((member, anchor) => {
+    setUserContextMenu(null);
     setOpenProfile({ memberId: member.id, anchor });
   }, []);
+  const handleOpenUserContextMenu = useCallback<OpenUserContextMenu>(
+    (member, anchor, point) => {
+      const rect = anchor.getBoundingClientRect();
+      setOpenProfile(null);
+      setUserContextMenu({
+        member,
+        anchor,
+        clientX: point?.clientX ?? rect.left,
+        clientY: point?.clientY ?? rect.bottom,
+      });
+    },
+    [],
+  );
 
   useEffect(
     () => () => {
@@ -1341,6 +1369,7 @@ export default function App() {
       if (!channelName || !memberIds.has(session.userId)) return;
       activityByUserId.set(session.userId, {
         userId: session.userId,
+        channelId: session.channelId,
         channelName,
         isStreaming: session.isStreaming,
       });
@@ -1367,6 +1396,7 @@ export default function App() {
         if (!memberIds.has(userId)) return;
         activityByUserId.set(userId, {
           userId,
+          channelId: currentChannel.id,
           channelName: currentChannel.name,
           isStreaming: streamingUserIds.has(userId),
         });
@@ -2259,12 +2289,12 @@ export default function App() {
       dataFreshness === "offline" ||
       !selectedMessageChannelId
     ) {
-      return;
+      return 0;
     }
     const current =
       channelThreadsRef.current.get(selectedMessageChannelId) ?? [];
     const earliest = current[0];
-    if (!earliest) return;
+    if (!earliest) return 0;
     const older = await loadLiveMessages(selectedMessageChannelId, {
       before: { createdAt: earliest.createdAt, id: earliest.id },
       limit: 50,
@@ -2272,6 +2302,7 @@ export default function App() {
     updateChannelThread(selectedMessageChannelId, (messages) =>
       mergeMessages(messages, older),
     );
+    return older.length;
   }, [dataFreshness, selectedMessageChannelId, updateChannelThread]);
 
   const handleLoadOlderDirectMessages = useCallback(async () => {
@@ -2280,11 +2311,11 @@ export default function App() {
       dataFreshness === "offline" ||
       !selectedConversationId
     ) {
-      return;
+      return 0;
     }
     const current = directThreadsRef.current.get(selectedConversationId) ?? [];
     const earliest = current[0];
-    if (!earliest) return;
+    if (!earliest) return 0;
     const older = await loadDirectMessages(selectedConversationId, {
       before: { createdAt: earliest.createdAt, id: earliest.id },
       limit: 50,
@@ -2292,6 +2323,7 @@ export default function App() {
     updateDirectThread(selectedConversationId, (messages) =>
       mergeMessages(messages, older),
     );
+    return older.length;
   }, [dataFreshness, selectedConversationId, updateDirectThread]);
 
   const handleClearCachedData = useCallback(async () => {
@@ -2570,6 +2602,10 @@ export default function App() {
 
   function handleSelectChannel(channel: Channel) {
     setOpenProfile(null);
+    setUserContextMenu(null);
+    setStreamWatchRequest((current) =>
+      current?.channelId === channel.id ? current : null,
+    );
     setSoundboardOpen(false);
     transitionToSpace("server");
     selectedChannelIdRef.current = channel.id;
@@ -2592,6 +2628,8 @@ export default function App() {
 
   function handleSelectConversation(conversation: DirectConversation) {
     setOpenProfile(null);
+    setUserContextMenu(null);
+    setStreamWatchRequest(null);
     setSoundboardOpen(false);
     selectedConversationIdRef.current = conversation.id;
     setDirectMessages(directThreadsRef.current.get(conversation.id) ?? []);
@@ -2645,9 +2683,38 @@ export default function App() {
     }
   }
 
+  async function handleMessageUser(member: ServerMember) {
+    const existing = directConversations.find(
+      (conversation) => conversation.otherMember.id === member.id,
+    );
+    if (existing) {
+      handleSelectConversation(existing);
+      return;
+    }
+    await handleStartConversation(member);
+  }
+
+  function handleWatchStream(member: ServerMember, channelId: string) {
+    const channel = workspace?.channels.find(
+      (candidate) => candidate.id === channelId && candidate.kind === "voice",
+    );
+    if (!channel || member.id === user?.id) return;
+    streamWatchSequenceRef.current += 1;
+    setAppError(null);
+    setOpenProfile(null);
+    setUserContextMenu(null);
+    setStreamWatchRequest({
+      requestId: streamWatchSequenceRef.current,
+      ownerId: member.id,
+      channelId,
+    });
+    handleSelectChannel(channel);
+  }
+
   function handleSelectSpace(space: AppSpace) {
     if (space === "server" && !workspace) return;
     setOpenProfile(null);
+    if (space !== "server") setStreamWatchRequest(null);
     setSoundboardOpen(false);
     transitionToSpace(space);
     setActiveView("channel");
@@ -2704,13 +2771,7 @@ export default function App() {
   }
 
   if (authLoading) {
-    return renderAppFrame(
-      <main className="app-loading">
-        <BakbakMark className="brand-mark" />
-        <h1>Opening Bakbak</h1>
-        <p>Checking whether you already have a seat…</p>
-      </main>,
-    );
+    return renderAppFrame(<LoadingScreen />);
   }
 
   if (!user) {
@@ -2750,23 +2811,21 @@ export default function App() {
   }
 
   if (activeSpace === "server" && (!workspace || !selectedChannel)) {
+    if (!appError) {
+      return renderAppFrame(<LoadingScreen />);
+    }
     return renderAppFrame(
-      <main className="app-loading">
+      <main className="app-loading app-loading--error">
         <BakbakMark className="brand-mark" />
-        <h1>{appError ? "The door is stuck" : "Setting the room up"}</h1>
-        <p>
-          {appError ??
-            "Moving the chairs into a suspiciously thoughtful circle…"}
-        </p>
-        {appError ? (
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={() => void handleSignOut().catch(() => undefined)}
-          >
-            Back to sign in
-          </button>
-        ) : null}
+        <h1>The door is stuck</h1>
+        <p>{appError}</p>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => void handleSignOut().catch(() => undefined)}
+        >
+          Back to sign in
+        </button>
       </main>,
     );
   }
@@ -2867,7 +2926,11 @@ export default function App() {
               onOpenSettings={() => openSettings("profile")}
               loadProfileMedia={loadProfileMedia}
               onOpenProfile={handleOpenProfile}
+              onOpenUserContextMenu={handleOpenUserContextMenu}
               openProfileId={openProfile?.memberId ?? null}
+              onWatchStream={(member, channel) =>
+                handleWatchStream(member, channel.id)
+              }
               onToggleSoundboard={toggleSoundboard}
               onOpenScreenShare={() => {
                 setOpenProfile(null);
@@ -2893,6 +2956,7 @@ export default function App() {
               }}
               loadProfileMedia={loadProfileMedia}
               onOpenProfile={handleOpenProfile}
+              onOpenUserContextMenu={handleOpenUserContextMenu}
               openProfileId={openProfile?.memberId ?? null}
               inviteAvailable={!workspace}
               onOpenInvite={() => setInviteGateOpen(true)}
@@ -2980,6 +3044,7 @@ export default function App() {
                 onLoadOlder={handleLoadOlderDirectMessages}
                 loadProfileMedia={loadProfileMedia}
                 onOpenProfile={handleOpenProfile}
+                onOpenUserContextMenu={handleOpenUserContextMenu}
                 openProfileId={openProfile?.memberId ?? null}
                 stickers={stickers}
                 currentUserIsAdmin={workspace?.currentUserRole === "admin"}
@@ -3023,6 +3088,7 @@ export default function App() {
                 onLoadOlder={handleLoadOlderChannelMessages}
                 loadProfileMedia={loadProfileMedia}
                 onOpenProfile={handleOpenProfile}
+                onOpenUserContextMenu={handleOpenUserContextMenu}
                 openProfileId={openProfile?.memberId ?? null}
                 stickers={stickers}
                 currentUserIsAdmin={workspace.currentUserRole === "admin"}
@@ -3044,7 +3110,19 @@ export default function App() {
                 onOpenSettings={() => openSettings("audio")}
                 loadProfileMedia={loadProfileMedia}
                 onOpenProfile={handleOpenProfile}
+                onOpenUserContextMenu={handleOpenUserContextMenu}
                 openProfileId={openProfile?.memberId ?? null}
+                streamWatchRequest={streamWatchRequest}
+                onStreamWatchHandled={(requestId, outcome) => {
+                  setStreamWatchRequest((current) =>
+                    current?.requestId === requestId ? null : current,
+                  );
+                  if (outcome === "missing") {
+                    setAppError(
+                      "That stream ended before Bakbak could open it.",
+                    );
+                  }
+                }}
               />
             ) : null}
           </div>
@@ -3127,6 +3205,7 @@ export default function App() {
             <DirectPersonPanel
               member={selectedConversation?.otherMember ?? null}
               loadProfileMedia={loadProfileMedia}
+              onOpenUserContextMenu={handleOpenUserContextMenu}
               sharesServer={Boolean(
                 workspace?.members.some(
                   (member) =>
@@ -3140,7 +3219,12 @@ export default function App() {
               voiceActivities={memberVoiceActivities}
               loadProfileMedia={loadProfileMedia}
               onOpenProfile={handleOpenProfile}
+              onOpenUserContextMenu={handleOpenUserContextMenu}
               openProfileId={openProfile?.memberId ?? null}
+              currentUserId={user.id}
+              onWatchStream={(member, channelId) =>
+                handleWatchStream(member, channelId)
+              }
             />
           ) : null}
         </div>
@@ -3151,6 +3235,53 @@ export default function App() {
           anchor={openProfile.anchor}
           loadMedia={loadProfileMedia}
           onClose={() => setOpenProfile(null)}
+        />
+      ) : null}
+      {userContextMenu ? (
+        <UserContextMenu
+          request={userContextMenu}
+          currentUserId={user.id}
+          canMessage={Boolean(
+            userContextMenu.member.id !== user.id &&
+            (directConversations.some(
+              (conversation) =>
+                conversation.otherMember.id === userContextMenu.member.id,
+            ) ||
+              (dataFreshness !== "offline" &&
+                workspace?.members.some(
+                  (member) => member.id === userContextMenu.member.id,
+                ))),
+          )}
+          canToggleMute={voice.participants.some(
+            (participant) =>
+              !participant.isLocal &&
+              participant.id === userContextMenu.member.id,
+          )}
+          mutedForMe={Boolean(
+            voice.participants.find(
+              (participant) =>
+                !participant.isLocal &&
+                participant.id === userContextMenu.member.id,
+            )?.volume === 0,
+          )}
+          onViewProfile={handleOpenProfile}
+          onMessage={handleMessageUser}
+          onCopyUserId={async (member) => {
+            try {
+              if (!navigator.clipboard?.writeText) {
+                throw new Error("Clipboard access is unavailable.");
+              }
+              await navigator.clipboard.writeText(member.id);
+            } catch (caught) {
+              setAppError(
+                caught instanceof Error
+                  ? caught.message
+                  : "Bakbak could not copy that user ID.",
+              );
+            }
+          }}
+          onToggleMute={(member) => voice.toggleParticipantMute(member.id)}
+          onClose={() => setUserContextMenu(null)}
         />
       ) : null}
       {screenShareDialogOpen ? (

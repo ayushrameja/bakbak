@@ -235,6 +235,7 @@ interface VoiceRoomState {
   toggleDeafen: () => Promise<void>;
   resumeAudio: () => Promise<void>;
   setParticipantVolume: (participantId: string, volume: number) => void;
+  toggleParticipantMute: (participantId: string) => void;
   refreshDevices: () => Promise<void>;
   setInputDevice: (deviceId: string) => Promise<void>;
   setEnhancedNoiseSuppression: (enabled: boolean) => Promise<void>;
@@ -377,6 +378,7 @@ export function useVoiceRoom(
   const soundboardTracks = useRef(new Map<string, RemoteAudioTrack>());
   const screenShareTracks = useRef(new Map<string, RemoteAudioTrack>());
   const participantVolumes = useRef(new Map<string, number>());
+  const audibleParticipantVolumes = useRef(new Map<string, number>());
   const soundboardVolumeRef = useRef(soundboardVolume);
   const soundboardRef = useRef(soundboard);
   const onCommunicationEffectRef = useRef(onCommunicationEffect);
@@ -1753,6 +1755,9 @@ export function useVoiceRoom(
     (participantId: string, volume: number) => {
       const safeVolume = Math.max(0, Math.min(1, volume));
       participantVolumes.current.set(participantId, safeVolume);
+      if (safeVolume > 0) {
+        audibleParticipantVolumes.current.set(participantId, safeVolume);
+      }
       roomRef.current?.remoteParticipants
         .get(participantId)
         ?.setVolume(safeVolume);
@@ -1776,6 +1781,24 @@ export function useVoiceRoom(
       );
     },
     [remoteAudio],
+  );
+
+  const toggleParticipantMute = useCallback(
+    (participantId: string) => {
+      const participant = participants.find(
+        (candidate) => candidate.id === participantId && !candidate.isLocal,
+      );
+      if (!participant) return;
+      const currentVolume =
+        participantVolumes.current.get(participantId) ?? participant.volume;
+      setParticipantVolume(
+        participantId,
+        currentVolume > 0
+          ? 0
+          : (audibleParticipantVolumes.current.get(participantId) ?? 1),
+      );
+    },
+    [participants, setParticipantVolume],
   );
 
   const setInputDevice = useCallback(
@@ -2410,6 +2433,7 @@ export function useVoiceRoom(
     toggleDeafen,
     resumeAudio,
     setParticipantVolume,
+    toggleParticipantMute,
     refreshDevices,
     setInputDevice,
     setEnhancedNoiseSuppression,

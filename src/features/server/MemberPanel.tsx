@@ -7,6 +7,7 @@ import {
   type LoadProfileMedia,
   type OpenProfile,
 } from "../../components/ProfileTrigger";
+import type { OpenUserContextMenu } from "../../components/UserContextMenu";
 import { COVER_BUCKET } from "../../lib/profile-service";
 import type { ServerMember } from "../../lib/types";
 
@@ -15,6 +16,7 @@ const ignoreProfileOpen: OpenProfile = () => undefined;
 
 export interface MemberVoiceActivity {
   userId: string;
+  channelId: string;
   channelName: string;
   isStreaming: boolean;
 }
@@ -24,7 +26,11 @@ interface MemberPanelProps {
   voiceActivities?: ReadonlyArray<MemberVoiceActivity>;
   loadProfileMedia?: LoadProfileMedia;
   onOpenProfile?: OpenProfile;
+  onOpenUserContextMenu?: OpenUserContextMenu | undefined;
   openProfileId?: string | null;
+  currentUserId?: string;
+  onWatchStream?:
+    ((member: ServerMember, channelId: string) => void) | undefined;
 }
 
 interface MemberWithActivity {
@@ -37,7 +43,10 @@ export function MemberPanel({
   voiceActivities = [],
   loadProfileMedia = emptyProfileMediaLoader,
   onOpenProfile = ignoreProfileOpen,
+  onOpenUserContextMenu,
   openProfileId = null,
+  currentUserId = "",
+  onWatchStream,
 }: MemberPanelProps) {
   const activityByMemberId = new Map(
     voiceActivities.map((activity) => [activity.userId, activity]),
@@ -82,7 +91,10 @@ export function MemberPanel({
             entries={group.entries}
             loadProfileMedia={loadProfileMedia}
             onOpenProfile={onOpenProfile}
+            onOpenUserContextMenu={onOpenUserContextMenu}
             openProfileId={openProfileId}
+            currentUserId={currentUserId}
+            onWatchStream={onWatchStream}
           />
         ))
       )}
@@ -95,13 +107,20 @@ function MemberGroup({
   entries,
   loadProfileMedia,
   onOpenProfile,
+  onOpenUserContextMenu,
   openProfileId,
+  currentUserId,
+  onWatchStream,
 }: {
   label: string;
   entries: MemberWithActivity[];
   loadProfileMedia: LoadProfileMedia;
   onOpenProfile: OpenProfile;
+  onOpenUserContextMenu?: OpenUserContextMenu | undefined;
   openProfileId: string | null;
+  currentUserId: string;
+  onWatchStream?:
+    ((member: ServerMember, channelId: string) => void) | undefined;
 }) {
   return (
     <section className="member-panel__group" aria-label={label}>
@@ -109,62 +128,76 @@ function MemberGroup({
         {label} <span>— {entries.length}</span>
       </h2>
       {entries.map(({ member, activity }) => (
-        <ProfileTrigger
-          className={`member-panel__person ${member.status === "offline" ? "is-offline" : ""} ${activity ? "is-in-voice" : ""}`}
-          key={member.id}
-          member={member}
-          loadMedia={loadProfileMedia}
-          onOpenProfile={onOpenProfile}
-          expanded={openProfileId === member.id}
-          aria-label={`View ${member.displayName}'s profile`}
-        >
-          {({ animationUrl, animated }) => (
-            <>
-              <MemberCoverPoster
-                member={member}
-                loadProfileMedia={loadProfileMedia}
-              />
-              <Avatar
-                user={member}
-                size="small"
-                showStatus
-                animationUrl={animationUrl}
-                animated={animated}
-              />
-              <span className="member-panel__identity">
-                <strong>{member.displayName}</strong>
-                <span
-                  className={`member-panel__presence ${activity?.isStreaming ? "is-streaming" : activity ? "is-in-voice" : ""}`}
-                >
-                  {activity ? (
-                    <>
-                      {activity.isStreaming ? (
-                        <MonitorUp size={12} aria-hidden="true" />
-                      ) : (
-                        <Volume2 size={12} aria-hidden="true" />
-                      )}
-                      {activity.isStreaming ? "Streaming in" : "In"}{" "}
-                      {activity.channelName}
-                    </>
-                  ) : member.status === "online" ? (
-                    "Online"
-                  ) : member.status === "idle" ? (
-                    "Away"
-                  ) : (
-                    "Offline"
-                  )}
-                </span>
-              </span>
-              {member.role === "admin" ? (
-                <Crown
-                  className="member-panel__admin"
-                  size={14}
-                  aria-label="Admin"
+        <div className="member-panel__person-row" key={member.id}>
+          <ProfileTrigger
+            className={`member-panel__person ${member.status === "offline" ? "is-offline" : ""} ${activity ? "is-in-voice" : ""}`}
+            member={member}
+            loadMedia={loadProfileMedia}
+            onOpenProfile={onOpenProfile}
+            onOpenContextMenu={onOpenUserContextMenu}
+            expanded={openProfileId === member.id}
+            aria-label={`View ${member.displayName}'s profile`}
+          >
+            {({ animationUrl, animated }) => (
+              <>
+                <MemberCoverPoster
+                  member={member}
+                  loadProfileMedia={loadProfileMedia}
                 />
-              ) : null}
-            </>
-          )}
-        </ProfileTrigger>
+                <Avatar
+                  user={member}
+                  size="small"
+                  showStatus
+                  animationUrl={animationUrl}
+                  animated={animated}
+                />
+                <span className="member-panel__identity">
+                  <strong>{member.displayName}</strong>
+                  <span
+                    className={`member-panel__presence ${activity?.isStreaming ? "is-streaming" : activity ? "is-in-voice" : ""}`}
+                  >
+                    {activity ? (
+                      <>
+                        {activity.isStreaming ? (
+                          <MonitorUp size={12} aria-hidden="true" />
+                        ) : (
+                          <Volume2 size={12} aria-hidden="true" />
+                        )}
+                        {activity.isStreaming ? "Streaming in" : "In"}{" "}
+                        {activity.channelName}
+                      </>
+                    ) : member.status === "online" ? (
+                      "Online"
+                    ) : member.status === "idle" ? (
+                      "Away"
+                    ) : (
+                      "Offline"
+                    )}
+                  </span>
+                </span>
+                {member.role === "admin" ? (
+                  <Crown
+                    className="member-panel__admin"
+                    size={14}
+                    aria-label="Admin"
+                  />
+                ) : null}
+              </>
+            )}
+          </ProfileTrigger>
+          {activity?.isStreaming &&
+          member.id !== currentUserId &&
+          onWatchStream ? (
+            <button
+              className="member-panel__watch"
+              type="button"
+              aria-label={`Watch ${member.displayName}'s stream`}
+              onClick={() => onWatchStream(member, activity.channelId)}
+            >
+              Watch Stream
+            </button>
+          ) : null}
+        </div>
       ))}
     </section>
   );

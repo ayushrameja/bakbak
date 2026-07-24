@@ -15,6 +15,7 @@ import {
   type LoadProfileMedia,
   type OpenProfile,
 } from "../../components/ProfileTrigger";
+import type { OpenUserContextMenu } from "../../components/UserContextMenu";
 import { APP_VERSION } from "../../lib/app-version";
 import type {
   AppUser,
@@ -66,7 +67,9 @@ interface ChannelSidebarProps {
   onOpenSettings: () => void;
   loadProfileMedia?: LoadProfileMedia;
   onOpenProfile?: OpenProfile;
+  onOpenUserContextMenu?: OpenUserContextMenu | undefined;
   openProfileId?: string | null;
+  onWatchStream?: (member: ServerMember, channel: Channel) => void;
   onToggleSoundboard: () => void;
   onOpenScreenShare: () => void;
 }
@@ -91,7 +94,9 @@ export function ChannelSidebar({
   onOpenSettings,
   loadProfileMedia = emptyProfileMediaLoader,
   onOpenProfile = ignoreProfileOpen,
+  onOpenUserContextMenu,
   openProfileId = null,
+  onWatchStream,
   onToggleSoundboard,
   onOpenScreenShare,
 }: ChannelSidebarProps) {
@@ -286,6 +291,7 @@ export function ChannelSidebar({
                     member={profileForOccupant(occupant)}
                     loadMedia={loadProfileMedia}
                     onOpenProfile={onOpenProfile}
+                    onOpenContextMenu={onOpenUserContextMenu}
                     expanded={openProfileId === occupant.userId}
                     aria-label={`View ${occupant.displayName}'s profile`}
                   >
@@ -306,7 +312,21 @@ export function ChannelSidebar({
                     )}
                   </ProfileTrigger>
                   {occupant.isStreaming ? (
-                    <span className="channel-voice-person__live">LIVE</span>
+                    <span className="channel-voice-person__stream-actions">
+                      <span className="channel-voice-person__live">LIVE</span>
+                      {occupant.userId !== user.id && onWatchStream ? (
+                        <button
+                          className="channel-voice-person__watch"
+                          type="button"
+                          aria-label={`Watch ${occupant.displayName}'s stream`}
+                          onClick={() =>
+                            onWatchStream(profileForOccupant(occupant), channel)
+                          }
+                        >
+                          Watch Stream
+                        </button>
+                      ) : null}
+                    </span>
                   ) : null}
                 </div>
               ))}
@@ -413,6 +433,7 @@ export function ChannelSidebar({
         voice={voice}
         loadProfileMedia={loadProfileMedia}
         onOpenProfile={onOpenProfile}
+        onOpenUserContextMenu={onOpenUserContextMenu}
         openProfileId={openProfileId}
         onOpenSettings={onOpenSettings}
       />

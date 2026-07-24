@@ -4,6 +4,7 @@ import type {
   LoadProfileMedia,
   OpenProfile,
 } from "../../components/ProfileTrigger";
+import type { OpenUserContextMenu } from "../../components/UserContextMenu";
 import type {
   AppUser,
   DataMode,
@@ -13,7 +14,13 @@ import type {
 import { SidebarVoicePanel } from "../voice/SidebarVoicePanel";
 import { SidebarUserDock } from "../voice/SidebarUserDock";
 import type { useVoiceRoom } from "../voice/useVoiceRoom";
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 
 interface PersonalSidebarProps {
   user: AppUser;
@@ -30,6 +37,7 @@ interface PersonalSidebarProps {
   onOpenScreenShare: () => void;
   loadProfileMedia: LoadProfileMedia;
   onOpenProfile: OpenProfile;
+  onOpenUserContextMenu?: OpenUserContextMenu | undefined;
   openProfileId: string | null;
   inviteAvailable?: boolean;
   onOpenInvite?: () => void;
@@ -51,6 +59,7 @@ export function PersonalSidebar({
   onOpenScreenShare,
   loadProfileMedia,
   onOpenProfile,
+  onOpenUserContextMenu,
   openProfileId,
   inviteAvailable = false,
   onOpenInvite = () => undefined,
@@ -75,7 +84,7 @@ export function PersonalSidebar({
         setPickerOpen(false);
       }
     };
-    const closeFromKeyboard = (event: KeyboardEvent) => {
+    const closeFromKeyboard = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
       setPickerOpen(false);
@@ -131,6 +140,20 @@ export function PersonalSidebar({
               type="button"
               key={conversation.id}
               onClick={() => onSelect(conversation)}
+              onContextMenu={(event) =>
+                openUserMenuFromPointer(
+                  event,
+                  conversation.otherMember,
+                  onOpenUserContextMenu,
+                )
+              }
+              onKeyDown={(event) =>
+                openUserMenuFromKeyboard(
+                  event,
+                  conversation.otherMember,
+                  onOpenUserContextMenu,
+                )
+              }
             >
               <Avatar user={conversation.otherMember} size="small" showStatus />
               <span>
@@ -157,6 +180,7 @@ export function PersonalSidebar({
         voice={voice}
         loadProfileMedia={loadProfileMedia}
         onOpenProfile={onOpenProfile}
+        onOpenUserContextMenu={onOpenUserContextMenu}
         openProfileId={openProfileId}
         onOpenSettings={onOpenSettings}
       />
@@ -189,6 +213,12 @@ export function PersonalSidebar({
                 key={member.id}
                 aria-label={member.displayName}
                 disabled={readOnly}
+                onContextMenu={(event) =>
+                  openUserMenuFromPointer(event, member, onOpenUserContextMenu)
+                }
+                onKeyDown={(event) =>
+                  openUserMenuFromKeyboard(event, member, onOpenUserContextMenu)
+                }
                 onClick={() => {
                   void onStartConversation(member).then(() =>
                     setPickerOpen(false),
@@ -204,4 +234,36 @@ export function PersonalSidebar({
       ) : null}
     </aside>
   );
+}
+
+function openUserMenuFromPointer(
+  event: ReactMouseEvent<HTMLButtonElement>,
+  member: ServerMember,
+  onOpenUserContextMenu?: OpenUserContextMenu,
+) {
+  if (!onOpenUserContextMenu) return;
+  event.preventDefault();
+  onOpenUserContextMenu(member, event.currentTarget, {
+    clientX: event.clientX,
+    clientY: event.clientY,
+  });
+}
+
+function openUserMenuFromKeyboard(
+  event: ReactKeyboardEvent<HTMLButtonElement>,
+  member: ServerMember,
+  onOpenUserContextMenu?: OpenUserContextMenu,
+) {
+  if (
+    !onOpenUserContextMenu ||
+    !(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))
+  ) {
+    return;
+  }
+  event.preventDefault();
+  const rect = event.currentTarget.getBoundingClientRect();
+  onOpenUserContextMenu(member, event.currentTarget, {
+    clientX: rect.left,
+    clientY: rect.bottom,
+  });
 }

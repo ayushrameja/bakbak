@@ -574,6 +574,50 @@ describe("useVoiceRoom join lifecycle", () => {
     expect(effects).toHaveBeenCalledWith({ type: "signal-restored" });
   });
 
+  it("mutes a remote participant locally and restores their last audible volume", async () => {
+    const connection = deferred<void>();
+    liveKitState.connectResults.push(connection.promise);
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+
+    let joinPromise!: Promise<void>;
+    act(() => {
+      joinPromise = result.current.join(lounge);
+    });
+    await waitFor(() => expect(liveKitState.rooms[0]).toBeDefined());
+    const room = liveKitState.rooms[0]!;
+    const mira = remoteParticipant("mira", "Mira");
+    room.remoteParticipants.set("mira", mira);
+    await act(async () => {
+      connection.resolve(undefined);
+      await joinPromise;
+    });
+
+    act(() => result.current.setParticipantVolume("mira", 0.35));
+    expect(mira.setVolume).toHaveBeenLastCalledWith(0.35);
+    expect(
+      result.current.participants.find(
+        (participant) => participant.id === "mira",
+      )?.volume,
+    ).toBe(0.35);
+
+    act(() => result.current.toggleParticipantMute("mira"));
+    expect(mira.setVolume).toHaveBeenLastCalledWith(0);
+    expect(
+      result.current.participants.find(
+        (participant) => participant.id === "mira",
+      )?.volume,
+    ).toBe(0);
+
+    act(() => result.current.toggleParticipantMute("mira"));
+    expect(mira.setVolume).toHaveBeenLastCalledWith(0.35);
+    expect(
+      result.current.participants.find(
+        (participant) => participant.id === "mira",
+      )?.volume,
+    ).toBe(0.35);
+  });
+
   it("hard-mutes remote soundboard elements when their track or stop event goes idle", async () => {
     const setTrackMuted = vi.spyOn(
       RemoteAudioRenderer.prototype,

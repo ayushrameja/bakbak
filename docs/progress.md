@@ -4900,3 +4900,75 @@ supabase/functions/tests` — passed 37/37 tests, including media request
 - **Next:** Relaunch the rebuilt app and confirm `System` appears above
   `Welcome` without clearing local data; then observe the next real join or
   stable release on a second client.
+
+## 2026-07-24 — Prepare Bakbak 1.0 interaction and loading polish
+
+- **Completed:** Added plan 0028's shared successful-loading scene with six
+  staggered uppercase `BAKBAK` letters, an adaptive moving gradient, and an
+  immediate reduced-motion result while retaining the existing workspace-error
+  recovery. Replaced channel/DM smooth scrolling with synchronous initial
+  placement, 96 px bottom detection, exact history-prepend anchoring, a
+  pending history control, and a pluralized New message pill. Added a shared
+  viewport-clamped user menu to member/voice rails, message authors and
+  mentions, voice participant cards, Personal identities/details, and the
+  shared user dock. The menu supports profile, DM, user-ID copy, keyboard
+  navigation, focus restoration, offline/self rules, and participant-local
+  mute with last-volume restoration across speech, soundboard, and share
+  audio. Added remote hover/focus Watch Stream actions, channel-aware member
+  activity, cross-room join/switch requests, authoritative requested-owner
+  share discovery, automatic focus, and a ten-second stale-stream notice.
+  Created GitHub label `release:major` with description “Publish the next major
+  SemVer release” and applied it to open PR #33; its only label is
+  `release:major`.
+- **Decisions:** Kept package/Tauri versions at `0.16.0` because the release
+  workflow owns version injection and post-publication synchronization. Kept
+  the Watch action as explicit user intent and reused
+  `watchedScreenShareId`, so one remote share remains the only subscribed
+  video/source-audio pair. Treated plan 0028 as a narrow supersession of plan
+  0015's informational-only/cross-room restriction while retaining all native
+  isolation, source-audio, presenter-companion, explicit-subscription, and
+  cleanup rules. Kept moderation and database/native-capture changes outside
+  this pass.
+- **Validation:**
+  - Live GitHub release/PR inspection — passed; newest published tag remained
+    `v0.16.0`, PR #33 remained open against `main`, and the final label set was
+    exactly `release:major` with no `release:skip`.
+  - `node scripts/release-version.mjs --current v0.16.0 --fallback 0.16.0
+--labels release:major` — passed with `version=1.0.0`, `tag=v1.0.0`,
+    `skip=false`, and `bump=major`.
+  - Focused renderer run — passed 8 files and 100 tests covering loading,
+    anchored channel/DM scrolling, context-menu input/actions, member/voice
+    Watch actions, delayed/timeout stream discovery, and participant mute
+    restoration.
+  - Focused Node run — passed 12 tests covering the exact major resolver and
+    adaptive/reduced-motion loading contracts.
+  - Initial `pnpm lint` — failed on two timer callbacks in the new timeout test
+    returning values to React `act`; converted them to explicit void callbacks.
+    Final `pnpm lint` passed with zero warnings.
+  - Initial full `pnpm test` — failed one new menu assertion because the tested
+    action now executes in a guarded promise; awaited the user action. Final
+    `pnpm test` passed 75 Vitest files with 393 tests and 37/37 Node contract
+    tests.
+  - `pnpm format:check` — passed.
+  - `pnpm typecheck` — passed both strict TypeScript projects.
+  - `pnpm build` — passed; Vite retained the existing non-blocking
+    large-chunk warning.
+  - `pnpm security:scan` — passed for the renderer and existing desktop bundle.
+  - `pnpm version:check` — passed with synchronized tracked version `0.16.0`.
+  - `cargo check --locked` — passed in `src-tauri`.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; follow-up `codesign --verify --deep --strict` passed.
+- **Documentation updated:** Added plan 0028, updated architecture and the
+  active v1 plan with the new loading/scroll/user-action/watch contracts and
+  narrow plan 0015 supersession, then appended this canonical entry.
+- **Known limitations:** Direct installed observation of the loading scene in
+  light, dark, and reduced-motion modes was not performed. The required
+  three-client macOS/Windows matrix for same/cross-room watching, delayed and
+  stale presence, source audio, replacement, target stop, and cleanup remains
+  pending. The local macOS bundle is ad-hoc signed and not notarized; the full
+  production updater-signed `pnpm tauri build` was skipped because release
+  credentials belong to CI. PR #33 was not merged and no release workflow was
+  dispatched.
+- **Next:** Perform plan 0028's installed loading and three-client watch
+  matrix. Immediately before any separately approved merge of PR #33, recheck
+  the newest published tag and stop if `v1.0.0` already exists.

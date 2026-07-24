@@ -1,4 +1,10 @@
-import { render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type {
@@ -467,3 +473,219 @@ describe("ChatView controlled drafts", () => {
     expect(onDeleteMessage).toHaveBeenCalledWith("own-message");
   });
 });
+
+describe("ConversationView scrolling", () => {
+  it("opens at the bottom without smooth scrolling and preserves a reader for new messages", () => {
+    let scrollHeight = 800;
+    const scrollHeightSpy = vi
+      .spyOn(HTMLElement.prototype, "scrollHeight", "get")
+      .mockImplementation(function (this: HTMLElement) {
+        return this.classList.contains("message-list") ? scrollHeight : 0;
+      });
+    const clientHeightSpy = vi
+      .spyOn(HTMLElement.prototype, "clientHeight", "get")
+      .mockImplementation(function (this: HTMLElement) {
+        return this.classList.contains("message-list") ? 300 : 0;
+      });
+    const first = createMessages(2);
+    const view = renderChat(first);
+    const list = view.container.querySelector<HTMLDivElement>(".message-list");
+    if (!list) throw new Error("Expected the message list.");
+
+    expect(list.scrollTop).toBe(800);
+
+    list.scrollTop = 120;
+    fireEvent.scroll(list);
+    scrollHeight = 920;
+    view.rerender(chatElement([...first, createMessage(3)]));
+
+    expect(list.scrollTop).toBe(120);
+    expect(screen.getByRole("button", { name: "1 new message" })).toBeVisible();
+
+    view.rerender(
+      chatElement([
+        { ...first[0]!, body: "Hydrated body without a new row" },
+        first[1]!,
+        createMessage(3),
+      ]),
+    );
+    expect(list.scrollTop).toBe(120);
+    expect(screen.getByRole("button", { name: "1 new message" })).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "1 new message" }));
+    expect(list.scrollTop).toBe(920);
+    expect(
+      screen.queryByRole("button", { name: /new messages?/i }),
+    ).not.toBeInTheDocument();
+
+    scrollHeightSpy.mockRestore();
+    clientHeightSpy.mockRestore();
+  });
+
+  it("pins new messages only when the reader is already near the bottom", () => {
+    let scrollHeight = 800;
+    const scrollHeightSpy = vi
+      .spyOn(HTMLElement.prototype, "scrollHeight", "get")
+      .mockImplementation(function (this: HTMLElement) {
+        return this.classList.contains("message-list") ? scrollHeight : 0;
+      });
+    const clientHeightSpy = vi
+      .spyOn(HTMLElement.prototype, "clientHeight", "get")
+      .mockImplementation(function (this: HTMLElement) {
+        return this.classList.contains("message-list") ? 300 : 0;
+      });
+    const first = createMessages(2);
+    const view = renderChat(first);
+    const list = view.container.querySelector<HTMLDivElement>(".message-list");
+    if (!list) throw new Error("Expected the message list.");
+
+    list.scrollTop = 420;
+    fireEvent.scroll(list);
+    scrollHeight = 900;
+    view.rerender(chatElement([...first, createMessage(3)]));
+
+    expect(list.scrollTop).toBe(900);
+    expect(
+      screen.queryByRole("button", { name: /new messages?/i }),
+    ).not.toBeInTheDocument();
+
+    scrollHeightSpy.mockRestore();
+    clientHeightSpy.mockRestore();
+  });
+
+  it("preserves the viewport when older history is prepended", async () => {
+    let scrollHeight = 1_000;
+    const scrollHeightSpy = vi
+      .spyOn(HTMLElement.prototype, "scrollHeight", "get")
+      .mockImplementation(function (this: HTMLElement) {
+        return this.classList.contains("message-list") ? scrollHeight : 0;
+      });
+    const clientHeightSpy = vi
+      .spyOn(HTMLElement.prototype, "clientHeight", "get")
+      .mockImplementation(function (this: HTMLElement) {
+        return this.classList.contains("message-list") ? 300 : 0;
+      });
+    const messages = createMessages(50, 10);
+    const older = [createMessage(8), createMessage(9)];
+    const onLoadOlder = vi.fn().mockResolvedValue(older.length);
+    const view = render(chatElement(messages, onLoadOlder));
+    const list = view.container.querySelector<HTMLDivElement>(".message-list");
+    if (!list) throw new Error("Expected the message list.");
+    list.scrollTop = 180;
+    fireEvent.scroll(list);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Load older messages" }),
+    );
+    scrollHeight = 1_140;
+    view.rerender(chatElement([...older, ...messages], onLoadOlder));
+
+    expect(list.scrollTop).toBe(320);
+    expect(onLoadOlder).toHaveBeenCalledOnce();
+
+    scrollHeightSpy.mockRestore();
+    clientHeightSpy.mockRestore();
+  });
+
+  it("disables duplicate history requests while one is pending", async () => {
+    let resolveOlder: (count: number) => void = () => undefined;
+    const onLoadOlder = vi.fn(
+      () =>
+        new Promise<number>((resolve) => {
+          resolveOlder = resolve;
+        }),
+    );
+    render(chatElement(createMessages(50), onLoadOlder));
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Load older messages" }),
+    );
+    const pending = screen.getByRole("button", {
+      name: "Loading older messages…",
+    });
+    expect(pending).toBeDisabled();
+    fireEvent.click(pending);
+    expect(onLoadOlder).toHaveBeenCalledOnce();
+
+    resolveOlder(0);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Load older messages" }),
+      ).toBeEnabled(),
+    );
+  });
+
+  it("uses the same immediate-bottom behavior for direct conversations", () => {
+    const scrollHeightSpy = vi
+      .spyOn(HTMLElement.prototype, "scrollHeight", "get")
+      .mockReturnValue(640);
+    const clientHeightSpy = vi
+      .spyOn(HTMLElement.prototype, "clientHeight", "get")
+      .mockReturnValue(300);
+    const friend: ServerMember = {
+      ...member,
+      id: "user-2",
+      displayName: "Mira",
+      role: "member",
+    };
+    const { container } = render(
+      <ConversationView
+        target={{ kind: "direct", id: "direct-1", member: friend }}
+        messages={createMessages(2)}
+        members={[member, friend]}
+        currentUser={user}
+        sending={false}
+        draft={EMPTY_MESSAGE_DRAFT}
+        onDraftChange={vi.fn()}
+        onSend={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    expect(
+      container.querySelector<HTMLDivElement>(".message-list")?.scrollTop,
+    ).toBe(640);
+
+    scrollHeightSpy.mockRestore();
+    clientHeightSpy.mockRestore();
+  });
+});
+
+function renderChat(messages: ChatMessage[]) {
+  return render(chatElement(messages));
+}
+
+function chatElement(
+  messages: ChatMessage[],
+  onLoadOlder?: () => Promise<number>,
+) {
+  return (
+    <ChatView
+      channel={channel}
+      messages={messages}
+      members={[member]}
+      currentUser={user}
+      sending={false}
+      draft={EMPTY_MESSAGE_DRAFT}
+      onDraftChange={vi.fn()}
+      onSend={vi.fn().mockResolvedValue(undefined)}
+      {...(onLoadOlder ? { onLoadOlder } : {})}
+    />
+  );
+}
+
+function createMessages(count: number, start = 1): ChatMessage[] {
+  return Array.from({ length: count }, (_, index) =>
+    createMessage(start + index),
+  );
+}
+
+function createMessage(index: number): ChatMessage {
+  return {
+    id: `scroll-message-${index}`,
+    channelId: channel.id,
+    authorId: user.id,
+    body: `Message ${index}`,
+    content: null,
+    createdAt: new Date(Date.UTC(2026, 6, 24, 10, index)).toISOString(),
+  };
+}

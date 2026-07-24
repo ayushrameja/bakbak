@@ -250,6 +250,13 @@ The topmost automation-only System rooms, stable-release/join history,
 authenticated SSRF-safe link previews, click-to-load YouTube cards,
 deafen/undeafen cues, and connector-axis correction are approved under
 `0027-system-channels-link-previews-and-deafen-audio.md`.
+The shared uppercase loading scene, anchored channel/DM scrolling,
+identity-wide user action menu, participant-local mute restoration, and
+explicit remote hover-to-watch handoff are approved under
+`0028-bakbak-1-0-interaction-and-loading-polish.md`. Plan 0028 narrowly
+supersedes plan 0015's informational-only LIVE and cross-room-watch restriction
+while retaining its isolation, source-audio, one-share subscription, and
+cleanup contracts.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -339,6 +346,11 @@ deafen/undeafen cues, and connector-axis correction are approved under
       announcements standard behavior, and sync stable history.
 - [ ] Complete plan 0027's hosted/installed multi-client plus multi-zoom visual
       acceptance.
+- [x] Implement plan 0028's shared loading scene, anchored channel/DM
+      scrolling, accessible identity actions, participant-local mute, and
+      authoritative requested-owner Watch Stream handoff.
+- [ ] Complete plan 0028's direct light/dark/reduced-motion loading observation
+      and installed macOS/Windows three-client watch matrix.
 - [x] Deploy plan 0012's additive category/layout migration.
 - [ ] Complete plan 0012's hosted two-account hierarchy check.
 - [x] Add local RNNoise microphone cleanup plus Child, Robot, and
@@ -413,6 +425,10 @@ deafen/undeafen cues, and connector-axis correction are approved under
 ### Phase 6 — Distribution
 
 - [x] Add synchronized SemVer tooling with patch-by-default release labels.
+- [x] Add the explicit `v0.16.0 + release:major -> v1.0.0` regression and
+      configure open PR #33 with only `release:major`.
+- [ ] Recheck the newest published tag immediately before merging PR #33; stop
+      if `v1.0.0` already exists.
 - [x] Add signed Tauri update artifacts, a public GitHub Releases endpoint, and
       an explicit in-app update-and-restart experience.
 - [x] Add gated GitHub Actions validation and draft release workflows for macOS

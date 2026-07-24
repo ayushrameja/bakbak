@@ -1,8 +1,14 @@
 import { Crown, MessageCircle, UsersRound } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+} from "react";
 import { Avatar } from "../../components/Avatar";
 import { ProfileMediaImage } from "../../components/ProfileMediaImage";
 import type { LoadProfileMedia } from "../../components/ProfileTrigger";
+import type { OpenUserContextMenu } from "../../components/UserContextMenu";
 import { AVATAR_BUCKET, COVER_BUCKET } from "../../lib/profile-service";
 import type { ServerMember } from "../../lib/types";
 import { useReducedMotion } from "../../lib/use-reduced-motion";
@@ -11,12 +17,14 @@ interface DirectPersonPanelProps {
   member: ServerMember | null;
   loadProfileMedia: LoadProfileMedia;
   sharesServer: boolean;
+  onOpenUserContextMenu?: OpenUserContextMenu;
 }
 
 export function DirectPersonPanel({
   member,
   loadProfileMedia,
   sharesServer,
+  onOpenUserContextMenu,
 }: DirectPersonPanelProps) {
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
   const [coverAnimationUrl, setCoverAnimationUrl] = useState<string | null>(
@@ -85,6 +93,32 @@ export function DirectPersonPanel({
       className="member-panel direct-person-panel"
       id="member-panel"
       aria-label={`${member.displayName} details`}
+      tabIndex={0}
+      onContextMenu={(event: MouseEvent<HTMLElement>) => {
+        if (!onOpenUserContextMenu) return;
+        event.preventDefault();
+        onOpenUserContextMenu(member, event.currentTarget, {
+          clientX: event.clientX,
+          clientY: event.clientY,
+        });
+      }}
+      onKeyDown={(event: KeyboardEvent<HTMLElement>) => {
+        if (
+          !onOpenUserContextMenu ||
+          !(
+            event.key === "ContextMenu" ||
+            (event.shiftKey && event.key === "F10")
+          )
+        ) {
+          return;
+        }
+        event.preventDefault();
+        const rect = event.currentTarget.getBoundingClientRect();
+        onOpenUserContextMenu(member, event.currentTarget, {
+          clientX: rect.left,
+          clientY: rect.bottom,
+        });
+      }}
     >
       <div className="direct-person-panel__cover">
         {coverUrl ? (

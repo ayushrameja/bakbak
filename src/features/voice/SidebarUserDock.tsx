@@ -7,6 +7,7 @@ import {
   type LoadProfileMedia,
   type OpenProfile,
 } from "../../components/ProfileTrigger";
+import type { OpenUserContextMenu } from "../../components/UserContextMenu";
 import { COVER_BUCKET } from "../../lib/profile-service";
 import type { ServerMember } from "../../lib/types";
 import type { useVoiceRoom } from "./useVoiceRoom";
@@ -16,6 +17,7 @@ interface SidebarUserDockProps {
   voice: ReturnType<typeof useVoiceRoom>;
   loadProfileMedia: LoadProfileMedia;
   onOpenProfile: OpenProfile;
+  onOpenUserContextMenu?: OpenUserContextMenu | undefined;
   openProfileId: string | null;
   onOpenSettings: () => void;
 }
@@ -25,6 +27,7 @@ export function SidebarUserDock({
   voice,
   loadProfileMedia,
   onOpenProfile,
+  onOpenUserContextMenu,
   openProfileId,
   onOpenSettings,
 }: SidebarUserDockProps) {
@@ -39,6 +42,7 @@ export function SidebarUserDock({
         member={member}
         loadMedia={loadProfileMedia}
         onOpenProfile={onOpenProfile}
+        onOpenContextMenu={onOpenUserContextMenu}
         expanded={openProfileId === member.id}
         aria-label={`View ${member.displayName}'s profile`}
       >

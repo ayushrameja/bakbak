@@ -48,7 +48,11 @@ video, and screen sharing remain untouched. The Bakbak identity uses
 two custom linked lowercase `b` strokes. The canonical
 `public/bakbak.svg` drives the browser favicon and generated native icon bundle,
 while the matching code-native `BakbakMark` appears statically on
-authentication, invite, loading, and empty Personal surfaces. The server header
+authentication, invite, and empty Personal surfaces. Successful session and
+workspace loading instead share six staggered uppercase `BAKBAK` letters over a
+slow system-accent/neutral gradient. Reduced motion renders the completed word
+and static gradient immediately; workspace errors retain their explicit
+recovery surface. The server header
 intentionally omits the mark: it contains only the fixed Bakbak wordmark and
 `β · vX.Y.Z` chip whose value comes from the renderer's package metadata. Its
 neutral, system-accented aurora, sparse constellation, and diagonal signal
@@ -109,6 +113,12 @@ avatars, add compact dots for grouped messages, and terminate the trail after
 the visible history. Quiet/flowing labels describe only the current rendered
 message state; they do not alter loading, activity, read state, or
 subscriptions.
+A shared conversation scroll contract opens each channel or DM at the bottom
+without smooth motion. Within 96 px of the bottom, new rows pin immediately.
+Otherwise message appends preserve the viewport and increment a pluralized New
+message pill; hydration-only message, reaction, and preview updates never move
+the reader. Older-history fetches disable their trigger and restore the exact
+viewport through the post/pre `scrollHeight` delta.
 A draft may contain structured text/mentions plus up to four private
 image/GIF/H.264 MP4 attachments, one standalone Bakbak sticker, or one GIPHY
 GIF/sticker with an optional text caption, and may quote one visible message
@@ -158,6 +168,13 @@ or failed processing falls back to the built-in capture cleanup without
 blocking the call. The explicit microphone test plays that same processed
 preview through the selected call output while rendering its level, and
 releases the monitor, stream, processor, and analyser together on stop.
+Every shared user identity can open one viewport-clamped portal action menu by
+right-click, Menu, or Shift+F10. The accessible menu supports profile, direct
+message, and user-ID copy actions, omits self messaging, and keeps existing DMs
+available offline while disabling offline creation. Remote participants in the
+active call additionally expose a local mute toggle. Participant volume zero
+is applied across speech, soundboard, and share audio; unmute restores the last
+non-zero level or 100%.
 Selecting a voice channel immediately joins it; selecting another voice channel switches
 the active call without a pre-join or initial connection surface. An active call
 adds a sidebar control block with room, backend latency, normalized local
@@ -502,7 +519,8 @@ bakbak/
 │       ├── 0024-collapsible-channel-tree.md
 │       ├── 0025-conversation-root-and-message-trail.md
 │       ├── 0026-system-adaptive-unified-accent.md
-│       └── 0027-system-channels-link-previews-and-deafen-audio.md
+│       ├── 0027-system-channels-link-previews-and-deafen-audio.md
+│       └── 0028-bakbak-1-0-interaction-and-loading-polish.md
 ├── public/
 │   ├── bakbak.svg                 # canonical favicon/native-icon source
 │   ├── fonts/roundo/              # pinned Roundo v2.0 variable WOFF2
@@ -1252,12 +1270,19 @@ An invite-management UI is deferred until post-v1.
    The presenter's own companion video remains subscribed locally while its
    companion source audio is always forced unsubscribed.
    Deafen, selected output, and owner volume still apply to watched audio.
-8. Sidebar LIVE is informational and has no Watch action or pending cross-room
-   state. Database LIVE alone never creates a subscription; the viewer joins
-   the voice room and selects the share tile. Each occupied channel shows one
-   room-active timer based on its earliest current join. Occupants have no
-   personal timers or redundant local-user suffix; compact avatars use a live
-   speaking ring from the active LiveKit room.
+8. Sidebar and member-rail LIVE remains presence information until a remote
+   viewer activates its hover/focus Watch Stream action. That action stores a
+   request ID, owner ID, and channel ID, joins or switches to the advertised
+   voice room, and waits for the owner's authoritative LiveKit share before
+   invoking the same one-share subscription gate and focusing it. Database LIVE
+   alone never creates a subscription. A request with no matching share ten
+   seconds after connection clears with a dismissible stream-ended notice.
+   Each occupied channel shows one room-active timer based on its earliest
+   current join. Occupants have no personal timers or redundant local-user
+   suffix; compact avatars use a live speaking ring from the active LiveKit
+   room. This is plan 0028's narrow supersession of plan 0015's
+   informational-only/cross-room restriction; plan 0015's isolation,
+   source-audio, explicit-subscription, and cleanup contracts remain active.
 9. Focused people and shares use one `minmax(0, 1fr)` media stage without a
    metadata header or people filmstrip. Shared media uses `object-fit: contain`
    against a black canvas, while Back to grid and fullscreen sit above its
@@ -1408,7 +1433,10 @@ model; Jitsi's Apache/MIT notice and Xiph.Org's BSD 3-Clause notice ship under
    scan, and a locked Rust check.
 2. A merge to `main` resolves the next stable SemVer from the newest `v*` tag.
    Patch is the default; `release:minor` and `release:major` labels override it,
-   while `release:skip` suppresses documentation-only releases.
+   while `release:skip` suppresses documentation-only releases. The resolver
+   regression fixes the `v0.16.0 + release:major` boundary at `v1.0.0`; source
+   package versions are not changed manually before that isolated release
+   checkout.
 3. The release checkout synchronizes the calculated version across
    `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`.
 4. Tauri Action builds macOS `aarch64` and Windows `x86_64` installers with the
@@ -1733,6 +1761,11 @@ that it has passed.
   self-heals clients that were open during the initial migration. Installed
   multi-client unread/audio plus dark/light multi-zoom layout observation
   remain required.
+- Plan 0028's loading, scroll anchoring, user actions, local participant mute,
+  and requested-owner stream handoff are implemented and covered by focused
+  renderer/release regressions. Direct light/dark/reduced-motion observation
+  and the installed macOS/Windows three-client watch matrix remain required
+  before release acceptance.
 - Plan 0016's neutral appearance and local Roundo bundle remain active, while a
   later user-directed follow-up restores only Auto/Light/Dark scheme selection
   and removes the typography summary. Accent, surface, and font controls remain

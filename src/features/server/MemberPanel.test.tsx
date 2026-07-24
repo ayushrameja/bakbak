@@ -45,8 +45,18 @@ describe("MemberPanel", () => {
       <MemberPanel
         members={[...members, asha]}
         voiceActivities={[
-          { userId: "member-1", channelName: "Queue", isStreaming: false },
-          { userId: "member-2", channelName: "Crash", isStreaming: true },
+          {
+            userId: "member-1",
+            channelId: "voice-queue",
+            channelName: "Queue",
+            isStreaming: false,
+          },
+          {
+            userId: "member-2",
+            channelId: "voice-crash",
+            channelName: "Crash",
+            isStreaming: true,
+          },
         ]}
       />,
     );
@@ -132,6 +142,30 @@ describe("MemberPanel", () => {
     });
     await userEvent.click(trigger);
     expect(onOpenProfile).toHaveBeenCalledWith(members[0], trigger);
+  });
+
+  it("offers a remote streaming member watch action with its voice channel", async () => {
+    const onWatchStream = vi.fn();
+    render(
+      <MemberPanel
+        members={members}
+        currentUserId="current-user"
+        voiceActivities={[
+          {
+            userId: members[0]!.id,
+            channelId: "voice-lounge",
+            channelName: "Lounge",
+            isStreaming: true,
+          },
+        ]}
+        onWatchStream={onWatchStream}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Watch Mira's stream" }),
+    );
+    expect(onWatchStream).toHaveBeenCalledWith(members[0], "voice-lounge");
   });
 });
 

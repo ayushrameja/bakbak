@@ -10541,6 +10541,243 @@ html.is-panel-resizing .desktop-shell {
   }
 }
 
+/* 0028 — Bakbak 1.0 interaction and loading polish */
+.user-context-menu {
+  position: fixed;
+  z-index: 240;
+  width: min(220px, calc(100vw - 20px));
+  display: grid;
+  gap: 3px;
+  padding: 6px;
+  border: 1px solid var(--glass-line-bright);
+  border-radius: var(--radius-control);
+  background: var(--glass-strong);
+  box-shadow: 0 18px 50px
+    color-mix(in srgb, var(--window-underlay) 48%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
+  backdrop-filter: blur(24px) saturate(120%);
+}
+
+.user-context-menu > button {
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--text);
+  background: transparent;
+  font: inherit;
+  font-size: var(--font-meta);
+  font-weight: 600;
+  text-align: left;
+}
+
+.user-context-menu > button:hover,
+.user-context-menu > button:focus-visible {
+  outline: 0;
+  color: var(--text);
+  background: var(--system-accent-hover);
+}
+
+.user-context-menu > button:disabled {
+  color: var(--faint);
+  cursor: not-allowed;
+  opacity: 0.56;
+}
+
+.member-panel__person-row,
+.channel-voice-person {
+  position: relative;
+}
+
+.member-panel__person-row + .member-panel__person-row {
+  margin-top: 5px;
+}
+
+.member-panel__watch,
+.channel-voice-person__watch {
+  position: absolute;
+  z-index: 4;
+  top: 50%;
+  right: 6px;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid
+    color-mix(in srgb, var(--system-accent) 52%, var(--glass-line-bright));
+  border-radius: 7px;
+  color: var(--text);
+  background: var(--glass-strong);
+  opacity: 0;
+  font: inherit;
+  font-size: var(--font-caption);
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: none;
+  transform: translateY(calc(-50% + 2px));
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease,
+    background-color 120ms ease;
+}
+
+.member-panel__person-row:hover .member-panel__watch,
+.member-panel__person-row:focus-within .member-panel__watch,
+.channel-voice-person:hover .channel-voice-person__watch,
+.channel-voice-person:focus-within .channel-voice-person__watch {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(-50%);
+}
+
+.member-panel__watch:hover,
+.member-panel__watch:focus-visible,
+.channel-voice-person__watch:hover,
+.channel-voice-person__watch:focus-visible {
+  outline: 0;
+  background: var(--system-accent-hover);
+}
+
+.channel-voice-person__stream-actions {
+  display: grid;
+  place-items: center end;
+}
+
+.channel-voice-person:hover .channel-voice-person__live,
+.channel-voice-person:focus-within .channel-voice-person__live {
+  opacity: 0;
+}
+
+.message-list-shell {
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.message-list-shell > .message-list {
+  width: 100%;
+  height: 100%;
+}
+
+.message-list__new {
+  position: absolute;
+  z-index: 8;
+  left: 50%;
+  bottom: 14px;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--glass-line-bright);
+  border-radius: 999px;
+  color: var(--text);
+  background: var(--glass-strong);
+  box-shadow: 0 10px 28px
+    color-mix(in srgb, var(--window-underlay) 38%, transparent);
+  font: inherit;
+  font-size: var(--font-meta);
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transform: translateX(-50%);
+  -webkit-backdrop-filter: blur(18px) saturate(120%);
+  backdrop-filter: blur(18px) saturate(120%);
+}
+
+.message-list__new:hover,
+.message-list__new:focus-visible {
+  border-color: var(--system-accent);
+  background: var(--system-accent-hover);
+}
+
+.app-loading--animated {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--glass-canvas);
+}
+
+.app-loading--animated::before,
+.app-loading--animated::after {
+  position: absolute;
+  z-index: -1;
+  inset: -24%;
+  background:
+    radial-gradient(
+      circle at 22% 30%,
+      color-mix(in srgb, var(--system-accent) 24%, transparent),
+      transparent 38%
+    ),
+    radial-gradient(
+      circle at 78% 68%,
+      color-mix(in srgb, var(--system-accent) 14%, var(--glass-panel)),
+      transparent 42%
+    );
+  content: "";
+  transform: translate3d(-2%, -1%, 0) scale(1.08);
+  animation: bakbak-loading-aurora 12s ease-in-out infinite alternate;
+}
+
+.app-loading--animated::after {
+  opacity: 0.48;
+  filter: blur(48px);
+  transform: translate3d(2%, 2%, 0) scale(1.16) rotate(8deg);
+  animation-direction: alternate-reverse;
+  animation-duration: 15s;
+}
+
+.app-loading__word {
+  display: flex;
+  align-items: center;
+  gap: 0.08em;
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(42px, 7vw, 84px);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1;
+}
+
+.app-loading__word > span {
+  opacity: 0;
+  filter: blur(7px);
+  transform: translateY(14px) scale(0.96);
+  animation: bakbak-loading-letter 520ms calc(var(--letter-index, 0) * 70ms)
+    cubic-bezier(0.2, 0.84, 0.2, 1) both;
+}
+
+@keyframes bakbak-loading-letter {
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes bakbak-loading-aurora {
+  to {
+    transform: translate3d(3%, 2%, 0) scale(1.15) rotate(-5deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .member-panel__watch,
+  .channel-voice-person__watch {
+    transition: none;
+  }
+
+  .app-loading--animated::before,
+  .app-loading--animated::after,
+  .app-loading__word > span {
+    opacity: 1;
+    filter: none;
+    transform: none;
+    animation: none;
+  }
+}
+
 /* Keep the System card above later generic message-density rules. */
 .message.message--system {
   grid-template-columns: 42px minmax(0, 1fr);

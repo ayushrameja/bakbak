@@ -34,6 +34,22 @@ test("increments patch by default and honors minor and skip labels", () => {
   );
 });
 
+test("resolves the v1 release from the exact major label", () => {
+  assert.deepEqual(
+    resolveRelease({
+      fallbackVersion: "0.16.0",
+      currentTag: "v0.16.0",
+      labels: ["release:major"],
+    }),
+    {
+      bump: "major",
+      skip: false,
+      tag: "v1.0.0",
+      version: "1.0.0",
+    },
+  );
+});
+
 test("manual releases override a skip label", () => {
   const release = resolveRelease({
     fallbackVersion: "0.2.0",

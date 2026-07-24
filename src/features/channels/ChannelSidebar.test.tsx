@@ -536,7 +536,7 @@ describe("ChannelSidebar room shelf", () => {
     ).toHaveClass("is-speaking");
   });
 
-  it("shows server-wide LIVE state without a direct watch action", () => {
+  it("shows server-wide LIVE state with a remote watch action", async () => {
     const occupant = {
       userId: friend.id,
       displayName: friend.displayName,
@@ -545,15 +545,18 @@ describe("ChannelSidebar room shelf", () => {
       joinedAt: new Date().toISOString(),
       isStreaming: true,
     };
+    const onWatchStream = vi.fn();
     renderSidebar([voiceChannel], {
       members: [{ ...user, role: "admin" }, friend],
       voiceOccupants: [occupant],
+      onWatchStream,
     });
 
     expect(screen.getByText("LIVE")).toBeVisible();
-    expect(
-      screen.queryByRole("button", { name: "Watch Mira" }),
-    ).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Watch Mira's stream" }),
+    );
+    expect(onWatchStream).toHaveBeenCalledWith(friend, voiceChannel);
   });
 
   it("opens voice-occupant and signed-in user profiles", async () => {

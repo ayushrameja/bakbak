@@ -207,6 +207,7 @@ function createVoice(
     toggleDeafen: vi.fn().mockResolvedValue(undefined),
     resumeAudio: vi.fn().mockResolvedValue(undefined),
     setParticipantVolume: vi.fn(),
+    toggleParticipantMute: vi.fn(),
     refreshDevices: vi.fn().mockResolvedValue(undefined),
     setInputDevice: vi.fn().mockResolvedValue(undefined),
     setEnhancedNoiseSuppression: vi.fn().mockResolvedValue(undefined),
