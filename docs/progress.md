@@ -4972,3 +4972,54 @@ supabase/functions/tests` — passed 37/37 tests, including media request
 - **Next:** Perform plan 0028's installed loading and three-client watch
   matrix. Immediately before any separately approved merge of PR #33, recheck
   the newest published tag and stop if `v1.0.0` already exists.
+
+## 2026-07-25 — Repair the Windows release configuration
+
+- **Completed:** Reproduced the Windows release's Tauri schema failure by
+  explicitly merging `tauri.windows.conf.json`, removed the unsupported
+  `noRedirectionBitmap` window property, and changed the existing titlebar
+  contract test to guard against reintroducing that property while the pinned
+  released Tauri schema rejects it. The transparent renderer-owned Windows
+  window, native shadow, Windows 11 Mica application, and opaque pre-render
+  fallback remain unchanged.
+- **Decisions:** Kept the released Tauri CLI at `2.11.4`, which is the newest
+  version resolved by the lockfile and does not accept the recently documented
+  upstream option. Preferred removing one optional startup-flash hint over
+  depending on unreleased Tauri source or widening the release change.
+- **Validation:**
+  - Initial `pnpm tauri build --no-bundle --config
+src-tauri/tauri.windows.conf.json` — failed before the fix with the same
+    `app > windows > 0` additional-property error for
+    `noRedirectionBitmap` reported by Windows CI.
+  - `node --test scripts/window-chrome-config.test.mjs` — passed 3/3 focused
+    native-window configuration tests.
+  - Final `pnpm tauri build --no-bundle --config
+src-tauri/tauri.windows.conf.json` — passed the merged Windows
+    configuration schema, production renderer build, and release-mode native
+    compile on macOS.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects,
+    75 Vitest files with 393 tests, 37/37 Node contract tests, version
+    synchronization, production renderer build, and bundle secret scanning;
+    Vite retained the existing non-blocking large-chunk warning.
+  - `cargo check --locked --manifest-path src-tauri/Cargo.toml` — passed.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+  - Follow-up `codesign --verify --deep --strict` — passed for the rebuilt
+    application.
+  - Initial post-documentation `pnpm format:check` — failed because the new
+    progress entry required Prettier wrapping; `pnpm exec prettier --write
+docs/progress.md` corrected it. Final `pnpm format:check` and
+    `git diff --check` passed.
+- **Documentation updated:** Updated the Tauri shell contract in
+  `docs/architecture.md` and appended this canonical progress entry. The active
+  plan was unchanged because this restores the already-approved Windows x64
+  release path without changing scope or acceptance criteria.
+- **Known limitations:** This macOS host cannot produce or install the Windows
+  NSIS bundle, so the GitHub Windows runner must confirm the final installer.
+  The production updater-signed `pnpm tauri build` remains CI-only because its
+  signing credentials are not available locally. Omitting
+  `noRedirectionBitmap` may allow a brief pre-webview flash on some Windows
+  systems, mitigated by Bakbak's existing opaque pre-render fallback.
+- **Next:** Rerun the failed release workflow and confirm the Windows job
+  produces its x64 NSIS installer and signed updater artifacts.

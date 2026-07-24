@@ -45,7 +45,7 @@ test("macOS and Windows titlebar configs retain the shared main-window contract"
   });
   assert.equal(windows.app.windows[0].decorations, false);
   assert.equal(windows.app.windows[0].transparent, true);
-  assert.equal(windows.app.windows[0].noRedirectionBitmap, true);
+  assert.equal("noRedirectionBitmap" in windows.app.windows[0], false);
   assert.equal(windows.app.windows[0].shadow, true);
 });
 
