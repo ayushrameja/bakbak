@@ -1,3 +1,5 @@
+import { reapplySystemAccent } from "./system-accent";
+
 export const APPEARANCE_PREFERENCE_KEY = "bakbak.appearancePreference.v1";
 
 export type AppearancePreference = "auto" | "light" | "dark";
@@ -54,6 +56,8 @@ export function applyAppearancePreference(
       preference === "light" ? "all" : "not all",
     );
   }
+
+  reapplySystemAccent();
 }
 
 export function saveAppearancePreference(

@@ -68,6 +68,11 @@ import {
   type ProfileSaveInput,
   type SettingsSection,
 } from "../features/settings/SettingsPage";
+import {
+  getCurrentSystemAccent,
+  subscribeSystemAccent,
+  type AppliedSystemAccent,
+} from "../features/settings/system-accent";
 import { Soundboard } from "../features/soundboard/Soundboard";
 import {
   shouldDismissSoundboardForEscape,
@@ -277,6 +282,9 @@ export default function App() {
     useState<SettingsSection>("profile");
   const [appearancePreference, setAppearancePreference] =
     useState<AppearancePreference>(() => loadAppearancePreference());
+  const [systemAccent, setSystemAccent] = useState<AppliedSystemAccent>(() =>
+    getCurrentSystemAccent(),
+  );
   const [interfaceSoundPreferences, setInterfaceSoundPreferences] =
     useState<InterfaceSoundPreferences>(() => loadInterfaceSoundPreferences());
   const [layoutPreferences, setLayoutPreferences] = useState<LayoutPreferences>(
@@ -370,6 +378,8 @@ export default function App() {
   useEffect(() => {
     interfaceSoundController.setPreferences(interfaceSoundPreferences);
   }, [interfaceSoundPreferences]);
+
+  useEffect(() => subscribeSystemAccent(setSystemAccent), []);
 
   const rememberAvatarUrl = useCallback(
     (userId: string, url: string | null) => {
@@ -3090,6 +3100,7 @@ export default function App() {
           microphoneProcessingError={voice.microphoneProcessingError}
           interfaceSoundPreferences={interfaceSoundPreferences}
           appearancePreference={appearancePreference}
+          systemAccent={systemAccent}
           cacheStats={cacheStats}
           dataFreshness={dataFreshness}
           readOnly={dataFreshness === "offline"}

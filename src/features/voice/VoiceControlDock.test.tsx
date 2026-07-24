@@ -72,6 +72,9 @@ describe("VoiceControlDock", () => {
     renderDock(createVoice({ muted: true }));
 
     expect(screen.getByRole("button", { name: "Unmute" })).toHaveClass(
+      "is-active",
+    );
+    expect(screen.getByRole("button", { name: "Unmute" })).not.toHaveClass(
       "is-danger",
     );
     expect(screen.getByRole("button", { name: "Leave voice" })).toHaveClass(

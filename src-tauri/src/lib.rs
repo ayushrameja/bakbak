@@ -1,4 +1,5 @@
 mod screen_share;
+mod system_accent;
 
 use tauri::Manager;
 
@@ -35,10 +36,14 @@ pub fn run() {
     tauri::Builder::default()
         .append_invoke_initialization_script(material_initialization_script)
         .manage(screen_share::ScreenShareManager::default())
-        .setup(|_app| {
+        .setup(|app| {
+            if let Err(error) = system_accent::register_system_accent_observer(app.handle()) {
+                eprintln!("system accent observer unavailable: {error}");
+            }
+
             #[cfg(target_os = "windows")]
             if native_window_material_supported() {
-                if let Some(window) = _app.get_webview_window("main") {
+                if let Some(window) = app.get_webview_window("main") {
                     window.set_effects(EffectsBuilder::new().effect(Effect::Mica).build())?;
                 }
             }
@@ -50,7 +55,8 @@ pub fn run() {
             screen_share::list_screen_share_sources,
             screen_share::start_screen_share,
             screen_share::stop_screen_share,
-            screen_share::update_screen_share_settings
+            screen_share::update_screen_share_settings,
+            system_accent::get_system_accent
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())

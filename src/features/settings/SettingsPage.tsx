@@ -32,6 +32,7 @@ import type { LoadProfileMedia } from "../../components/ProfileTrigger";
 import type { AppUser } from "../../lib/types";
 import type { CacheStats, DataFreshness } from "../../lib/local-cache";
 import type { AppearancePreference } from "./appearance-preferences";
+import type { AppliedSystemAccent } from "./system-accent";
 import {
   AVATAR_BUCKET,
   COVER_BUCKET,
@@ -87,6 +88,7 @@ interface SettingsPageProps {
   microphoneProcessingError: string | null;
   interfaceSoundPreferences: InterfaceSoundPreferences;
   appearancePreference: AppearancePreference;
+  systemAccent: AppliedSystemAccent;
   cacheStats?: CacheStats;
   dataFreshness?: DataFreshness;
   readOnly?: boolean;
@@ -315,6 +317,7 @@ export function SettingsPage(props: SettingsPageProps) {
             {props.section === "appearance" ? (
               <AppearanceSettings
                 preference={props.appearancePreference}
+                systemAccent={props.systemAccent}
                 onChange={props.onAppearancePreferenceChange}
               />
             ) : null}
@@ -1678,11 +1681,20 @@ const APPEARANCE_OPTIONS: ReadonlyArray<{
 
 function AppearanceSettings({
   preference,
+  systemAccent,
   onChange,
 }: {
   preference: AppearancePreference;
+  systemAccent: AppliedSystemAccent;
   onChange: (preference: AppearancePreference) => void;
 }) {
+  const sourceDescription =
+    systemAccent.source === "macos"
+      ? "Following macOS Accent Color."
+      : systemAccent.source === "windows"
+        ? "Following the Windows accent color."
+        : "Using a neutral fallback in this preview.";
+
   return (
     <div className="settings-panel appearance-settings">
       <div className="settings-panel__heading">
@@ -1718,6 +1730,16 @@ function AppearanceSettings({
         </div>
       </fieldset>
       <div className="appearance-summary-grid">
+        <section className="appearance-summary-card appearance-accent-card">
+          <span
+            className="appearance-accent-swatch"
+            aria-label={`Current system accent ${systemAccent.color}`}
+            role="img"
+          />
+          <span>System accent</span>
+          <strong>{systemAccent.color.toUpperCase()}</strong>
+          <p>{sourceDescription} Bakbak updates it automatically.</p>
+        </section>
         <section className="appearance-summary-card">
           <Palette size={22} aria-hidden="true" />
           <span>Surface</span>

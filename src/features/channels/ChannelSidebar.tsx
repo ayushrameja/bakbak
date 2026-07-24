@@ -1,4 +1,5 @@
-import { Hash, Pencil, Plus, Volume2 } from "lucide-react";
+import { ChevronDown, Hash, Pencil, Plus, Volume2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { Avatar } from "../../components/Avatar";
 import {
   ProfileTrigger,
@@ -20,9 +21,21 @@ import { VoiceElapsedTime } from "../voice/VoiceElapsedTime";
 import { SidebarVoicePanel } from "../voice/SidebarVoicePanel";
 import { SidebarUserDock } from "../voice/SidebarUserDock";
 import type { useVoiceRoom } from "../voice/useVoiceRoom";
+import {
+  loadCollapsedChannelGroups,
+  saveCollapsedChannelGroups,
+} from "./channel-group-preferences";
 
 const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
 const ignoreProfileOpen: OpenProfile = () => undefined;
+const UNCATEGORIZED_TEXT_GROUP_ID = "uncategorized:text";
+const UNCATEGORIZED_VOICE_GROUP_ID = "uncategorized:voice";
+
+interface ChannelGroupModel {
+  id: string;
+  label: string;
+  channels: Channel[];
+}
 
 interface ChannelSidebarProps {
   server: Server;
@@ -73,26 +86,74 @@ export function ChannelSidebar({
   onToggleSoundboard,
   onOpenScreenShare,
 }: ChannelSidebarProps) {
-  const orderedCategories = [...categories].sort(
-    (left, right) =>
-      left.position - right.position || left.id.localeCompare(right.id),
+  const channelGroups = useMemo<ChannelGroupModel[]>(() => {
+    const orderedCategories = [...categories].sort(
+      (left, right) =>
+        left.position - right.position || left.id.localeCompare(right.id),
+    );
+    const knownCategoryIds = new Set(
+      orderedCategories.map((category) => category.id),
+    );
+    const uncategorizedChannels = channels
+      .filter(
+        (channel) =>
+          channel.categoryId === null ||
+          !knownCategoryIds.has(channel.categoryId),
+      )
+      .sort(compareChannels);
+    const uncategorizedTextChannels = uncategorizedChannels.filter(
+      (channel) => channel.kind === "text",
+    );
+    const uncategorizedVoiceChannels = uncategorizedChannels.filter(
+      (channel) => channel.kind === "voice",
+    );
+    const groups = orderedCategories.map((category) => ({
+      id: category.id,
+      label: category.name,
+      channels: channels
+        .filter((channel) => channel.categoryId === category.id)
+        .sort(compareChannels),
+    }));
+
+    if (uncategorizedTextChannels.length > 0) {
+      groups.push({
+        id: UNCATEGORIZED_TEXT_GROUP_ID,
+        label: "Conversations",
+        channels: uncategorizedTextChannels,
+      });
+    }
+    if (uncategorizedVoiceChannels.length > 0) {
+      groups.push({
+        id: UNCATEGORIZED_VOICE_GROUP_ID,
+        label: "Voice rooms",
+        channels: uncategorizedVoiceChannels,
+      });
+    }
+    return groups;
+  }, [categories, channels]);
+  const channelGroupIds = useMemo(
+    () => channelGroups.map((group) => group.id),
+    [channelGroups],
   );
-  const knownCategoryIds = new Set(
-    orderedCategories.map((category) => category.id),
+  const [collapsedGroups, setCollapsedGroups] = useState(() =>
+    loadCollapsedChannelGroups(server.id, channelGroupIds),
   );
-  const uncategorizedChannels = channels
-    .filter(
-      (channel) =>
-        channel.categoryId === null ||
-        !knownCategoryIds.has(channel.categoryId),
-    )
-    .sort(compareChannels);
-  const uncategorizedTextChannels = uncategorizedChannels.filter(
-    (channel) => channel.kind === "text",
-  );
-  const uncategorizedVoiceChannels = uncategorizedChannels.filter(
-    (channel) => channel.kind === "voice",
-  );
+
+  useEffect(() => {
+    setCollapsedGroups(loadCollapsedChannelGroups(server.id, channelGroupIds));
+  }, [channelGroupIds, server.id]);
+
+  const toggleGroup = (groupId: string) => {
+    setCollapsedGroups((current) => {
+      const next = {
+        ...current,
+        [groupId]: !current[groupId],
+      };
+      saveCollapsedChannelGroups(server.id, next);
+      return next;
+    });
+  };
+
   const membersById = new Map(members.map((member) => [member.id, member]));
   const currentMember = membersById.get(user.id) ?? { ...user, role: "member" };
   const profileForOccupant = (occupant: VoiceRoomOccupant): ServerMember =>
@@ -279,24 +340,37 @@ export function ChannelSidebar({
             </button>
           </div>
         ) : null}
-        {orderedCategories.map((category) => (
-          <ChannelGroup key={category.id} label={category.name}>
-            {channels
-              .filter((channel) => channel.categoryId === category.id)
-              .sort(compareChannels)
-              .map(renderChannel)}
-          </ChannelGroup>
-        ))}
-        {uncategorizedTextChannels.length > 0 ? (
-          <ChannelGroup label="Conversations">
-            {uncategorizedTextChannels.map(renderChannel)}
-          </ChannelGroup>
-        ) : null}
-        {uncategorizedVoiceChannels.length > 0 ? (
-          <ChannelGroup label="Voice rooms">
-            {uncategorizedVoiceChannels.map(renderChannel)}
-          </ChannelGroup>
-        ) : null}
+        {channelGroups.map((group) => {
+          const collapsed = Boolean(collapsedGroups[group.id]);
+          const containsSelected = group.channels.some(
+            (channel) => channel.id === selectedChannelId,
+          );
+          const unreadCount = group.channels.filter(
+            (channel) =>
+              channel.kind === "text" && unreadChannelIds.has(channel.id),
+          ).length;
+          const groupChannelIds = new Set(
+            group.channels.map((channel) => channel.id),
+          );
+          const voiceOccupantCount = voiceOccupants.filter((occupant) =>
+            groupChannelIds.has(occupant.channelId),
+          ).length;
+
+          return (
+            <ChannelGroup
+              key={group.id}
+              groupId={group.id}
+              label={group.label}
+              collapsed={collapsed}
+              containsSelected={containsSelected}
+              unreadCount={unreadCount}
+              voiceOccupantCount={voiceOccupantCount}
+              onToggle={() => toggleGroup(group.id)}
+            >
+              {group.channels.map(renderChannel)}
+            </ChannelGroup>
+          );
+        })}
       </nav>
 
       <div className="sidebar-spacer" />
@@ -322,18 +396,81 @@ export function ChannelSidebar({
 }
 
 function ChannelGroup({
+  groupId,
   label,
+  collapsed,
+  containsSelected,
+  unreadCount,
+  voiceOccupantCount,
+  onToggle,
   children,
 }: {
+  groupId: string;
   label: string;
+  collapsed: boolean;
+  containsSelected: boolean;
+  unreadCount: number;
+  voiceOccupantCount: number;
+  onToggle: () => void;
   children: React.ReactNode;
 }) {
+  const panelId = `channel-group-${groupId.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
+
   return (
-    <section className="channel-group" aria-label={label}>
+    <section
+      className="channel-group"
+      aria-label={label}
+      data-collapsed={collapsed ? "true" : "false"}
+    >
       <header>
-        <h3>{label}</h3>
+        <button
+          className={`channel-group__toggle ${collapsed && containsSelected ? "is-selected" : ""}`}
+          type="button"
+          aria-expanded={!collapsed}
+          aria-controls={panelId}
+          onClick={onToggle}
+        >
+          <ChevronDown
+            className="channel-group__chevron"
+            size={15}
+            aria-hidden="true"
+          />
+          <span className="channel-group__label">{label}</span>
+          {collapsed ? (
+            <span className="channel-group__summary">
+              {containsSelected ? (
+                <span className="visually-hidden">
+                  Selected channel inside.
+                </span>
+              ) : null}
+              {unreadCount > 0 ? (
+                <span
+                  className="channel-group__unread-summary"
+                  aria-label={`${unreadCount} unread ${
+                    unreadCount === 1 ? "channel" : "channels"
+                  }`}
+                >
+                  <i aria-hidden="true" />
+                </span>
+              ) : null}
+              {voiceOccupantCount > 0 ? (
+                <span
+                  className="channel-group__voice-summary"
+                  aria-label={`${voiceOccupantCount} ${
+                    voiceOccupantCount === 1 ? "person" : "people"
+                  } in voice`}
+                >
+                  <Volume2 size={12} aria-hidden="true" />
+                  <b aria-hidden="true">{voiceOccupantCount}</b>
+                </span>
+              ) : null}
+            </span>
+          ) : null}
+        </button>
       </header>
-      {children}
+      <div className="channel-group__children" id={panelId} hidden={collapsed}>
+        {children}
+      </div>
     </section>
   );
 }

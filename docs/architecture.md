@@ -33,28 +33,34 @@ logout. Its Data & storage section reports the current account's bounded
 conversation/profile cache, freshness, and confirmed local clearing without
 removing cloud data, authentication, or device/appearance preferences.
 
-Appearance has one neutral glass treatment without global decorative texture,
-chromatic glow, selectable accents, or heavy shadows. A device-local scheme
-choice offers Auto, Light, and Dark: Auto follows `prefers-color-scheme`, while
-the explicit choices apply before React mounts and update the matching
-`theme-color` metadata. Dark mode uses near-black translucent panels; light
-mode uses neutral-white translucent panels. Primary chrome uses 24 px blur at
-120% saturation while avatars, covers, emoji, camera video, and screen sharing
-remain untouched. Ordinary chrome remains grayscale. The Bakbak identity uses
+Appearance has one neutral glass treatment with a restrained, live
+operating-system accent and no selectable accent, global decorative texture,
+or heavy shadows. A device-local scheme choice offers Auto, Light, and Dark:
+Auto follows `prefers-color-scheme`, while the explicit choices apply before
+React mounts and update the matching `theme-color` metadata. The renderer
+listens before querying native color, renders a neutral fallback within 250 ms,
+normalizes arbitrary accents for the active light/dark canvas, and refreshes
+from native state on color events and window focus. Dark mode uses 64/72/84%
+near-black canvas/panel/strong bases; light mode uses 60/72/84% neutral-white
+bases. Both receive a quiet 6/5/3% accent veil and an 8% accent hover. Primary
+chrome uses 24 px blur at 120% saturation while avatars, covers, emoji, camera
+video, and screen sharing remain untouched. The Bakbak identity uses
 two custom linked lowercase `b` strokes. The canonical
 `public/bakbak.svg` drives the browser favicon and generated native icon bundle,
 while the matching code-native `BakbakMark` appears statically on
 authentication, invite, loading, and empty Personal surfaces. The server header
 intentionally omits the mark: it contains only the fixed Bakbak wordmark and
 `β · vX.Y.Z` chip whose value comes from the renderer's package metadata. Its
-theme-responsive lime/green aurora, sparse constellation, and diagonal signal
+neutral, system-accented aurora, sparse constellation, and diagonal signal
 weave remain contained to that header and load no raster texture. The icon
 retains a flat, gradient-free treatment with no face or mascot. Scoped
 Discord-inspired
-positive, danger, selected, warning, and
-icon tokens identify call controls, presence, streaming, and admin state with
-verified light/dark contrast. Appearance Settings exposes only the three scheme
-choices plus the `Glass` surface summary; typography controls remain absent.
+positive, danger, warning, and icon tokens identify connection/presence,
+destructive, warning, and inactive control state. Selection aliases the
+normalized system accent across navigation, trails, focus, and active ordinary
+controls. Appearance Settings exposes only the three scheme choices plus
+read-only System accent and `Glass` summaries; typography and accent controls
+remain absent.
 Legacy `bakbak.appearancePreferences.*` values are inert and intentionally left
 in local storage. Roundo v2.0 is served from a committed variable WOFF2 with
 upright weights 200–700 and a generic sans-serif fallback for unsupported
@@ -67,7 +73,11 @@ Discord-style anchored card. Admin-only
 controls create or rename text and voice channels, while Realtime reconciles
 changes for every member. Ordered channel categories reproduce the visible
 Unlucky Boys layout: 7 categories, 18 text rooms, and 6 voice rooms in the same
-mixed order. This layout imports no Discord messages or credentials.
+mixed order. The channel shelf renders that hierarchy as a collapsible
+connector tree while retaining room-type icons and hidden selected, unread, and
+voice-occupancy summaries. Collapse state is device-local per server and does
+not alter subscriptions or room state. This layout imports no Discord messages
+or credentials.
 
 Upgraded clients expose chat, structured individual mentions, account-synced
 unread emphasis, incoming-message sounds, and drafts only for text channels.
@@ -82,6 +92,14 @@ subscribes to, sends, drafts, notifies, nor shows unread state for them. No
 destructive database migration accompanies this client-only boundary.
 
 Text channels and Personal DMs now share the plan 0022 rich-message boundary.
+A theme-responsive conversation-root treatment makes their introduction the
+visual origin of the thread. Empty conversations expose an accessible compact
+first-branch status rather than a full-width placeholder. Populated
+conversations align a subtle rail through the introduction icon and message
+avatars, add compact dots for grouped messages, and terminate the trail after
+the visible history. Quiet/flowing labels describe only the current rendered
+message state; they do not alter loading, activity, read state, or
+subscriptions.
 A draft may contain structured text/mentions plus up to four private
 image/GIF/H.264 MP4 attachments, one standalone Bakbak sticker, or one GIPHY
 GIF/sticker with an optional text caption, and may quote one visible message
@@ -435,7 +453,10 @@ bakbak/
 │       ├── 0020-bakbak-orbit-branding.md
 │       ├── 0021-instant-workspace-local-cache-and-voice-acceleration.md
 │       ├── 0022-rich-messaging-media-replies-stickers.md
-│       └── 0023-modern-interface-audio.md
+│       ├── 0023-modern-interface-audio.md
+│       ├── 0024-collapsible-channel-tree.md
+│       ├── 0025-conversation-root-and-message-trail.md
+│       └── 0026-system-adaptive-unified-accent.md
 ├── public/
 │   ├── bakbak.svg                 # canonical favicon/native-icon source
 │   ├── fonts/roundo/              # pinned Roundo v2.0 variable WOFF2
@@ -496,12 +517,15 @@ The renderer uses a titlebar, three-panel desktop layout, and modal layer:
    18 text rooms and six voice rooms in mixed source order, plus
    active-call/sidebar controls, a shared Personal/server user footer with the
    signed-in member's authenticated static cover poster behind its identity and
-   controls, voice occupancy, and
-   admin-only create/rename controls. The shelf scrolls independently; admin
-   creation adds an uncategorized room because category management is outside
-   plan 0012. Occupied rooms show one room-active timer; their compact occupant
-   rows omit personal timers/local suffixes and ring the current room's active
-   speakers.
+   controls, voice occupancy, and admin-only create/rename controls. Categories
+   use accessible disclosure buttons and an Apple-style connector rail with
+   hash or speaker child icons. Collapsed headers remain closed during
+   selection or activity and summarize a contained selection, unread text
+   rooms, and total voice occupants. The shelf scrolls independently; admin
+   creation adds an uncategorized room to a matching collapsible Conversations
+   or Voice rooms group because category management is outside plan 0012.
+   Occupied rooms show one room-active timer; their compact occupant rows omit
+   personal timers/local suffixes and ring the current room's active speakers.
 3. The flexible center canvas contains text chat or the voice room. The shell
    has no outer padding, gutters, rounding, outlines, or panel shadows; two
    straight 1 px separators define its edges. Titlebar buttons independently
@@ -511,6 +535,12 @@ The renderer uses a titlebar, three-panel desktop layout, and modal layer:
    selection until pointer release/cancel. Persistent clipping slots keep each
    side component mounted while hidden, but `inert`, `aria-hidden`, and a
    disabled resizer prevent interaction during the zero-width state.
+   Text channels and Personal DMs render their introduction as a conversation
+   root. Empty threads connect it to one compact, accessible first-branch
+   status; populated threads align a theme-responsive 1 px trail to the root
+   icon and every message avatar, with grouped-message dots and a terminal
+   marker. This presentation wraps the existing message elements without
+   changing their list semantics or interaction contracts.
 4. The 240 px member panel is visible by default and groups unique members as
    In Voice, Online, and Offline in normal document flow, with a visible 5 px
    separation between its compact member surfaces. Known heartbeat
@@ -554,8 +584,10 @@ The renderer uses a titlebar, three-panel desktop layout, and modal layer:
    seconds and labels the result as backend latency. LiveKit
    `ConnectionQualityChanged` events separately normalize the local participant as
    Unknown/Excellent/Good/Poor; reconnecting display takes precedence. The
-   selected glass scheme uses grayscale translucency plus scoped
-   positive, danger, selected, warning, and icon colors. Renderer identity
+   selected glass scheme uses neutral translucency with a subtle system-accent
+   veil plus independent positive, danger, warning, and icon colors. Renderer
+   selection and active ordinary controls use the normalized system accent.
+   Renderer identity
    screens use the static linked-`bb` Bakbak mark. The server header omits the
    logo and pairs the Bakbak wordmark with the package-version-backed
    `β · vX.Y.Z` chip. Its theme-responsive atmospheric background contains a
@@ -608,6 +640,13 @@ distribution.
 The main window enables Tauri's built-in interface zoom hotkeys, providing
 Cmd/Ctrl `+`, Cmd/Ctrl `-`, and Cmd/Ctrl `0` through the narrowly scoped
 webview-zoom capability.
+The `get_system_accent` command returns RGB bytes and a
+`macos | windows | fallback` source. macOS converts
+`NSColor.controlAccentColor` to sRGB and observes
+`NSSystemColorsDidChangeNotification`; Windows reads
+`UISettings.GetColorValue(Accent)` and retains `ColorValuesChanged`. Both emit
+`system-accent-changed` for the application lifetime. Browser/mock and
+unsupported hosts use the renderer's neutral fallback.
 Native commands are not an authorization substitute for Supabase RLS or Edge
 Function validation. The updater capability may check, download, and install a
 manifest-signed update, while the process capability is narrowed to restart.
@@ -859,9 +898,14 @@ An invite-management UI is deferred until post-v1.
    system changes continue to apply live. Rust supplies the pre-render
    native/fallback material marker; fallback
    mode uses an opaque system-coloured document underlay and native mode makes
-   only the document roots transparent. Dark panels use 68% black and strong
-   controls 82% black; light panels use 66% and 82% white. Primary chrome uses
-   24 px blur and 120% saturation, never a filter on user/live media. Legacy
+   only the document roots transparent. Dark canvas/panel/strong bases use
+   64/72/84% black; light bases use 60/72/84% white. Accent mixes of 6/5/3%
+   unify those surfaces while keeping wallpaper bleed subordinate. Primary
+   chrome uses 24 px blur and 120% saturation, never a filter on user/live
+   media. The native accent listener starts before its initial query, falls
+   back to neutral within 250 ms, validates byte channels, normalizes to 4.5:1
+   text contrast, chooses black or white on-accent text, and refreshes on
+   native color events, focus, and resolved scheme changes. Legacy
    `bakbak.appearancePreferences.*` keys are neither read nor deleted. Shared
    type, spacing, height, and radius tokens enforce the
    500/600/700 UI hierarchy, 4 px spacing rhythm, 36/40/44 px controls and rows,
@@ -1250,10 +1294,16 @@ Interface cues deliberately bypass the selected call output.
 Soundboard section collapse state is stored independently per server under
 `bakbak.soundboardSections.v1:<server ID>` and never syncs; favorite rows sync
 through Supabase instead.
+Channel-category collapse state is stored independently per server under
+`bakbak.channelCategories.v1:<server ID>`. Only boolean values for currently
+known real or synthetic group IDs are accepted; malformed data falls back to
+expanded groups, and unavailable storage affects persistence rather than
+interaction.
 Appearance stores only `auto`, `light`, or `dark` under
 `bakbak.appearancePreference.v1`. Invalid values restore Auto. Old
 `bakbak.appearancePreferences.*` entries remain inert rather than receiving a
-cleanup migration.
+cleanup migration. System accent is native-derived and has no device-local or
+account preference key.
 It stores `{ enabled, volume, categories }` under
 `bakbak.interfaceSoundPreferences.v1`; the default is enabled at 55% with
 Messages, Voice, Screen share, and Status enabled. Interface sounds lazily
@@ -1557,13 +1607,18 @@ that it has passed.
   implemented. Installed macOS and Windows verification still must cover
   native controls, dragging, maximize/restore, resizing, light/dark modes,
   offline font loading, OS shortcuts, and screen-share cleanup on close.
+- Plan 0026's native macOS/Windows accent bridge, renderer normalization,
+  unified interaction tokens, calmer accent-veiled glass, and read-only
+  Appearance swatch are implemented with focused renderer, native, contrast,
+  and styling contracts. Installed macOS live color changes and the Windows
+  Automatic/wallpaper-derived color path still require direct observation.
 - Plan 0016's neutral appearance and local Roundo bundle remain active, while a
   later user-directed follow-up restores only Auto/Light/Dark scheme selection
   and removes the typography summary. Accent, surface, and font controls remain
-  absent. The appearance regression guard covers the scheme-only preference.
-  Plan 0019 permits its scoped semantic control tokens, and plan 0020 permits
-  the restrained lime/green atmospheric values only inside the explicitly
-  delimited server-header identity block; ordinary chrome remains grayscale.
+  absent. Plan 0026 supersedes only the fixed decorative/selection palette:
+  Bakbak always follows the native accent and exposes it read-only. Plan 0019's
+  semantic positive/danger/warning colors remain independent, while plan
+  0020's server-header atmosphere now derives from the same accent.
   The in-app browser's localhost policy blocked the mock-preview reload, so the
   dark/light 1024×680 and 1280×800 visual matrix plus installed macOS/Windows
   glyph, clipping, wrapping, and offline-network observation remain required.

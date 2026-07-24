@@ -88,7 +88,6 @@ function assertGrayscale(source, label) {
 const semanticTokenValues = {
   "semantic-positive": ["#23a55a", "#18733e"],
   "semantic-danger": ["#da373c", "#b9252b"],
-  "semantic-selected": ["#5865f2", "#3d49b8"],
   "semantic-warning": ["#f0b232", "#8a5a00"],
   "icon-primary": ["#f2f3f5", "#1e1f22"],
   "icon-secondary": ["#b5bac1", "#4e5058"],
@@ -115,7 +114,7 @@ function contrastRatio(left, right) {
   );
 }
 
-test("ordinary chrome stays monochrome while brand identity remains contained", async () => {
+test("ordinary chrome is neutral or system-accented while brand assets remain contained", async () => {
   const brandIdentityPattern =
     /\/\* BRAND-IDENTITY-START[\s\S]*?\/\* BRAND-IDENTITY-END \*\//;
   const brandIdentity = styles.match(brandIdentityPattern)?.[0];
@@ -160,7 +159,7 @@ test("ordinary chrome stays monochrome while brand identity remains contained", 
   }
 });
 
-test("approved semantic colors are system-adaptive and accessible", () => {
+test("status semantics stay independent while selection follows the system accent", () => {
   for (const [name, expectedValues] of Object.entries(semanticTokenValues)) {
     const actualValues = [
       new Set(
@@ -186,7 +185,7 @@ test("approved semantic colors are system-adaptive and accessible", () => {
       ),
     );
   }
-  for (const name of ["semantic-danger", "semantic-selected"]) {
+  for (const name of ["semantic-danger"]) {
     semanticTokenValues[name].forEach((value, scheme) =>
       assert.ok(
         contrastRatio(value, "#ffffff") >= 4.5,
@@ -194,6 +193,13 @@ test("approved semantic colors are system-adaptive and accessible", () => {
       ),
     );
   }
+
+  assert.match(styles, /--semantic-selected:\s*var\(--system-accent\);/);
+  assert.match(
+    styles,
+    /--semantic-selected-soft:\s*var\(--system-accent-soft\);/,
+  );
+  assert.doesNotMatch(styles, /#5865f2|#3d49b8/i);
 
   assert.match(
     styles,
@@ -242,7 +248,7 @@ test("Roundo is local, pinned, licensed, and limited to supported weights", () =
   );
 });
 
-test("appearance stays grayscale while exposing only scheme selection", async () => {
+test("appearance exposes scheme selection and a read-only system accent", async () => {
   const productionAppearance = `${styles}\n${app}\n${settings}`;
   assert.doesNotMatch(
     productionAppearance,
@@ -254,6 +260,8 @@ test("appearance stays grayscale while exposing only scheme selection", async ()
   assert.match(settings, /value:\s*"dark"/);
   assert.match(settings, /value:\s*"light"/);
   assert.match(settings, /<strong>Glass<\/strong>/);
+  assert.match(settings, />System accent</);
+  assert.match(settings, /appearance-accent-swatch/);
   assert.doesNotMatch(settings, />Typeface</);
 
   for (const path of [

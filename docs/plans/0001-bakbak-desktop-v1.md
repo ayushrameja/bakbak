@@ -42,9 +42,9 @@ starts with context instead of archaeological guessing.
 - Place shared UI in `src/components`, service clients in `src/lib`, and the
   application shell/providers in `src/app`.
 - Keep native configuration and Rust code isolated in `src-tauri`.
-- Use one neutral glass interface with device-local Auto, Light, and Dark
-  choices; Auto follows the operating system. Keep scoped semantic
-  status/control colors. A
+- Use one neutral, system-accent-veiled glass interface with device-local Auto,
+  Light, and Dark choices; Auto follows the operating system and the accent
+  always follows the native OS color. Keep scoped semantic status colors. A
   48 px app-owned titlebar places the
   Personal/Bakbak switch at the left and `OG Nahan Gang` at the true center;
   independently optional channel and member panels occupy an edge-to-edge
@@ -199,6 +199,8 @@ typography portions of plans 0005, 0006, 0009, and 0014 while preserving their
 non-visual behavior. A 2026-07-22 user-directed follow-up restores only
 device-local Auto/Light/Dark scheme selection and removes the typography
 summary; accents, surface variants, and font controls remain excluded.
+Plan 0026 later supersedes only the fixed decorative accent rule with an
+always-follow-system accent; manual accent controls remain excluded.
 The app-owned cross-platform titlebar, Personal/Bakbak segmented switch,
 rail-free shell, and comfortable Roundo density are approved under
 `0017-space-efficient-titlebar-and-comfortable-roundo.md`. Plan 0017 supersedes
@@ -232,6 +234,18 @@ Discord-style rich channel/DM messaging, private image/GIF/H.264 MP4
 attachments, GIPHY sends, Bakbak stickers/reactions, quoted replies, author
 deletion, and authenticated poster caching are approved under
 `0022-rich-messaging-media-replies-stickers.md`.
+The accessible Apple-style connector tree, per-server device-local category
+collapse state, and collapsed selected/unread/voice summaries are approved
+under `0024-collapsible-channel-tree.md`.
+The shared channel/DM conversation root, compact empty first branch, and
+avatar-aligned populated message trail are approved under
+`0025-conversation-root-and-message-trail.md`.
+The native macOS/Windows accent bridge, renderer contrast normalization,
+unified selection/interaction palette, calmer glass opacity, and read-only
+Appearance swatch are approved under
+`0026-system-adaptive-unified-accent.md`. Plan 0026 supersedes fixed decorative
+green and blue selection colors while preserving semantic positive, danger,
+and warning colors and the graphite/ivory linked-`bb` assets.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -307,6 +321,13 @@ deletion, and authenticated poster caching are approved under
       matrix.
 - [x] Add ordered channel categories and the exact visible Unlucky Boys room
       hierarchy under plan 0012 without importing messages.
+- [x] Present channel categories and uncategorized shelves as the persisted,
+      accessible connector tree defined by plan 0024.
+- [x] Present empty and populated text conversations with the shared root and
+      message trail defined by plan 0025.
+- [x] Add plan 0026's live native system accent, contrast-normalized renderer
+      tokens, unified decorative interaction states, calmer glass veil, and
+      read-only Appearance swatch without adding an accent preference.
 - [x] Deploy plan 0012's additive category/layout migration.
 - [ ] Complete plan 0012's hosted two-account hierarchy check.
 - [x] Add local RNNoise microphone cleanup plus Child, Robot, and

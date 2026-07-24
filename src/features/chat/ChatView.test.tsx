@@ -40,6 +40,79 @@ const channel: Channel = {
 };
 
 describe("ChatView controlled drafts", () => {
+  it("presents an empty channel as the first branch of its conversation", () => {
+    const { container } = render(
+      <ChatView
+        channel={channel}
+        messages={[]}
+        members={[member]}
+        currentUser={user}
+        sending={false}
+        draft={EMPTY_MESSAGE_DRAFT}
+        onDraftChange={vi.fn()}
+        onSend={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    expect(container.querySelector(".conversation-flow--empty")).toBeTruthy();
+    expect(screen.getByText("Quiet room")).toBeVisible();
+    expect(screen.getByText("#lobby is listening")).toBeVisible();
+    expect(
+      screen.getByRole("status", {
+        name: "This conversation has no messages yet",
+      }),
+    ).toHaveTextContent("The first branch is yours.");
+    expect(
+      container.querySelector(".conversation-thread__end"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("connects populated messages and grouped replies to the conversation trail", () => {
+    const messages: ChatMessage[] = [
+      {
+        id: "message-1",
+        channelId: channel.id,
+        authorId: user.id,
+        body: "First thought",
+        content: null,
+        createdAt: "2026-07-23T10:00:00.000Z",
+      },
+      {
+        id: "message-2",
+        channelId: channel.id,
+        authorId: user.id,
+        body: "Same thought, continued",
+        content: null,
+        createdAt: "2026-07-23T10:01:00.000Z",
+      },
+    ];
+    const { container } = render(
+      <ChatView
+        channel={channel}
+        messages={messages}
+        members={[member]}
+        currentUser={user}
+        sending={false}
+        draft={EMPTY_MESSAGE_DRAFT}
+        onDraftChange={vi.fn()}
+        onSend={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    expect(container.querySelector(".conversation-flow--filled")).toBeTruthy();
+    expect(screen.getByText("Conversation flowing")).toBeVisible();
+    expect(container.querySelectorAll("article.message")).toHaveLength(2);
+    expect(container.querySelector("#message-message-2")).toHaveClass(
+      "message--grouped",
+    );
+    expect(container.querySelector(".conversation-thread__end")).toBeVisible();
+    expect(
+      screen.queryByRole("status", {
+        name: "This conversation has no messages yet",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
   it("renders the app-owned channel draft and clears it before sending", async () => {
     const onDraftChange = vi.fn();
     const onSend = vi.fn().mockResolvedValue(undefined);
@@ -142,6 +215,7 @@ describe("ChatView controlled drafts", () => {
     expect(screen.getByRole("combobox", { name: "Message Mira" })).toHaveValue(
       "private thought",
     );
+    expect(screen.getByText("Mira is one message away")).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "Send message" }));
     expect(onDraftChange.mock.calls).toEqual([
       [EMPTY_MESSAGE_DRAFT],

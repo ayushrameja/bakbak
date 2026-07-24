@@ -4551,3 +4551,153 @@ supabase/functions/tests` — passed 37/37 tests, including media request
 - **Next:** Open the rebuilt `Bakbak.app`, judge the linked-`bb` icon once in
   the macOS Dock and app switcher, then repeat the taskbar/installer observation
   on the next Windows build.
+
+## 2026-07-24 — Add the collapsible channel tree
+
+- **Completed:** Replaced static channel-category headings with accessible
+  disclosure controls and an Apple-style connector tree while retaining the
+  existing hash/speaker room icons, mixed ordering, selection, unread state,
+  voice preparation, timers, occupant/profile rows, LIVE labels, and admin
+  controls. Added collapsed selected/unread/voice-occupancy summaries, the same
+  behavior for uncategorized Conversations and Voice rooms shelves, and
+  per-server device-local persistence with safe fallbacks.
+- **Decisions:** Kept collapse state renderer-only under
+  `bakbak.channelCategories.v1:<server ID>` with every new group expanded by
+  default. Collapsed groups remain closed during selection and activity, using
+  their header to summarize hidden state instead of surprising the user by
+  reopening. Retained disclosure/list semantics rather than claiming the full
+  ARIA tree keyboard model. Used plan number 0024 because plan 0023 already
+  owns the modern interface-audio work.
+- **Validation:**
+  - Focused ChannelSidebar and preference Vitest run — passed 2 files with
+    19/19 tests covering pointer/keyboard disclosure, hidden-child inertness,
+    ordering, persistence, new/stale groups, server isolation, summaries,
+    synthetic shelves, and existing channel/voice behavior.
+  - `node --test scripts/channel-tree-layout.test.mjs` — passed 1/1 connector,
+    terminal-branch, and reduced-motion CSS contract.
+  - Mock in-app browser QA at 1280×800 and 1024×680 — passed expanded and
+    collapsed interaction in light and dark. The 232 px sidebar retained
+    contained scrolling, branch geometry measured 1 px with an 8 px terminal
+    radius, document width matched the viewport at both sizes, and the console
+    reported no warnings or errors.
+  - Initial `pnpm check` — stopped at formatting for the new channel-tree
+    contract test; formatted that file.
+  - Final `pnpm check` — passed formatting, lint, both strict TypeScript
+    projects, 71 Vitest files with 358 tests, 26/26 Node contract tests,
+    synchronized version `0.16.0`, production build, and bundle secret scan.
+    Vite retained the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+- **Documentation updated:** Added plan 0024, updated the current architecture
+  and active v1 contract, and appended this canonical progress entry.
+- **Known limitations:** The rebuilt tree still needs direct observation with
+  installed macOS native material and on the next Windows build. The local
+  macOS bundle is ad-hoc signed and not notarized.
+- **Next:** Open the rebuilt `Bakbak.app`, inspect expanded/collapsed categories
+  once with native macOS material, then repeat the sidebar observation on the
+  next Windows build.
+
+## 2026-07-24 — Connect empty and populated conversations
+
+- **Completed:** Reframed the shared channel/DM introduction as a conversation
+  root with Quiet room or Conversation flowing state. Replaced the oversized
+  dashed empty placeholder with an accessible, target-aware first-branch node.
+  Added a theme-responsive populated-message rail aligned to the root icon and
+  avatar centers, short body branches, grouped-message dots, and a terminal
+  marker while preserving the complete existing chat interaction surface.
+- **Decisions:** Reused the current message order and grouping rather than
+  introducing a specialized tree role or new navigation model. Kept the
+  treatment renderer-only and descriptive: quiet/flowing state comes solely
+  from the currently rendered message list and does not affect subscriptions,
+  read state, pagination, drafts, or persistence. Added no suggested-post
+  actions so the empty state cannot send anything on the user's behalf.
+- **Validation:**
+  - Focused ChatView Vitest, conversation-trail Node contract, and strict
+    TypeScript run — passed 7/7 component tests, 2/2 geometry/reduced-motion
+    contracts, and both TypeScript projects.
+  - Mock in-app browser QA at 1280×800 and 1024×680 — passed empty and populated
+    layouts in dark and light schemes. Root, spark, and avatar centers stayed
+    within 0.5 px, the empty card compressed from 620 px to 385 px at minimum
+    size, messages wrapped cleanly, and conversation/document horizontal
+    overflow remained zero.
+  - Initial `pnpm check` — stopped at the typography contract because the new
+    eyebrow used unsupported weight 800; changed it to the approved 700.
+  - Final `pnpm check` — passed formatting, lint, both strict TypeScript
+    projects, 71 Vitest files with 360 tests, 28/28 Node contract tests,
+    synchronized version `0.16.0`, production build, and bundle secret scan.
+    Vite retained the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+  - Post-documentation `pnpm format:check` and `git diff --check` — passed;
+    the ignored `.env.local` remained outside the change set.
+- **Documentation updated:** Added plan 0025, updated the current architecture
+  and active v1 contract, and appended this canonical progress entry.
+- **Known limitations:** The rebuilt treatment still needs direct observation
+  with installed macOS native material and on the next Windows build. The local
+  macOS bundle is ad-hoc signed and not notarized.
+- **Next:** Open the rebuilt `Bakbak.app`, inspect empty and populated text
+  rooms once in native macOS light and dark modes, then repeat the observation
+  on the next Windows build.
+
+## 2026-07-24 — Unify the interface around the system accent
+
+- **Completed:** Added `get_system_accent` and the
+  `system-accent-changed` native bridge. macOS now converts
+  `NSColor.controlAccentColor` to sRGB and retains a system-color notification
+  observer; Windows reads `UISettings` Accent and retains its color-change
+  subscription. Added the pre-render renderer service with strict payload
+  validation, a 250 ms neutral fallback, live event/focus refresh, light/dark
+  recomputation, contrast normalization, black/white on-accent choice, and the
+  complete CSS token family. Replaced fixed green branding and blue selection
+  with that accent across glass atmosphere, channels, Personal conversations,
+  unread state, conversation trails, focus/hover, resizers, composer, and
+  ordinary active call controls. Added a read-only Appearance swatch and
+  bounded development-only red/blue/Graphite preview injection.
+- **Decisions:** Followed the OS-owned accent rather than reading wallpaper
+  pixels; Windows Automatic may derive that OS color from wallpaper, while
+  macOS follows its Appearance setting. Kept online/connected/in-voice green,
+  destructive/error/leave red, and warning/reconnecting/idle amber independent
+  because those colors carry meaning. Normalized the accent against the
+  resolved canvas instead of assuming every OS choice is readable. Increased
+  dark canvas/panel/strong neutral bases to 64/72/84% and light bases to
+  60/72/84%, then mixed only 6/5/3% accent into them so native wallpaper remains
+  visible without becoming a competing theme.
+- **Validation:**
+  - Focused renderer validation — passed lint, strict TypeScript, 4 Vitest files
+    with 44/44 tests, and 12/12 system-accent/appearance/glass Node contracts.
+    Coverage includes malformed payloads, fallback, red/blue/yellow/black/white/
+    Graphite contrast in both schemes, on-accent choice, listener-before-query
+    ordering, live updates, focus refresh, query-only degradation, scheme
+    recomputation, cleanup, read-only source reporting, and mute/deafen styling.
+  - `cargo test --locked system_accent --manifest-path src-tauri/Cargo.toml` —
+    passed 2/2 focused macOS-native/fallback tests; 13 unrelated native tests
+    were filtered out.
+  - Mock in-app browser matrix at 1280×800 and 1024×680 — passed red, blue, and
+    Graphite injections in dark and light schemes. Server panels, member rail,
+    selected channel, populated trail, composer, Settings, Personal lounge,
+    selected DM, empty first branch, and populated DM remained coherent.
+    Document, left/right panel, introduction, and composer overflow all measured
+    zero; the console reported no warnings or errors.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects, 72
+    Vitest files with 372 tests, 32/32 Node contract tests, synchronized version
+    `0.16.0`, production build, and bundle secret scan. Vite retained the
+    existing non-blocking large-chunk warning.
+  - `cargo check --locked` — passed on the current Apple Silicon macOS target.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+- **Documentation updated:** Added plan 0026, updated the current appearance,
+  renderer/native bridge, persistence, validation, and repository-structure
+  architecture contracts, updated the active v1 scope/checklist, and appended
+  this canonical progress entry.
+- **Known limitations:** The Windows source and feature contract are present,
+  but this macOS run did not compile or observe a Windows binary. Live accent
+  switching still needs direct observation in the rebuilt installed macOS app
+  and on Windows, including Windows Automatic wallpaper-derived color.
+  Connected mute/deafen and reduced-motion visual observation remain pending;
+  both have automated styling coverage.
+- **Next:** Open the rebuilt `Bakbak.app`, change macOS Accent Color while it is
+  running, and verify the live event plus focus fallback; then repeat the
+  connected-control and Automatic-accent matrix on the next Windows build.

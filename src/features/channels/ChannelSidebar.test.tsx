@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { APP_VERSION } from "../../lib/app-version";
 import type {
   AppUser,
@@ -11,6 +11,7 @@ import type {
 } from "../../lib/types";
 import type { useVoiceRoom } from "../voice/useVoiceRoom";
 import { ChannelSidebar } from "./ChannelSidebar";
+import { channelGroupPreferencesKey } from "./channel-group-preferences";
 
 const user: AppUser = {
   id: "user-1",
@@ -85,6 +86,8 @@ function renderSidebar(
 }
 
 describe("ChannelSidebar room shelf", () => {
+  beforeEach(() => window.localStorage.clear());
+
   it("shows the Bakbak wordmark without a logo or retired adda tagline", () => {
     const { container } = renderSidebar([voiceChannel]);
 
@@ -211,10 +214,210 @@ describe("ChannelSidebar room shelf", () => {
       categoryRegions.map((region) => region.getAttribute("aria-label")),
     ).toEqual(["Welcome", "Gamez"]);
     expect(
-      within(screen.getByRole("region", { name: "Gamez" }))
+      within(screen.getByRole("region", { name: "Gamez" })).getByRole(
+        "button",
+        { name: "Gamez" },
+      ),
+    ).toHaveAttribute("aria-expanded", "true");
+    expect(
+      within(
+        screen
+          .getByRole("region", { name: "Gamez" })
+          .querySelector(".channel-group__children") as HTMLElement,
+      )
         .getAllByRole("button")
         .map((button) => button.textContent),
     ).toEqual(["clips", "Queue"]);
+  });
+
+  it("collapses groups independently with pointer and keyboard activation", async () => {
+    const categories: ChannelCategory[] = [
+      {
+        id: "category-welcome",
+        serverId: server.id,
+        name: "Welcome",
+        position: 10,
+      },
+      {
+        id: "category-gamez",
+        serverId: server.id,
+        name: "Gamez",
+        position: 20,
+      },
+    ];
+    const spawn = {
+      ...voiceChannel,
+      id: "text-spawn",
+      categoryId: "category-welcome",
+      name: "spawn",
+      kind: "text" as const,
+    };
+    const clips = {
+      ...voiceChannel,
+      id: "text-clips",
+      categoryId: "category-gamez",
+      name: "clips",
+      kind: "text" as const,
+    };
+    const onSelect = vi.fn();
+    renderSidebar([spawn, clips], {
+      categories,
+      selectedChannelId: clips.id,
+      onSelect,
+    });
+    const welcomeToggle = screen.getByRole("button", { name: "Welcome" });
+    const gamezToggle = screen.getByRole("button", { name: "Gamez" });
+
+    expect(welcomeToggle).toHaveAttribute("aria-expanded", "true");
+    await userEvent.click(welcomeToggle);
+    expect(welcomeToggle).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByRole("button", { name: "spawn" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "clips" })).toBeVisible();
+    expect(onSelect).not.toHaveBeenCalled();
+
+    gamezToggle.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(gamezToggle).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByRole("button", { name: "clips" }),
+    ).not.toBeInTheDocument();
+    expect(onSelect).not.toHaveBeenCalled();
+
+    expect(
+      JSON.parse(
+        window.localStorage.getItem(channelGroupPreferencesKey(server.id)) ??
+          "{}",
+      ),
+    ).toEqual({
+      "category-welcome": true,
+      "category-gamez": true,
+    });
+  });
+
+  it("restores collapse state and leaves new categories expanded", async () => {
+    const welcome: ChannelCategory = {
+      id: "category-welcome",
+      serverId: server.id,
+      name: "Welcome",
+      position: 10,
+    };
+    const spawn = {
+      ...voiceChannel,
+      id: "text-spawn",
+      categoryId: welcome.id,
+      name: "spawn",
+      kind: "text" as const,
+    };
+    const firstRender = renderSidebar([spawn], { categories: [welcome] });
+    await userEvent.click(screen.getByRole("button", { name: "Welcome" }));
+    firstRender.unmount();
+
+    const gamez: ChannelCategory = {
+      id: "category-gamez",
+      serverId: server.id,
+      name: "Gamez",
+      position: 20,
+    };
+    renderSidebar([spawn], { categories: [welcome, gamez] });
+
+    expect(screen.getByRole("button", { name: /^Welcome/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.getByRole("button", { name: "Gamez" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  });
+
+  it("summarizes selected, unread, and occupied channels while collapsed", async () => {
+    const category: ChannelCategory = {
+      id: "category-development",
+      serverId: server.id,
+      name: "Development",
+      position: 10,
+    };
+    const selectedChannel: Channel = {
+      ...voiceChannel,
+      id: "text-react",
+      categoryId: category.id,
+      name: "React",
+      kind: "text",
+      position: 10,
+    };
+    const unreadChannel: Channel = {
+      ...selectedChannel,
+      id: "text-typescript",
+      name: "TypeScript",
+      position: 20,
+    };
+    const occupiedVoiceChannel: Channel = {
+      ...voiceChannel,
+      id: "voice-node",
+      categoryId: category.id,
+      name: "Node.js",
+      position: 30,
+    };
+    renderSidebar([selectedChannel, unreadChannel, occupiedVoiceChannel], {
+      categories: [category],
+      selectedChannelId: selectedChannel.id,
+      unreadChannelIds: new Set([unreadChannel.id]),
+      voiceOccupants: [
+        {
+          userId: friend.id,
+          displayName: friend.displayName,
+          avatarUrl: null,
+          channelId: occupiedVoiceChannel.id,
+          joinedAt: new Date().toISOString(),
+          isStreaming: false,
+        },
+      ],
+    });
+
+    const toggle = screen.getByRole("button", { name: "Development" });
+    await userEvent.click(toggle);
+
+    expect(toggle).toHaveClass("is-selected");
+    expect(screen.getByText("Selected channel inside.")).toBeInTheDocument();
+    expect(screen.getByLabelText("1 unread channel")).toBeVisible();
+    expect(screen.getByLabelText("1 person in voice")).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "React" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Mira")).not.toBeVisible();
+  });
+
+  it("collapses synthetic conversation and voice groups independently", async () => {
+    const textChannel: Channel = {
+      ...voiceChannel,
+      id: "text-random",
+      name: "random",
+      kind: "text",
+      position: 0,
+    };
+    renderSidebar([textChannel, voiceChannel], {
+      selectedChannelId: textChannel.id,
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Conversations" }),
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "random" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Lounge/i })).toBeVisible();
+    expect(
+      JSON.parse(
+        window.localStorage.getItem(channelGroupPreferencesKey(server.id)) ??
+          "{}",
+      ),
+    ).toMatchObject({
+      "uncategorized:text": true,
+      "uncategorized:voice": false,
+    });
   });
 
   it("prepares voice channels for pointer and keyboard discovery", () => {

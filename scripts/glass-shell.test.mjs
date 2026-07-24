@@ -15,10 +15,23 @@ const [styles, app, titlebar, panelResizer, chat, scrollbarHook, html] =
   ]);
 
 test("glass tokens and native-safe document underlays stay system adaptive", () => {
-  assert.match(styles, /--glass-panel:\s*rgba\(0, 0, 0, 0\.68\)/);
-  assert.match(styles, /--glass-strong:\s*rgba\(0, 0, 0, 0\.82\)/);
-  assert.match(styles, /--glass-panel:\s*rgba\(255, 255, 255, 0\.66\)/);
-  assert.match(styles, /--glass-strong:\s*rgba\(255, 255, 255, 0\.82\)/);
+  assert.match(styles, /--glass-canvas-neutral:\s*rgba\(0, 0, 0, 0\.64\)/);
+  assert.match(styles, /--glass-panel-neutral:\s*rgba\(0, 0, 0, 0\.72\)/);
+  assert.match(styles, /--glass-strong-neutral:\s*rgba\(0, 0, 0, 0\.84\)/);
+  assert.match(styles, /--glass-canvas-neutral:\s*rgba\(255, 255, 255, 0\.6\)/);
+  assert.match(styles, /--glass-panel-neutral:\s*rgba\(255, 255, 255, 0\.72\)/);
+  assert.match(
+    styles,
+    /--glass-strong-neutral:\s*rgba\(255, 255, 255, 0\.84\)/,
+  );
+  assert.match(
+    styles,
+    /--glass-canvas:\s*color-mix\([\s\S]*?var\(--system-accent\) 6%/,
+  );
+  assert.match(
+    styles,
+    /--glass-panel:\s*color-mix\([\s\S]*?var\(--system-accent\) 5%/,
+  );
   assert.match(styles, /blur\(24px\) saturate\(120%\)/);
   assert.match(
     styles,

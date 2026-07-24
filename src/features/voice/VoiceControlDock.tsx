@@ -200,7 +200,6 @@ export function VoiceControlDock({
         <DockButton
           label={voice.muted ? "Unmute" : "Mute"}
           active={voice.muted}
-          tone="danger"
           disabled={!connected}
           onClick={() => void voice.toggleMute()}
         >
@@ -261,7 +260,7 @@ export function VoiceControlDock({
               role="menu"
             >
               <button
-                className={voice.deafened ? "is-danger" : ""}
+                className={voice.deafened ? "is-active" : ""}
                 type="button"
                 role="menuitem"
                 disabled={!connected}
@@ -321,7 +320,6 @@ function DockButton({
   buttonRef,
   label,
   active = false,
-  tone = "selected",
   disabled = false,
   ariaExpanded,
   controls,
@@ -331,7 +329,6 @@ function DockButton({
   buttonRef?: Ref<HTMLButtonElement>;
   label: string;
   active?: boolean;
-  tone?: "selected" | "danger";
   disabled?: boolean;
   ariaExpanded?: boolean;
   controls?: string;
@@ -341,7 +338,7 @@ function DockButton({
   return (
     <button
       ref={buttonRef}
-      className={`${active ? "is-active" : ""} ${active && tone === "danger" ? "is-danger" : ""}`}
+      className={active ? "is-active" : ""}
       type="button"
       disabled={disabled}
       aria-label={label}
