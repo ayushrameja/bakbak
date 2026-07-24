@@ -40,26 +40,26 @@ the explicit choices apply before React mounts and update the matching
 `theme-color` metadata. Dark mode uses near-black translucent panels; light
 mode uses neutral-white translucent panels. Primary chrome uses 24 px blur at
 120% saturation while avatars, covers, emoji, camera video, and screen sharing
-remain untouched. Ordinary chrome remains grayscale. The Bakbak motion identity
-uses a minimal open ring facing three message particles: a generated static
-raster drives the favicon and native icon bundle, while a code-native SVG
-animates the jaws and particles on authentication, invite, loading, and empty
-Personal surfaces. The server header intentionally omits that logo: it pairs
-a fixed Bakbak wordmark with a compact `β · vX.Y.Z` chip whose value comes from
-the renderer's package metadata. Its solid surface, fine monochrome noise,
-border, and orbit lines respond to the active light/dark scheme. Only the
-nearest particle on animated-mark surfaces uses a bounded lime accent; the
-identity has no gradient, glow, or character face. Scoped
+remain untouched. Ordinary chrome remains grayscale. The Bakbak identity uses
+two custom linked lowercase `b` strokes. The canonical
+`public/bakbak.svg` drives the browser favicon and generated native icon bundle,
+while the matching code-native `BakbakMark` appears statically on
+authentication, invite, loading, and empty Personal surfaces. The server header
+intentionally omits the mark: it contains only the fixed Bakbak wordmark and
+`β · vX.Y.Z` chip whose value comes from the renderer's package metadata. Its
+theme-responsive lime/green aurora, sparse constellation, and diagonal signal
+weave remain contained to that header and load no raster texture. The icon
+retains a flat, gradient-free treatment with no face or mascot. Scoped
 Discord-inspired
 positive, danger, selected, warning, and
 icon tokens identify call controls, presence, streaming, and admin state with
 verified light/dark contrast. Appearance Settings exposes only the three scheme
 choices plus the `Glass` surface summary; typography controls remain absent.
 Legacy `bakbak.appearancePreferences.*` values are inert and intentionally left
-in local storage. Roundo v2.0 is served from a committed
-variable WOFF2 with upright weights 200–700 and a generic sans-serif fallback
-for unsupported glyphs; product UI uses only 500, 600, and 700, never renders
-below 11 px, and gives chat/composer text a 15 px weight-500 baseline. Profiles
+in local storage. Roundo v2.0 is served from a committed variable WOFF2 with
+upright weights 200–700 and a generic sans-serif fallback for unsupported
+glyphs; product UI uses only 500, 600, and 700, never renders below 11 px, and
+gives chat/composer text a 15 px weight-500 baseline. Profiles
 support validated display names, 190-character plain-text
 descriptions, static or GIF avatars, 3:1 static or GIF covers, integer cover
 focal points, lazy static member-row cover accents, and an accessible
@@ -437,8 +437,7 @@ bakbak/
 │       ├── 0022-rich-messaging-media-replies-stickers.md
 │       └── 0023-modern-interface-audio.md
 ├── public/
-│   ├── bakbak-orbit.png           # generated favicon/native-icon source frame
-│   ├── brand-noise.svg            # theme-tinted brand-surface noise tile
+│   ├── bakbak.svg                 # canonical favicon/native-icon source
 │   ├── fonts/roundo/              # pinned Roundo v2.0 variable WOFF2
 │   ├── interface-sounds/          # generated original 48 kHz mono WAV cues
 │   └── vendor/
@@ -448,7 +447,7 @@ bakbak/
 ├── third_party/roundo/             # Roundo source record and SIL OFL notice
 ├── src/
 │   ├── app/                       # application shell, routing, providers
-│   ├── components/                # reusable UI, including the SVG motion mark
+│   ├── components/                # reusable UI, including the static SVG mark
 │   ├── features/
 │   │   ├── auth/
 │   │   ├── server/
@@ -557,9 +556,10 @@ The renderer uses a titlebar, three-panel desktop layout, and modal layer:
    Unknown/Excellent/Good/Poor; reconnecting display takes precedence. The
    selected glass scheme uses grayscale translucency plus scoped
    positive, danger, selected, warning, and icon colors. Renderer identity
-   screens use the animated Bakbak motion mark. The server header contains the
-   theme-responsive noise/orbit texture, a Bakbak wordmark, and a compact
-   package-version-backed `β · vX.Y.Z` chip without repeating the logo. A
+   screens use the static linked-`bb` Bakbak mark. The server header omits the
+   logo and pairs the Bakbak wordmark with the package-version-backed
+   `β · vX.Y.Z` chip. Its theme-responsive atmospheric background contains a
+   sparse constellation and diagonal signal weave. A
    one-shot renderer-launch assembly
    completes within 500 ms; panel/space motion and message stagger collapse to
    the final state under reduced motion. Every scroll surface uses a transparent
@@ -1562,9 +1562,8 @@ that it has passed.
   and removes the typography summary. Accent, surface, and font controls remain
   absent. The appearance regression guard covers the scheme-only preference.
   Plan 0019 permits its scoped semantic control tokens, and plan 0020 permits
-  one lime particle accent only in the generated product artwork and explicitly
-  delimited server-header motion-brand block; ordinary chrome remains
-  grayscale.
+  the restrained lime/green atmospheric values only inside the explicitly
+  delimited server-header identity block; ordinary chrome remains grayscale.
   The in-app browser's localhost policy blocked the mock-preview reload, so the
   dark/light 1024×680 and 1280×800 visual matrix plus installed macOS/Windows
   glyph, clipping, wrapping, and offline-network observation remain required.

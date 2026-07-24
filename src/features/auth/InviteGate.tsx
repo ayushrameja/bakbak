@@ -1,6 +1,6 @@
 import { ArrowLeft, ArrowRight, KeyRound, LogOut } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { BakbakMotionMark } from "../../components/BakbakMotionMark";
+import { BakbakMark } from "../../components/BakbakMark";
 import { getSupabaseClient } from "../../lib/supabase";
 import type { AppUser } from "../../lib/types";
 import { validateInviteCode } from "./invite";
@@ -46,7 +46,7 @@ export function InviteGate({
   return (
     <main className="invite-gate">
       <section>
-        <BakbakMotionMark className="brand-mark" />
+        <BakbakMark className="brand-mark" />
         <div className="invite-gate__icon">
           <KeyRound size={25} />
         </div>

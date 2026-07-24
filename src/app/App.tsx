@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { Avatar } from "../components/Avatar";
-import { BakbakMotionMark } from "../components/BakbakMotionMark";
+import { BakbakMark } from "../components/BakbakMark";
 import { PanelResizer } from "../components/PanelResizer";
 import { ProfilePopover } from "../components/ProfilePopover";
 import type {
@@ -2600,7 +2600,7 @@ export default function App() {
   if (authLoading) {
     return renderAppFrame(
       <main className="app-loading">
-        <BakbakMotionMark className="brand-mark" />
+        <BakbakMark className="brand-mark" />
         <h1>Opening Bakbak</h1>
         <p>Checking whether you already have a seat…</p>
       </main>,
@@ -2646,7 +2646,7 @@ export default function App() {
   if (activeSpace === "server" && (!workspace || !selectedChannel)) {
     return renderAppFrame(
       <main className="app-loading">
-        <BakbakMotionMark className="brand-mark" />
+        <BakbakMark className="brand-mark" />
         <h1>{appError ? "The door is stuck" : "Setting the room up"}</h1>
         <p>
           {appError ??
@@ -2884,7 +2884,7 @@ export default function App() {
               />
             ) : activeSpace === "personal" ? (
               <section className="personal-home">
-                <BakbakMotionMark className="personal-home__mark" />
+                <BakbakMark className="personal-home__mark" />
                 <span className="eyebrow">Personal lounge</span>
                 <h2>Your conversations live here</h2>
                 <p>

@@ -52,10 +52,10 @@ starts with context instead of archaeological guessing.
   modal, sidebar call block, and auto-hiding floating voice dock. The renderer
   uses the locally bundled Roundo family at comfortable 500–700 product
   weights. A separate multi-server rail remains deferred until multi-server
-  navigation. Plan 0020 adds one bounded Bakbak motion identity exception: its
-  generated native artwork, animated identity-screen mark, theme-responsive
-  server-header texture, package-version-backed `β · vX.Y.Z` chip, and single
-  lime particle accent remain isolated while ordinary chrome stays neutral.
+  navigation. Plan 0020 adds one bounded Bakbak identity exception: its
+  linked-`bb` native artwork, matching static identity-screen mark,
+  theme-responsive logo-free server-header texture, and package-version-backed
+  `β · vX.Y.Z` chip remain isolated while ordinary chrome stays neutral.
 - Commit `.env.example` only. Use ignored `.env` files locally and
   platform-managed secrets for backend functions.
 
@@ -218,8 +218,8 @@ cover accents are approved under
 plans 0016/0018's fully monochrome semantic-state rule while retaining their
 neutral glass, system light/dark, typography, native material, and layout
 contracts.
-The minimal Bakbak motion icon, animated renderer identity screens,
-theme-responsive textured server header with no repeated logo, package-backed
+The minimal linked-`bb` Bakbak icon, matching static renderer identity screens,
+theme-responsive textured server header with no logo, package-backed
 Beta/version chip, and removal of the old `Friends-only adda` subtitle are
 approved under `0020-bakbak-orbit-branding.md`. Plan 0020 supersedes only the
 product-logo grayscale rule retained by plans 0016/0019; the neutral shell and
@@ -347,9 +347,9 @@ deletion, and authenticated poster caching are approved under
       without changing backend or persisted state.
 - [x] Add plan 0019's follow-up member spacing, static user-dock cover, and
       full non-control titlebar dragging with rotating idle/voice title copy.
-- [x] Add plan 0020's minimal motion app icon, animated identity-screen mark,
-      and theme-responsive textured server header with a current Beta/version
-      chip instead of a repeated logo, without recolouring ordinary chrome.
+- [x] Add plan 0020's linked-`bb` app icon, matching static identity-screen
+      mark, and theme-responsive textured server header with a current
+      Beta/version chip and no logo, without recolouring ordinary chrome.
 - [x] Add plan 0021's user-scoped IndexedDB workspace, recent-message, and
       profile-media cache with last-destination restoration, read-only offline
       fallback, Data & storage controls, and safe voice prewarming.

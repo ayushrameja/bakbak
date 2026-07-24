@@ -85,7 +85,7 @@ function renderSidebar(
 }
 
 describe("ChannelSidebar room shelf", () => {
-  it("shows the Bakbak identity without the retired adda tagline", () => {
+  it("shows the Bakbak wordmark without a logo or retired adda tagline", () => {
     const { container } = renderSidebar([voiceChannel]);
 
     expect(screen.getByText("Bakbak")).toBeVisible();
@@ -103,6 +103,7 @@ describe("ChannelSidebar room shelf", () => {
       ),
     ).toBeVisible();
     expect(container.querySelector(".server-brand__mark")).toBeNull();
+    expect(container.querySelector(".bakbak-mark")).toBeNull();
   });
 
   it("shows create and rename controls only to admins", async () => {

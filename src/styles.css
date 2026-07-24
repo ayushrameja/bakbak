@@ -3071,141 +3071,79 @@ button:active:not(:disabled) {
   }
 }
 
-/* BRAND-MOTION-START — theme-responsive identity, motion, and noise only. */
+/* BRAND-IDENTITY-START — theme-responsive identity and atmosphere only. */
 :root {
-  --brand-panel: #101114;
-  --brand-panel-raised: #18191d;
+  --brand-panel: #090d0b;
+  --brand-panel-raised: rgba(16, 22, 18, 0.76);
   --brand-ink: #f4f1e8;
-  --brand-muted: #aaa8a1;
-  --brand-line: rgba(255, 255, 255, 0.12);
-  --brand-orbit: rgba(255, 255, 255, 0.08);
-  --brand-noise-opacity: 0.14;
-  --brand-accent: #c5f76d;
+  --brand-muted: #aaaead;
+  --brand-line: rgba(244, 241, 232, 0.14);
+  --brand-aurora-primary: rgba(197, 247, 109, 0.2);
+  --brand-aurora-secondary: rgba(92, 187, 151, 0.15);
+  --brand-star: rgba(244, 241, 232, 0.38);
+  --brand-thread: rgba(244, 241, 232, 0.055);
 }
 
 @media (prefers-color-scheme: light) {
   :root {
-    --brand-panel: #f2f0e9;
-    --brand-panel-raised: #fffdf7;
+    --brand-panel: #edf2e9;
+    --brand-panel-raised: rgba(255, 255, 255, 0.62);
     --brand-ink: #151619;
     --brand-muted: #64635f;
     --brand-line: rgba(0, 0, 0, 0.12);
-    --brand-orbit: rgba(0, 0, 0, 0.07);
-    --brand-noise-opacity: 0.1;
-    --brand-accent: #5d7a18;
+    --brand-aurora-primary: rgba(93, 122, 24, 0.16);
+    --brand-aurora-secondary: rgba(32, 109, 81, 0.11);
+    --brand-star: rgba(21, 22, 25, 0.28);
+    --brand-thread: rgba(21, 22, 25, 0.05);
   }
 }
 
 :root[data-color-scheme="dark"] {
-  --brand-panel: #101114;
-  --brand-panel-raised: #18191d;
+  --brand-panel: #090d0b;
+  --brand-panel-raised: rgba(16, 22, 18, 0.76);
   --brand-ink: #f4f1e8;
-  --brand-muted: #aaa8a1;
-  --brand-line: rgba(255, 255, 255, 0.12);
-  --brand-orbit: rgba(255, 255, 255, 0.08);
-  --brand-noise-opacity: 0.14;
-  --brand-accent: #c5f76d;
+  --brand-muted: #aaaead;
+  --brand-line: rgba(244, 241, 232, 0.14);
+  --brand-aurora-primary: rgba(197, 247, 109, 0.2);
+  --brand-aurora-secondary: rgba(92, 187, 151, 0.15);
+  --brand-star: rgba(244, 241, 232, 0.38);
+  --brand-thread: rgba(244, 241, 232, 0.055);
 }
 
 :root[data-color-scheme="light"] {
-  --brand-panel: #f2f0e9;
-  --brand-panel-raised: #fffdf7;
+  --brand-panel: #edf2e9;
+  --brand-panel-raised: rgba(255, 255, 255, 0.62);
   --brand-ink: #151619;
   --brand-muted: #64635f;
   --brand-line: rgba(0, 0, 0, 0.12);
-  --brand-orbit: rgba(0, 0, 0, 0.07);
-  --brand-noise-opacity: 0.1;
-  --brand-accent: #5d7a18;
+  --brand-aurora-primary: rgba(93, 122, 24, 0.16);
+  --brand-aurora-secondary: rgba(32, 109, 81, 0.11);
+  --brand-star: rgba(21, 22, 25, 0.28);
+  --brand-thread: rgba(21, 22, 25, 0.05);
 }
 
-@keyframes bakbak-chomp-top {
-  0%,
-  100% {
-    transform: rotate(-4deg);
-  }
-
-  42%,
-  58% {
-    transform: rotate(6deg);
-  }
-}
-
-@keyframes bakbak-chomp-bottom {
-  0%,
-  100% {
-    transform: rotate(4deg);
-  }
-
-  42%,
-  58% {
-    transform: rotate(-6deg);
-  }
-}
-
-@keyframes bakbak-dot-flow {
-  0% {
-    opacity: 0.18;
-    transform: translateX(4px) scale(0.72);
-  }
-
-  45% {
-    opacity: 1;
-    transform: translateX(0) scale(1);
-  }
-
-  100% {
-    opacity: 0.12;
-    transform: translateX(-8px) scale(0.5);
-  }
-}
-
-.bakbak-motion-mark {
+.bakbak-mark {
   display: grid;
   place-items: center;
   color: var(--brand-ink);
 }
 
-.bakbak-motion-mark svg {
+.bakbak-mark svg {
   width: 86%;
   height: 86%;
   overflow: visible;
 }
 
-.bakbak-motion-mark__jaw {
+.bakbak-mark__glyph {
   fill: none;
   stroke: currentColor;
-  stroke-width: 9.5;
+  stroke-width: 6;
   stroke-linecap: round;
-  transform-box: view-box;
-  transform-origin: 32px 32px;
+  stroke-linejoin: round;
 }
 
-.bakbak-motion-mark__jaw--top {
-  animation: bakbak-chomp-top 1.35s cubic-bezier(0.55, 0, 0.25, 1) infinite;
-}
-
-.bakbak-motion-mark__jaw--bottom {
-  animation: bakbak-chomp-bottom 1.35s cubic-bezier(0.55, 0, 0.25, 1) infinite;
-}
-
-.bakbak-motion-mark__dot {
-  fill: currentColor;
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: bakbak-dot-flow 1.35s linear infinite;
-}
-
-.bakbak-motion-mark__dot--near {
-  fill: var(--brand-accent);
-  animation-delay: -0.9s;
-}
-
-.bakbak-motion-mark__dot--middle {
-  animation-delay: -0.45s;
-}
-
-.bakbak-motion-mark__dot--far {
-  animation-delay: 0s;
+.bakbak-mark__glyph--second {
+  opacity: 0.72;
 }
 
 .brand-mark {
@@ -3220,8 +3158,9 @@ button:active:not(:disabled) {
   position: relative;
   isolation: isolate;
   min-height: 80px;
+  align-items: center;
   justify-content: flex-start;
-  gap: 9px;
+  gap: 10px;
   overflow: hidden;
   padding: 12px 14px;
   border-bottom-color: var(--brand-line);
@@ -3232,15 +3171,39 @@ button:active:not(:disabled) {
 .server-switcher.server-brand::before {
   position: absolute;
   z-index: -2;
-  width: 156px;
-  height: 156px;
-  border: 1px solid var(--brand-orbit);
-  border-radius: 50%;
   content: "";
-  inset: -104px -60px auto auto;
-  box-shadow:
-    0 0 0 23px var(--brand-orbit),
-    0 0 0 47px color-mix(in srgb, var(--brand-orbit) 62%, transparent);
+  inset: 0;
+  background:
+    radial-gradient(
+      ellipse at 12% -8%,
+      var(--brand-aurora-primary) 0,
+      transparent 48%
+    ),
+    radial-gradient(
+      ellipse at 92% 5%,
+      var(--brand-aurora-secondary) 0,
+      transparent 52%
+    ),
+    radial-gradient(
+      circle at 11% 24%,
+      var(--brand-star) 0 1px,
+      transparent 1.5px
+    ),
+    radial-gradient(
+      circle at 54% 18%,
+      var(--brand-star) 0 0.8px,
+      transparent 1.3px
+    ),
+    radial-gradient(
+      circle at 79% 37%,
+      var(--brand-star) 0 1px,
+      transparent 1.5px
+    ),
+    radial-gradient(
+      circle at 92% 17%,
+      var(--brand-star) 0 0.8px,
+      transparent 1.3px
+    );
 }
 
 .server-switcher.server-brand::after {
@@ -3248,23 +3211,53 @@ button:active:not(:disabled) {
   z-index: -1;
   content: "";
   inset: 0;
-  opacity: var(--brand-noise-opacity);
-  background-image: url("/brand-noise.svg");
-  background-size: 180px 180px;
-  mix-blend-mode: soft-light;
+  background-image:
+    linear-gradient(
+      118deg,
+      transparent 46%,
+      var(--brand-thread) 48%,
+      transparent 50%
+    ),
+    linear-gradient(
+      62deg,
+      transparent 46%,
+      var(--brand-thread) 48%,
+      transparent 50%
+    ),
+    radial-gradient(
+      circle at center,
+      var(--brand-star) 0 0.55px,
+      transparent 0.9px
+    );
+  background-position:
+    0 0,
+    0 0,
+    7px 5px;
+  background-size:
+    22px 22px,
+    22px 22px,
+    24px 24px;
+  opacity: 0.68;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 24%,
+    black 100%
+  );
+  mask-image: linear-gradient(to right, transparent 0, black 24%, black 100%);
   pointer-events: none;
 }
 
 .server-switcher .server-brand__release {
   position: relative;
   z-index: 1;
-  min-height: 30px;
+  min-height: 26px;
   flex: 0 0 auto;
   display: inline-flex;
   flex-direction: row;
   align-items: center;
   gap: 0;
-  padding: 0 6px;
+  padding: 0 7px;
   border: 1px solid var(--brand-line);
   border-radius: 999px;
   color: var(--brand-ink);
@@ -3299,6 +3292,7 @@ button:active:not(:disabled) {
   position: relative;
   z-index: 1;
   min-width: 0;
+  flex: 1 1 auto;
   display: block;
 }
 
@@ -3326,13 +3320,7 @@ button:active:not(:disabled) {
   box-shadow: 0 16px 38px rgb(0 0 0 / 0.16);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .bakbak-motion-mark__jaw,
-  .bakbak-motion-mark__dot {
-    animation: none;
-  }
-}
-/* BRAND-MOTION-END */
+/* BRAND-IDENTITY-END */
 
 /* Warm Adda redesign */
 body {

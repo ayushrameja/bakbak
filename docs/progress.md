@@ -4462,3 +4462,92 @@ supabase/functions/tests` — passed 37/37 tests, including media request
 - **Next:** Audition all four Settings previews plus message send/receive and
   mute/unmute in the rebuilt macOS app, tune only the generator if needed, then
   run the same two-client matrix on Windows.
+
+## 2026-07-24 — Refresh the server identity header
+
+- **Completed:** Reworked the 232×80 px top-left server identity surface around
+  the existing Bakbak mark, wordmark, and package-backed beta chip. Added a
+  compact static frame of the code-native mark and replaced the previous
+  noise/orbit treatment with a theme-responsive graphite-or-paper atmosphere,
+  sparse constellation, and diagonal signal weave. Removed the now-unused
+  `brand-noise.svg` raster dependency.
+- **Decisions:** Used the supplied T3 Code reference for compact composition and
+  atmosphere without copying its purple palette or importing new artwork.
+  Kept the texture code-native and contained to the brand header, preserved
+  neutral ordinary chrome, kept the existing version chip, and disabled the
+  mark's animation in this always-visible surface.
+- **Validation:**
+  - Focused Prettier, ESLint, ChannelSidebar/BakbakMotionMark Vitest, branding
+    contract, and `git diff --check` — passed after correcting an initially
+    over-nested test selector; 12/12 focused component tests and 4/4 branding
+    contract tests passed.
+  - Mock in-app browser QA at 1280×800 and 1024×680 — passed in dark and light
+    schemes. The header remained exactly 232×80 px, the 36 px mark, wordmark,
+    and 78.4 px release chip stayed in bounds, horizontal overflow remained
+    zero, and the console reported no warnings or errors.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects, 70
+    Vitest files with 350 tests, 25/25 Node contract tests, synchronized version
+    `0.16.0`, production build, and bundle secret scan. Vite retained the
+    existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+- **Documentation updated:** Updated the current branding architecture and plan
+  0020 visual/acceptance contract, and appended this canonical progress entry.
+- **Known limitations:** The rebuilt native app still needs direct observation
+  with the macOS overlay traffic lights and native window material. Windows
+  installed light/dark observation remains part of the open cross-platform
+  appearance matrix.
+- **Next:** Open the rebuilt `Bakbak.app`, inspect the header once in native
+  macOS light and dark modes, then tune only the contained atmosphere if the
+  native material changes its perceived contrast.
+
+## 2026-07-24 — Replace the chomp logo with a linked-bb identity
+
+- **Completed:** Removed the logo from the top-left server brand strip so it
+  now contains only the Bakbak wordmark, package-backed beta/version chip, and
+  atmospheric texture. Replaced the open-ring/three-particle identity with a
+  custom static pair of linked lowercase `b` strokes. Promoted
+  `public/bakbak.svg` to the canonical browser/native source, switched the
+  favicon, replaced `BakbakMotionMark` with the static `BakbakMark`, removed the
+  old Orbit raster, and regenerated the complete tracked macOS, Windows, iOS,
+  and Android icon bundle.
+- **Decisions:** Chose a direct `bb` monogram because it names Bakbak at 16–32
+  px without a mascot, face, mouth, dot sequence, generic speech bubble, or
+  ornamental animation. Kept a flat graphite rounded-square ground with warm
+  ivory strokes for native consistency. Preserved the separately approved
+  server-header atmosphere while making that always-visible strip explicitly
+  logo-free.
+- **Validation:**
+  - Full-resolution and 32 px generated-icon inspection — passed for a clean
+    linked-`bb` silhouette, transparent rounded corners, safe margins, and
+    small-size legibility.
+  - Focused ESLint, App/ChannelSidebar/BakbakMark Vitest, and identity contract
+    checks — passed 21/21 component tests and 4/4 Node contract tests. The
+    contract verifies the canonical SVG favicon, exactly two SVG paths, absent
+    circles/filters/gradients, absent server-header mark, and contained
+    atmospheric colors.
+  - Mock in-app browser QA at 1280×800 — passed in light and dark. The auth mark
+    rendered at 42×42 px, Personal at 76×76 px, both used exactly two strokes
+    and zero circles, and the server header remained 232×80 px with zero
+    embedded SVG/mark nodes and zero horizontal overflow. The console reported
+    no warnings or errors.
+  - First `pnpm check` — stopped at formatting for the expanded identity test.
+    After formatting, the second run stopped at one missing `access` import in
+    that test; restored the import.
+  - Final `pnpm check` — passed formatting, lint, both strict TypeScript
+    projects, 70 Vitest files with 350 tests, 25/25 Node contract tests,
+    synchronized version `0.16.0`, production build, and bundle secret scan.
+    Vite retained the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app` with the regenerated icon bundle; notarization was skipped
+    because Apple credentials are absent.
+- **Documentation updated:** Updated the current identity architecture, active
+  v1 contract, plan 0020 visual/acceptance contract, and this canonical progress
+  log.
+- **Known limitations:** The new native icon still needs direct human
+  observation in the macOS Dock/app switcher and Windows taskbar/installer. The
+  local macOS bundle is ad-hoc signed and not notarized.
+- **Next:** Open the rebuilt `Bakbak.app`, judge the linked-`bb` icon once in
+  the macOS Dock and app switcher, then repeat the taskbar/installer observation
+  on the next Windows build.

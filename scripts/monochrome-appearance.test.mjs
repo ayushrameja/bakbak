@@ -4,8 +4,8 @@ import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 
 const stylesUrl = new URL("../src/styles.css", import.meta.url);
-const brandAssetUrl = new URL("../public/bakbak-orbit.png", import.meta.url);
-const brandNoiseUrl = new URL("../public/brand-noise.svg", import.meta.url);
+const indexUrl = new URL("../index.html", import.meta.url);
+const brandAssetUrl = new URL("../public/bakbak.svg", import.meta.url);
 const fontUrl = new URL(
   "../public/fonts/roundo/Roundo-Variable.woff2",
   import.meta.url,
@@ -20,21 +20,29 @@ const channelSidebarUrl = new URL(
   "../src/features/channels/ChannelSidebar.tsx",
   import.meta.url,
 );
-const motionMarkUrl = new URL(
-  "../src/components/BakbakMotionMark.tsx",
-  import.meta.url,
-);
+const markUrl = new URL("../src/components/BakbakMark.tsx", import.meta.url);
 
-const [styles, app, settings, channelSidebar, motionMark, font, license] =
-  await Promise.all([
-    readFile(stylesUrl, "utf8"),
-    readFile(appUrl, "utf8"),
-    readFile(settingsUrl, "utf8"),
-    readFile(channelSidebarUrl, "utf8"),
-    readFile(motionMarkUrl, "utf8"),
-    readFile(fontUrl),
-    readFile(licenseUrl, "utf8"),
-  ]);
+const [
+  styles,
+  index,
+  brandAsset,
+  app,
+  settings,
+  channelSidebar,
+  mark,
+  font,
+  license,
+] = await Promise.all([
+  readFile(stylesUrl, "utf8"),
+  readFile(indexUrl, "utf8"),
+  readFile(brandAssetUrl, "utf8"),
+  readFile(appUrl, "utf8"),
+  readFile(settingsUrl, "utf8"),
+  readFile(channelSidebarUrl, "utf8"),
+  readFile(markUrl, "utf8"),
+  readFile(fontUrl),
+  readFile(licenseUrl, "utf8"),
+]);
 
 function expandHex(value) {
   const hex = value.slice(1).toLowerCase();
@@ -107,43 +115,39 @@ function contrastRatio(left, right) {
   );
 }
 
-test("ordinary chrome stays monochrome while motion branding remains contained", async () => {
-  const brandMotionPattern =
-    /\/\* BRAND-MOTION-START[\s\S]*?\/\* BRAND-MOTION-END \*\//;
-  const brandMotion = styles.match(brandMotionPattern)?.[0];
-  assert.ok(brandMotion, "the contained Bakbak motion block is missing");
+test("ordinary chrome stays monochrome while brand identity remains contained", async () => {
+  const brandIdentityPattern =
+    /\/\* BRAND-IDENTITY-START[\s\S]*?\/\* BRAND-IDENTITY-END \*\//;
+  const brandIdentity = styles.match(brandIdentityPattern)?.[0];
+  assert.ok(brandIdentity, "the contained Bakbak identity block is missing");
 
   const semanticNames = Object.keys(semanticTokenValues).join("|");
   const ordinaryStyles = styles
-    .replace(brandMotionPattern, "")
+    .replace(brandIdentityPattern, "")
     .replace(
       new RegExp(`--(?:${semanticNames}):\\s*#[\\da-f]{3,8};`, "gi"),
       "",
     );
   assertGrayscale(ordinaryStyles, "src/styles.css ordinary chrome");
   assert.doesNotMatch(styles, /\b(?:hsl|hsla|hwb|lab|lch|oklch)\(/i);
-  const brandAccentValues = [
-    ...new Set(
-      [...brandMotion.matchAll(/--brand-accent:\s*(#[\da-f]{6});/gi)].map(
-        (match) => match[1].toLowerCase(),
-      ),
-    ),
-  ];
-  assert.deepEqual(brandAccentValues, ["#c5f76d", "#5d7a18"]);
-  assert.doesNotMatch(brandMotion, /(?:linear|radial)-gradient\(/i);
-  assert.match(brandMotion, /url\("\/brand-noise\.svg"\)/);
+  assert.doesNotMatch(brandIdentity, /--brand-accent:/);
+  assert.match(brandIdentity, /radial-gradient\(/i);
+  assert.match(brandIdentity, /linear-gradient\(/i);
+  assert.match(brandIdentity, /--brand-thread:/);
   assert.doesNotMatch(channelSidebar, /server-brand__mark/);
   assert.match(channelSidebar, /className="server-brand__release"/);
   assert.match(channelSidebar, />Bakbak<\/strong>/);
   assert.match(channelSidebar, />\s*β\s*</);
   assert.match(channelSidebar, /v\{APP_VERSION\}/);
-  assert.match(motionMark, /bakbak-motion-mark__jaw--top/);
-  assert.match(motionMark, /bakbak-motion-mark__dot--near/);
-  assert.match(
-    brandMotion,
-    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.bakbak-motion-mark__jaw,[\s\S]*?\.bakbak-motion-mark__dot[\s\S]*?animation:\s*none;/,
+  assert.match(mark, /bakbak-mark__glyph--first/);
+  assert.match(mark, /bakbak-mark__glyph--second/);
+  assert.doesNotMatch(mark, /<circle|animation/);
+  assert.match(index, /href="\/bakbak\.svg"/);
+  assert.equal([...brandAsset.matchAll(/<path\b/g)].length, 2);
+  assert.doesNotMatch(
+    brandAsset,
+    /<circle|linearGradient|radialGradient|filter|mask/i,
   );
-  await Promise.all([access(brandAssetUrl), access(brandNoiseUrl)]);
 
   for (const match of styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     if (/avatar|cover|emoji|participant-video|screen-share/i.test(match[1])) {
