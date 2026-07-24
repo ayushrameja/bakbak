@@ -54,6 +54,7 @@ interface SoundboardProps {
   volume: number;
   activeLocalSoundCount: number;
   maxConcurrentSounds: number;
+  readOnly?: boolean;
   onPlay: (soundId: string) => Promise<void>;
   onStopAll: () => Promise<void>;
   onVolumeChange: (volume: number) => void;
@@ -85,6 +86,7 @@ export function Soundboard({
   volume,
   activeLocalSoundCount,
   maxConcurrentSounds,
+  readOnly = false,
   onPlay,
   onStopAll,
   onVolumeChange,
@@ -199,6 +201,7 @@ export function Soundboard({
           <button
             className="soundboard-upload-button"
             type="button"
+            disabled={readOnly}
             onClick={() => setUploadOpen(true)}
           >
             <Plus size={14} />
@@ -284,6 +287,7 @@ export function Soundboard({
                               type="button"
                               disabled={
                                 sound.assetStatus === "loading" ||
+                                (readOnly && sound.assetStatus === "error") ||
                                 (sound.assetStatus === "ready" &&
                                   soundLimitReached)
                               }
@@ -313,6 +317,7 @@ export function Soundboard({
                                 type="button"
                                 aria-label={`${favorited ? "Remove" : "Add"} ${sound.label} ${favorited ? "from" : "to"} favorites`}
                                 aria-pressed={favorited}
+                                disabled={readOnly}
                                 onClick={() => void toggleFavorite(sound.id)}
                               >
                                 <Star
@@ -320,7 +325,7 @@ export function Soundboard({
                                   fill={favorited ? "currentColor" : "none"}
                                 />
                               </button>
-                              {canManage ? (
+                              {canManage && !readOnly ? (
                                 <button
                                   className="sound-edit"
                                   type="button"
@@ -353,27 +358,26 @@ export function Soundboard({
         </p>
       ) : null}
 
-      <footer className="soundboard-stop-footer">
-        <div>
-          <strong>
-            {activeLocalSoundCount}/{maxConcurrentSounds} playing
-          </strong>
-          <span>
-            {soundLimitReached
-              ? "Stop your stack before adding another sound."
-              : "You can overlap up to five sounds."}
-          </span>
-        </div>
+      <div className="soundboard-stop-control">
         <button
           type="button"
           disabled={activeLocalSoundCount === 0}
+          aria-label={`Stop my sounds (${activeLocalSoundCount}/${maxConcurrentSounds} playing)`}
+          title="Stop my sounds"
           onClick={() => void onStopAll()}
         >
-          <Square size={14} /> Stop my sounds
+          <Square size={14} />
         </button>
-      </footer>
+        {activeLocalSoundCount > 0 ? (
+          <strong aria-live="polite">
+            {activeLocalSoundCount}/{maxConcurrentSounds}
+          </strong>
+        ) : (
+          <span className="visually-hidden">No sounds playing</span>
+        )}
+      </div>
 
-      {editingSound ? (
+      {editingSound && !readOnly ? (
         <EditSoundModal
           sound={editingSound}
           canDelete={
@@ -392,7 +396,7 @@ export function Soundboard({
         />
       ) : null}
 
-      {uploadOpen ? (
+      {uploadOpen && !readOnly ? (
         <UploadSoundModal
           onUpload={async (input) => {
             await onUpload(input);

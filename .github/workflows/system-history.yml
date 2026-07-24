@@ -1,0 +1,53 @@
+name: Synchronize Bakbak system history
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  releases:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Backfill published stable releases oldest first
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYSTEM_EVENTS_SECRET: ${{ secrets.BAKBAK_SYSTEM_EVENTS_SECRET }}
+          SYSTEM_EVENTS_URL: ${{ vars.VITE_SUPABASE_URL }}/functions/v1/system-events
+        shell: bash
+        run: |
+          test -n "$SYSTEM_EVENTS_SECRET"
+          gh api \
+            --paginate \
+            "/repos/$GITHUB_REPOSITORY/releases?per_page=100" |
+          jq --raw-output --slurp 'add
+              | map(select(.draft == false and .prerelease == false and .published_at != null))
+              | sort_by(.published_at)
+              | .[]
+              | {
+                  repository: "ayushrameja/bakbak",
+                  historical: true,
+                  release: {
+                    id: .id,
+                    tag_name: .tag_name,
+                    name: .name,
+                    body: (.body // ""),
+                    html_url: .html_url,
+                    published_at: .published_at,
+                    draft: .draft,
+                    prerelease: .prerelease
+                  }
+                }
+              | @base64' |
+          while IFS= read -r encoded; do
+            payload="$(printf '%s' "$encoded" | base64 --decode)"
+            curl \
+              --fail-with-body \
+              --retry 3 \
+              --retry-all-errors \
+              --header "Content-Type: application/json" \
+              --header "x-bakbak-system-secret: $SYSTEM_EVENTS_SECRET" \
+              --data "$payload" \
+              "$SYSTEM_EVENTS_URL"
+          done

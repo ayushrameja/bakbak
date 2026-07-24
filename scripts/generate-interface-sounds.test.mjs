@@ -15,7 +15,30 @@ const projectRoot = path.resolve(
   "..",
 );
 
+const EXPECTED_DURATIONS = {
+  "message-sent": 0.12,
+  "message-received": 0.16,
+  "microphone-mute": 0.15,
+  "microphone-unmute": 0.15,
+  "deafen-on": 0.17,
+  "deafen-off": 0.17,
+  "voice-self-join": 0.34,
+  "voice-self-leave": 0.28,
+  "voice-remote-join": 0.19,
+  "voice-remote-leave": 0.18,
+  "screen-share-start": 0.38,
+  "screen-share-stop": 0.3,
+  "reconnect-success": 0.3,
+  "communication-failure": 0.32,
+};
+
 test("interface sounds are deterministic, valid, faded, and compact", async () => {
+  assert.deepEqual(
+    Object.fromEntries(
+      Object.entries(SOUND_SPECS).map(([name, spec]) => [name, spec.duration]),
+    ),
+    EXPECTED_DURATIONS,
+  );
   let totalBytes = 0;
   for (const [name, spec] of Object.entries(SOUND_SPECS)) {
     const first = encodeWav(renderSound(name));
@@ -42,8 +65,11 @@ test("interface sounds are deterministic, valid, faded, and compact", async () =
     for (let offset = 44; offset < committed.length; offset += 2) {
       peak = Math.max(peak, Math.abs(committed.readInt16LE(offset)));
     }
-    assert.ok(peak <= Math.round(32_767 * 0.83), `${name} must not clip`);
-    assert.ok(peak >= Math.round(32_767 * 0.7), `${name} must be audible`);
+    assert.ok(
+      peak <= Math.round(32_767 * 0.51),
+      `${name} must stay near or below -6 dBFS`,
+    );
+    assert.ok(peak >= Math.round(32_767 * 0.49), `${name} must remain audible`);
     assert.equal(committed.readInt16LE(44), 0, `${name} must fade in`);
     assert.ok(
       Math.abs(committed.readInt16LE(committed.length - 2)) < 180,
@@ -52,4 +78,25 @@ test("interface sounds are deterministic, valid, faded, and compact", async () =
     totalBytes += committed.length;
   }
   assert.ok(totalBytes < 1_000_000, "sound bundle must remain below 1 MB");
+});
+
+test("deafen cues glide through the specified frequencies", () => {
+  assert.deepEqual(SOUND_SPECS["deafen-on"].notes, [
+    {
+      frequency: 560,
+      endFrequency: 390,
+      start: 0,
+      length: 0.17,
+      amplitude: 0.68,
+    },
+  ]);
+  assert.deepEqual(SOUND_SPECS["deafen-off"].notes, [
+    {
+      frequency: 390,
+      endFrequency: 560,
+      start: 0,
+      length: 0.17,
+      amplitude: 0.68,
+    },
+  ]);
 });

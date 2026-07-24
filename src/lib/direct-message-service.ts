@@ -3,9 +3,23 @@ import { getSupabaseClient } from "./supabase";
 import type {
   DirectConversation,
   DirectMessage,
+  MessagePresentation,
   MessageSegment,
+  MessageCursor,
   ServerMember,
 } from "./types";
+import {
+  attachReplyRows,
+  DIRECT_RICH_SELECT,
+  parseAttachments,
+  parseLinkPreview,
+  parseMessageContent,
+  parsePresentation,
+  parseReactions,
+  parseReply,
+  type RichReplyRow,
+  type RichMessageRow,
+} from "./rich-message-row";
 
 interface DirectConversationRow {
   conversation_id: string;
@@ -28,7 +42,7 @@ interface DirectConversationRow {
   has_unread: boolean;
 }
 
-interface DirectMessageRow {
+interface DirectMessageRow extends RichMessageRow {
   id: string;
   conversation_id: string;
   author_id: string;
@@ -43,38 +57,6 @@ interface DirectReadStateRow {
   last_read_message_id: string | null;
 }
 
-function parseMessageContent(value: unknown): MessageSegment[] | null {
-  if (!Array.isArray(value)) return null;
-  const segments: MessageSegment[] = [];
-  for (const segment of value as unknown[]) {
-    if (!segment || typeof segment !== "object" || !("type" in segment)) {
-      return null;
-    }
-    if (
-      segment.type === "text" &&
-      "text" in segment &&
-      typeof segment.text === "string"
-    ) {
-      segments.push({ type: "text", text: segment.text });
-    } else if (
-      segment.type === "mention" &&
-      "user_id" in segment &&
-      "fallback" in segment &&
-      typeof segment.user_id === "string" &&
-      typeof segment.fallback === "string"
-    ) {
-      segments.push({
-        type: "mention",
-        userId: segment.user_id,
-        fallback: segment.fallback,
-      });
-    } else {
-      return null;
-    }
-  }
-  return segments;
-}
-
 function directMessageFromRow(row: DirectMessageRow): DirectMessage {
   return {
     id: row.id,
@@ -83,6 +65,16 @@ function directMessageFromRow(row: DirectMessageRow): DirectMessage {
     body: row.body,
     content: parseMessageContent(row.content),
     createdAt: row.created_at,
+    messageKind: "member",
+    systemEvent: null,
+    linkPreview: parseLinkPreview(row.link_preview),
+    linkPreviewAttemptedAt: row.link_preview_attempted_at ?? null,
+    presentation: parsePresentation(row.presentation),
+    attachments: parseAttachments(row.attachments),
+    reply: parseReply(row.reply),
+    replyNotifiesAuthor: row.reply_notifies_author ?? false,
+    reactions: parseReactions(row.reaction_rows),
+    deletedAt: row.deleted_at ?? null,
   };
 }
 
@@ -149,39 +141,116 @@ export async function getOrCreateDirectConversation(
 
 export async function loadDirectMessages(
   conversationId: string,
+  options: {
+    before?: MessageCursor;
+    after?: MessageCursor;
+    limit?: number;
+  } = {},
 ): Promise<DirectMessage[]> {
-  const { data, error } = await getSupabaseClient()
+  const newestFirst = !options.after;
+  let query = getSupabaseClient()
     .from("direct_messages")
-    .select("id,conversation_id,author_id,body,content,created_at")
-    .eq("conversation_id", conversationId)
-    .order("created_at")
-    .limit(200)
+    .select(DIRECT_RICH_SELECT)
+    .eq("conversation_id", conversationId);
+  if (options.before) {
+    query = query.or(
+      `created_at.lt.${options.before.createdAt},and(created_at.eq.${options.before.createdAt},id.lt.${options.before.id})`,
+    );
+  }
+  if (options.after) {
+    query = query.or(
+      `created_at.gt.${options.after.createdAt},and(created_at.eq.${options.after.createdAt},id.gt.${options.after.id})`,
+    );
+  }
+  const { data, error } = await query
+    .order("created_at", { ascending: !newestFirst })
+    .order("id", { ascending: !newestFirst })
+    .limit(options.limit ?? 50)
     .returns<DirectMessageRow[]>();
   if (error) throw error;
-  return data.map(directMessageFromRow);
+  const messages = (await hydrateDirectReplyRows(data)).map(
+    directMessageFromRow,
+  );
+  return newestFirst ? messages.reverse() : messages;
 }
 
 export async function sendDirectMessage(
   conversationId: string,
   content: MessageSegment[],
+  options: {
+    replyToId?: string | null;
+    notifyReplyAuthor?: boolean;
+    attachmentIds?: string[];
+    presentation?: MessagePresentation | null;
+  } = {},
 ): Promise<DirectMessage> {
+  const rich =
+    Boolean(options.replyToId) ||
+    Boolean(options.attachmentIds?.length) ||
+    Boolean(options.presentation);
+  const rpcName = rich ? "send_direct_message_v2" : "send_direct_message";
+  const serialized = content.map((segment) =>
+    segment.type === "text"
+      ? segment
+      : {
+          type: "mention",
+          user_id: segment.userId,
+          fallback: segment.fallback,
+        },
+  );
   const { data, error } = await getSupabaseClient()
-    .rpc("send_direct_message", {
+    .rpc(rpcName, {
       p_conversation_id: conversationId,
-      p_content: content.map((segment) =>
-        segment.type === "text"
-          ? segment
-          : {
-              type: "mention",
-              user_id: segment.userId,
-              fallback: segment.fallback,
-            },
-      ),
+      p_content: serialized,
+      ...(rich && {
+        p_reply_to_id: options.replyToId ?? null,
+        p_reply_notifies_author: options.notifyReplyAuthor ?? true,
+        p_attachment_ids: options.attachmentIds ?? [],
+        p_presentation: serializePresentation(options.presentation ?? null),
+      }),
     })
-    .select("id,conversation_id,author_id,body,content,created_at")
+    .select(
+      "id,conversation_id,author_id,body,content,created_at,link_preview,link_preview_attempted_at,presentation,reply_notifies_author,deleted_at",
+    )
     .single<DirectMessageRow>();
   if (error) throw error;
-  return directMessageFromRow(data);
+  return rich
+    ? await loadDirectMessageById(data.id)
+    : directMessageFromRow(data);
+}
+
+export async function loadDirectMessageById(
+  messageId: string,
+): Promise<DirectMessage> {
+  const { data, error } = await getSupabaseClient()
+    .from("direct_messages")
+    .select(DIRECT_RICH_SELECT)
+    .eq("id", messageId)
+    .single<DirectMessageRow>();
+  if (error) throw error;
+  const [hydrated] = await hydrateDirectReplyRows([data]);
+  if (!hydrated) throw new Error("The direct message could not be hydrated.");
+  return directMessageFromRow(hydrated);
+}
+
+async function hydrateDirectReplyRows(
+  messages: readonly DirectMessageRow[],
+): Promise<DirectMessageRow[]> {
+  const replyIds = [
+    ...new Set(
+      messages.flatMap((message) =>
+        message.reply_to_id ? [message.reply_to_id] : [],
+      ),
+    ),
+  ];
+  if (!replyIds.length) return attachReplyRows(messages, []);
+  const { data, error } = await getSupabaseClient()
+    .from("direct_messages")
+    .select("id,author_id,body,deleted_at")
+    .in("id", replyIds)
+    .returns<RichReplyRow[]>();
+  if (error) throw error;
+  return attachReplyRows(messages, data);
 }
 
 export async function markDirectConversationRead(
@@ -207,14 +276,38 @@ export function subscribeToDirectMessages(
     .on<DirectMessageRow>(
       "postgres_changes",
       {
-        event: "INSERT",
+        event: "*",
         schema: "public",
         table: "direct_messages",
       },
-      (payload) => onMessage(directMessageFromRow(payload.new)),
+      (payload) => {
+        const row = payload.new;
+        if (!row || !("id" in row)) return;
+        void loadDirectMessageById(row.id)
+          .then(onMessage)
+          .catch(() => onMessage(directMessageFromRow(row)));
+      },
     )
     .subscribe();
   return () => void supabase.removeChannel(channel);
+}
+
+function serializePresentation(
+  presentation: MessagePresentation | null,
+): Record<string, unknown> | null {
+  if (!presentation) return null;
+  if (presentation.kind === "sticker") {
+    return { kind: "sticker", sticker_id: presentation.stickerId };
+  }
+  return {
+    kind: "giphy",
+    asset_id: presentation.assetId,
+    asset_kind: presentation.assetKind,
+    title: presentation.title,
+    alt_text: presentation.altText,
+    width: presentation.width,
+    height: presentation.height,
+  };
 }
 
 export function subscribeToDirectReadStates(

@@ -42,10 +42,20 @@ starts with context instead of archaeological guessing.
 - Place shared UI in `src/components`, service clients in `src/lib`, and the
   application shell/providers in `src/app`.
 - Keep native configuration and Rust code isolated in `src-tauri`.
-- Use the Warm Adda/Flat light/dark desktop interface with independently
-  optional channel and member panels, a flexible conversation canvas, centered
-  settings modal, sidebar call block, and auto-hiding floating voice dock. The
-  deferred server rail remains out of scope until multi-server navigation.
+- Use one neutral, system-accent-veiled glass interface with device-local Auto,
+  Light, and Dark choices; Auto follows the operating system and the accent
+  always follows the native OS color. Keep scoped semantic status colors. A
+  48 px app-owned titlebar places the
+  Personal/Bakbak switch at the left and `OG Nahan Gang` at the true center;
+  independently optional channel and member panels occupy an edge-to-edge
+  five-track shell around a flexible conversation canvas, centered settings
+  modal, sidebar call block, and auto-hiding floating voice dock. The renderer
+  uses the locally bundled Roundo family at comfortable 500–700 product
+  weights. A separate multi-server rail remains deferred until multi-server
+  navigation. Plan 0020 adds one bounded Bakbak identity exception: its
+  linked-`bb` native artwork, matching static identity-screen mark,
+  theme-responsive logo-free server-header texture, and package-version-backed
+  `β · vX.Y.Z` chip remain isolated while ordinary chrome stays neutral.
 - Commit `.env.example` only. Use ignored `.env` files locally and
   platform-managed secrets for backend functions.
 
@@ -182,6 +192,71 @@ native-state-synchronized fullscreen are approved under
 `0015-screen-share-reliability-and-call-layout.md`. Plan 0015 supersedes plan
 0014's sidebar Watch and pending cross-room watch flow while retaining explicit
 in-room subscription consent.
+The single neutral monochrome appearance and locally bundled Roundo typeface
+are approved under
+`0016-flat-monochrome-roundo.md`. Plan 0016 supersedes the visual theme and
+typography portions of plans 0005, 0006, 0009, and 0014 while preserving their
+non-visual behavior. A 2026-07-22 user-directed follow-up restores only
+device-local Auto/Light/Dark scheme selection and removes the typography
+summary; accents, surface variants, and font controls remain excluded.
+Plan 0026 later supersedes only the fixed decorative accent rule with an
+always-follow-system accent; manual accent controls remain excluded.
+The app-owned cross-platform titlebar, Personal/Bakbak segmented switch,
+rail-free shell, and comfortable Roundo density are approved under
+`0017-space-efficient-titlebar-and-comfortable-roundo.md`. Plan 0017 supersedes
+plan 0014's fixed destination rail and plan 0016's dense 9–12 px product scale
+while preserving its local font, monochrome palette, and system light/dark
+behavior.
+System-adaptive native glass, the edge-to-edge five-track panel shell, fixed
+center title, bounded startup/space/panel motion, and auto-hiding scrollbars are
+approved under `0018-native-glass-edge-to-edge-motion.md`. Plan 0018 supersedes
+plan 0016's flat/opaque surfaces and plan 0017's centered switch, rounded panel,
+outer-padding, and gutter decisions while preserving their typography,
+platform-control, persistence, and minimum-canvas contracts.
+Discord-inspired semantic controls, a shared Personal/server user footer,
+presence-aware In Voice/Online/Offline member grouping, and lazy static member
+cover accents are approved under
+`0019-discord-inspired-controls-and-member-rail.md`. Plan 0019 supersedes only
+plans 0016/0018's fully monochrome semantic-state rule while retaining their
+neutral glass, system light/dark, typography, native material, and layout
+contracts.
+The minimal linked-`bb` Bakbak icon, matching static renderer identity screens,
+theme-responsive textured server header with no logo, package-backed
+Beta/version chip, and removal of the old `Friends-only adda` subtitle are
+approved under `0020-bakbak-orbit-branding.md`. Plan 0020 supersedes only the
+product-logo grayscale rule retained by plans 0016/0019; the neutral shell and
+scoped semantic-control rules remain in force.
+User-scoped stale-while-revalidate workspace/message/profile caching, read-only
+offline restoration, Data & storage controls, and safe voice prewarming are
+approved under
+`0021-instant-workspace-local-cache-and-voice-acceleration.md`.
+Discord-style rich channel/DM messaging, private image/GIF/H.264 MP4
+attachments, GIPHY sends, Bakbak stickers/reactions, quoted replies, author
+deletion, and authenticated poster caching are approved under
+`0022-rich-messaging-media-replies-stickers.md`.
+The accessible Apple-style connector tree, per-server device-local category
+collapse state, and collapsed selected/unread/voice summaries are approved
+under `0024-collapsible-channel-tree.md`.
+The shared channel/DM conversation root, compact empty first branch, and
+avatar-aligned populated message trail are approved under
+`0025-conversation-root-and-message-trail.md`.
+The native macOS/Windows accent bridge, renderer contrast normalization,
+unified selection/interaction palette, calmer glass opacity, and read-only
+Appearance swatch are approved under
+`0026-system-adaptive-unified-accent.md`. Plan 0026 supersedes fixed decorative
+green and blue selection colors while preserving semantic positive, danger,
+and warning colors and the graphite/ivory linked-`bb` assets.
+The topmost automation-only System rooms, stable-release/join history,
+authenticated SSRF-safe link previews, click-to-load YouTube cards,
+deafen/undeafen cues, and connector-axis correction are approved under
+`0027-system-channels-link-previews-and-deafen-audio.md`.
+The shared uppercase loading scene, anchored channel/DM scrolling,
+identity-wide user action menu, participant-local mute restoration, and
+explicit remote hover-to-watch handoff are approved under
+`0028-bakbak-1-0-interaction-and-loading-polish.md`. Plan 0028 narrowly
+supersedes plan 0015's informational-only LIVE and cross-room-watch restriction
+while retaining its isolation, source-audio, one-share subscription, and
+cleanup contracts.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -243,6 +318,9 @@ in-room subscription consent.
 - [x] Add the deterministic original interface sound pack, universal
       device-local controls, and typed message/voice/screen/status event routing
       under plan 0009.
+- [x] Replace plan 0009's retro synthesis with plan 0023's original soft,
+      rounded twelve-cue pack and add committed-send plus successful
+      microphone-mute/unmute feedback.
 - [ ] Complete plan 0009's installed-app multi-client audio acceptance matrix.
 - [x] Add a private operator-managed sound bucket with server-member reads.
 - [x] Fetch, revision-cache, and play the hosted sound pack in the renderer.
@@ -254,6 +332,25 @@ in-room subscription consent.
       matrix.
 - [x] Add ordered channel categories and the exact visible Unlucky Boys room
       hierarchy under plan 0012 without importing messages.
+- [x] Present channel categories and uncategorized shelves as the persisted,
+      accessible connector tree defined by plan 0024.
+- [x] Present empty and populated text conversations with the shared root and
+      message trail defined by plan 0025.
+- [x] Add plan 0026's live native system accent, contrast-normalized renderer
+      tokens, unified decorative interaction states, calmer glass veil, and
+      read-only Appearance swatch without adding an accent preference.
+- [x] Implement plan 0027's database-enforced System rooms, release
+      automation/history workflows, channel/DM link previews, deafen cues, and
+      aligned connector tree.
+- [x] Deploy plan 0027's migration/functions/secrets, make release
+      announcements standard behavior, and sync stable history.
+- [ ] Complete plan 0027's hosted/installed multi-client plus multi-zoom visual
+      acceptance.
+- [x] Implement plan 0028's shared loading scene, anchored channel/DM
+      scrolling, accessible identity actions, participant-local mute, and
+      authoritative requested-owner Watch Stream handoff.
+- [ ] Complete plan 0028's direct light/dark/reduced-motion loading observation
+      and installed macOS/Windows three-client watch matrix.
 - [x] Deploy plan 0012's additive category/layout migration.
 - [ ] Complete plan 0012's hosted two-account hierarchy check.
 - [x] Add local RNNoise microphone cleanup plus Child, Robot, and
@@ -276,6 +373,48 @@ in-room subscription consent.
       reconciliation, and room-level sidebar activity treatment.
 - [ ] Complete plan 0015's installed macOS/Windows isolation, fullscreen, and
       visual acceptance matrices.
+- [x] Replace selectable appearances and their persistence with plan 0016's
+      flat grayscale system-following CSS, local Roundo v2.0 family, and
+      read-only Appearance summary.
+- [x] Restore device-local Auto, Light, and Dark scheme selection without
+      restoring accent, surface, or typography controls.
+- [x] Replace the fixed destination rail with plan 0017's app-owned titlebar,
+      Personal/Bakbak segment, rail-free shell, and comfortable renderer-wide
+      Roundo density.
+- [x] Add plan 0018's native/fallback glass materials, edge-to-edge five-track
+      shell, left space switch, fixed center title, bounded motion, and
+      activity-revealed scrollbars without changing layout preference v2.
+- [x] Make plan 0018's left/right pointer resizing immediate and suppress text
+      selection only while a panel drag is active.
+- [x] Add plan 0019's adaptive semantic control states, shared sidebar user
+      footer, existing-presence member groups, and lazy static cover accents
+      without changing backend or persisted state.
+- [x] Add plan 0019's follow-up member spacing, static user-dock cover, and
+      full non-control titlebar dragging with rotating idle/voice title copy.
+- [x] Add plan 0020's linked-`bb` app icon, matching static identity-screen
+      mark, and theme-responsive textured server header with a current
+      Beta/version chip and no logo, without recolouring ordinary chrome.
+- [x] Add plan 0021's user-scoped IndexedDB workspace, recent-message, and
+      profile-media cache with last-destination restoration, read-only offline
+      fallback, Data & storage controls, and safe voice prewarming.
+- [ ] Complete plan 0021's ten-run cached-startup, channel-switch, warm/cold
+      voice, offline, and account-isolation acceptance on installed macOS and
+      Windows clients.
+- [x] Implement plan 0022's compatible v2 channel/DM contracts, resumable
+      private media pipeline, Bakbak sticker catalog/reactions, GIPHY picker,
+      quoted replies, author deletion, Realtime hydration, and cache v2.
+- [ ] Deploy plan 0022 in compatibility order and complete its hosted
+      two-account plus installed macOS/Windows media/GIPHY/reply/reaction/cache
+      acceptance matrix.
+- [ ] Complete plan 0016's installed dark/light typography and offline-font
+      acceptance matrix on macOS and Windows.
+- [ ] Complete plan 0017's installed macOS/Windows titlebar, window-control,
+      resizing, and close-time screen-share acceptance matrix.
+- [ ] Complete plan 0018's light/dark three-resolution browser matrix and
+      installed macOS/Windows 10/11 native-material, contrast, startup-flash,
+      and window-interaction acceptance matrix.
+- [ ] Complete plan 0019's light/dark three-resolution and 200/240/360 px panel
+      visual matrix plus installed macOS/Windows control/member observation.
 - [ ] Evaluate optional global push-to-talk.
 - [x] Implement Windows process/display-matched audio with build gating and
       video-only fallback.
@@ -286,6 +425,10 @@ in-room subscription consent.
 ### Phase 6 — Distribution
 
 - [x] Add synchronized SemVer tooling with patch-by-default release labels.
+- [x] Add the explicit `v0.16.0 + release:major -> v1.0.0` regression and
+      configure open PR #33 with only `release:major`.
+- [ ] Recheck the newest published tag immediately before merging PR #33; stop
+      if `v1.0.0` already exists.
 - [x] Add signed Tauri update artifacts, a public GitHub Releases endpoint, and
       an explicit in-app update-and-restart experience.
 - [x] Add gated GitHub Actions validation and draft release workflows for macOS
@@ -314,6 +457,10 @@ in-room subscription consent.
   green.
 - Add focused tests with each behavior change rather than postponing all test
   work until distribution.
+- Reject chromatic first-party CSS/SVG colors outside plan 0020's explicitly
+  delimited brand block, retired theme machinery,
+  product text below 11 px/weight 500, unsupported Roundo weights, and changed
+  vendored font bytes in regression tests.
 
 ### Manual Apple Silicon macOS acceptance
 

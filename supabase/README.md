@@ -112,6 +112,10 @@ pnpm dlx supabase@latest db push
 pnpm dlx supabase@latest migration list
 pnpm dlx supabase@latest functions deploy livekit-token --use-api
 pnpm dlx supabase@latest functions deploy soundboard-manage --use-api
+pnpm dlx supabase@latest functions deploy message-media-manage --use-api
+pnpm dlx supabase@latest functions deploy sticker-manage --use-api
+pnpm dlx supabase@latest functions deploy link-preview --use-api
+pnpm dlx supabase@latest functions deploy system-events --use-api
 ```
 
 Plan 0014's additive DM/LIVE migration is deployed. Older clients continue
@@ -164,10 +168,61 @@ renderer. Deploy the migration before `soundboard-manage`, then run linked lint,
 an unauthenticated 401 probe, member/outsider upload probes, uploader/admin/
 other-member delete probes, and a final Storage/catalog cleanup check.
 
-Keep `verify_jwt = true` from `supabase/config.toml`. Set `LIVEKIT_URL`,
-`LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` through the hosted Edge Function
-Secrets dashboard before invoking the function. Do not pass secret values on a
-shell command line or place them in renderer environment files.
+Rich messaging adds migration `202607230001_rich_messaging.sql`, private
+`message-media` and `message-stickers` buckets, compatible v2 channel/DM send
+RPCs, attachment reservations, server stickers/reactions, replies, and
+author-owned soft deletion. Apply the migration first, deploy
+`message-media-manage`, then deploy `sticker-manage`; only after those succeed
+should a plan 0022 renderer be distributed. Both functions keep JWT
+verification enabled and use the platform-provided service role only inside the
+Edge runtime.
+
+`message-media-manage` verifies claims and channel membership or retained DM
+participation before issuing signed TUS upload tokens. Reservations consume the
+1 GiB member quota until cancelled, cleaned after 24 hours, published, or
+deleted. The v2 send transaction verifies both objects exist before linking up
+to four attachments, so a partial upload never becomes a message.
+`sticker-manage` validates bounded PNG/WebP/GIF input, preserves a static
+poster for animation, and enforces 25 active stickers/member and 200/server.
+Uploaders and server admins archive active stickers; referenced rows and
+objects remain available to authorized history.
+
+System channels and previews add migration
+`202607240001_system_channels_and_link_previews.sql`. Apply it before either
+new function. Follow-up migration
+`202607240002_channel_category_realtime.sql` publishes
+`channel_categories` through Supabase Realtime so an already-open renderer can
+catch up the System category without clearing its cache. Keep JWT verification
+enabled for `link-preview`; it authorizes channel membership or DM
+participation by selecting the stored message through the caller's RLS session.
+`system-events` deliberately disables the platform JWT gate because GitHub
+Actions authenticates with the dedicated
+`x-bakbak-system-secret`; configure the same high-entropy
+`BAKBAK_SYSTEM_EVENTS_SECRET` in Supabase Function Secrets and GitHub Actions,
+and never use a `VITE_*` variable for it. Release announcements are standard
+behavior with no feature flag. Deploy the migration and both functions before
+merging the workflow, then run the manual system-history workflow once to
+import earlier stable releases.
+
+The hosted Bakbak project has migrations `202607240001` and `202607240002` plus
+both functions deployed. Its synchronized System secret is configured, and the
+one-time history pass imported 15 stable releases oldest-first on 2026-07-24.
+
+Validate the complete backend locally with:
+
+```sh
+pnpm dlx supabase@latest db reset
+pnpm dlx supabase@latest test db
+deno test --allow-env --config supabase/deno.json supabase/functions/tests
+```
+
+Keep `verify_jwt = true` for user-authenticated functions in
+`supabase/config.toml`; only `system-events` uses its dedicated secret with
+`verify_jwt = false`. Set `LIVEKIT_URL`, `LIVEKIT_API_KEY`,
+`LIVEKIT_API_SECRET`, and `BAKBAK_SYSTEM_EVENTS_SECRET` through the hosted Edge
+Function Secrets dashboard before invoking the corresponding functions. Do
+not pass secret values on a shell command line or place them in renderer
+environment files.
 
 `--use-api` uses Supabase's server-side bundler and avoids a macOS CLI
 `output.eszip` temporary-file race observed with the default local bundler.

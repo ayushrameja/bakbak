@@ -84,12 +84,62 @@ describe("InterfaceSoundController", () => {
     await settle();
 
     expect(harness.context.decodeAudioData).toHaveBeenCalled();
-    expect(harness.fetchMock).toHaveBeenCalledTimes(9);
+    expect(harness.fetchMock).toHaveBeenCalledTimes(14);
     expect(harness.sources).toHaveLength(1);
     expect(harness.sources[0]?.start).toHaveBeenCalledOnce();
-    expect(harness.gains[0]?.gain.value).toBeCloseTo(0.55 * 0.88);
+    expect(harness.gains[0]?.gain.value).toBeCloseTo(0.55 * 0.72);
     expect(harness.gains[0]?.connect).toHaveBeenCalledWith(
       harness.context.destination,
+    );
+  });
+
+  it("maps committed sends and successful microphone changes to their modern cues", async () => {
+    const harness = createHarness();
+    await harness.controller.activate();
+
+    harness.controller.play({ type: "message-sent" });
+    harness.controller.play({ type: "message-sent" });
+    await settle();
+    expect(harness.sources).toHaveLength(1);
+    expect(harness.gains[0]?.gain.value).toBeCloseTo(0.55 * 0.62);
+
+    harness.advance(121);
+    harness.controller.play({ type: "message-sent" });
+    await settle();
+    expect(harness.sources).toHaveLength(2);
+    harness.sources.forEach((source) =>
+      source.dispatchEvent(new Event("ended")),
+    );
+
+    harness.controller.play({ type: "microphone-muted" }, { deafened: true });
+    harness.controller.play({ type: "microphone-unmuted" }, { deafened: true });
+    await settle();
+    expect(harness.sources).toHaveLength(4);
+    expect(harness.gains[2]?.gain.value).toBeCloseTo(0.55 * 0.76);
+    expect(harness.gains[3]?.gain.value).toBeCloseTo(0.55 * 0.76);
+    harness.sources
+      .slice(2)
+      .forEach((source) => source.dispatchEvent(new Event("ended")));
+    harness.controller.play({ type: "deafen-enabled" }, { deafened: true });
+    harness.controller.play({ type: "deafen-disabled" });
+    await settle();
+    expect(harness.sources).toHaveLength(6);
+    expect(harness.gains[4]?.gain.value).toBeCloseTo(0.55 * 0.72);
+    expect(harness.gains[5]?.gain.value).toBeCloseTo(0.55 * 0.72);
+    expect(harness.fetchMock).toHaveBeenCalledWith(
+      "/interface-sounds/message-sent.wav",
+    );
+    expect(harness.fetchMock).toHaveBeenCalledWith(
+      "/interface-sounds/microphone-mute.wav",
+    );
+    expect(harness.fetchMock).toHaveBeenCalledWith(
+      "/interface-sounds/microphone-unmute.wav",
+    );
+    expect(harness.fetchMock).toHaveBeenCalledWith(
+      "/interface-sounds/deafen-on.wav",
+    );
+    expect(harness.fetchMock).toHaveBeenCalledWith(
+      "/interface-sounds/deafen-off.wav",
     );
   });
 

@@ -85,6 +85,11 @@ import {
   type LiveKitToken,
 } from "./token-request";
 import {
+  clearRelayPreference,
+  loadRelayPreference,
+  saveRelayPreference,
+} from "./voice-relay-preference";
+import {
   getScreenShareCapabilities,
   isDesktopApp,
   listenForScreenShareLifecycle,
@@ -112,10 +117,22 @@ export type VoiceConnectionQuality = "unknown" | "excellent" | "good" | "poor";
 export type VoiceJoinStage =
   "authorizing" | "connecting" | "microphone" | "soundboard";
 
-export const VOICE_PREPARE_DEBOUNCE_MS = 150;
+export const VOICE_PREPARE_DEBOUNCE_MS = 75;
 export const VOICE_TOKEN_EXPIRY_BUFFER_MS = 30_000;
 export const RELAY_PREFERENCE_DURATION_MS = 10 * 60_000;
 export const OUTPUT_DEVICE_NOTICE_DURATION_MS = 8_000;
+
+export interface VoiceJoinTimingSnapshot {
+  outcome: "connected" | "error";
+  totalMs: number;
+  stages: Readonly<Record<string, number>>;
+}
+
+let lastVoiceJoinTiming: VoiceJoinTimingSnapshot | null = null;
+
+export function readLastVoiceJoinTiming(): VoiceJoinTimingSnapshot | null {
+  return lastVoiceJoinTiming;
+}
 
 type PreparedTokenResult =
   { ok: true; value: LiveKitToken } | { ok: false; error: unknown };
@@ -211,13 +228,14 @@ interface VoiceRoomState {
   soundboardVolume: number;
   activeLocalSoundCount: number;
   maxConcurrentSounds: number;
-  prepareVoiceChannel: (channel: Channel) => void;
+  prepareVoiceChannel: (channel: Channel, immediate?: boolean) => void;
   join: (channel: Channel) => Promise<void>;
   leave: (reason?: VoiceLeaveReason) => Promise<void>;
   toggleMute: () => Promise<void>;
   toggleDeafen: () => Promise<void>;
   resumeAudio: () => Promise<void>;
   setParticipantVolume: (participantId: string, volume: number) => void;
+  toggleParticipantMute: (participantId: string) => void;
   refreshDevices: () => Promise<void>;
   setInputDevice: (deviceId: string) => Promise<void>;
   setEnhancedNoiseSuppression: (enabled: boolean) => Promise<void>;
@@ -343,7 +361,9 @@ export function useVoiceRoom(
   const prepareOperationRef = useRef(0);
   const joiningMicrophoneRef = useRef<LocalAudioTrack | null>(null);
   const outputDeviceErrorTimerRef = useRef<number | null>(null);
-  const relayPreferredUntilRef = useRef(0);
+  const relayPreferredUntilRef = useRef(
+    loadRelayPreference(appConfig.livekitUrl),
+  );
   const mutedRef = useRef(false);
   const deafenedRef = useRef(false);
   const joinOperationRef = useRef(0);
@@ -358,6 +378,7 @@ export function useVoiceRoom(
   const soundboardTracks = useRef(new Map<string, RemoteAudioTrack>());
   const screenShareTracks = useRef(new Map<string, RemoteAudioTrack>());
   const participantVolumes = useRef(new Map<string, number>());
+  const audibleParticipantVolumes = useRef(new Map<string, number>());
   const soundboardVolumeRef = useRef(soundboardVolume);
   const soundboardRef = useRef(soundboard);
   const onCommunicationEffectRef = useRef(onCommunicationEffect);
@@ -720,7 +741,7 @@ export function useVoiceRoom(
   }, []);
 
   const prepareVoiceChannel = useCallback(
-    (nextChannel: Channel) => {
+    (nextChannel: Channel, immediate = false) => {
       if (
         mode !== "live" ||
         nextChannel.kind !== "voice" ||
@@ -735,57 +756,60 @@ export function useVoiceRoom(
         window.clearTimeout(prepareTimerRef.current);
       }
       scheduledPrepareChannelRef.current = nextChannel.id;
-      prepareTimerRef.current = window.setTimeout(() => {
-        prepareTimerRef.current = null;
-        scheduledPrepareChannelRef.current = null;
-        discardPreparedJoin();
+      prepareTimerRef.current = window.setTimeout(
+        () => {
+          prepareTimerRef.current = null;
+          scheduledPrepareChannelRef.current = null;
+          discardPreparedJoin();
 
-        const operation = prepareOperationRef.current + 1;
-        prepareOperationRef.current = operation;
-        const room = new Room({ adaptiveStream: true, dynacast: true });
-        const startedAt = performance.now();
-        const tokenResult: Promise<PreparedTokenResult> = requestLiveKitToken(
-          nextChannel.id,
-          "voice",
-        ).then(
-          (value) => ({ ok: true as const, value }),
-          (error: unknown) => ({ ok: false as const, error }),
-        );
-        const prepared: PreparedVoiceJoin = {
-          channelId: nextChannel.id,
-          room,
-          operation,
-          tokenResult,
-        };
-        preparedJoinRef.current = prepared;
+          const operation = prepareOperationRef.current + 1;
+          prepareOperationRef.current = operation;
+          const room = new Room({ adaptiveStream: true, dynacast: true });
+          const startedAt = performance.now();
+          const tokenResult: Promise<PreparedTokenResult> = requestLiveKitToken(
+            nextChannel.id,
+            "voice",
+          ).then(
+            (value) => ({ ok: true as const, value }),
+            (error: unknown) => ({ ok: false as const, error }),
+          );
+          const prepared: PreparedVoiceJoin = {
+            channelId: nextChannel.id,
+            room,
+            operation,
+            tokenResult,
+          };
+          preparedJoinRef.current = prepared;
 
-        void tokenResult.then(async (result) => {
-          const isCurrent = () =>
-            prepareOperationRef.current === operation &&
-            preparedJoinRef.current === prepared;
-          if (
-            !isCurrent() ||
-            !result.ok ||
-            !isPreparedVoiceTokenUsable(result.value, Date.now())
-          ) {
-            if (isCurrent()) discardPreparedJoin();
-            return;
-          }
-          try {
-            await room.prepareConnection(
-              result.value.serverUrl,
-              result.value.token,
-            );
-            if (isCurrent() && import.meta.env.DEV) {
-              console.debug("[voice-join] prepared", {
-                durationMs: Math.round(performance.now() - startedAt),
-              });
+          void tokenResult.then(async (result) => {
+            const isCurrent = () =>
+              prepareOperationRef.current === operation &&
+              preparedJoinRef.current === prepared;
+            if (
+              !isCurrent() ||
+              !result.ok ||
+              !isPreparedVoiceTokenUsable(result.value, Date.now())
+            ) {
+              if (isCurrent()) discardPreparedJoin();
+              return;
             }
-          } catch {
-            if (isCurrent()) discardPreparedJoin();
-          }
-        });
-      }, VOICE_PREPARE_DEBOUNCE_MS);
+            try {
+              await room.prepareConnection(
+                result.value.serverUrl,
+                result.value.token,
+              );
+              if (isCurrent() && import.meta.env.DEV) {
+                console.debug("[voice-join] prepared", {
+                  durationMs: Math.round(performance.now() - startedAt),
+                });
+              }
+            } catch {
+              if (isCurrent()) discardPreparedJoin();
+            }
+          });
+        },
+        immediate ? 0 : VOICE_PREPARE_DEBOUNCE_MS,
+      );
     },
     [channel?.id, discardPreparedJoin, mode],
   );
@@ -1367,6 +1391,7 @@ export function useVoiceRoom(
               microphoneProcessingPreferencesRef.current,
               isCurrentJoin,
               joiningMicrophoneRef,
+              timing.mark,
             )
           : null;
 
@@ -1408,6 +1433,8 @@ export function useVoiceRoom(
       }
 
       if (reusableMicrophone) {
+        timing.mark("microphoneCapture");
+        timing.mark("microphoneProcessing");
         joiningMicrophoneRef.current = reusableMicrophone;
         microphonePromise = Promise.resolve({
           track: reusableMicrophone,
@@ -1420,6 +1447,7 @@ export function useVoiceRoom(
           microphoneProcessingPreferencesRef.current,
           isCurrentJoin,
           joiningMicrophoneRef,
+          timing.mark,
         );
       }
 
@@ -1470,6 +1498,14 @@ export function useVoiceRoom(
         relayPreferredUntilRef.current = connectedWithRelay
           ? Date.now() + RELAY_PREFERENCE_DURATION_MS
           : 0;
+        if (connectedWithRelay) {
+          saveRelayPreference(
+            appConfig.livekitUrl,
+            relayPreferredUntilRef.current,
+          );
+        } else {
+          clearRelayPreference(appConfig.livekitUrl);
+        }
         if (!isCurrentJoin() || roomRef.current !== room) {
           void room.disconnect();
           return;
@@ -1499,7 +1535,7 @@ export function useVoiceRoom(
           if (joiningMicrophoneRef.current === result.track) {
             joiningMicrophoneRef.current = null;
           }
-          timing.mark("microphone");
+          timing.mark("microphonePublication");
         })();
         const prepareOutput = (async () => {
           if (outputSelectionSupported) {
@@ -1518,6 +1554,7 @@ export function useVoiceRoom(
             }
           }
           await audioOutput.start().catch(() => undefined);
+          timing.mark("outputRouting");
         })();
         const prepareSoundboard = soundboardAudio
           .ensurePublished(room.localParticipant)
@@ -1640,7 +1677,10 @@ export function useVoiceRoom(
     }
     mutedRef.current = nextMuted;
     setMuted(nextMuted);
-  }, [refreshParticipants, status]);
+    emitCommunicationEffect({
+      type: nextMuted ? "microphone-muted" : "microphone-unmuted",
+    });
+  }, [emitCommunicationEffect, refreshParticipants, status]);
 
   const toggleDeafen = useCallback(async () => {
     if (status !== "connected") return;
@@ -1664,21 +1704,29 @@ export function useVoiceRoom(
       },
     );
     if (
-      !result ||
       playbackOperationRef.current !== operationId ||
       roomRef.current !== room
     )
       return;
 
-    if (result.ok) {
+    if (!result || result.ok) {
       setAudioPlaybackBlocked(false);
       setError(null);
+      emitCommunicationEffect({
+        type: nextDeafened ? "deafen-enabled" : "deafen-disabled",
+      });
       return;
     }
 
     setAudioPlaybackBlocked(true);
     setError(result.message);
-  }, [audioPlaybackBlocked, remoteAudio, soundboardAudio, status]);
+  }, [
+    audioPlaybackBlocked,
+    emitCommunicationEffect,
+    remoteAudio,
+    soundboardAudio,
+    status,
+  ]);
 
   const resumeAudio = useCallback(async () => {
     const room = roomRef.current;
@@ -1707,6 +1755,9 @@ export function useVoiceRoom(
     (participantId: string, volume: number) => {
       const safeVolume = Math.max(0, Math.min(1, volume));
       participantVolumes.current.set(participantId, safeVolume);
+      if (safeVolume > 0) {
+        audibleParticipantVolumes.current.set(participantId, safeVolume);
+      }
       roomRef.current?.remoteParticipants
         .get(participantId)
         ?.setVolume(safeVolume);
@@ -1730,6 +1781,24 @@ export function useVoiceRoom(
       );
     },
     [remoteAudio],
+  );
+
+  const toggleParticipantMute = useCallback(
+    (participantId: string) => {
+      const participant = participants.find(
+        (candidate) => candidate.id === participantId && !candidate.isLocal,
+      );
+      if (!participant) return;
+      const currentVolume =
+        participantVolumes.current.get(participantId) ?? participant.volume;
+      setParticipantVolume(
+        participantId,
+        currentVolume > 0
+          ? 0
+          : (audibleParticipantVolumes.current.get(participantId) ?? 1),
+      );
+    },
+    [participants, setParticipantVolume],
   );
 
   const setInputDevice = useCallback(
@@ -2364,6 +2433,7 @@ export function useVoiceRoom(
     toggleDeafen,
     resumeAudio,
     setParticipantVolume,
+    toggleParticipantMute,
     refreshDevices,
     setInputDevice,
     setEnhancedNoiseSuppression,
@@ -2416,6 +2486,7 @@ function acquireMicrophoneTrack(
   preferences: MicrophoneProcessingPreferences,
   isCurrentJoin: () => boolean,
   joiningTrackRef: { current: LocalAudioTrack | null },
+  onStage: (stage: string) => void = () => undefined,
 ): Promise<{
   track: LocalAudioTrack | null;
   error: unknown;
@@ -2423,6 +2494,7 @@ function acquireMicrophoneTrack(
 }> {
   return createLocalAudioTrack(microphoneCaptureOptions(deviceId)).then(
     async (track) => {
+      onStage("microphoneCapture");
       if (!isCurrentJoin()) {
         track.stop();
         return {
@@ -2443,6 +2515,7 @@ function acquireMicrophoneTrack(
           processingError = MICROPHONE_PROCESSING_UNAVAILABLE;
         }
       }
+      onStage("microphoneProcessing");
       if (!isCurrentJoin()) {
         if (joiningTrackRef.current === track) {
           joiningTrackRef.current = null;
@@ -2487,18 +2560,22 @@ function createVoiceJoinTiming(enabled: boolean) {
   const startedAt = performance.now();
   const stages: Record<string, number> = {};
   return {
-    mark(stage: string) {
-      if (enabled && import.meta.env.DEV) {
+    mark: (stage: string) => {
+      if (enabled) {
         stages[stage] = Math.round(performance.now() - startedAt);
       }
     },
     finish(outcome: "connected" | "error") {
-      if (!enabled || !import.meta.env.DEV) return;
-      console.debug("[voice-join] completed", {
+      if (!enabled) return;
+      const snapshot = {
         outcome,
         totalMs: Math.round(performance.now() - startedAt),
-        stages,
-      });
+        stages: { ...stages },
+      } satisfies VoiceJoinTimingSnapshot;
+      lastVoiceJoinTiming = snapshot;
+      if (import.meta.env.DEV) {
+        console.debug("[voice-join] completed", snapshot);
+      }
     },
   };
 }

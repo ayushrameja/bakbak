@@ -1,7 +1,6 @@
 import {
   Camera,
-  Check,
-  Crown,
+  Database,
   Headphones,
   Laptop,
   LogOut,
@@ -11,10 +10,10 @@ import {
   Moon,
   Palette,
   Play,
-  RadioTower,
   RefreshCw,
   Square,
   Sun,
+  Trash2,
   UserRound,
   Volume2,
   VolumeX,
@@ -26,10 +25,14 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
+  type ReactNode,
 } from "react";
 import { Avatar } from "../../components/Avatar";
 import type { LoadProfileMedia } from "../../components/ProfileTrigger";
 import type { AppUser } from "../../lib/types";
+import type { CacheStats, DataFreshness } from "../../lib/local-cache";
+import type { AppearancePreference } from "./appearance-preferences";
+import type { AppliedSystemAccent } from "./system-accent";
 import {
   AVATAR_BUCKET,
   COVER_BUCKET,
@@ -44,12 +47,6 @@ import {
 } from "../../lib/profile-service";
 import { useReducedMotion } from "../../lib/use-reduced-motion";
 import type {
-  AccentColor,
-  SurfaceStyle,
-  ThemePreference,
-  VisualPreset,
-} from "./appearance-preferences";
-import type {
   InterfaceSoundCategory,
   InterfaceSoundPreferences,
 } from "./interface-sound-preferences";
@@ -62,7 +59,7 @@ import { setAudioElementOutput } from "../voice/media-devices";
 
 const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
 
-export type SettingsSection = "profile" | "audio" | "appearance";
+export type SettingsSection = "profile" | "audio" | "appearance" | "storage";
 
 export interface ProfileSaveInput {
   displayName: string;
@@ -78,11 +75,6 @@ export interface ProfileSaveInput {
 interface SettingsPageProps {
   user: AppUser;
   section: SettingsSection;
-  visualPreset: VisualPreset;
-  themePreference: ThemePreference;
-  accent: AccentColor;
-  accentIntensity: number;
-  surfaceStyle: SurfaceStyle;
   inputDevices: MediaDeviceInfo[];
   outputDevices: MediaDeviceInfo[];
   cameraDevices: MediaDeviceInfo[];
@@ -95,6 +87,11 @@ interface SettingsPageProps {
   microphoneProcessingSupported: boolean;
   microphoneProcessingError: string | null;
   interfaceSoundPreferences: InterfaceSoundPreferences;
+  appearancePreference: AppearancePreference;
+  systemAccent: AppliedSystemAccent;
+  cacheStats?: CacheStats;
+  dataFreshness?: DataFreshness;
+  readOnly?: boolean;
   inputError: string | null;
   outputError: string | null;
   cameraError: string | null;
@@ -105,10 +102,6 @@ interface SettingsPageProps {
   voiceMuted: boolean;
   voiceDeafened: boolean;
   onSectionChange: (section: SettingsSection) => void;
-  onVisualPresetChange: (preset: VisualPreset) => void;
-  onThemeChange: (preference: ThemePreference) => void;
-  onAccentChange: (accent: AccentColor, intensity: number) => void;
-  onSurfaceStyleChange: (surfaceStyle: SurfaceStyle) => void;
   onSaveProfile: (input: ProfileSaveInput) => Promise<{ warning?: string }>;
   loadProfileMedia?: LoadProfileMedia;
   onInputChange: (deviceId: string) => void;
@@ -121,6 +114,8 @@ interface SettingsPageProps {
   onInterfaceSoundPreferencesChange: (
     preferences: InterfaceSoundPreferences,
   ) => void;
+  onAppearancePreferenceChange: (preference: AppearancePreference) => void;
+  onClearCachedData?: () => Promise<void>;
   onPreviewInterfaceSound: (category: InterfaceSoundCategory) => void;
   onToggleMute: () => void;
   onToggleDeafen: () => void;
@@ -252,6 +247,12 @@ export function SettingsPage(props: SettingsPageProps) {
               label="Appearance"
               onClick={() => props.onSectionChange("appearance")}
             />
+            <SettingsNavButton
+              active={props.section === "storage"}
+              icon={<Database size={17} />}
+              label="Data & storage"
+              onClick={() => props.onSectionChange("storage")}
+            />
             <div className="settings-nav__spacer" />
             {props.voiceStatus !== "disconnected" ? (
               <div className="settings-call-strip">
@@ -309,20 +310,32 @@ export function SettingsPage(props: SettingsPageProps) {
                 user={props.user}
                 onSave={props.onSaveProfile}
                 loadMedia={props.loadProfileMedia ?? emptyProfileMediaLoader}
+                readOnly={props.readOnly ?? false}
               />
             ) : null}
             {props.section === "audio" ? <AudioSettings {...props} /> : null}
             {props.section === "appearance" ? (
               <AppearanceSettings
-                visualPreset={props.visualPreset}
-                preference={props.themePreference}
-                accent={props.accent}
-                intensity={props.accentIntensity}
-                surfaceStyle={props.surfaceStyle}
-                onChange={props.onThemeChange}
-                onVisualPresetChange={props.onVisualPresetChange}
-                onAccentChange={props.onAccentChange}
-                onSurfaceStyleChange={props.onSurfaceStyleChange}
+                preference={props.appearancePreference}
+                systemAccent={props.systemAccent}
+                onChange={props.onAppearancePreferenceChange}
+              />
+            ) : null}
+            {props.section === "storage" ? (
+              <DataStorageSettings
+                stats={
+                  props.cacheStats ?? {
+                    messageBytes: 0,
+                    messageCount: 0,
+                    profileMediaBytes: 0,
+                    profileMediaCount: 0,
+                    messageMediaBytes: 0,
+                    messageMediaCount: 0,
+                    totalBytes: 0,
+                  }
+                }
+                freshness={props.dataFreshness ?? "fresh"}
+                onClear={props.onClearCachedData ?? (() => Promise.resolve())}
               />
             ) : null}
           </div>
@@ -341,7 +354,7 @@ export function SettingsPage(props: SettingsPageProps) {
               <p>
                 {props.voiceStatus !== "disconnected"
                   ? "This will also leave your active voice room."
-                  : "Your local appearance and device choices will stay on this computer."}
+                  : "Your local device choices will stay on this computer."}
               </p>
               {signOutError ? (
                 <p className="settings-error" role="alert">
@@ -382,7 +395,7 @@ function SettingsNavButton({
   onClick,
 }: {
   active: boolean;
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
   onClick: () => void;
 }) {
@@ -399,6 +412,133 @@ function SettingsNavButton({
   );
 }
 
+function DataStorageSettings({
+  stats,
+  freshness,
+  onClear,
+}: {
+  stats: CacheStats;
+  freshness: DataFreshness;
+  onClear: () => Promise<void>;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const freshnessLabel = {
+    loading: "Loading",
+    cached: "Saved data, syncing",
+    fresh: "Up to date",
+    offline: "Offline saved data",
+  }[freshness];
+
+  async function clear() {
+    setClearing(true);
+    setError(null);
+    try {
+      await onClear();
+      setConfirming(false);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Bakbak could not clear the cache.",
+      );
+    } finally {
+      setClearing(false);
+    }
+  }
+
+  return (
+    <div className="settings-panel data-storage-settings">
+      <div className="settings-panel__heading">
+        <span className="eyebrow">Data & storage</span>
+        <h2>Fast, local, and politely bounded</h2>
+        <p>
+          Bakbak keeps recent conversations and profile media on this computer
+          so returning does not require a dramatic loading montage.
+        </p>
+      </div>
+      <div className="storage-summary-grid">
+        <section>
+          <span>Conversation cache</span>
+          <strong>{formatBytes(stats.messageBytes)}</strong>
+          <small>{stats.messageCount} recent messages</small>
+        </section>
+        <section>
+          <span>Profile media</span>
+          <strong>{formatBytes(stats.profileMediaBytes)}</strong>
+          <small>{stats.profileMediaCount} cached files</small>
+        </section>
+        <section>
+          <span>Message posters</span>
+          <strong>{formatBytes(stats.messageMediaBytes)}</strong>
+          <small>{stats.messageMediaCount} cached previews</small>
+        </section>
+        <section>
+          <span>Current state</span>
+          <strong>{freshnessLabel}</strong>
+          <small>Cloud access rules always remain authoritative</small>
+        </section>
+      </div>
+      <div className="storage-policy">
+        <Database size={18} aria-hidden="true" />
+        <p>
+          Up to 200 messages per conversation, 256 MiB of profile media, and 256
+          MiB of least-recently-used authenticated message and sticker posters
+          are retained. Full videos, animated originals, and GIPHY assets never
+          enter the offline cache.
+        </p>
+      </div>
+      {error ? (
+        <p className="settings-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {confirming ? (
+        <div className="storage-clear-confirm" role="alert">
+          <p>
+            Remove this account&apos;s saved conversations and profile media
+            from this computer? Cloud data and preferences stay put.
+          </p>
+          <div>
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={clearing}
+              onClick={() => setConfirming(false)}
+            >
+              Keep cache
+            </button>
+            <button
+              className="danger-button"
+              type="button"
+              disabled={clearing}
+              onClick={() => void clear()}
+            >
+              <Trash2 size={16} />
+              {clearing ? "Clearing…" : "Clear cached data"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => setConfirming(true)}
+        >
+          <Trash2 size={16} /> Clear cached data
+        </button>
+      )}
+    </div>
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
 function useObjectUrlCleanup(url: string | null) {
   useEffect(
     () => () => {
@@ -412,10 +552,12 @@ function ProfileSettings({
   user,
   onSave,
   loadMedia,
+  readOnly,
 }: {
   user: AppUser;
   onSave: SettingsPageProps["onSaveProfile"];
   loadMedia: LoadProfileMedia;
+  readOnly: boolean;
 }) {
   const reducedMotion = useReducedMotion();
   const [displayName, setDisplayName] = useState(user.displayName);
@@ -734,7 +876,7 @@ function ProfileSettings({
         </div>
       </section>
       <div className="profile-media-editors">
-        <section>
+        <section className="appearance-summary-card">
           <strong>Avatar</strong>
           <div>
             <label className="secondary-button profile-upload">
@@ -764,7 +906,7 @@ function ProfileSettings({
           </div>
           <span>PNG, JPEG, WebP, or GIF · up to 5 MiB</span>
         </section>
-        <section>
+        <section className="appearance-summary-card">
           <strong>Cover</strong>
           <div>
             <label className="secondary-button profile-upload">
@@ -856,10 +998,15 @@ function ProfileSettings({
         <button
           className="primary-button"
           type="submit"
-          disabled={saving || preparingMedia !== null || !dirty}
+          disabled={readOnly || saving || preparingMedia !== null || !dirty}
         >
           {saving ? "Saving…" : "Save profile"}
         </button>
+        {readOnly ? (
+          <p className="settings-error" role="status">
+            Reconnect before saving profile changes.
+          </p>
+        ) : null}
       </div>
     </form>
   );
@@ -1358,8 +1505,8 @@ function AudioSettings(props: SettingsPageProps) {
                 <div>
                   <h4 id="interface-sounds-title">Interface sounds</h4>
                   <p>
-                    Original cues use the system output, separately from call
-                    audio.
+                    Modern original Bakbak cues use the system output,
+                    separately from call audio.
                   </p>
                 </div>
                 <button
@@ -1506,287 +1653,99 @@ function DeviceSelect({
   );
 }
 
+const APPEARANCE_OPTIONS: ReadonlyArray<{
+  value: AppearancePreference;
+  label: string;
+  description: string;
+  icon: ReactNode;
+}> = [
+  {
+    value: "auto",
+    label: "Auto",
+    description: "Follow this computer",
+    icon: <Laptop size={19} aria-hidden="true" />,
+  },
+  {
+    value: "dark",
+    label: "Dark",
+    description: "Keep the lights low",
+    icon: <Moon size={19} aria-hidden="true" />,
+  },
+  {
+    value: "light",
+    label: "Light",
+    description: "Invite the daylight in",
+    icon: <Sun size={19} aria-hidden="true" />,
+  },
+];
+
 function AppearanceSettings({
-  visualPreset,
   preference,
-  accent,
-  intensity,
-  surfaceStyle,
+  systemAccent,
   onChange,
-  onVisualPresetChange,
-  onAccentChange,
-  onSurfaceStyleChange,
 }: {
-  visualPreset: VisualPreset;
-  preference: ThemePreference;
-  accent: AccentColor;
-  intensity: number;
-  surfaceStyle: SurfaceStyle;
-  onChange: (preference: ThemePreference) => void;
-  onVisualPresetChange: (preset: VisualPreset) => void;
-  onAccentChange: (accent: AccentColor, intensity: number) => void;
-  onSurfaceStyleChange: (surfaceStyle: SurfaceStyle) => void;
+  preference: AppearancePreference;
+  systemAccent: AppliedSystemAccent;
+  onChange: (preference: AppearancePreference) => void;
 }) {
-  const signalRedActive = visualPreset === "signal-red";
-  const signatureActive = visualPreset === "signature";
-  const fixedPresetActive = signalRedActive || signatureActive;
-  const options: Array<{
-    value: ThemePreference;
-    label: string;
-    description: string;
-    icon: React.ReactNode;
-  }> = [
-    {
-      value: "system",
-      label: "System",
-      description: "Follow this computer",
-      icon: <Laptop size={20} />,
-    },
-    {
-      value: "light",
-      label: "Light",
-      description: "Oat, paper, and daylight",
-      icon: <Sun size={20} />,
-    },
-    {
-      value: "dark",
-      label: "Dark",
-      description: "Charcoal after-hours",
-      icon: <Moon size={20} />,
-    },
-  ];
+  const sourceDescription =
+    systemAccent.source === "macos"
+      ? "Following macOS Accent Color."
+      : systemAccent.source === "windows"
+        ? "Following the Windows accent color."
+        : "Using a neutral fallback in this preview.";
+
   return (
     <div className="settings-panel appearance-settings">
       <div className="settings-panel__heading">
         <span className="eyebrow">Appearance</span>
-        <h2>Choose a style</h2>
+        <h2>Pick your lighting</h2>
         <p>
-          Start with a complete look. Classic can then be adjusted below; the
-          two special themes are intentionally fixed.
+          Choose a theme, or let Bakbak follow your computer like a very polite
+          little shadow.
         </p>
       </div>
-      <section
-        className={`special-theme-card special-theme-card--classic ${visualPreset === "standard" ? "is-active" : ""}`}
-        aria-labelledby="classic-theme-title"
-      >
-        <div className="special-theme-card__mark" aria-hidden="true">
-          <Palette size={26} />
-          <span>FLAT // PURPLE</span>
-        </div>
-        <div className="special-theme-card__copy">
-          <span className="eyebrow">Recommended · customizable</span>
-          <h3 id="classic-theme-title">Classic</h3>
-          <p>
-            Calm flat surfaces with a purple accent by default. Choose the
-            system theme, colour, and intensity below.
-          </p>
-        </div>
-        <button
-          className={
-            visualPreset === "standard" ? "secondary-button" : "primary-button"
-          }
-          type="button"
-          aria-pressed={visualPreset === "standard"}
-          onClick={() => onVisualPresetChange("standard")}
-        >
-          {visualPreset === "standard" ? "Classic active" : "Use Classic"}
-        </button>
-      </section>
-      <section
-        className={`special-theme-card special-theme-card--signature ${signatureActive ? "is-active" : ""}`}
-        aria-labelledby="signature-theme-title"
-      >
-        <div className="special-theme-card__mark" aria-hidden="true">
-          <Crown size={26} />
-          <span>BB // CLUB</span>
-        </div>
-        <div className="special-theme-card__copy">
-          <span className="eyebrow">Premium fixed theme</span>
-          <h3 id="signature-theme-title">Bakbak Signature</h3>
-          <p>
-            A fixed private-club skin with dark textile, cognac leather,
-            restrained brass, and clean conversation surfaces.
-          </p>
-        </div>
-        <button
-          className={signatureActive ? "secondary-button" : "primary-button"}
-          type="button"
-          aria-pressed={signatureActive}
-          onClick={() => onVisualPresetChange("signature")}
-        >
-          {signatureActive ? "Signature active" : "Use Signature"}
-        </button>
-      </section>
-      <section
-        className={`special-theme-card ${signalRedActive ? "is-active" : ""}`}
-        aria-labelledby="special-theme-title"
-      >
-        <div className="special-theme-card__mark" aria-hidden="true">
-          <RadioTower size={26} />
-          <span>BK // 01</span>
-        </div>
-        <div className="special-theme-card__copy">
-          <span className="eyebrow">Special theme</span>
-          <h3 id="special-theme-title">Signal Red</h3>
-          <p>
-            A fixed black-and-red broadcast skin with sharp type, signal
-            texture, and restrained edge animations.
-          </p>
-        </div>
-        <button
-          className={signalRedActive ? "secondary-button" : "primary-button"}
-          type="button"
-          aria-pressed={signalRedActive}
-          onClick={() =>
-            onVisualPresetChange(signalRedActive ? "standard" : "signal-red")
-          }
-        >
-          {signalRedActive ? "Use standard" : "Activate Signal Red"}
-        </button>
-      </section>
-      {fixedPresetActive ? (
-        <p className="special-theme-note" role="status">
-          {signalRedActive
-            ? "Signal Red temporarily locks Dark, Flat, and its signature red."
-            : "Bakbak Signature uses its fixed night, leather, and brass palette."}{" "}
-          Choose Classic to restore the standard appearance choices exactly as
-          you left them.
-        </p>
-      ) : null}
-      {!fixedPresetActive ? (
-        <div className="classic-customization">
-          <div className="classic-customization__heading">
-            <span className="eyebrow">Customize Classic</span>
-            <h3>Make it yours</h3>
-            <p>These controls apply immediately and stay on this device.</p>
-          </div>
-          <div
-            className="theme-options"
-            role="radiogroup"
-            aria-label="App theme"
-          >
-            {options.map((option) => (
-              <button
-                className={preference === option.value ? "is-active" : ""}
-                type="button"
-                role="radio"
-                aria-checked={preference === option.value}
-                key={option.value}
-                onClick={() => onChange(option.value)}
-              >
-                <span>{option.icon}</span>
+      <fieldset className="appearance-theme-picker">
+        <legend>Theme</legend>
+        <div>
+          {APPEARANCE_OPTIONS.map((option) => (
+            <label
+              className={preference === option.value ? "is-selected" : ""}
+              key={option.value}
+            >
+              <input
+                type="radio"
+                name="appearance-theme"
+                value={option.value}
+                checked={preference === option.value}
+                onChange={() => onChange(option.value)}
+              />
+              {option.icon}
+              <span>
                 <strong>{option.label}</strong>
                 <small>{option.description}</small>
-                {preference === option.value ? <Check size={16} /> : null}
-              </button>
-            ))}
-          </div>
-          <section className="surface-settings" aria-labelledby="surface-title">
-            <div>
-              <h3 id="surface-title">Surface style</h3>
-              <p>Keep the warmth, or make every surface calm and flat.</p>
-            </div>
-            <div
-              className="surface-options"
-              role="radiogroup"
-              aria-label="Surface style"
-            >
-              <button
-                className={surfaceStyle === "warm" ? "is-active" : ""}
-                type="button"
-                role="radio"
-                aria-checked={surfaceStyle === "warm"}
-                onClick={() => onSurfaceStyleChange("warm")}
-              >
-                <span>Warm</span>
-                <small>Gradients, depth, and soft light</small>
-                {surfaceStyle === "warm" ? <Check size={15} /> : null}
-              </button>
-              <button
-                className={surfaceStyle === "flat" ? "is-active" : ""}
-                type="button"
-                role="radio"
-                aria-checked={surfaceStyle === "flat"}
-                onClick={() => onSurfaceStyleChange("flat")}
-              >
-                <span>Flat</span>
-                <small>Plain grayscale surfaces, no glow</small>
-                {surfaceStyle === "flat" ? <Check size={15} /> : null}
-              </button>
-            </div>
-          </section>
-          <section className="accent-settings" aria-labelledby="accent-title">
-            <div>
-              <h3 id="accent-title">Accent colour</h3>
-              <p>One accent adapts itself to both Light and Dark.</p>
-            </div>
-            <div
-              className="accent-options"
-              role="radiogroup"
-              aria-label="Accent colour"
-            >
-              {(
-                [
-                  "coral",
-                  "purple",
-                  "red",
-                  "yellow",
-                ] as const satisfies readonly AccentColor[]
-              ).map((option) => (
-                <button
-                  className={accent === option ? "is-active" : ""}
-                  type="button"
-                  role="radio"
-                  aria-checked={accent === option}
-                  data-accent-option={option}
-                  key={option}
-                  onClick={() => onAccentChange(option, intensity)}
-                >
-                  <i />
-                  <span>{option}</span>
-                  {accent === option ? <Check size={14} /> : null}
-                </button>
-              ))}
-            </div>
-            <label className="accent-intensity">
-              <span>Accent intensity</span>
-              <strong>{intensity}%</strong>
-              <input
-                type="range"
-                min="25"
-                max="100"
-                step="5"
-                value={intensity}
-                onChange={(event) =>
-                  onAccentChange(accent, Number(event.target.value))
-                }
-              />
-              <small>Subtle</small>
-              <small>Vivid</small>
+              </span>
             </label>
-          </section>
+          ))}
         </div>
-      ) : null}
-      <div
-        className={`theme-preview ${signalRedActive ? "is-signal-red" : ""} ${signatureActive ? "is-signature" : ""}`}
-        aria-hidden="true"
-      >
-        <div className="theme-preview__shelf">
-          <i />
-          <i />
-          <i />
-        </div>
-        <div className="theme-preview__conversation">
-          <span />
-          <span />
-          <span />
-        </div>
-        <div className="theme-preview__tray">
-          <i />
-          <i />
-          <i />
-          <i />
-        </div>
+      </fieldset>
+      <div className="appearance-summary-grid">
+        <section className="appearance-summary-card appearance-accent-card">
+          <span
+            className="appearance-accent-swatch"
+            aria-label={`Current system accent ${systemAccent.color}`}
+            role="img"
+          />
+          <span>System accent</span>
+          <strong>{systemAccent.color.toUpperCase()}</strong>
+          <p>{sourceDescription} Bakbak updates it automatically.</p>
+        </section>
+        <section className="appearance-summary-card">
+          <Palette size={22} aria-hidden="true" />
+          <span>Surface</span>
+          <strong>Glass</strong>
+          <p>System material and translucent grayscale layers.</p>
+        </section>
       </div>
     </div>
   );

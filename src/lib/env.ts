@@ -8,6 +8,7 @@ const publicEnvSchema = z.object({
   VITE_SUPABASE_ANON_KEY: z.string().optional(),
   VITE_LIVEKIT_URL: optionalUrl,
   VITE_BACKEND_REGION: z.string().trim().min(1).optional(),
+  VITE_GIPHY_API_KEY: z.string().trim().optional(),
 });
 
 const parsed = publicEnvSchema.safeParse(import.meta.env);
@@ -20,6 +21,7 @@ const supabaseAnonKey = publicEnv.VITE_SUPABASE_ANON_KEY || "";
 const livekitUrl = publicEnv.VITE_LIVEKIT_URL || "";
 const backendRegion =
   publicEnv.VITE_BACKEND_REGION || "Canada Central (ca-central-1)";
+const giphyApiKey = publicEnv.VITE_GIPHY_API_KEY || "";
 const hasLiveConfig = Boolean(supabaseUrl && supabaseAnonKey && livekitUrl);
 
 export const appConfig = {
@@ -29,6 +31,7 @@ export const appConfig = {
   supabaseAnonKey,
   livekitUrl,
   backendRegion,
+  giphyApiKey,
   configurationWarning:
     requestedMode === "live" && !hasLiveConfig
       ? "Live mode needs the three public VITE_ values from .env.example. Bakbak is using mock mode instead."

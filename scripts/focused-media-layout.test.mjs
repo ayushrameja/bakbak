@@ -52,7 +52,7 @@ test("voice shelf uses one compact room timer row and a speaking avatar ring", (
   );
   assert.match(
     styles,
-    /\.channel-voice-person__profile > b\s*\{[^}]*font-size:\s*12px;/s,
+    /\.channel-voice-person__profile > b\s*\{[^}]*font-size:\s*14px;/s,
   );
   assert.match(
     styles,

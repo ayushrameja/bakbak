@@ -1,13 +1,4 @@
-import {
-  CircleAlert,
-  Hash,
-  MessageCircle,
-  PanelLeftClose,
-  PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
-  Volume2,
-} from "lucide-react";
+import { CircleAlert, Hash, Volume2 } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -15,13 +6,23 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from "react";
-import { ProfilePopover } from "../components/ProfilePopover";
+import { Avatar } from "../components/Avatar";
+import { BakbakMark } from "../components/BakbakMark";
+import { LoadingScreen } from "../components/LoadingScreen";
 import { PanelResizer } from "../components/PanelResizer";
+import { ProfilePopover } from "../components/ProfilePopover";
 import type {
   LoadProfileMedia,
   OpenProfile,
 } from "../components/ProfileTrigger";
+import {
+  UserContextMenu,
+  type OpenUserContextMenu,
+  type UserContextMenuRequest,
+} from "../components/UserContextMenu";
+import { WindowTitlebar } from "../components/WindowTitlebar";
 import { AuthScreen } from "../features/auth/AuthScreen";
 import { InviteGate } from "../features/auth/InviteGate";
 import { ChannelDialog } from "../features/channels/ChannelDialog";
@@ -34,24 +35,23 @@ import {
 import { ChatView, ConversationView } from "../features/chat/ChatView";
 import { DirectPersonPanel } from "../features/chat/DirectPersonPanel";
 import { PersonalSidebar } from "../features/chat/PersonalSidebar";
+import { hydrateDirectConversationAvatars } from "../features/chat/direct-conversation-media";
 import {
   draftToSegments,
   EMPTY_MESSAGE_DRAFT,
   segmentsToFallback,
 } from "../features/chat/message-content";
-import { MemberPanel } from "../features/server/MemberPanel";
+import { prepareStickerUpload } from "../features/chat/message-media";
 import {
-  DestinationRail,
-  type AppSpace,
-} from "../features/server/DestinationRail";
+  MemberPanel,
+  type MemberVoiceActivity,
+} from "../features/server/MemberPanel";
+import type { AppSpace } from "../features/server/app-space";
 import {
-  loadAppearancePreferences,
-  setAppearancePreferences as persistAppearancePreferences,
-  type AccentColor,
-  type AppearancePreferences,
-  type SurfaceStyle,
-  type ThemePreference,
-  type VisualPreset,
+  applyAppearancePreference,
+  loadAppearancePreference,
+  saveAppearancePreference,
+  type AppearancePreference,
 } from "../features/settings/appearance-preferences";
 import {
   loadInterfaceSoundPreferences,
@@ -63,7 +63,6 @@ import {
   loadLayoutPreferences,
   DEFAULT_CONTEXT_PANEL_WIDTH,
   DEFAULT_RIGHT_PANEL_WIDTH,
-  DESTINATION_RAIL_WIDTH,
   MAX_SIDE_PANEL_WIDTH,
   MIN_CONTENT_WIDTH,
   MIN_SIDE_PANEL_WIDTH,
@@ -75,7 +74,11 @@ import {
   type ProfileSaveInput,
   type SettingsSection,
 } from "../features/settings/SettingsPage";
-import { SignalRedEffects } from "../features/settings/SignalRedEffects";
+import {
+  getCurrentSystemAccent,
+  subscribeSystemAccent,
+  type AppliedSystemAccent,
+} from "../features/settings/system-accent";
 import { Soundboard } from "../features/soundboard/Soundboard";
 import {
   shouldDismissSoundboardForEscape,
@@ -84,38 +87,75 @@ import {
 import { useSoundboardCatalog } from "../features/soundboard/useSoundboardCatalog";
 import { ScreenShareDialog } from "../features/voice/ScreenShareDialog";
 import { VoiceControlDock } from "../features/voice/VoiceControlDock";
-import { VoiceRoom } from "../features/voice/VoiceRoom";
+import {
+  VoiceRoom,
+  type StreamWatchRequest,
+} from "../features/voice/VoiceRoom";
 import { useVoiceRoom } from "../features/voice/useVoiceRoom";
+import {
+  prewarmMicrophoneProcessing,
+  releaseMicrophoneProcessing,
+} from "../features/voice/microphone-processing";
 import { sessionToAppUser, signOut } from "../lib/auth-service";
+import { useAutoHideScrollbars } from "../lib/use-auto-hide-scrollbars";
 import type { CommunicationEffectEvent } from "../lib/communication-effects";
+import { isConnectivityError } from "../lib/connectivity";
 import {
   createLiveChannel,
+  reconcileChannelCategories,
   reconcileChannels,
   renameLiveChannel,
+  subscribeToLiveChannelCategories,
   subscribeToLiveChannels,
 } from "../lib/channel-service";
 import { appConfig } from "../lib/env";
 import {
+  BakbakCache,
+  MAX_CACHED_MESSAGES_PER_THREAD,
+  mergeMessages,
+  type CacheStats,
+  type CachedDestination,
+  type DataFreshness,
+} from "../lib/local-cache";
+import {
+  requestLinkPreview,
+  shouldRequestLinkPreview,
+} from "../lib/link-preview";
+import {
   getOrCreateDirectConversation,
   loadDirectConversations,
   loadDirectMessages,
+  loadDirectMessageById,
   markDirectConversationRead,
   sendDirectMessage,
   subscribeToDirectMessages,
   subscribeToDirectReadStates,
 } from "../lib/direct-message-service";
+import {
+  cleanupStaleMessageAttachments,
+  deleteRichMessage,
+  uploadMessageAttachments,
+} from "../lib/message-media-service";
 import { mockCurrentUser, mockMessages, mockWorkspace } from "../lib/mock-data";
 import { getSupabaseClient } from "../lib/supabase";
 import {
   AVATAR_BUCKET,
   COVER_BUCKET,
-  downloadAvatarObjectUrl,
   prepareProfileImage,
   saveLiveProfile,
   subscribeToProfileChanges,
   type ProfileRow,
 } from "../lib/profile-service";
 import { ProfileMediaCache } from "../lib/profile-media-cache";
+import {
+  archiveSticker,
+  downloadStickerMedia,
+  loadStickers,
+  subscribeToStickerReactions,
+  subscribeToStickers,
+  toggleStickerReaction,
+  uploadSticker,
+} from "../lib/sticker-service";
 import {
   subscribeToServerPresence,
   type ServerPresenceSubscription,
@@ -126,15 +166,19 @@ import type {
   Channel,
   ChannelKind,
   ChatMessage,
+  ConversationMessage,
   DirectConversation,
   DirectMessage,
+  MessageAttachment,
   MessageDraft,
   ServerMember,
+  Sticker,
   WorkspaceSnapshot,
   VoiceRoomOccupant,
 } from "../lib/types";
 import {
   loadLiveChannelActivity,
+  loadLiveMessageById,
   loadLiveMessages,
   loadLiveWorkspace,
   markLiveChannelRead,
@@ -152,6 +196,74 @@ type ChannelDialogState =
 interface OpenProfileState {
   memberId: string;
   anchor: HTMLElement;
+}
+
+const localCache = new BakbakCache();
+
+function draftFallbackBody(draft: MessageDraft): string {
+  const text = segmentsToFallback(draftToSegments(draft));
+  if (text) return text;
+  const firstAttachment = draft.attachments?.[0];
+  if (firstAttachment) {
+    if (firstAttachment.kind === "video") return "[Video]";
+    if (firstAttachment.kind === "gif") return "[GIF]";
+    return "[Image]";
+  }
+  if (draft.presentation?.kind === "giphy") {
+    return draft.presentation.assetKind === "sticker" ? "[Sticker]" : "[GIF]";
+  }
+  if (draft.presentation?.kind === "sticker") return "[Sticker]";
+  return "";
+}
+
+function optimisticAttachments(draft: MessageDraft): MessageAttachment[] {
+  return (draft.attachments ?? []).map((attachment) => ({
+    id: attachment.id,
+    kind: attachment.kind,
+    mimeType: attachment.file.type,
+    byteSize: attachment.file.size,
+    width: attachment.width,
+    height: attachment.height,
+    durationMs: attachment.durationMs,
+    objectPath: "",
+    posterPath: "",
+    objectUrl: attachment.previewUrl,
+    posterUrl: attachment.previewUrl,
+    uploadProgress: attachment.progress,
+  }));
+}
+
+function toggleMockReaction<T extends ConversationMessage>(
+  messages: T[],
+  messageId: string,
+  stickerId: string,
+  userId: string,
+): T[] {
+  return messages.map((message) => {
+    if (message.id !== messageId) return message;
+    const existing = message.reactions?.find(
+      (reaction) => reaction.stickerId === stickerId,
+    );
+    const userIds = existing?.userIds.includes(userId)
+      ? existing.userIds.filter((id) => id !== userId)
+      : [...(existing?.userIds ?? []), userId];
+    const reactions = [
+      ...(message.reactions ?? []).filter(
+        (reaction) => reaction.stickerId !== stickerId,
+      ),
+      ...(userIds.length
+        ? [
+            {
+              stickerId,
+              userIds,
+              count: userIds.length,
+              reactedByCurrentUser: userIds.includes(userId),
+            },
+          ]
+        : []),
+    ];
+    return { ...message, reactions };
+  });
 }
 
 export default function App() {
@@ -177,28 +289,37 @@ export default function App() {
     typeof window === "undefined" ? 1280 : window.innerWidth,
   );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [stickers, setStickers] = useState<Sticker[]>([]);
   const [sending, setSending] = useState(false);
   const [appError, setAppError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<AppView>("channel");
   const [settingsSection, setSettingsSection] =
     useState<SettingsSection>("profile");
-  const [appearancePreferences, setAppearancePreferences] =
-    useState<AppearancePreferences>(() => loadAppearancePreferences());
+  const [appearancePreference, setAppearancePreference] =
+    useState<AppearancePreference>(() => loadAppearancePreference());
+  const [systemAccent, setSystemAccent] = useState<AppliedSystemAccent>(() =>
+    getCurrentSystemAccent(),
+  );
   const [interfaceSoundPreferences, setInterfaceSoundPreferences] =
     useState<InterfaceSoundPreferences>(() => loadInterfaceSoundPreferences());
-  const [communicationEffect, setCommunicationEffect] = useState<{
-    event: CommunicationEffectEvent;
-    sequence: number;
-  } | null>(null);
   const [layoutPreferences, setLayoutPreferences] = useState<LayoutPreferences>(
     () => loadLayoutPreferences(),
   );
+  const [spaceTransitionRevision, setSpaceTransitionRevision] = useState(0);
+  const [startupAssembly, setStartupAssembly] = useState<
+    "pending" | "running" | "complete"
+  >("pending");
   const [soundboardOpen, setSoundboardOpen] = useState(false);
   const soundboardDrawerRef = useRef<HTMLElement>(null);
   const [channelDialog, setChannelDialog] = useState<ChannelDialogState>(null);
   const [drafts, setDrafts] = useState<Record<string, MessageDraft>>({});
   const [screenShareDialogOpen, setScreenShareDialogOpen] = useState(false);
   const [openProfile, setOpenProfile] = useState<OpenProfileState | null>(null);
+  const [userContextMenu, setUserContextMenu] =
+    useState<UserContextMenuRequest | null>(null);
+  const [streamWatchRequest, setStreamWatchRequest] =
+    useState<StreamWatchRequest | null>(null);
+  const streamWatchSequenceRef = useRef(0);
   const [needsInvite, setNeedsInvite] = useState(false);
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
   const [unreadChannelIds, setUnreadChannelIds] = useState<ReadonlySet<string>>(
@@ -210,6 +331,18 @@ export default function App() {
   const [voiceSessions, setVoiceSessions] = useState<VoicePresenceSession[]>(
     [],
   );
+  const [dataFreshness, setDataFreshness] = useState<DataFreshness>(
+    appConfig.dataMode === "mock" ? "fresh" : "loading",
+  );
+  const [cacheStats, setCacheStats] = useState<CacheStats>({
+    messageBytes: 0,
+    messageCount: 0,
+    profileMediaBytes: 0,
+    profileMediaCount: 0,
+    messageMediaBytes: 0,
+    messageMediaCount: 0,
+    totalBytes: 0,
+  });
   const selectedChannelIdRef = useRef(selectedChannelId);
   const selectedConversationIdRef = useRef(selectedConversationId);
   const activeViewRef = useRef(activeView);
@@ -218,10 +351,17 @@ export default function App() {
     null,
   );
   const avatarObjectUrlsRef = useRef(new Map<string, string>());
-  const profileMediaCacheRef = useRef(new ProfileMediaCache());
+  const stickerObjectUrlsRef = useRef(new Map<string, string[]>());
+  const offlineStickerHydrationAttemptsRef = useRef(new Set<string>());
+  const uploadAbortControllersRef = useRef(new Map<string, AbortController>());
+  const linkPreviewAttemptsRef = useRef(new Set<string>());
+  const profileMediaCacheRef = useRef(new ProfileMediaCache(localCache));
   const profileUpdateSequenceRef = useRef(new Map<string, number>());
   const voiceDeafenedRef = useRef(false);
-  const communicationSequenceRef = useRef(0);
+  const cachedAccountReadyRef = useRef<string | null>(null);
+  const lastDestinationRef = useRef<CachedDestination | null>(null);
+  const channelThreadsRef = useRef(new Map<string, ChatMessage[]>());
+  const directThreadsRef = useRef(new Map<string, DirectMessage[]>());
   const signedInUserId = user?.id;
   const signedInUserEmail = user?.email ?? "";
   const workspaceServerId = workspace?.server.id;
@@ -232,13 +372,6 @@ export default function App() {
   );
   const handleCommunicationEffect = useCallback(
     (event: CommunicationEffectEvent) => {
-      if (document.documentElement.dataset.visualPreset === "signal-red") {
-        communicationSequenceRef.current += 1;
-        setCommunicationEffect({
-          event,
-          sequence: communicationSequenceRef.current,
-        });
-      }
       interfaceSoundController.play(event, {
         deafened: voiceDeafenedRef.current,
       });
@@ -251,6 +384,7 @@ export default function App() {
     soundboard,
     handleCommunicationEffect,
   );
+  useAutoHideScrollbars();
 
   useEffect(() => {
     const update = () => setViewportWidth(window.innerWidth);
@@ -263,8 +397,14 @@ export default function App() {
   }, [voice.deafened]);
 
   useEffect(() => {
+    linkPreviewAttemptsRef.current.clear();
+  }, [signedInUserId]);
+
+  useEffect(() => {
     interfaceSoundController.setPreferences(interfaceSoundPreferences);
   }, [interfaceSoundPreferences]);
+
+  useEffect(() => subscribeSystemAccent(setSystemAccent), []);
 
   const rememberAvatarUrl = useCallback(
     (userId: string, url: string | null) => {
@@ -277,12 +417,66 @@ export default function App() {
     [],
   );
   const loadProfileMedia = useCallback<LoadProfileMedia>(
-    (bucket, path) => profileMediaCacheRef.current.load(bucket, path),
+    (bucket, path, options) =>
+      profileMediaCacheRef.current.load(bucket, path, options),
     [],
   );
+  const updateChannelThread = useCallback(
+    (
+      channelId: string,
+      update: (current: ChatMessage[]) => ChatMessage[],
+      persist = true,
+    ) => {
+      const next = update(channelThreadsRef.current.get(channelId) ?? []);
+      channelThreadsRef.current.set(channelId, next);
+      if (selectedChannelIdRef.current === channelId) setMessages(next);
+      if (persist && signedInUserId && appConfig.dataMode === "live") {
+        void localCache.writeThread(signedInUserId, "channel", channelId, next);
+      }
+      return next;
+    },
+    [signedInUserId],
+  );
+  const updateDirectThread = useCallback(
+    (
+      conversationId: string,
+      update: (current: DirectMessage[]) => DirectMessage[],
+      persist = true,
+    ) => {
+      const next = update(directThreadsRef.current.get(conversationId) ?? []);
+      directThreadsRef.current.set(conversationId, next);
+      if (selectedConversationIdRef.current === conversationId) {
+        setDirectMessages(next);
+      }
+      if (persist && signedInUserId && appConfig.dataMode === "live") {
+        void localCache.writeThread(
+          signedInUserId,
+          "direct",
+          conversationId,
+          next,
+        );
+      }
+      return next;
+    },
+    [signedInUserId],
+  );
   const handleOpenProfile = useCallback<OpenProfile>((member, anchor) => {
+    setUserContextMenu(null);
     setOpenProfile({ memberId: member.id, anchor });
   }, []);
+  const handleOpenUserContextMenu = useCallback<OpenUserContextMenu>(
+    (member, anchor, point) => {
+      const rect = anchor.getBoundingClientRect();
+      setOpenProfile(null);
+      setUserContextMenu({
+        member,
+        anchor,
+        clientX: point?.clientX ?? rect.left,
+        clientY: point?.clientY ?? rect.bottom,
+      });
+    },
+    [],
+  );
 
   useEffect(
     () => () => {
@@ -290,19 +484,25 @@ export default function App() {
       avatarObjectUrlsRef.current.clear();
       profileMediaCacheRef.current.clear();
       profileUpdateSequenceRef.current.clear();
+      void releaseMicrophoneProcessing();
     },
     [],
   );
 
   useEffect(() => {
-    const enable = () => void interfaceSoundController.activate();
+    const enable = () => {
+      void interfaceSoundController.activate();
+      if (voice.enhancedNoiseSuppression || voice.voiceEffect !== "none") {
+        void prewarmMicrophoneProcessing();
+      }
+    };
     window.addEventListener("pointerdown", enable, { once: true });
     window.addEventListener("keydown", enable, { once: true });
     return () => {
       window.removeEventListener("pointerdown", enable);
       window.removeEventListener("keydown", enable);
     };
-  }, []);
+  }, [voice.enhancedNoiseSuppression, voice.voiceEffect]);
 
   useEffect(() => {
     if (appConfig.dataMode !== "live") {
@@ -345,7 +545,11 @@ export default function App() {
     if (!signedInUserId) {
       avatarObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
       avatarObjectUrlsRef.current.clear();
-      profileMediaCacheRef.current.clear();
+      profileMediaCacheRef.current.setAccount(null);
+      cachedAccountReadyRef.current = null;
+      lastDestinationRef.current = null;
+      channelThreadsRef.current.clear();
+      directThreadsRef.current.clear();
       setWorkspace(null);
       setNeedsInvite(false);
       setSelectedChannelId("");
@@ -364,66 +568,45 @@ export default function App() {
       setActiveView("channel");
       setOpenProfile(null);
       setSoundboardOpen(false);
+      setDataFreshness(appConfig.dataMode === "mock" ? "fresh" : "loading");
+      setCacheStats({
+        messageBytes: 0,
+        messageCount: 0,
+        profileMediaBytes: 0,
+        profileMediaCount: 0,
+        messageMediaBytes: 0,
+        messageMediaCount: 0,
+        totalBytes: 0,
+      });
       return;
     }
+    if (
+      cachedAccountReadyRef.current &&
+      cachedAccountReadyRef.current !== signedInUserId
+    ) {
+      cachedAccountReadyRef.current = null;
+      lastDestinationRef.current = null;
+      channelThreadsRef.current.clear();
+      directThreadsRef.current.clear();
+      setMessages([]);
+      setDirectMessages([]);
+      setWorkspace(null);
+      setDirectConversations([]);
+    }
+    profileMediaCacheRef.current.setAccount(signedInUserId);
     let cancelled = false;
     setAppError(null);
-    const load = async () => {
-      try {
-        let snapshot =
-          appConfig.dataMode === "mock"
-            ? mockWorkspace
-            : await loadLiveWorkspace({
-                id: signedInUserId,
-                email: signedInUserEmail,
-              });
-        if (appConfig.dataMode === "live") {
-          const members = await Promise.all(
-            snapshot.members.map(async (member) => {
-              if (!member.avatarPath) return member;
-              try {
-                const avatarUrl = await downloadAvatarObjectUrl(
-                  member.avatarPath,
-                  member.avatarUrl,
-                );
-                if (cancelled) {
-                  if (avatarUrl?.startsWith("blob:")) {
-                    URL.revokeObjectURL(avatarUrl);
-                  }
-                  return member;
-                }
-                if (avatarUrl) rememberAvatarUrl(member.id, avatarUrl);
-                return { ...member, avatarUrl };
-              } catch {
-                return member;
-              }
-            }),
-          );
-          snapshot = { ...snapshot, members };
-        }
-        if (cancelled) return;
-        setWorkspace(snapshot);
-        const currentMember = snapshot.members.find(
-          (member) => member.id === signedInUserId,
-        );
-        if (currentMember) {
-          setUser((current) => {
-            if (!current || current.id !== currentMember.id) return current;
-            if (
-              current.displayName === currentMember.displayName &&
-              current.avatarUrl === currentMember.avatarUrl &&
-              current.avatarPath === currentMember.avatarPath &&
-              current.avatarAnimationPath ===
-                currentMember.avatarAnimationPath &&
-              current.coverPath === currentMember.coverPath &&
-              current.coverAnimationPath === currentMember.coverAnimationPath &&
-              current.coverPositionX === currentMember.coverPositionX &&
-              current.coverPositionY === currentMember.coverPositionY &&
-              current.description === currentMember.description
-            ) {
-              return current;
-            }
-            return {
+    setDataFreshness(appConfig.dataMode === "mock" ? "fresh" : "loading");
+
+    const applyCurrentMember = (snapshot: WorkspaceSnapshot) => {
+      const currentMember = snapshot.members.find(
+        (member) => member.id === signedInUserId,
+      );
+      if (!currentMember) return;
+      setUser((current) =>
+        !current || current.id !== currentMember.id
+          ? current
+          : {
               ...current,
               displayName: currentMember.displayName,
               avatarUrl: currentMember.avatarUrl,
@@ -434,13 +617,111 @@ export default function App() {
               coverPositionX: currentMember.coverPositionX,
               coverPositionY: currentMember.coverPositionY,
               description: currentMember.description,
-            };
-          });
+            },
+      );
+    };
+
+    const hydrateAvatars = (snapshot: WorkspaceSnapshot) => {
+      snapshot.members.forEach((member) => {
+        if (!member.avatarPath || member.avatarUrl) return;
+        void loadProfileMedia(AVATAR_BUCKET, member.avatarPath)
+          .then((avatarUrl) => {
+            if (cancelled || !avatarUrl) return;
+            setWorkspace((current) =>
+              current?.server.id === snapshot.server.id
+                ? {
+                    ...current,
+                    members: current.members.map((candidate) =>
+                      candidate.id === member.id &&
+                      candidate.avatarPath === member.avatarPath
+                        ? { ...candidate, avatarUrl }
+                        : candidate,
+                    ),
+                  }
+                : current,
+            );
+            if (member.id === signedInUserId) {
+              setUser((current) =>
+                current?.id === member.id &&
+                current.avatarPath === member.avatarPath
+                  ? { ...current, avatarUrl }
+                  : current,
+              );
+            }
+          })
+          .catch(() => undefined);
+      });
+    };
+
+    const load = async () => {
+      let restoredCache = false;
+      let restoredWorkspace: WorkspaceSnapshot | null = null;
+      let restoredDirectConversations: DirectConversation[] = [];
+      try {
+        if (appConfig.dataMode === "live") {
+          const cached = await localCache.readAccountState(signedInUserId);
+          if (cancelled) return;
+          cachedAccountReadyRef.current = signedInUserId;
+          if (
+            cached &&
+            (cached.workspace || cached.directConversations.length)
+          ) {
+            restoredCache = true;
+            restoredWorkspace = cached.workspace;
+            restoredDirectConversations = cached.directConversations;
+            lastDestinationRef.current = cached.lastDestination;
+            setWorkspace(cached.workspace);
+            setDirectConversations(cached.directConversations);
+            setStickers(cached.stickers ?? []);
+            setDirectHistoryLoading(false);
+            if (cached.workspace) applyCurrentMember(cached.workspace);
+            const destination = cached.lastDestination;
+            if (
+              destination?.kind === "direct" &&
+              cached.directConversations.some(
+                (conversation) => conversation.id === destination.id,
+              )
+            ) {
+              selectedConversationIdRef.current = destination.id;
+              setSelectedConversationId(destination.id);
+              setActiveSpace("personal");
+            } else if (
+              destination?.kind === "channel" &&
+              cached.workspace?.channels.some(
+                (channel) =>
+                  channel.id === destination.id && channel.kind === "text",
+              )
+            ) {
+              selectedChannelIdRef.current = destination.id;
+              setSelectedChannelId(destination.id);
+              setActiveSpace("server");
+            }
+            setDataFreshness("cached");
+            if (cached.workspace) hydrateAvatars(cached.workspace);
+          }
         }
+
+        const snapshot =
+          appConfig.dataMode === "mock"
+            ? mockWorkspace
+            : await loadLiveWorkspace({
+                id: signedInUserId,
+                email: signedInUserEmail,
+              });
+        if (cancelled) return;
+        setWorkspace(snapshot);
+        applyCurrentMember(snapshot);
+        hydrateAvatars(snapshot);
         setNeedsInvite(false);
+        setDataFreshness("fresh");
         setSelectedChannelId(
           (current) =>
             snapshot.channels.find((channel) => channel.id === current)?.id ??
+            snapshot.channels.find(
+              (channel) =>
+                channel.kind === "text" &&
+                (channel.purpose ?? "chat") === "chat",
+            )?.id ??
             snapshot.channels.find((channel) => channel.kind === "text")?.id ??
             snapshot.channels[0]?.id ??
             "",
@@ -450,8 +731,42 @@ export default function App() {
           const missingMembership = caught instanceof MissingMembershipError;
           setNeedsInvite(missingMembership);
           if (missingMembership) {
+            const retainedMembers = [
+              ...(restoredWorkspace?.members.filter(
+                (member) => member.id === signedInUserId,
+              ) ?? []),
+              ...restoredDirectConversations.map(
+                (conversation) => conversation.otherMember,
+              ),
+            ];
+            await Promise.all([
+              ...(restoredWorkspace?.channels.map((channel) =>
+                localCache.deleteThread(signedInUserId, "channel", channel.id),
+              ) ?? []),
+              localCache.retainProfileMedia(
+                signedInUserId,
+                retainedMembers.flatMap((member) => [
+                  { bucket: AVATAR_BUCKET, path: member.avatarPath },
+                  {
+                    bucket: AVATAR_BUCKET,
+                    path: member.avatarAnimationPath,
+                  },
+                  { bucket: COVER_BUCKET, path: member.coverPath },
+                  {
+                    bucket: COVER_BUCKET,
+                    path: member.coverAnimationPath,
+                  },
+                ]),
+              ),
+            ]);
+            profileMediaCacheRef.current.clear();
             setWorkspace(null);
             setSelectedChannelId("");
+            setDataFreshness("fresh");
+          } else if (restoredCache && isConnectivityError(caught)) {
+            setDataFreshness("offline");
+            setAppError(null);
+            return;
           }
           setAppError(
             caught instanceof Error
@@ -465,21 +780,24 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [rememberAvatarUrl, signedInUserEmail, signedInUserId, workspaceRevision]);
+  }, [loadProfileMedia, signedInUserEmail, signedInUserId, workspaceRevision]);
 
   const refreshDirectConversations = useCallback(async () => {
     if (!signedInUserId) return;
     try {
       const conversations =
         appConfig.dataMode === "mock" ? [] : await loadDirectConversations();
-      setDirectConversations((current) => {
+      const mergeStatuses = (
+        nextConversations: DirectConversation[],
+        current: DirectConversation[],
+      ) => {
         const statuses = new Map(
           current.map((conversation) => [
             conversation.otherMember.id,
             conversation.otherMember.status,
           ]),
         );
-        return conversations.map((conversation) => ({
+        return nextConversations.map((conversation) => ({
           ...conversation,
           otherMember: {
             ...conversation.otherMember,
@@ -495,16 +813,26 @@ export default function App() {
               )?.role ?? conversation.otherMember.role,
           },
         }));
-      });
+      };
+      setDirectConversations((current) =>
+        mergeStatuses(conversations, current),
+      );
       setSelectedConversationId((current) =>
         conversations.some((conversation) => conversation.id === current)
           ? current
           : (conversations[0]?.id ?? null),
       );
+      void hydrateDirectConversationAvatars(
+        conversations,
+        workspace?.members ?? [],
+        loadProfileMedia,
+      ).then((hydrated) =>
+        setDirectConversations((current) => mergeStatuses(hydrated, current)),
+      );
     } finally {
       setDirectHistoryLoading(false);
     }
-  }, [signedInUserId, workspace]);
+  }, [loadProfileMedia, signedInUserId, workspace]);
 
   useEffect(() => {
     if (!signedInUserId) return;
@@ -527,13 +855,12 @@ export default function App() {
         selected &&
         activeSpaceRef.current === "personal" &&
         activeViewRef.current === "channel";
-      if (selected) {
-        setDirectMessages((current) =>
-          current.some((item) => item.id === message.id)
-            ? current
-            : [...current, message],
-        );
-      }
+      let isNewMessage = false;
+      updateDirectThread(message.conversationId, (current) => {
+        isNewMessage = !current.some((item) => item.id === message.id);
+        return mergeMessages(current, [message]);
+      });
+      if (!isNewMessage) return;
       if (visible) {
         void markDirectConversationRead(
           message.conversationId,
@@ -553,7 +880,12 @@ export default function App() {
       unsubscribeMessages();
       unsubscribeReads();
     };
-  }, [handleCommunicationEffect, refreshDirectConversations, signedInUserId]);
+  }, [
+    handleCommunicationEffect,
+    refreshDirectConversations,
+    signedInUserId,
+    updateDirectThread,
+  ]);
 
   useEffect(() => {
     if (
@@ -622,10 +954,9 @@ export default function App() {
         let avatarUrl = profile.avatar_url;
         let avatarResolved = true;
         try {
-          avatarUrl = await downloadAvatarObjectUrl(
-            profile.avatar_path,
-            profile.avatar_url,
-          );
+          avatarUrl = profile.avatar_path
+            ? await loadProfileMedia(AVATAR_BUCKET, profile.avatar_path)
+            : profile.avatar_url;
         } catch {
           // Keep the last usable avatar if a transient Storage read fails.
           avatarResolved = false;
@@ -634,12 +965,8 @@ export default function App() {
           cancelled ||
           profileUpdateSequenceRef.current.get(profile.id) !== sequence
         ) {
-          if (avatarResolved && avatarUrl?.startsWith("blob:")) {
-            URL.revokeObjectURL(avatarUrl);
-          }
           return;
         }
-        if (avatarResolved) rememberAvatarUrl(profile.id, avatarUrl);
         setWorkspace((current) =>
           current
             ? {
@@ -690,21 +1017,178 @@ export default function App() {
       cancelled = true;
       unsubscribe();
     };
-  }, [rememberAvatarUrl, workspaceServerId]);
+  }, [loadProfileMedia, workspaceServerId]);
 
   useEffect(() => {
     if (appConfig.dataMode !== "live" || !workspaceServerId) return;
-    return subscribeToLiveChannels(workspaceServerId, (channel) => {
-      setWorkspace((current) =>
-        current && current.server.id === workspaceServerId
-          ? {
-              ...current,
-              channels: reconcileChannels(current.channels, channel),
-            }
-          : current,
-      );
-    });
+    const unsubscribeChannels = subscribeToLiveChannels(
+      workspaceServerId,
+      (channel) => {
+        setWorkspace((current) =>
+          current && current.server.id === workspaceServerId
+            ? {
+                ...current,
+                channels: reconcileChannels(current.channels, channel),
+              }
+            : current,
+        );
+      },
+    );
+    const unsubscribeCategories = subscribeToLiveChannelCategories(
+      workspaceServerId,
+      (category) => {
+        setWorkspace((current) =>
+          current && current.server.id === workspaceServerId
+            ? {
+                ...current,
+                channelCategories: reconcileChannelCategories(
+                  current.channelCategories,
+                  category,
+                ),
+              }
+            : current,
+        );
+      },
+    );
+    return () => {
+      unsubscribeChannels();
+      unsubscribeCategories();
+    };
   }, [workspaceServerId]);
+
+  const refreshStickers = useCallback(async () => {
+    if (appConfig.dataMode !== "live" || !workspaceServerId) return;
+    const catalog = await loadStickers(workspaceServerId);
+    const hydrated = await Promise.all(
+      catalog.map(async (sticker) => {
+        try {
+          const [poster, animation] = await Promise.all([
+            downloadStickerMedia(sticker.posterPath, true),
+            sticker.animationPath
+              ? downloadStickerMedia(sticker.animationPath)
+              : Promise.resolve(null),
+          ]);
+          const posterUrl = URL.createObjectURL(poster);
+          const animationUrl = animation
+            ? URL.createObjectURL(animation)
+            : null;
+          return {
+            ...sticker,
+            posterUrl,
+            animationUrl,
+            objectUrls: animationUrl ? [posterUrl, animationUrl] : [posterUrl],
+          };
+        } catch {
+          return { ...sticker, objectUrls: [] as string[] };
+        }
+      }),
+    );
+    for (const urls of stickerObjectUrlsRef.current.values()) {
+      urls.forEach((url) => URL.revokeObjectURL(url));
+    }
+    stickerObjectUrlsRef.current.clear();
+    hydrated.forEach((sticker) => {
+      stickerObjectUrlsRef.current.set(sticker.id, sticker.objectUrls);
+    });
+    setStickers(
+      hydrated.map((sticker) => {
+        const next = { ...sticker } as Sticker & { objectUrls?: string[] };
+        delete next.objectUrls;
+        return next;
+      }),
+    );
+  }, [workspaceServerId]);
+
+  useEffect(() => {
+    if (appConfig.dataMode !== "live" || !workspaceServerId) {
+      setStickers([]);
+      return;
+    }
+    void refreshStickers().catch(() => undefined);
+    const unsubscribeStickers = subscribeToStickers(
+      workspaceServerId,
+      () => void refreshStickers().catch(() => undefined),
+    );
+    const unsubscribeReactions = subscribeToStickerReactions((messageId) => {
+      void loadLiveMessageById(messageId)
+        .then((message) =>
+          updateChannelThread(message.channelId, (current) =>
+            mergeMessages(
+              current.filter((item) => item.id !== message.id),
+              [message],
+            ),
+          ),
+        )
+        .catch(() => undefined);
+      void loadDirectMessageById(messageId)
+        .then((message) =>
+          updateDirectThread(message.conversationId, (current) =>
+            mergeMessages(
+              current.filter((item) => item.id !== message.id),
+              [message],
+            ),
+          ),
+        )
+        .catch(() => undefined);
+    });
+    return () => {
+      unsubscribeStickers();
+      unsubscribeReactions();
+    };
+  }, [
+    refreshStickers,
+    updateChannelThread,
+    updateDirectThread,
+    workspaceServerId,
+  ]);
+
+  useEffect(() => {
+    if (
+      dataFreshness !== "offline" ||
+      !stickers.some(
+        (sticker) =>
+          sticker.posterPath &&
+          !sticker.posterUrl &&
+          !offlineStickerHydrationAttemptsRef.current.has(sticker.id),
+      )
+    ) {
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(
+      stickers.map(async (sticker) => {
+        if (
+          !sticker.posterPath ||
+          sticker.posterUrl ||
+          offlineStickerHydrationAttemptsRef.current.has(sticker.id)
+        ) {
+          return sticker;
+        }
+        offlineStickerHydrationAttemptsRef.current.add(sticker.id);
+        try {
+          const poster = await downloadStickerMedia(sticker.posterPath, true);
+          if (cancelled) return sticker;
+          const posterUrl = URL.createObjectURL(poster);
+          const urls = stickerObjectUrlsRef.current.get(sticker.id) ?? [];
+          stickerObjectUrlsRef.current.set(sticker.id, [...urls, posterUrl]);
+          return { ...sticker, posterUrl, animationUrl: null };
+        } catch {
+          return sticker;
+        }
+      }),
+    ).then((hydrated) => {
+      if (!cancelled) setStickers(hydrated);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [dataFreshness, stickers]);
+
+  useEffect(() => {
+    offlineStickerHydrationAttemptsRef.current.clear();
+    if (appConfig.dataMode !== "live" || !signedInUserId) return;
+    void cleanupStaleMessageAttachments().catch(() => undefined);
+  }, [signedInUserId]);
 
   const activeVoiceChannelId =
     voice.channel &&
@@ -792,6 +1276,32 @@ export default function App() {
       ) ?? null,
     [directConversations, selectedConversationId],
   );
+  const inviteBlocksShell =
+    appConfig.dataMode === "live" &&
+    (inviteGateOpen ||
+      (needsInvite &&
+        !directHistoryLoading &&
+        directConversations.length === 0));
+  const shellReady = Boolean(
+    user &&
+    !inviteBlocksShell &&
+    (activeSpace === "personal" || (workspace && selectedChannel)),
+  );
+
+  useEffect(() => {
+    if (shellReady && startupAssembly === "pending") {
+      setStartupAssembly("running");
+    }
+  }, [shellReady, startupAssembly]);
+
+  useEffect(() => {
+    if (startupAssembly !== "running") return;
+    const timeout = window.setTimeout(
+      () => setStartupAssembly("complete"),
+      500,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [startupAssembly]);
   const openedProfileMember =
     workspace?.members.find((member) => member.id === openProfile?.memberId) ??
     directConversations.find(
@@ -844,6 +1354,57 @@ export default function App() {
         : [];
     });
   }, [voiceSessions, workspace]);
+  const memberVoiceActivities = useMemo<MemberVoiceActivity[]>(() => {
+    if (!workspace) return [];
+    const memberIds = new Set(workspace.members.map((member) => member.id));
+    const channelNames = new Map(
+      workspace.channels
+        .filter((channel) => channel.kind === "voice")
+        .map((channel) => [channel.id, channel.name]),
+    );
+    const activityByUserId = new Map<string, MemberVoiceActivity>();
+
+    voiceSessions.forEach((session) => {
+      const channelName = channelNames.get(session.channelId);
+      if (!channelName || !memberIds.has(session.userId)) return;
+      activityByUserId.set(session.userId, {
+        userId: session.userId,
+        channelId: session.channelId,
+        channelName,
+        isStreaming: session.isStreaming,
+      });
+    });
+
+    const currentChannel = visibleVoice.channel;
+    const currentCallActive =
+      currentChannel &&
+      (visibleVoice.status === "connected" ||
+        visibleVoice.status === "reconnecting") &&
+      channelNames.has(currentChannel.id);
+    if (currentCallActive) {
+      const streamingUserIds = new Set(
+        visibleVoice.screenShares.map((share) => share.ownerId),
+      );
+      if (visibleVoice.screenShareEnabled && signedInUserId) {
+        streamingUserIds.add(signedInUserId);
+      }
+      const currentUserIds = new Set([
+        ...(signedInUserId ? [signedInUserId] : []),
+        ...visibleVoice.participants.map((participant) => participant.id),
+      ]);
+      currentUserIds.forEach((userId) => {
+        if (!memberIds.has(userId)) return;
+        activityByUserId.set(userId, {
+          userId,
+          channelId: currentChannel.id,
+          channelName: currentChannel.name,
+          isStreaming: streamingUserIds.has(userId),
+        });
+      });
+    }
+
+    return [...activityByUserId.values()];
+  }, [signedInUserId, visibleVoice, voiceSessions, workspace]);
 
   useEffect(() => {
     selectedChannelIdRef.current = selectedChannelId;
@@ -860,6 +1421,64 @@ export default function App() {
   useEffect(() => {
     activeViewRef.current = activeView;
   }, [activeView]);
+
+  useEffect(() => {
+    if (
+      appConfig.dataMode !== "live" ||
+      !signedInUserId ||
+      cachedAccountReadyRef.current !== signedInUserId
+    ) {
+      return;
+    }
+    if (activeSpace === "personal" && selectedConversationId) {
+      lastDestinationRef.current = {
+        kind: "direct",
+        id: selectedConversationId,
+      };
+    } else if (selectedChannel?.kind === "text") {
+      lastDestinationRef.current = {
+        kind: "channel",
+        id: selectedChannel.id,
+      };
+    }
+    const timeout = window.setTimeout(() => {
+      void localCache
+        .writeAccountState({
+          userId: signedInUserId,
+          workspace,
+          directConversations,
+          stickers,
+          lastDestination: lastDestinationRef.current,
+        })
+        .then(() => localCache.stats(signedInUserId))
+        .then(setCacheStats);
+    }, 150);
+    return () => window.clearTimeout(timeout);
+  }, [
+    activeSpace,
+    directConversations,
+    selectedChannel,
+    selectedConversationId,
+    signedInUserId,
+    stickers,
+    workspace,
+  ]);
+
+  useEffect(() => {
+    if (appConfig.dataMode !== "live" || dataFreshness !== "offline") return;
+    const retry = () => setWorkspaceRevision((current) => current + 1);
+    const onFocus = () => {
+      if (document.visibilityState === "visible") retry();
+    };
+    const timeout = window.setTimeout(retry, 10_000);
+    window.addEventListener("online", retry);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      window.clearTimeout(timeout);
+      window.removeEventListener("online", retry);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [dataFreshness]);
 
   const refreshChannelActivity = useCallback(async () => {
     if (
@@ -903,13 +1522,12 @@ export default function App() {
       subscribeToLiveMessages(channelId, (message) => {
         const selected = message.channelId === selectedChannelIdRef.current;
         const visible = selected && activeViewRef.current === "channel";
-        if (selected) {
-          setMessages((current) =>
-            current.some((item) => item.id === message.id)
-              ? current
-              : [...current, message],
-          );
-        }
+        let isNewMessage = false;
+        updateChannelThread(message.channelId, (current) => {
+          isNewMessage = !current.some((item) => item.id === message.id);
+          return mergeMessages(current, [message]);
+        });
+        if (!isNewMessage) return;
         setLatestMessageIds((current) => ({
           ...current,
           [message.channelId]: message.id,
@@ -934,7 +1552,12 @@ export default function App() {
       }),
     );
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
-  }, [channelKey, handleCommunicationEffect, signedInUserId]);
+  }, [
+    channelKey,
+    handleCommunicationEffect,
+    signedInUserId,
+    updateChannelThread,
+  ]);
 
   const selectedMessageChannelId =
     selectedChannel?.kind === "text" ? selectedChannel.id : null;
@@ -944,36 +1567,59 @@ export default function App() {
     setAppError(null);
     const load = async () => {
       try {
+        let cached =
+          channelThreadsRef.current.get(selectedMessageChannelId) ?? [];
+        if (cached.length === 0 && appConfig.dataMode === "live") {
+          cached = await localCache.readThread<ChatMessage>(
+            signedInUserId,
+            "channel",
+            selectedMessageChannelId,
+          );
+        }
+        if (!cancelled && cached.length > 0) {
+          updateChannelThread(
+            selectedMessageChannelId,
+            (current) => mergeMessages(current, cached),
+            false,
+          );
+        }
+        const newestCached = cached.at(-1);
         const nextMessages =
           appConfig.dataMode === "mock"
             ? mockMessages.filter(
                 (message) => message.channelId === selectedMessageChannelId,
               )
-            : await loadLiveMessages(selectedMessageChannelId);
+            : await loadLiveMessages(
+                selectedMessageChannelId,
+                newestCached
+                  ? {
+                      after: {
+                        createdAt: newestCached.createdAt,
+                        id: newestCached.id,
+                      },
+                      limit: MAX_CACHED_MESSAGES_PER_THREAD,
+                    }
+                  : { limit: 50 },
+              );
         if (!cancelled) {
-          setMessages((current) => {
-            const byId = new Map(
-              nextMessages.map((message) => [message.id, message]),
-            );
-            current
-              .filter(
-                (message) => message.channelId === selectedMessageChannelId,
-              )
-              .forEach((message) => byId.set(message.id, message));
-            return [...byId.values()].sort(
-              (left, right) =>
-                Date.parse(left.createdAt) - Date.parse(right.createdAt) ||
-                left.id.localeCompare(right.id),
-            );
-          });
+          updateChannelThread(selectedMessageChannelId, (current) =>
+            mergeMessages(current, cached, nextMessages),
+          );
         }
       } catch (caught) {
         if (!cancelled) {
-          setAppError(
-            caught instanceof Error
-              ? caught.message
-              : "Messages could not be loaded.",
-          );
+          if (
+            channelThreadsRef.current.get(selectedMessageChannelId)?.length &&
+            isConnectivityError(caught)
+          ) {
+            setDataFreshness("offline");
+          } else {
+            setAppError(
+              caught instanceof Error
+                ? caught.message
+                : "Messages could not be loaded.",
+            );
+          }
         }
       }
     };
@@ -981,7 +1627,12 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [selectedMessageChannelId, signedInUserId]);
+  }, [
+    selectedMessageChannelId,
+    signedInUserId,
+    updateChannelThread,
+    workspaceRevision,
+  ]);
 
   useEffect(() => {
     if (
@@ -1006,20 +1657,56 @@ export default function App() {
     let cancelled = false;
     const load = async () => {
       try {
+        let cached = directThreadsRef.current.get(selectedConversationId) ?? [];
+        if (cached.length === 0 && appConfig.dataMode === "live") {
+          cached = await localCache.readThread<DirectMessage>(
+            signedInUserId,
+            "direct",
+            selectedConversationId,
+          );
+        }
+        if (!cancelled && cached.length > 0) {
+          updateDirectThread(
+            selectedConversationId,
+            (current) => mergeMessages(current, cached),
+            false,
+          );
+        }
+        const newestCached = cached.at(-1);
         const nextMessages =
           appConfig.dataMode === "mock"
-            ? directMessages.filter(
-                (message) => message.conversationId === selectedConversationId,
-              )
-            : await loadDirectMessages(selectedConversationId);
-        if (!cancelled) setDirectMessages(nextMessages);
+            ? cached
+            : await loadDirectMessages(
+                selectedConversationId,
+                newestCached
+                  ? {
+                      after: {
+                        createdAt: newestCached.createdAt,
+                        id: newestCached.id,
+                      },
+                      limit: MAX_CACHED_MESSAGES_PER_THREAD,
+                    }
+                  : { limit: 50 },
+              );
+        if (!cancelled) {
+          updateDirectThread(selectedConversationId, (current) =>
+            mergeMessages(current, cached, nextMessages),
+          );
+        }
       } catch (caught) {
         if (!cancelled) {
-          setAppError(
-            caught instanceof Error
-              ? caught.message
-              : "Direct messages could not be loaded.",
-          );
+          if (
+            directThreadsRef.current.get(selectedConversationId)?.length &&
+            isConnectivityError(caught)
+          ) {
+            setDataFreshness("offline");
+          } else {
+            setAppError(
+              caught instanceof Error
+                ? caught.message
+                : "Direct messages could not be loaded.",
+            );
+          }
         }
       }
     };
@@ -1027,9 +1714,60 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-    // Mock messages already live in local state and must not retrigger the load.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedConversationId, signedInUserId]);
+  }, [
+    selectedConversationId,
+    signedInUserId,
+    updateDirectThread,
+    workspaceRevision,
+  ]);
+
+  useEffect(() => {
+    if (appConfig.dataMode !== "live" || !signedInUserId) return;
+    messages
+      .filter((message) =>
+        shouldRequestLinkPreview(message, linkPreviewAttemptsRef.current),
+      )
+      .forEach((message) => {
+        linkPreviewAttemptsRef.current.add(message.id);
+        void requestLinkPreview("channel", message.id)
+          .then((preview) => {
+            if (!preview) return;
+            updateChannelThread(message.channelId, (current) =>
+              current.map((item) =>
+                item.id === message.id
+                  ? { ...item, linkPreview: preview }
+                  : item,
+              ),
+            );
+          })
+          .catch(() => undefined);
+      });
+    directMessages
+      .filter((message) =>
+        shouldRequestLinkPreview(message, linkPreviewAttemptsRef.current),
+      )
+      .forEach((message) => {
+        linkPreviewAttemptsRef.current.add(message.id);
+        void requestLinkPreview("direct", message.id)
+          .then((preview) => {
+            if (!preview) return;
+            updateDirectThread(message.conversationId, (current) =>
+              current.map((item) =>
+                item.id === message.id
+                  ? { ...item, linkPreview: preview }
+                  : item,
+              ),
+            );
+          })
+          .catch(() => undefined);
+      });
+  }, [
+    directMessages,
+    messages,
+    signedInUserId,
+    updateChannelThread,
+    updateDirectThread,
+  ]);
 
   useEffect(() => {
     if (
@@ -1061,23 +1799,97 @@ export default function App() {
   const handleDirectSend = useCallback(
     async (draft: MessageDraft) => {
       if (!user || !selectedConversation) return;
+      if (dataFreshness === "offline") {
+        throw new Error("Reconnect before sending a direct message.");
+      }
+      const conversationId = selectedConversation.id;
       const content = draftToSegments(draft);
-      const body = segmentsToFallback(content);
+      const body = draftFallbackBody(draft);
       if (!body) return;
       setDirectSending(true);
       setAppError(null);
       const optimisticId = `pending-${crypto.randomUUID()}`;
       const optimistic: DirectMessage = {
         id: optimisticId,
-        conversationId: selectedConversation.id,
+        conversationId,
         authorId: user.id,
         body,
         content,
         createdAt: new Date().toISOString(),
+        presentation: draft.presentation ?? null,
+        attachments: optimisticAttachments(draft),
+        reply: draft.replyTo ?? null,
+        replyNotifiesAuthor:
+          Boolean(draft.replyTo) &&
+          draft.replyTo?.authorId !== user.id &&
+          (draft.notifyReplyAuthor ?? true),
+        reactions: [],
         pending: true,
       };
-      setDirectMessages((current) => [...current, optimistic]);
+      updateDirectThread(
+        conversationId,
+        (current) => mergeMessages(current, [optimistic]),
+        false,
+      );
+      const uploadController =
+        appConfig.dataMode === "live" && draft.attachments?.length
+          ? new AbortController()
+          : null;
+      if (uploadController) {
+        uploadAbortControllersRef.current.set(optimisticId, uploadController);
+      }
       try {
+        const attachmentIds =
+          appConfig.dataMode === "live" && draft.attachments?.length
+            ? await uploadMessageAttachments(
+                "direct",
+                conversationId,
+                draft.attachments,
+                (attachmentId, progress) => {
+                  setDirectDrafts((current) => ({
+                    ...current,
+                    [conversationId]: {
+                      ...(current[conversationId] ?? draft),
+                      attachments: (
+                        current[conversationId]?.attachments ??
+                        draft.attachments ??
+                        []
+                      ).map((attachment) =>
+                        attachment.id === attachmentId
+                          ? {
+                              ...attachment,
+                              progress,
+                              status: "uploading",
+                            }
+                          : attachment,
+                      ),
+                    },
+                  }));
+                  updateDirectThread(
+                    conversationId,
+                    (current) =>
+                      current.map((message) =>
+                        message.id === optimisticId
+                          ? {
+                              ...message,
+                              attachments: (message.attachments ?? []).map(
+                                (attachment) =>
+                                  attachment.id === attachmentId
+                                    ? {
+                                        ...attachment,
+                                        uploadProgress: progress,
+                                      }
+                                    : attachment,
+                              ),
+                            }
+                          : message,
+                      ),
+                    false,
+                  );
+                },
+                uploadController?.signal,
+              )
+            : [];
         const saved =
           appConfig.dataMode === "mock"
             ? {
@@ -1085,17 +1897,25 @@ export default function App() {
                 id: `direct-${crypto.randomUUID()}`,
                 pending: false,
               }
-            : await sendDirectMessage(selectedConversation.id, content);
-        setDirectMessages((current) => [
-          ...current.filter(
-            (message) => message.id !== optimisticId && message.id !== saved.id,
+            : await sendDirectMessage(conversationId, content, {
+                replyToId: draft.replyTo?.id ?? null,
+                notifyReplyAuthor: draft.notifyReplyAuthor ?? true,
+                attachmentIds,
+                presentation: draft.presentation ?? null,
+              });
+        updateDirectThread(conversationId, (current) =>
+          mergeMessages(
+            current.filter(
+              (message) =>
+                message.id !== optimisticId && message.id !== saved.id,
+            ),
+            [saved],
           ),
-          saved,
-        ]);
+        );
         setDirectConversations((current) =>
           current
             .map((conversation) =>
-              conversation.id === selectedConversation.id
+              conversation.id === conversationId
                 ? {
                     ...conversation,
                     latestMessageId: saved.id,
@@ -1112,9 +1932,12 @@ export default function App() {
                 Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
             ),
         );
+        handleCommunicationEffect({ type: "message-sent" });
       } catch (caught) {
-        setDirectMessages((current) =>
-          current.filter((message) => message.id !== optimisticId),
+        updateDirectThread(
+          conversationId,
+          (current) => current.filter((message) => message.id !== optimisticId),
+          false,
         );
         setAppError(
           caught instanceof Error
@@ -1123,35 +1946,119 @@ export default function App() {
         );
         throw caught;
       } finally {
+        uploadAbortControllersRef.current.delete(optimisticId);
         setDirectSending(false);
       }
     },
-    [selectedConversation, user],
+    [
+      dataFreshness,
+      handleCommunicationEffect,
+      selectedConversation,
+      updateDirectThread,
+      user,
+    ],
   );
 
   const handleSend = useCallback(
     async (draft: MessageDraft) => {
       if (!user || !selectedChannel || selectedChannel.kind !== "text") return;
+      if ((selectedChannel.purpose ?? "chat") !== "chat") {
+        throw new Error("This channel is managed by Bakbak automation.");
+      }
+      if (dataFreshness === "offline") {
+        throw new Error("Reconnect before sending a message.");
+      }
+      const channelId = selectedChannel.id;
       const content = draftToSegments(draft);
-      const body = segmentsToFallback(content);
+      const body = draftFallbackBody(draft);
       if (!body) return;
       setSending(true);
       setAppError(null);
       const optimisticId = `pending-${crypto.randomUUID()}`;
       const optimistic: ChatMessage = {
         id: optimisticId,
-        channelId: selectedChannel.id,
+        channelId,
         authorId: user.id,
         body,
         content,
         createdAt: new Date().toISOString(),
+        presentation: draft.presentation ?? null,
+        attachments: optimisticAttachments(draft),
+        reply: draft.replyTo ?? null,
+        replyNotifiesAuthor:
+          Boolean(draft.replyTo) &&
+          draft.replyTo?.authorId !== user.id &&
+          (draft.notifyReplyAuthor ?? true),
+        reactions: [],
         pending: true,
       };
-      setMessages((current) => [...current, optimistic]);
+      updateChannelThread(
+        channelId,
+        (current) => mergeMessages(current, [optimistic]),
+        false,
+      );
+      const uploadController =
+        appConfig.dataMode === "live" && draft.attachments?.length
+          ? new AbortController()
+          : null;
+      if (uploadController) {
+        uploadAbortControllersRef.current.set(optimisticId, uploadController);
+      }
       try {
+        const attachmentIds =
+          appConfig.dataMode === "live" && draft.attachments?.length
+            ? await uploadMessageAttachments(
+                "channel",
+                channelId,
+                draft.attachments,
+                (attachmentId, progress) => {
+                  setDrafts((current) => ({
+                    ...current,
+                    [channelId]: {
+                      ...(current[channelId] ?? draft),
+                      attachments: (
+                        current[channelId]?.attachments ??
+                        draft.attachments ??
+                        []
+                      ).map((attachment) =>
+                        attachment.id === attachmentId
+                          ? {
+                              ...attachment,
+                              progress,
+                              status: "uploading",
+                            }
+                          : attachment,
+                      ),
+                    },
+                  }));
+                  updateChannelThread(
+                    channelId,
+                    (current) =>
+                      current.map((message) =>
+                        message.id === optimisticId
+                          ? {
+                              ...message,
+                              attachments: (message.attachments ?? []).map(
+                                (attachment) =>
+                                  attachment.id === attachmentId
+                                    ? {
+                                        ...attachment,
+                                        uploadProgress: progress,
+                                      }
+                                    : attachment,
+                              ),
+                            }
+                          : message,
+                      ),
+                    false,
+                  );
+                },
+                uploadController?.signal,
+              )
+            : [];
         if (appConfig.dataMode === "mock") {
           await new Promise((resolve) => window.setTimeout(resolve, 240));
-          setMessages((current) =>
+          updateChannelThread(channelId, (current) =>
             current.map((message) =>
               message.id === optimisticId
                 ? {
@@ -1163,25 +2070,33 @@ export default function App() {
             ),
           );
         } else {
-          const saved = await sendLiveMessage(selectedChannel.id, content);
-          setMessages((current) => [
-            ...current.filter(
-              (message) =>
-                message.id !== optimisticId && message.id !== saved.id,
+          const saved = await sendLiveMessage(channelId, content, {
+            replyToId: draft.replyTo?.id ?? null,
+            notifyReplyAuthor: draft.notifyReplyAuthor ?? true,
+            attachmentIds,
+            presentation: draft.presentation ?? null,
+          });
+          updateChannelThread(channelId, (current) =>
+            mergeMessages(
+              current.filter(
+                (message) =>
+                  message.id !== optimisticId && message.id !== saved.id,
+              ),
+              [saved],
             ),
-            saved,
-          ]);
+          );
           setLatestMessageIds((current) => ({
             ...current,
-            [selectedChannel.id]: saved.id,
+            [channelId]: saved.id,
           }));
-          void markLiveChannelRead(selectedChannel.id, saved.id).catch(
-            () => undefined,
-          );
+          void markLiveChannelRead(channelId, saved.id).catch(() => undefined);
         }
+        handleCommunicationEffect({ type: "message-sent" });
       } catch (caught) {
-        setMessages((current) =>
-          current.filter((message) => message.id !== optimisticId),
+        updateChannelThread(
+          channelId,
+          (current) => current.filter((message) => message.id !== optimisticId),
+          false,
         );
         const message =
           caught instanceof Error
@@ -1190,11 +2105,256 @@ export default function App() {
         setAppError(message);
         throw caught;
       } finally {
+        uploadAbortControllersRef.current.delete(optimisticId);
         setSending(false);
       }
     },
-    [selectedChannel, user],
+    [
+      dataFreshness,
+      handleCommunicationEffect,
+      selectedChannel,
+      updateChannelThread,
+      user,
+    ],
   );
+
+  const handleChannelDelete = useCallback(
+    async (messageId: string) => {
+      if (!selectedMessageChannelId) return;
+      if (messageId.startsWith("pending-")) {
+        uploadAbortControllersRef.current.get(messageId)?.abort();
+        updateChannelThread(
+          selectedMessageChannelId,
+          (current) => current.filter((message) => message.id !== messageId),
+          false,
+        );
+        return;
+      }
+      if (appConfig.dataMode === "live") {
+        await deleteRichMessage("channel", messageId);
+      }
+      updateChannelThread(selectedMessageChannelId, (current) =>
+        current.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                body: "",
+                content: [],
+                presentation: null,
+                attachments: [],
+                reactions: [],
+                deletedAt: new Date().toISOString(),
+              }
+            : message,
+        ),
+      );
+    },
+    [selectedMessageChannelId, updateChannelThread],
+  );
+
+  const handleDirectDelete = useCallback(
+    async (messageId: string) => {
+      if (!selectedConversationId) return;
+      if (messageId.startsWith("pending-")) {
+        uploadAbortControllersRef.current.get(messageId)?.abort();
+        updateDirectThread(
+          selectedConversationId,
+          (current) => current.filter((message) => message.id !== messageId),
+          false,
+        );
+        return;
+      }
+      if (appConfig.dataMode === "live") {
+        await deleteRichMessage("direct", messageId);
+      }
+      updateDirectThread(selectedConversationId, (current) =>
+        current.map((message) =>
+          message.id === messageId
+            ? {
+                ...message,
+                body: "",
+                content: [],
+                presentation: null,
+                attachments: [],
+                reactions: [],
+                deletedAt: new Date().toISOString(),
+              }
+            : message,
+        ),
+      );
+    },
+    [selectedConversationId, updateDirectThread],
+  );
+
+  const handleChannelReaction = useCallback(
+    async (messageId: string, stickerId: string) => {
+      if (!selectedMessageChannelId || !user) return;
+      if (appConfig.dataMode === "live") {
+        await toggleStickerReaction("channel", messageId, stickerId);
+        const hydrated = await loadLiveMessageById(messageId);
+        updateChannelThread(hydrated.channelId, (current) =>
+          mergeMessages(
+            current.filter((message) => message.id !== hydrated.id),
+            [hydrated],
+          ),
+        );
+        return;
+      }
+      updateChannelThread(selectedMessageChannelId, (current) =>
+        toggleMockReaction(current, messageId, stickerId, user.id),
+      );
+    },
+    [selectedMessageChannelId, updateChannelThread, user],
+  );
+
+  const handleDirectReaction = useCallback(
+    async (messageId: string, stickerId: string) => {
+      if (!selectedConversationId || !user) return;
+      if (appConfig.dataMode === "live") {
+        await toggleStickerReaction("direct", messageId, stickerId);
+        const hydrated = await loadDirectMessageById(messageId);
+        updateDirectThread(hydrated.conversationId, (current) =>
+          mergeMessages(
+            current.filter((message) => message.id !== hydrated.id),
+            [hydrated],
+          ),
+        );
+        return;
+      }
+      updateDirectThread(selectedConversationId, (current) =>
+        toggleMockReaction(current, messageId, stickerId, user.id),
+      );
+    },
+    [selectedConversationId, updateDirectThread, user],
+  );
+
+  const handleStickerUpload = useCallback(
+    async (file: File, label: string) => {
+      if (!workspaceServerId || !user) return;
+      const prepared = await prepareStickerUpload(file);
+      if (appConfig.dataMode === "live") {
+        await uploadSticker(
+          workspaceServerId,
+          label,
+          prepared.poster,
+          prepared.animation,
+        );
+        await refreshStickers();
+        return;
+      }
+      const posterUrl = URL.createObjectURL(prepared.poster);
+      const animationUrl = prepared.animation
+        ? URL.createObjectURL(prepared.animation)
+        : null;
+      setStickers((current) => [
+        ...current,
+        {
+          id: `sticker-${crypto.randomUUID()}`,
+          serverId: workspaceServerId,
+          label,
+          posterPath: "",
+          animationPath: animationUrl ? "" : null,
+          width: prepared.width,
+          height: prepared.height,
+          createdBy: user.id,
+          enabled: true,
+          createdAt: new Date().toISOString(),
+          posterUrl,
+          animationUrl,
+        },
+      ]);
+    },
+    [refreshStickers, user, workspaceServerId],
+  );
+
+  const handleStickerArchive = useCallback(
+    async (stickerId: string) => {
+      if (appConfig.dataMode === "live") {
+        await archiveSticker(stickerId);
+        await refreshStickers();
+        return;
+      }
+      setStickers((current) =>
+        current.map((sticker) =>
+          sticker.id === stickerId ? { ...sticker, enabled: false } : sticker,
+        ),
+      );
+    },
+    [refreshStickers],
+  );
+
+  const handleLoadOlderChannelMessages = useCallback(async () => {
+    if (
+      appConfig.dataMode !== "live" ||
+      dataFreshness === "offline" ||
+      !selectedMessageChannelId
+    ) {
+      return 0;
+    }
+    const current =
+      channelThreadsRef.current.get(selectedMessageChannelId) ?? [];
+    const earliest = current[0];
+    if (!earliest) return 0;
+    const older = await loadLiveMessages(selectedMessageChannelId, {
+      before: { createdAt: earliest.createdAt, id: earliest.id },
+      limit: 50,
+    });
+    updateChannelThread(selectedMessageChannelId, (messages) =>
+      mergeMessages(messages, older),
+    );
+    return older.length;
+  }, [dataFreshness, selectedMessageChannelId, updateChannelThread]);
+
+  const handleLoadOlderDirectMessages = useCallback(async () => {
+    if (
+      appConfig.dataMode !== "live" ||
+      dataFreshness === "offline" ||
+      !selectedConversationId
+    ) {
+      return 0;
+    }
+    const current = directThreadsRef.current.get(selectedConversationId) ?? [];
+    const earliest = current[0];
+    if (!earliest) return 0;
+    const older = await loadDirectMessages(selectedConversationId, {
+      before: { createdAt: earliest.createdAt, id: earliest.id },
+      limit: 50,
+    });
+    updateDirectThread(selectedConversationId, (messages) =>
+      mergeMessages(messages, older),
+    );
+    return older.length;
+  }, [dataFreshness, selectedConversationId, updateDirectThread]);
+
+  const handleClearCachedData = useCallback(async () => {
+    if (!signedInUserId) return;
+    cachedAccountReadyRef.current = null;
+    await localCache.clearAccount(signedInUserId);
+    profileMediaCacheRef.current.clear();
+    channelThreadsRef.current.clear();
+    directThreadsRef.current.clear();
+    setMessages([]);
+    setDirectMessages([]);
+    setWorkspace(null);
+    setDirectConversations([]);
+    setSelectedChannelId("");
+    setSelectedConversationId(null);
+    setCacheStats({
+      messageBytes: 0,
+      messageCount: 0,
+      profileMediaBytes: 0,
+      profileMediaCount: 0,
+      messageMediaBytes: 0,
+      messageMediaCount: 0,
+      totalBytes: 0,
+    });
+    if (dataFreshness === "offline") {
+      setAppError("No saved data is available while Bakbak is offline.");
+      return;
+    }
+    setDataFreshness("loading");
+    setWorkspaceRevision((current) => current + 1);
+  }, [dataFreshness, signedInUserId]);
 
   function openSettings(section: SettingsSection = "profile") {
     setOpenProfile(null);
@@ -1208,6 +2368,9 @@ export default function App() {
 
   async function handleSaveProfile(input: ProfileSaveInput) {
     if (!user) throw new Error("Sign in before editing your profile.");
+    if (dataFreshness === "offline") {
+      throw new Error("Reconnect before changing your profile.");
+    }
     let displayName = input.displayName.trim();
     let description = input.description.trim();
     let avatarPath = user.avatarPath;
@@ -1327,37 +2490,18 @@ export default function App() {
     return warning ? { warning } : {};
   }
 
-  function handleThemeChange(preference: ThemePreference) {
-    const next = { ...appearancePreferences, theme: preference };
-    setAppearancePreferences(next);
-    persistAppearancePreferences(next);
-  }
-
-  function handleAccentChange(accent: AccentColor, intensity: number) {
-    const next = { ...appearancePreferences, accent, intensity };
-    setAppearancePreferences(next);
-    persistAppearancePreferences(next);
-  }
-
-  function handleSurfaceStyleChange(surfaceStyle: SurfaceStyle) {
-    const next = { ...appearancePreferences, surfaceStyle };
-    setAppearancePreferences(next);
-    persistAppearancePreferences(next);
-  }
-
-  function handleVisualPresetChange(visualPreset: VisualPreset) {
-    const next = { ...appearancePreferences, visualPreset };
-    setCommunicationEffect(null);
-    setAppearancePreferences(next);
-    persistAppearancePreferences(next);
-  }
-
   function handleInterfaceSoundPreferencesChange(
     preferences: InterfaceSoundPreferences,
   ) {
     setInterfaceSoundPreferences(preferences);
     interfaceSoundController.setPreferences(preferences);
     saveInterfaceSoundPreferences(preferences);
+  }
+
+  function handleAppearancePreferenceChange(preference: AppearancePreference) {
+    setAppearancePreference(preference);
+    applyAppearancePreference(preference);
+    saveAppearancePreference(preference);
   }
 
   function updateLayoutPreferences(
@@ -1371,6 +2515,9 @@ export default function App() {
   }
 
   async function handleCreateChannel(kind: ChannelKind, name: string) {
+    if (dataFreshness === "offline") {
+      throw new Error("Reconnect before creating a channel.");
+    }
     if (!workspace || workspace.currentUserRole !== "admin") {
       throw new Error("Only a server admin can create channels.");
     }
@@ -1383,6 +2530,7 @@ export default function App() {
             categoryId: null,
             name: name.trim(),
             kind,
+            purpose: "chat" as const,
             position:
               Math.max(
                 -10,
@@ -1407,8 +2555,14 @@ export default function App() {
   }
 
   async function handleRenameChannel(channel: Channel, name: string) {
+    if (dataFreshness === "offline") {
+      throw new Error("Reconnect before renaming a channel.");
+    }
     if (!workspace || workspace.currentUserRole !== "admin") {
       throw new Error("Only a server admin can rename channels.");
+    }
+    if ((channel.purpose ?? "chat") !== "chat") {
+      throw new Error("System channels are managed by Bakbak automation.");
     }
     const renamed =
       appConfig.dataMode === "live"
@@ -1424,6 +2578,7 @@ export default function App() {
   async function handleSignOut() {
     setSoundboardOpen(false);
     await voice.leave("sign-out");
+    await releaseMicrophoneProcessing();
     await presenceSubscriptionRef.current?.setVoiceState(null);
     if (appConfig.dataMode === "live") {
       try {
@@ -1438,15 +2593,30 @@ export default function App() {
     setUser(null);
   }
 
+  function transitionToSpace(space: AppSpace) {
+    if (space !== activeSpace) {
+      setSpaceTransitionRevision((current) => current + 1);
+    }
+    setActiveSpace(space);
+  }
+
   function handleSelectChannel(channel: Channel) {
     setOpenProfile(null);
+    setUserContextMenu(null);
+    setStreamWatchRequest((current) =>
+      current?.channelId === channel.id ? current : null,
+    );
     setSoundboardOpen(false);
-    setActiveSpace("server");
+    transitionToSpace("server");
     selectedChannelIdRef.current = channel.id;
+    if (channel.kind === "text") {
+      setMessages(channelThreadsRef.current.get(channel.id) ?? []);
+    }
     setSelectedChannelId(channel.id);
     setActiveView("channel");
     if (
       channel.kind === "voice" &&
+      dataFreshness !== "offline" &&
       (voice.channel?.id !== channel.id ||
         voice.status === "disconnected" ||
         voice.status === "error")
@@ -1458,15 +2628,21 @@ export default function App() {
 
   function handleSelectConversation(conversation: DirectConversation) {
     setOpenProfile(null);
+    setUserContextMenu(null);
+    setStreamWatchRequest(null);
     setSoundboardOpen(false);
     selectedConversationIdRef.current = conversation.id;
+    setDirectMessages(directThreadsRef.current.get(conversation.id) ?? []);
     setSelectedConversationId(conversation.id);
-    setActiveSpace("personal");
+    transitionToSpace("personal");
     setActiveView("channel");
   }
 
   async function handleStartConversation(member: ServerMember) {
     setAppError(null);
+    if (dataFreshness === "offline") {
+      throw new Error("Reconnect before starting a conversation.");
+    }
     if (appConfig.dataMode === "mock") {
       const existing = directConversations.find(
         (conversation) => conversation.otherMember.id === member.id,
@@ -1495,7 +2671,7 @@ export default function App() {
       await refreshDirectConversations();
       selectedConversationIdRef.current = conversationId;
       setSelectedConversationId(conversationId);
-      setActiveSpace("personal");
+      transitionToSpace("personal");
       setActiveView("channel");
     } catch (caught) {
       setAppError(
@@ -1507,34 +2683,105 @@ export default function App() {
     }
   }
 
+  async function handleMessageUser(member: ServerMember) {
+    const existing = directConversations.find(
+      (conversation) => conversation.otherMember.id === member.id,
+    );
+    if (existing) {
+      handleSelectConversation(existing);
+      return;
+    }
+    await handleStartConversation(member);
+  }
+
+  function handleWatchStream(member: ServerMember, channelId: string) {
+    const channel = workspace?.channels.find(
+      (candidate) => candidate.id === channelId && candidate.kind === "voice",
+    );
+    if (!channel || member.id === user?.id) return;
+    streamWatchSequenceRef.current += 1;
+    setAppError(null);
+    setOpenProfile(null);
+    setUserContextMenu(null);
+    setStreamWatchRequest({
+      requestId: streamWatchSequenceRef.current,
+      ownerId: member.id,
+      channelId,
+    });
+    handleSelectChannel(channel);
+  }
+
   function handleSelectSpace(space: AppSpace) {
     if (space === "server" && !workspace) return;
     setOpenProfile(null);
+    if (space !== "server") setStreamWatchRequest(null);
     setSoundboardOpen(false);
-    setActiveSpace(space);
+    transitionToSpace(space);
     setActiveView("channel");
   }
 
-  if (authLoading) {
+  const personalUnread = directConversations.some(
+    (conversation) => conversation.hasUnread,
+  );
+  const blockingDialogOpen =
+    activeView === "settings" ||
+    channelDialog !== null ||
+    screenShareDialogOpen;
+
+  function renderAppFrame(content: ReactNode, showSpaceSwitcher = false) {
     return (
-      <main className="app-loading">
-        <span className="brand-mark">
-          <MessageCircle size={24} />
-        </span>
-        <h1>Opening Bakbak</h1>
-        <p>Checking whether you already have a seat…</p>
-      </main>
+      <div
+        className="app-frame"
+        data-startup-assembly={showSpaceSwitcher ? startupAssembly : undefined}
+      >
+        <WindowTitlebar
+          showSpaceSwitcher={showSpaceSwitcher}
+          activeSpace={activeSpace}
+          personalUnread={personalUnread}
+          serverUnread={unreadChannelIds.size > 0}
+          callActive={voice.status !== "disconnected"}
+          callStatus={voice.status}
+          callChannelName={voice.channel?.name ?? null}
+          serverAvailable={Boolean(workspace)}
+          switchDisabled={blockingDialogOpen}
+          onSelectSpace={handleSelectSpace}
+          {...(showSpaceSwitcher
+            ? {
+                panelControls: {
+                  leftPanelVisible: layoutPreferences.leftPanelVisible,
+                  rightPanelVisible: layoutPreferences.rightPanelVisible,
+                  disabled: blockingDialogOpen,
+                  onToggleLeftPanel: () =>
+                    updateLayoutPreferences((current) => ({
+                      ...current,
+                      leftPanelVisible: !current.leftPanelVisible,
+                    })),
+                  onToggleRightPanel: () =>
+                    updateLayoutPreferences((current) => ({
+                      ...current,
+                      rightPanelVisible: !current.rightPanelVisible,
+                    })),
+                },
+              }
+            : {})}
+        />
+        <div className="app-frame__content">{content}</div>
+      </div>
     );
   }
 
+  if (authLoading) {
+    return renderAppFrame(<LoadingScreen />);
+  }
+
   if (!user) {
-    return (
+    return renderAppFrame(
       <AuthScreen
         mode={appConfig.dataMode}
         configurationWarning={appConfig.configurationWarning}
         onAuthenticated={setUser}
         onEnterMock={() => setUser(mockCurrentUser)}
-      />
+      />,
     );
   }
 
@@ -1545,7 +2792,7 @@ export default function App() {
         directConversations.length === 0)) &&
     appConfig.dataMode === "live"
   ) {
-    return (
+    return renderAppFrame(
       <InviteGate
         user={user}
         onRedeemed={() => {
@@ -1559,31 +2806,27 @@ export default function App() {
             ? () => setInviteGateOpen(false)
             : undefined
         }
-      />
+      />,
     );
   }
 
   if (activeSpace === "server" && (!workspace || !selectedChannel)) {
-    return (
-      <main className="app-loading">
-        <span className="brand-mark">
-          <MessageCircle size={24} />
-        </span>
-        <h1>{appError ? "The door is stuck" : "Setting the room up"}</h1>
-        <p>
-          {appError ??
-            "Moving the chairs into a suspiciously thoughtful circle…"}
-        </p>
-        {appError ? (
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={() => void handleSignOut().catch(() => undefined)}
-          >
-            Back to sign in
-          </button>
-        ) : null}
-      </main>
+    if (!appError) {
+      return renderAppFrame(<LoadingScreen />);
+    }
+    return renderAppFrame(
+      <main className="app-loading app-loading--error">
+        <BakbakMark className="brand-mark" />
+        <h1>The door is stuck</h1>
+        <p>{appError}</p>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => void handleSignOut().catch(() => undefined)}
+        >
+          Back to sign in
+        </button>
+      </main>,
     );
   }
 
@@ -1595,7 +2838,7 @@ export default function App() {
       ].map((member) => [member.id, member]),
     ).values(),
   );
-  const reservedShellWidth = DESTINATION_RAIL_WIDTH + MIN_CONTENT_WIDTH + 30;
+  const reservedShellWidth = MIN_CONTENT_WIDTH + 30;
   const contextMaximum = Math.max(
     MIN_SIDE_PANEL_WIDTH,
     Math.min(
@@ -1631,7 +2874,7 @@ export default function App() {
     "--right-panel-width": `${rightPanelWidth}px`,
   } as CSSProperties;
 
-  return (
+  return renderAppFrame(
     <div
       className="desktop-shell"
       style={shellStyle}
@@ -1641,103 +2884,102 @@ export default function App() {
       data-right-panel={
         layoutPreferences.rightPanelVisible ? "visible" : "hidden"
       }
+      data-space-transition={spaceTransitionRevision > 0 ? "true" : "false"}
     >
-      <SignalRedEffects
-        active={appearancePreferences.visualPreset === "signal-red"}
-        paused={
-          activeView === "settings" ||
-          channelDialog !== null ||
-          screenShareDialogOpen ||
-          openProfile !== null
+      <div
+        className="panel-slot panel-slot--left"
+        data-visible={layoutPreferences.leftPanelVisible ? "true" : "false"}
+        aria-hidden={layoutPreferences.leftPanelVisible ? undefined : true}
+        inert={layoutPreferences.leftPanelVisible ? undefined : true}
+      >
+        <div
+          className="panel-slot__motion panel-slot__motion--left"
+          key={`left-${activeSpace}-${spaceTransitionRevision}`}
+        >
+          {activeSpace === "server" && workspace && selectedChannel ? (
+            <ChannelSidebar
+              server={workspace.server}
+              categories={workspace.channelCategories}
+              channels={workspace.channels}
+              selectedChannelId={selectedChannel.id}
+              user={user}
+              members={workspace.members}
+              voiceOccupants={voiceOccupants}
+              unreadChannelIds={unreadChannelIds}
+              voice={visibleVoice}
+              mode={appConfig.dataMode}
+              soundboardOpen={soundboardOpen}
+              canManageChannels={
+                workspace.currentUserRole === "admin" &&
+                dataFreshness !== "offline"
+              }
+              onSelect={handleSelectChannel}
+              onPrepareVoiceChannel={voice.prepareVoiceChannel}
+              onCreateChannel={(kind) => {
+                setOpenProfile(null);
+                setChannelDialog({ mode: "create", kind });
+              }}
+              onRenameChannel={(channel) => {
+                setOpenProfile(null);
+                setChannelDialog({ mode: "rename", channel });
+              }}
+              onOpenSettings={() => openSettings("profile")}
+              loadProfileMedia={loadProfileMedia}
+              onOpenProfile={handleOpenProfile}
+              onOpenUserContextMenu={handleOpenUserContextMenu}
+              openProfileId={openProfile?.memberId ?? null}
+              onWatchStream={(member, channel) =>
+                handleWatchStream(member, channel.id)
+              }
+              onToggleSoundboard={toggleSoundboard}
+              onOpenScreenShare={() => {
+                setOpenProfile(null);
+                setScreenShareDialogOpen(true);
+              }}
+            />
+          ) : (
+            <PersonalSidebar
+              user={user}
+              members={personalMembers}
+              conversations={directConversations}
+              selectedConversationId={selectedConversationId}
+              voice={visibleVoice}
+              mode={appConfig.dataMode}
+              soundboardOpen={soundboardOpen}
+              onSelect={handleSelectConversation}
+              onStartConversation={handleStartConversation}
+              onOpenSettings={() => openSettings("profile")}
+              onToggleSoundboard={toggleSoundboard}
+              onOpenScreenShare={() => {
+                setOpenProfile(null);
+                setScreenShareDialogOpen(true);
+              }}
+              loadProfileMedia={loadProfileMedia}
+              onOpenProfile={handleOpenProfile}
+              onOpenUserContextMenu={handleOpenUserContextMenu}
+              openProfileId={openProfile?.memberId ?? null}
+              inviteAvailable={!workspace}
+              onOpenInvite={() => setInviteGateOpen(true)}
+              readOnly={dataFreshness === "offline"}
+            />
+          )}
+        </div>
+      </div>
+      <PanelResizer
+        label="Resize navigation panel"
+        side="left"
+        enabled={layoutPreferences.leftPanelVisible}
+        value={contextPanelWidth}
+        minimum={MIN_SIDE_PANEL_WIDTH}
+        maximum={contextMaximum}
+        defaultValue={DEFAULT_CONTEXT_PANEL_WIDTH}
+        onChange={(contextPanelWidth) =>
+          updateLayoutPreferences((current) => ({
+            ...current,
+            contextPanelWidth,
+          }))
         }
-        effect={communicationEffect}
       />
-      <DestinationRail
-        activeSpace={activeSpace}
-        personalUnread={directConversations.some(
-          (conversation) => conversation.hasUnread,
-        )}
-        serverUnread={unreadChannelIds.size > 0}
-        callActive={voice.status !== "disconnected"}
-        serverAvailable={Boolean(workspace)}
-        onSelect={handleSelectSpace}
-      />
-      {layoutPreferences.leftPanelVisible ? (
-        activeSpace === "server" && workspace && selectedChannel ? (
-          <ChannelSidebar
-            server={workspace.server}
-            categories={workspace.channelCategories}
-            channels={workspace.channels}
-            selectedChannelId={selectedChannel.id}
-            user={user}
-            members={workspace.members}
-            voiceOccupants={voiceOccupants}
-            unreadChannelIds={unreadChannelIds}
-            voice={visibleVoice}
-            mode={appConfig.dataMode}
-            soundboardOpen={soundboardOpen}
-            canManageChannels={workspace.currentUserRole === "admin"}
-            onSelect={handleSelectChannel}
-            onPrepareVoiceChannel={voice.prepareVoiceChannel}
-            onCreateChannel={(kind) => {
-              setOpenProfile(null);
-              setChannelDialog({ mode: "create", kind });
-            }}
-            onRenameChannel={(channel) => {
-              setOpenProfile(null);
-              setChannelDialog({ mode: "rename", channel });
-            }}
-            onOpenSettings={() => openSettings("profile")}
-            loadProfileMedia={loadProfileMedia}
-            onOpenProfile={handleOpenProfile}
-            openProfileId={openProfile?.memberId ?? null}
-            onToggleSoundboard={toggleSoundboard}
-            onOpenScreenShare={() => {
-              setOpenProfile(null);
-              setScreenShareDialogOpen(true);
-            }}
-          />
-        ) : (
-          <PersonalSidebar
-            user={user}
-            members={personalMembers}
-            conversations={directConversations}
-            selectedConversationId={selectedConversationId}
-            voice={visibleVoice}
-            mode={appConfig.dataMode}
-            soundboardOpen={soundboardOpen}
-            onSelect={handleSelectConversation}
-            onStartConversation={handleStartConversation}
-            onOpenSettings={() => openSettings("profile")}
-            onToggleSoundboard={toggleSoundboard}
-            onOpenScreenShare={() => {
-              setOpenProfile(null);
-              setScreenShareDialogOpen(true);
-            }}
-            loadProfileMedia={loadProfileMedia}
-            onOpenProfile={handleOpenProfile}
-            openProfileId={openProfile?.memberId ?? null}
-            inviteAvailable={!workspace}
-            onOpenInvite={() => setInviteGateOpen(true)}
-          />
-        )
-      ) : null}
-      {layoutPreferences.leftPanelVisible ? (
-        <PanelResizer
-          label="Resize navigation panel"
-          side="left"
-          value={contextPanelWidth}
-          minimum={MIN_SIDE_PANEL_WIDTH}
-          maximum={contextMaximum}
-          defaultValue={DEFAULT_CONTEXT_PANEL_WIDTH}
-          onChange={(contextPanelWidth) =>
-            updateLayoutPreferences((current) => ({
-              ...current,
-              contextPanelWidth,
-            }))
-          }
-        />
-      ) : null}
       <main className="content-shell">
         <TopBar
           channel={activeSpace === "server" ? selectedChannel : null}
@@ -1746,22 +2988,11 @@ export default function App() {
               ? (selectedConversation?.otherMember ?? null)
               : null
           }
-          leftPanelVisible={layoutPreferences.leftPanelVisible}
-          rightPanelVisible={layoutPreferences.rightPanelVisible}
-          onToggleLeftPanel={() =>
-            updateLayoutPreferences((current) => ({
-              ...current,
-              leftPanelVisible: !current.leftPanelVisible,
-            }))
-          }
-          onToggleRightPanel={() =>
-            updateLayoutPreferences((current) => ({
-              ...current,
-              rightPanelVisible: !current.rightPanelVisible,
-            }))
-          }
         />
-        <div className="content-stage">
+        <div
+          className="content-stage content-stage--space-motion"
+          key={`content-${activeSpace}-${spaceTransitionRevision}`}
+        >
           {appError ? (
             <div className="app-alert" role="alert">
               <CircleAlert size={16} />
@@ -1769,6 +3000,15 @@ export default function App() {
               <button type="button" onClick={() => setAppError(null)}>
                 Dismiss
               </button>
+            </div>
+          ) : null}
+          {dataFreshness === "offline" ? (
+            <div className="offline-banner" role="status">
+              Offline — showing saved data. Reconnecting automatically…
+            </div>
+          ) : dataFreshness === "cached" ? (
+            <div className="offline-banner is-syncing" role="status">
+              Showing saved data while Bakbak catches up…
             </div>
           ) : null}
           <div className="content-grid">
@@ -1796,13 +3036,26 @@ export default function App() {
                   }))
                 }
                 onSend={handleDirectSend}
+                readOnlyReason={
+                  dataFreshness === "offline"
+                    ? "Reconnect to send messages"
+                    : null
+                }
+                onLoadOlder={handleLoadOlderDirectMessages}
                 loadProfileMedia={loadProfileMedia}
                 onOpenProfile={handleOpenProfile}
+                onOpenUserContextMenu={handleOpenUserContextMenu}
                 openProfileId={openProfile?.memberId ?? null}
+                stickers={stickers}
+                currentUserIsAdmin={workspace?.currentUserRole === "admin"}
+                onDeleteMessage={handleDirectDelete}
+                onReact={handleDirectReaction}
+                onUploadSticker={handleStickerUpload}
+                onArchiveSticker={handleStickerArchive}
               />
             ) : activeSpace === "personal" ? (
               <section className="personal-home">
-                <img src="/bakbak.svg" alt="" />
+                <BakbakMark className="personal-home__mark" />
                 <span className="eyebrow">Personal lounge</span>
                 <h2>Your conversations live here</h2>
                 <p>
@@ -1827,9 +3080,26 @@ export default function App() {
                   }))
                 }
                 onSend={handleSend}
+                readOnlyReason={
+                  dataFreshness === "offline"
+                    ? "Reconnect to send messages"
+                    : null
+                }
+                onLoadOlder={handleLoadOlderChannelMessages}
                 loadProfileMedia={loadProfileMedia}
                 onOpenProfile={handleOpenProfile}
+                onOpenUserContextMenu={handleOpenUserContextMenu}
                 openProfileId={openProfile?.memberId ?? null}
+                stickers={stickers}
+                currentUserIsAdmin={workspace.currentUserRole === "admin"}
+                {...((selectedChannel.purpose ?? "chat") === "chat"
+                  ? {
+                      onDeleteMessage: handleChannelDelete,
+                      onReact: handleChannelReaction,
+                      onUploadSticker: handleStickerUpload,
+                      onArchiveSticker: handleStickerArchive,
+                    }
+                  : {})}
               />
             ) : selectedChannel && workspace ? (
               <VoiceRoom
@@ -1840,7 +3110,19 @@ export default function App() {
                 onOpenSettings={() => openSettings("audio")}
                 loadProfileMedia={loadProfileMedia}
                 onOpenProfile={handleOpenProfile}
+                onOpenUserContextMenu={handleOpenUserContextMenu}
                 openProfileId={openProfile?.memberId ?? null}
+                streamWatchRequest={streamWatchRequest}
+                onStreamWatchHandled={(requestId, outcome) => {
+                  setStreamWatchRequest((current) =>
+                    current?.requestId === requestId ? null : current,
+                  );
+                  if (outcome === "missing") {
+                    setAppError(
+                      "That stream ended before Bakbak could open it.",
+                    );
+                  }
+                }}
               />
             ) : null}
           </div>
@@ -1866,6 +3148,7 @@ export default function App() {
               volume={voice.soundboardVolume}
               activeLocalSoundCount={voice.activeLocalSoundCount}
               maxConcurrentSounds={voice.maxConcurrentSounds}
+              readOnly={dataFreshness === "offline"}
               onPlay={voice.dispatchSound}
               onStopAll={voice.stopLocalSounds}
               onVolumeChange={voice.setSoundboardVolume}
@@ -1893,48 +3176,112 @@ export default function App() {
           />
         ) : null}
       </main>
-      {layoutPreferences.rightPanelVisible ? (
-        <PanelResizer
-          label="Resize details panel"
-          side="right"
-          value={rightPanelWidth}
-          minimum={MIN_SIDE_PANEL_WIDTH}
-          maximum={rightMaximum}
-          defaultValue={DEFAULT_RIGHT_PANEL_WIDTH}
-          onChange={(rightPanelWidth) =>
-            updateLayoutPreferences((current) => ({
-              ...current,
-              rightPanelWidth,
-            }))
-          }
-        />
-      ) : null}
-      {layoutPreferences.rightPanelVisible ? (
-        activeSpace === "personal" ? (
-          <DirectPersonPanel
-            member={selectedConversation?.otherMember ?? null}
-            loadProfileMedia={loadProfileMedia}
-            sharesServer={Boolean(
-              workspace?.members.some(
-                (member) => member.id === selectedConversation?.otherMember.id,
-              ),
-            )}
-          />
-        ) : workspace ? (
-          <MemberPanel
-            members={workspace.members}
-            loadProfileMedia={loadProfileMedia}
-            onOpenProfile={handleOpenProfile}
-            openProfileId={openProfile?.memberId ?? null}
-          />
-        ) : null
-      ) : null}
+      <PanelResizer
+        label="Resize details panel"
+        side="right"
+        enabled={layoutPreferences.rightPanelVisible}
+        value={rightPanelWidth}
+        minimum={MIN_SIDE_PANEL_WIDTH}
+        maximum={rightMaximum}
+        defaultValue={DEFAULT_RIGHT_PANEL_WIDTH}
+        onChange={(rightPanelWidth) =>
+          updateLayoutPreferences((current) => ({
+            ...current,
+            rightPanelWidth,
+          }))
+        }
+      />
+      <div
+        className="panel-slot panel-slot--right"
+        data-visible={layoutPreferences.rightPanelVisible ? "true" : "false"}
+        aria-hidden={layoutPreferences.rightPanelVisible ? undefined : true}
+        inert={layoutPreferences.rightPanelVisible ? undefined : true}
+      >
+        <div
+          className="panel-slot__motion panel-slot__motion--right"
+          key={`right-${activeSpace}-${spaceTransitionRevision}`}
+        >
+          {activeSpace === "personal" ? (
+            <DirectPersonPanel
+              member={selectedConversation?.otherMember ?? null}
+              loadProfileMedia={loadProfileMedia}
+              onOpenUserContextMenu={handleOpenUserContextMenu}
+              sharesServer={Boolean(
+                workspace?.members.some(
+                  (member) =>
+                    member.id === selectedConversation?.otherMember.id,
+                ),
+              )}
+            />
+          ) : workspace ? (
+            <MemberPanel
+              members={workspace.members}
+              voiceActivities={memberVoiceActivities}
+              loadProfileMedia={loadProfileMedia}
+              onOpenProfile={handleOpenProfile}
+              onOpenUserContextMenu={handleOpenUserContextMenu}
+              openProfileId={openProfile?.memberId ?? null}
+              currentUserId={user.id}
+              onWatchStream={(member, channelId) =>
+                handleWatchStream(member, channelId)
+              }
+            />
+          ) : null}
+        </div>
+      </div>
       {openProfile && openedProfileMember ? (
         <ProfilePopover
           member={openedProfileMember}
           anchor={openProfile.anchor}
           loadMedia={loadProfileMedia}
           onClose={() => setOpenProfile(null)}
+        />
+      ) : null}
+      {userContextMenu ? (
+        <UserContextMenu
+          request={userContextMenu}
+          currentUserId={user.id}
+          canMessage={Boolean(
+            userContextMenu.member.id !== user.id &&
+            (directConversations.some(
+              (conversation) =>
+                conversation.otherMember.id === userContextMenu.member.id,
+            ) ||
+              (dataFreshness !== "offline" &&
+                workspace?.members.some(
+                  (member) => member.id === userContextMenu.member.id,
+                ))),
+          )}
+          canToggleMute={voice.participants.some(
+            (participant) =>
+              !participant.isLocal &&
+              participant.id === userContextMenu.member.id,
+          )}
+          mutedForMe={Boolean(
+            voice.participants.find(
+              (participant) =>
+                !participant.isLocal &&
+                participant.id === userContextMenu.member.id,
+            )?.volume === 0,
+          )}
+          onViewProfile={handleOpenProfile}
+          onMessage={handleMessageUser}
+          onCopyUserId={async (member) => {
+            try {
+              if (!navigator.clipboard?.writeText) {
+                throw new Error("Clipboard access is unavailable.");
+              }
+              await navigator.clipboard.writeText(member.id);
+            } catch (caught) {
+              setAppError(
+                caught instanceof Error
+                  ? caught.message
+                  : "Bakbak could not copy that user ID.",
+              );
+            }
+          }}
+          onToggleMute={(member) => voice.toggleParticipantMute(member.id)}
+          onClose={() => setUserContextMenu(null)}
         />
       ) : null}
       {screenShareDialogOpen ? (
@@ -1971,11 +3318,6 @@ export default function App() {
         <SettingsPage
           user={user}
           section={settingsSection}
-          visualPreset={appearancePreferences.visualPreset}
-          themePreference={appearancePreferences.theme}
-          accent={appearancePreferences.accent}
-          accentIntensity={appearancePreferences.intensity}
-          surfaceStyle={appearancePreferences.surfaceStyle}
           inputDevices={voice.inputDevices}
           outputDevices={voice.outputDevices}
           cameraDevices={voice.cameraDevices}
@@ -1988,6 +3330,11 @@ export default function App() {
           microphoneProcessingSupported={voice.microphoneProcessingSupported}
           microphoneProcessingError={voice.microphoneProcessingError}
           interfaceSoundPreferences={interfaceSoundPreferences}
+          appearancePreference={appearancePreference}
+          systemAccent={systemAccent}
+          cacheStats={cacheStats}
+          dataFreshness={dataFreshness}
+          readOnly={dataFreshness === "offline"}
           inputError={voice.inputDeviceError}
           outputError={voice.outputDeviceError}
           cameraError={voice.cameraDeviceError}
@@ -2003,10 +3350,6 @@ export default function App() {
           onToggleDeafen={voice.toggleDeafen}
           onLeaveVoice={() => void voice.leave()}
           onSectionChange={setSettingsSection}
-          onThemeChange={handleThemeChange}
-          onVisualPresetChange={handleVisualPresetChange}
-          onAccentChange={handleAccentChange}
-          onSurfaceStyleChange={handleSurfaceStyleChange}
           onSaveProfile={handleSaveProfile}
           loadProfileMedia={loadProfileMedia}
           onInputChange={(deviceId) => void voice.setInputDevice(deviceId)}
@@ -2021,6 +3364,8 @@ export default function App() {
           onInterfaceSoundPreferencesChange={
             handleInterfaceSoundPreferencesChange
           }
+          onAppearancePreferenceChange={handleAppearancePreferenceChange}
+          onClearCachedData={handleClearCachedData}
           onPreviewInterfaceSound={(category) =>
             void interfaceSoundController.preview(category)
           }
@@ -2028,47 +3373,24 @@ export default function App() {
           onClose={() => setActiveView("channel")}
         />
       ) : null}
-    </div>
+    </div>,
+    true,
   );
 }
 
 function TopBar({
   channel,
   directMember,
-  leftPanelVisible,
-  rightPanelVisible,
-  onToggleLeftPanel,
-  onToggleRightPanel,
 }: {
   channel: Channel | null;
   directMember: ServerMember | null;
-  leftPanelVisible: boolean;
-  rightPanelVisible: boolean;
-  onToggleLeftPanel: () => void;
-  onToggleRightPanel: () => void;
 }) {
   return (
     <header className="top-bar">
       <div className="top-bar__leading">
-        <button
-          className="panel-toggle"
-          type="button"
-          aria-label={
-            leftPanelVisible ? "Hide channel panel" : "Show channel panel"
-          }
-          aria-controls="context-panel"
-          aria-expanded={leftPanelVisible}
-          onClick={onToggleLeftPanel}
-        >
-          {leftPanelVisible ? (
-            <PanelLeftClose size={18} />
-          ) : (
-            <PanelLeftOpen size={18} />
-          )}
-        </button>
         <div className="top-bar__channel">
           {directMember ? (
-            <MessageCircle size={20} />
+            <Avatar user={directMember} size="small" showStatus />
           ) : channel?.kind === "voice" ? (
             <Volume2 size={20} />
           ) : (
@@ -2086,24 +3408,6 @@ function TopBar({
             </span>
           </div>
         </div>
-      </div>
-      <div className="top-bar__actions">
-        <button
-          className="panel-toggle"
-          type="button"
-          aria-label={
-            rightPanelVisible ? "Hide member panel" : "Show member panel"
-          }
-          aria-controls="member-panel"
-          aria-expanded={rightPanelVisible}
-          onClick={onToggleRightPanel}
-        >
-          {rightPanelVisible ? (
-            <PanelRightClose size={18} />
-          ) : (
-            <PanelRightOpen size={18} />
-          )}
-        </button>
       </div>
     </header>
   );

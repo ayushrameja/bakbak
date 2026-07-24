@@ -51,3 +51,23 @@ import_map = "./functions/livekit-token/deno.json"
 enabled = true
 verify_jwt = true
 import_map = "./functions/soundboard-manage/deno.json"
+
+[functions.message-media-manage]
+enabled = true
+verify_jwt = true
+import_map = "./functions/message-media-manage/deno.json"
+
+[functions.sticker-manage]
+enabled = true
+verify_jwt = true
+import_map = "./functions/sticker-manage/deno.json"
+
+[functions.system-events]
+enabled = true
+verify_jwt = false
+import_map = "./functions/system-events/deno.json"
+
+[functions.link-preview]
+enabled = true
+verify_jwt = true
+import_map = "./functions/link-preview/deno.json"

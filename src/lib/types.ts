@@ -1,5 +1,6 @@
 export type DataMode = "mock" | "live";
 export type ChannelKind = "text" | "voice";
+export type ChannelPurpose = "chat" | "system-releases" | "system-general";
 export type MembershipRole = "admin" | "member";
 
 export interface AppUser {
@@ -39,6 +40,7 @@ export interface Channel {
   categoryId: string | null;
   name: string;
   kind: ChannelKind;
+  purpose?: ChannelPurpose;
   position: number;
   topic: string;
 }
@@ -51,6 +53,117 @@ export type MessageSegment =
   | { type: "text"; text: string }
   | { type: "mention"; userId: string; fallback: string };
 
+export type MessageScope = "channel" | "direct";
+export type MessageKind = "member" | "system";
+export type MessageAttachmentKind = "image" | "gif" | "video";
+export type GiphyAssetKind = "gif" | "sticker";
+
+export type SystemMessageEvent =
+  | {
+      type: "member_joined";
+      memberId: string;
+      memberName: string;
+      joinedAt: string;
+    }
+  | {
+      type: "release_published";
+      releaseId: number;
+      tag: string;
+      name: string;
+      notes: string;
+      url: string;
+      publishedAt: string;
+    };
+
+export type LinkPreview =
+  | {
+      kind: "page";
+      url: string;
+      title: string;
+      description: string;
+      siteName: string;
+    }
+  | {
+      kind: "youtube";
+      url: string;
+      videoId: string;
+      title: string;
+    };
+
+export type MessagePresentation =
+  | {
+      kind: "giphy";
+      assetId: string;
+      assetKind: GiphyAssetKind;
+      title: string;
+      altText: string;
+      width: number;
+      height: number;
+    }
+  | {
+      kind: "sticker";
+      stickerId: string;
+    };
+
+export interface MessageAttachment {
+  id: string;
+  kind: MessageAttachmentKind;
+  mimeType: string;
+  byteSize: number;
+  width: number;
+  height: number;
+  durationMs: number | null;
+  objectPath: string;
+  posterPath: string;
+  objectUrl?: string | null;
+  posterUrl?: string | null;
+  uploadProgress?: number;
+}
+
+export interface StagedMessageAttachment {
+  id: string;
+  kind: MessageAttachmentKind;
+  file: File;
+  poster: Blob;
+  width: number;
+  height: number;
+  durationMs: number | null;
+  previewUrl: string;
+  progress: number;
+  status: "ready" | "uploading" | "failed";
+  error?: string;
+}
+
+export interface MessageReplyPreview {
+  id: string;
+  authorId: string | null;
+  authorName: string;
+  body: string;
+  deleted: boolean;
+}
+
+export interface Sticker {
+  id: string;
+  serverId: string;
+  label: string;
+  posterPath: string;
+  animationPath: string | null;
+  width: number;
+  height: number;
+  createdBy: string;
+  enabled: boolean;
+  createdAt: string;
+  posterUrl?: string | null;
+  animationUrl?: string | null;
+}
+
+export interface StickerReaction {
+  stickerId: string;
+  userIds: string[];
+  count: number;
+  reactedByCurrentUser: boolean;
+}
+
 export interface DraftMention {
   userId: string;
   fallback: string;
@@ -61,15 +174,35 @@ export interface DraftMention {
 export interface MessageDraft {
   text: string;
   mentions: DraftMention[];
+  attachments?: StagedMessageAttachment[];
+  replyTo?: MessageReplyPreview | null;
+  notifyReplyAuthor?: boolean;
+  presentation?: MessagePresentation | null;
 }
 
 export interface ConversationMessage {
   id: string;
-  authorId: string;
+  authorId: string | null;
   body: string;
   content: MessageSegment[] | null;
   createdAt: string;
+  messageKind?: MessageKind;
+  systemEvent?: SystemMessageEvent | null;
+  linkPreview?: LinkPreview | null;
+  linkPreviewAttemptedAt?: string | null;
+  presentation?: MessagePresentation | null;
+  attachments?: MessageAttachment[];
+  reply?: MessageReplyPreview | null;
+  replyNotifiesAuthor?: boolean;
+  notifiesCurrentUser?: boolean;
+  reactions?: StickerReaction[];
+  deletedAt?: string | null;
   pending?: boolean;
+}
+
+export interface MessageCursor {
+  createdAt: string;
+  id: string;
 }
 
 export interface ChatMessage extends ConversationMessage {
@@ -98,6 +231,7 @@ export type ConversationTarget =
       id: string;
       name: string;
       topic: string;
+      purpose?: ChannelPurpose;
     }
   | {
       kind: "direct";

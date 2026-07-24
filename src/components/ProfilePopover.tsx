@@ -12,6 +12,7 @@ import { AVATAR_BUCKET, COVER_BUCKET } from "../lib/profile-service";
 import type { ServerMember } from "../lib/types";
 import { useReducedMotion } from "../lib/use-reduced-motion";
 import { Avatar } from "./Avatar";
+import { ProfileMediaImage } from "./ProfileMediaImage";
 import type { LoadProfileMedia } from "./ProfileTrigger";
 
 interface ProfilePopoverProps {
@@ -224,16 +225,22 @@ export function ProfilePopover({
         }}
       >
         {coverUrl ? (
-          <img
+          <ProfileMediaImage
+            bucket={COVER_BUCKET}
             className="profile-popover__cover-poster"
+            loadMedia={loadMedia}
+            path={member.coverPath}
             src={coverUrl}
             alt=""
             style={coverStyle}
           />
         ) : null}
         {coverAnimationUrl ? (
-          <img
+          <ProfileMediaImage
+            bucket={COVER_BUCKET}
             className="profile-popover__cover-animation"
+            loadMedia={loadMedia}
+            path={member.coverAnimationPath}
             src={coverAnimationUrl}
             alt=""
             style={coverStyle}

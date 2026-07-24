@@ -262,7 +262,7 @@ select isnt(
 );
 select is(
   (select count(*) from public.channel_read_states),
-  1::bigint,
+  2::bigint,
   'members can select only their own read states'
 );
 select throws_ok(

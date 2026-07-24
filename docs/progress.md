@@ -2982,7 +2982,8 @@ src-tauri/Cargo.toml --check`, `pnpm security:scan`, and `git diff --check` —
     production build, and bundle secret scan. Vite retains the non-blocking
     large-chunk warning; main JavaScript is 1,254.45 kB (346.95 kB gzip).
   - `pnpm tauri:build:local` — passed and produced the ad-hoc-signed ARM64
-    `Bakbak.app`; notarization was skipped because Apple credentials are absent.
+    `Bakbak.app`; strict deep code-sign verification and Mach-O inspection
+    passed, while notarization was skipped because Apple credentials are absent.
 - **Documentation updated:** Added plan 0014, updated the active Phase 5 plan,
   architecture, Supabase security/deployment guidance, and this canonical log.
 - **Known limitations:** The additive migration has not been pushed to hosted
@@ -3209,3 +3210,1765 @@ x86_64-pc-windows-msvc --tests` — passed, including compilation of the
 - **Next:** Run the installed three-client macOS/Windows matrix with a watched
   share returned to the grid, then verify playback continuity, both bottom
   controls, speaking rings, room timing, and every source edge before release.
+
+## 2026-07-21 — Flat monochrome appearance and local Roundo
+
+- **Completed:** Replaced Classic, Signature, Signal Red, Warm/Flat, accents,
+  intensity, and their appearance state with one flat grayscale renderer that
+  follows `prefers-color-scheme`. Removed the parser-blocking theme bootstrap,
+  appearance preference types/migrations/setters/tests, Signal Red effects and
+  scheduler, and Signal/Signature texture assets while retaining interface
+  sounds and typed communication behavior. Converted first-party CSS and the
+  in-app Bakbak SVG to grayscale, kept user/live media unfiltered, and reduced
+  Appearance to read-only `Flat`, `Follows system`, and `Roundo` cards. Vendored
+  Roundo v2.0's variable WOFF2 and SIL OFL notice, removed all three Fontsource
+  families, applied upright weights 200–700 locally, raised dense text to a
+  9 px minimum, and set chat/composer text to 14 px. Added a regression test for
+  chromatic CSS/SVG colors, old themes/assets/fonts, unsupported type weights,
+  vendored font drift, and the fixed Appearance contract.
+- **Decisions:** Operating-system light/dark is the only appearance switch;
+  legacy `bakbak.appearancePreferences.*` keys remain inert rather than being
+  cleaned up. Roundo Regular 400 is used for body/chat text, Medium 500 for
+  controls and labels, SemiBold 600 for emphasis, and Bold 700 for headings and
+  primary actions; synthetic italic and weights above 700 are not allowed.
+  Grayscale semantic states use labels, icons, contrast, borders, rings, and
+  opacity. Native installer/application icons remain outside plan 0016.
+- **Validation:**
+  - Focused `pnpm typecheck`, Settings/App Vitest, and the new monochrome Node
+    test — passed strict TypeScript, 29/29 component tests, and 3/3 appearance
+    regression tests during implementation.
+  - `pnpm format:check` — passed with every matched file formatted.
+  - `pnpm lint` — passed with zero warnings.
+  - `pnpm typecheck` — passed both renderer and Node TypeScript projects.
+  - `pnpm test` — passed 52 Vitest files with 279 tests and 17/17 Node tests.
+  - `pnpm build` — passed after transforming 1,995 modules. The stylesheet is
+    113.55 kB (19.26 kB gzip) and the main JavaScript chunk is 1,240.92 kB
+    (342.67 kB gzip); Vite retains the existing non-blocking large-chunk
+    warning.
+  - Offline font audit — passed: the production build contains
+    `dist/fonts/roundo/Roundo-Variable.woff2`, its CSS uses only that local URL,
+    and the installed executable embeds the same route with no Google Fonts,
+    Fontshare, or other remote font host string.
+  - `pnpm security:scan` — passed for `dist` and the final native bundle before
+    and after the Tauri build.
+  - `pnpm tauri:build:local` — passed and produced an ad-hoc-signed Apple
+    Silicon `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+  - `git diff --check` — passed.
+  - In-app browser visual QA — skipped. The localhost policy blocked the mock
+    preview reload, so no dark/light screenshot or manual layout result is
+    claimed.
+- **Documentation updated:** Added plan 0016, updated active plan 0001 and the
+  architecture/licensing source of truth, added the Roundo upstream/hash record
+  and OFL notice, and appended this canonical log entry.
+- **Known limitations:** Dark/light visual checks at 1024×680 and 1280×800
+  remain required across auth, chat, voice, profiles, Settings, dialogs,
+  soundboard, errors, and focus. Installed macOS and Windows still need human
+  review of Roundo's ambiguous glyphs, clipping, line height, and wrapping at
+  9–12 px UI and 14–16 px chat sizes, plus an offline network observation. The
+  macOS bundle is not notarized.
+- **Next:** Install the macOS app and a Windows build, disconnect network font
+  access, then complete plan 0016's two-scheme/two-viewport visual and dense
+  typography matrix before v1 distribution.
+
+## 2026-07-21 — Space-efficient titlebar and comfortable Roundo
+
+- **Completed:** Replaced the fixed 68 px destination rail with a 48 px app
+  frame titlebar and centered accessible Personal/Bakbak segmented switch.
+  Preserved per-space selection, drafts, unread markers, active calls, and the
+  rule that navigation never disconnects voice. Authentication, invite, and
+  startup states now show titlebar branding without navigation; blocking
+  dialogs disable only the switch, and voice fullscreen removes the complete
+  titlebar. Added an injectable native-window adapter, renderer-owned Windows
+  controls, native-overlay macOS configuration, narrow main-window
+  capabilities, and a platform-config drift regression. Removed
+  `DestinationRail`, moved `AppSpace` into a navigation-neutral module, removed
+  the rail width constant/grid column, and returned the recovered width to the
+  conversation canvas without changing layout preference v2 or its 232/240 px
+  defaults. Applied shared 11–16 px type, 4 px spacing, control/row/composer
+  height, 10/14/16/18 px curve, 500/600/700 weight, hover, press, focus, and
+  reduced-motion contracts across the renderer; chat and composer text are
+  15 px at weight 500 and the contextual header is 60 px.
+- **Decisions:** Personal and Bakbak are destinations rather than a binary
+  setting, so both labels remain visible and support Arrow/Home/End keyboard
+  movement. macOS keeps native traffic lights at a 16×16 inset; Windows is
+  undecorated but resizable with native shadow and app-owned controls; browser
+  mode exposes no fake window buttons. Linux chrome remains deferred. The
+  visual refresh keeps the one system-following grayscale theme, local Roundo,
+  flat surfaces, and the existing layout preference key with no data or
+  backend migration.
+- **Validation:**
+  - Focused component/integration runs — passed 15/15 Vitest assertions for
+    switch selection/keyboard/state, browser/macOS/Windows chrome behavior,
+    adapter reconciliation, and App dialog/auth integration; focused Node
+    layout/config/appearance regressions passed 8/8.
+  - Mock-browser visual and interaction QA — passed in the dark scheme at
+    1024×680, 1280×800, and 2560×1440. The 1024 px shell retained a 492 px
+    center canvas, titlebar/context headers measured 48/60 px, chat measured
+    15 px weight 500, Settings remained internally scrollable with its switch
+    disabled, Personal/server navigation worked, and no page overflow or
+    console errors appeared.
+  - First `pnpm check` — stopped at ESLint with 18 strict promise/mock errors in
+    the new window-adapter test seam. The no-op promises and spy ownership were
+    corrected; no runtime or product assertion failed.
+  - Final `pnpm check` — passed Prettier, ESLint with zero warnings, both strict
+    TypeScript projects, 53 Vitest files with 286 tests, 19/19 Node tests,
+    version synchronization, production build, and secret scan. Vite retains
+    the existing non-blocking large-chunk warning; the stylesheet is 119.86 kB
+    (20.24 kB gzip) and the main JavaScript chunk is 1,244.45 kB (343.54 kB
+    gzip).
+  - `pnpm tauri:build:local` — passed and produced the ad-hoc-signed ARM64
+    `Bakbak.app`. Notarization was skipped because Apple credentials are not
+    present.
+  - Final `pnpm security:scan`, Mach-O architecture inspection, and
+    `git diff --check` — passed for renderer/native artifacts, confirmed the
+    installed executable is ARM64, and found no whitespace errors.
+- **Documentation updated:** Added plan 0017, updated active plan 0001 and the
+  architecture shell/type/platform source of truth, and appended this canonical
+  log entry.
+- **Known limitations:** Browser QA covered dark mode only and cannot prove
+  native traffic-light placement, Windows hit-testing/shadow behavior,
+  dragging/double-click maximize, OS shortcuts, native resizing, installed
+  light/dark rendering, offline Roundo loading, or screen-share cleanup on
+  close. A Windows build and installed interaction matrix were not available in
+  this macOS workspace. The local macOS bundle is not notarized.
+- **Next:** Install the macOS ARM64 app and a Windows x64 build, then complete
+  plan 0017's two-scheme, three-resolution interaction matrix before v1
+  distribution.
+
+## 2026-07-21 — Titlebar alignment and panel-control follow-up
+
+- **Completed:** Removed the redundant Bakbak icon/name from the titlebar,
+  leaving the left side as a clean native drag region. Moved the context and
+  details panel toggles out of the 60 px contextual header and grouped them as
+  two VS Code-style 32 px controls at the titlebar's right edge, immediately
+  before Windows window controls when present. Preserved their accessible
+  labels, `aria-controls`, expanded state, independent persistence, and all
+  four panel combinations; blocking dialogs disable these layout controls
+  alongside the space switch while native window controls remain available.
+  Adjusted the macOS traffic-light inset from 16×16 to 16×24 so the native
+  controls align vertically with the 48 px renderer titlebar, and updated the
+  platform drift regression.
+- **Decisions:** Authentication, invite, and startup screens retain product
+  branding in their main content instead of duplicating it in window chrome.
+  The contextual header now has one job—identify the current person or room.
+  Panel controls use icon-only, borderless hover surfaces at the titlebar's
+  right edge; the Personal/Bakbak segment remains geometrically centered.
+- **Validation:**
+  - Focused WindowTitlebar/App Vitest run — passed 2 files with 13 tests,
+    including right-edge placement, callbacks, removal from the contextual
+    header, persistence, dialog disabling, and native/browser control variants.
+  - `node --test scripts/window-chrome-config.test.mjs` — passed 2/2 platform
+    configuration and capability checks with the new macOS inset.
+  - Initial `pnpm typecheck` — failed only because exact optional-property
+    checking rejected an explicitly passed `undefined` panel-control contract;
+    the prop is now omitted outside the signed-in shell. The final strict
+    typecheck passed.
+  - Mock-browser visual/interaction QA at 1280×800 — passed. The titlebar
+    measured 48 px, segment 232×36 px at x=524, and right control group 82×32 px
+    at x=1198; no titlebar brand or old contextual-header toggle remained.
+    Both panel controls independently hid/restored their panels, the all-hidden
+    canvas expanded to 1264 px, Settings disabled both controls, page overflow
+    was absent, and the console had no errors.
+  - Final `pnpm check` — passed formatting, ESLint, both strict TypeScript
+    projects, 53 Vitest files with 287 tests, 19/19 Node tests, version sync,
+    production build, and secret scan. Vite retains the existing non-blocking
+    large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are absent.
+  - Final `pnpm security:scan`, Mach-O architecture inspection, and
+    `git diff --check` — passed.
+- **Documentation updated:** Updated plan 0017, the architecture titlebar/UI
+  composition contract, and this canonical progress log.
+- **Known limitations:** Browser QA cannot display native macOS traffic lights,
+  so the 16×24 installed alignment still needs direct observation. Windows
+  native control spacing and installed light-mode rendering remain part of plan
+  0017's release matrix. The local macOS bundle is not notarized.
+- **Next:** Open the rebuilt macOS app to confirm traffic-light centering, then
+  repeat the titlebar/control check in the Windows x64 build before v1
+  distribution.
+
+## 2026-07-21 — Native glass, edge-to-edge panels, and motion polish
+
+- **Completed:** Added plan 0018's system-adaptive glass hierarchy with dark
+  68% black/light 66% white panels, 82% strong controls, and 24 px blur at 120%
+  saturation while leaving avatars, covers, emoji, video, and screen shares
+  unfiltered. Added pre-React native/fallback material detection, transparent
+  macOS `underWindowBackground` material with active-state following and the
+  required private API feature, plus Rust-gated Windows 11 Mica with an opaque
+  Windows 10/browser underlay. Rebuilt the signed-in shell as a stable
+  edge-to-edge five-track grid with straight 1 px separators, overlapping 9 px
+  resize targets, zero outer padding/gutters/rounding/shadows, and persistent
+  side slots that become inert and assistive-technology-hidden at zero width.
+  Moved the 232 px space switch left after the macOS safe area, fixed `OG Nahan
+Gang` at the true window center, and retained panel/Windows controls at the
+  right. Added 220 ms panel collapse, 0/40/80 ms replaceable space entrances, a
+  one-shot sub-500 ms launch assembly with an eight-row message cap, immediate
+  reduced-motion layout, and delegated 6 px scrollbars that clear scroll
+  activity after 650 ms. Preserved `bakbak.layoutPreferences.v2`, panel sizes,
+  visibility, drafts, navigation, voice ownership, backend contracts, and the
+  420 px center minimum.
+- **Decisions:** Browser and Windows 10 use an opaque CSS underlay rather than
+  exposing desktop content; Windows 10 deliberately receives no Acrylic.
+  Windows native material is limited to build 22000 or newer. macOS private
+  material is accepted for Bakbak's private distribution even though it rules
+  out Mac App Store submission. Hidden panel components remain mounted for
+  local state continuity, but both their controls and resizer contract disable
+  immediately. Motion is visual only: app/voice/draft state remains above the
+  keyed entrance subtrees, and repeated switches replace the current revision
+  rather than queueing it.
+- **Validation:**
+  - Focused Vitest and Node contract runs — passed 44/44 component/App tests and
+    9/9 glass, shell, appearance, native-config, and window-capability checks.
+  - Initial `pnpm lint` — failed on two unhandled `act(...)` return values in
+    the new scrollbar timer test; both are now explicitly ignored with `void`.
+    No product assertion failed, and the final lint passed with zero warnings.
+  - Dark mock-browser QA — passed at 1024×680, 1280×800, and 2560×1440 with no
+    document overflow or console warnings/errors. The shell measured from x=0
+    to the full viewport with 0 px padding/gap, tracks were `266/1/516/1/240`
+    at the minimum viewport, and the title center was within 0.01 px of the
+    window center. All four panel combinations settled to the correct stable
+    five-track geometry; hidden slots remained mounted, inert, `aria-hidden`,
+    and paired with disabled resizers. The scrollbar thumb was transparent at
+    rest, visible during focus/scroll, and hidden after 650 ms. Startup moved
+    from `running` to `complete` once, and Personal/Bakbak used the approved
+    0/40/80 ms stagger without interrupting shell state.
+  - `pnpm check` — passed Prettier, ESLint, both strict TypeScript projects, 54
+    Vitest files with 290 tests, 23/23 Node tests, version synchronization,
+    production build, and secret scan. Vite retains the existing non-blocking
+    large-chunk warning; the stylesheet is 128.79 kB (21.50 kB gzip) and the
+    main JavaScript chunk is 1,246.31 kB (344.17 kB gzip).
+  - `cargo fmt --check`, `cargo check --manifest-path src-tauri/Cargo.toml`, and
+    `git diff --check` — passed.
+  - `pnpm tauri:build:local` — passed and produced the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are not
+    present. Post-build secret scan, strict deep code-sign verification, and
+    Mach-O inspection passed and confirmed an ARM64 executable.
+- **Documentation updated:** Added plan 0018 as the current visual/layout
+  authority, recorded its supersession boundaries in plans 0016 and 0017,
+  updated active plan 0001, updated architecture material/layout/motion and
+  scrollbar contracts, changed the Appearance summary to `Glass`, and appended
+  this canonical log entry.
+- **Known limitations:** Browser automation exposed only the dark system scheme,
+  so light tokens have automated/static coverage but the light visual matrix
+  remains open. The rebuilt macOS app was compiled and signature-verified but
+  still needs direct installed observation of wallpaper vibrancy, inactive
+  state, traffic lights, shadow, drag/resize/fullscreen, contrast, and startup
+  flash. Windows 10 fallback and Windows 11 Mica require installed Windows
+  checks; no Windows build target was available in this macOS workspace. The
+  local app is not notarized.
+- **Next:** Run the light browser matrix, inspect the rebuilt macOS app over
+  varied wallpapers and active/inactive states, then validate the same startup
+  and window-interaction matrix on installed Windows 10 and Windows 11 builds.
+
+## 2026-07-22 — Discord-inspired controls and member rail
+
+- **Completed:** Added plan 0019's system-adaptive semantic palette while
+  keeping the glass shell and ordinary chrome neutral. Rebuilt the connected
+  voice footer as a stacked status/action surface, extracted one
+  `SidebarUserDock` for Personal and server spaces, and aligned the retained
+  floating voice dock and soundboard stop action with the same selected,
+  destructive, disabled, and icon states. Reworked the server member rail into
+  compact In Voice, Online, and Offline groups with deterministic sorting,
+  current-call-over-heartbeat deduplication, streaming/channel labels, offline
+  treatment, and lazy authenticated static cover-poster accents that preserve
+  focal position without requesting cover animation. Kept profile opening,
+  panel persistence, call continuity, media authorization, and backend
+  contracts unchanged.
+- **Decisions:** Plan 0019 supersedes only plans 0016/0018's fully monochrome
+  semantic-state clauses. Neutral chrome stays grayscale; only the approved
+  positive, danger, selected, warning, and icon tokens may be chromatic. The
+  current connected/reconnecting call overwrites matching presence activity so
+  local state appears immediately, while activity for unknown voice channels
+  is ignored. Missing or failed cover posters remain neutral and silent.
+- **Validation:**
+  - Focused Vitest and Node contract runs — passed 5 component/App files with
+    22 tests and 7 appearance/glass tests while implementing the change.
+  - Dark mock-browser QA — passed at 1024×680, 1280×800, and 2560×1440 with
+    200/240/360 px side panels, no document overflow, and no console warnings
+    or errors. Verified disconnected and active call hierarchy, In Voice
+    grouping, muted danger state, selected soundboard/pinned dock behavior,
+    visible disconnect/stop controls, correct positive/danger/warning computed
+    colors, offline treatment, and panel resizing/reset. The mock fixtures have
+    no cover posters, so focal positioning, lazy loading, and failure fallback
+    were verified in component tests rather than this visual pass.
+  - `pnpm format:check` — passed; all tracked files match Prettier.
+  - `pnpm lint` — passed with zero warnings.
+  - `pnpm typecheck` — passed both strict TypeScript projects.
+  - `pnpm test` — passed 55 Vitest files with 298 tests and 24/24 Node tests.
+  - `pnpm build` — passed; Vite produced the renderer bundle and retained the
+    existing non-blocking large-chunk warning. The stylesheet is 136.82 kB
+    (22.67 kB gzip) and the main JavaScript chunk is 1,248.28 kB (344.98 kB
+    gzip).
+  - `pnpm security:scan` — passed for `dist` and the existing release bundle.
+  - `pnpm tauri:build:local` — passed and produced the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are absent.
+  - `git diff --check` and a changed-diff secret-pattern inspection — passed.
+- **Documentation updated:** Added plan 0019, recorded its narrow supersession
+  in plans 0001/0016/0018, updated the architecture UI, presence-merge, and
+  profile-media contracts, and appended this canonical progress entry.
+- **Known limitations:** The selected browser exposed only the dark system
+  scheme; light tokens have exact palette/contrast static coverage, but the
+  light visual matrix remains open. Installed macOS material, light-mode,
+  inactive-window, and interaction observation was not performed. Windows 10
+  fallback and Windows 11 Mica/member-rail checks require an installed Windows
+  build. The local macOS bundle is not notarized.
+- **Next:** Run the light browser matrix with cover-bearing fixtures, inspect
+  the rebuilt macOS bundle directly, then repeat the member/control state
+  matrix on installed Windows 10 and Windows 11 builds.
+
+## 2026-07-22 — Member spacing, draggable jokes, and user-dock cover
+
+- **Completed:** Increased the visual separation between compact member cards
+  to 5 px. Made the complete centered title track use the existing native
+  drag/double-click window adapter, added deterministic eight-second idle jokes,
+  and switched immediately to concise room-aware connecting, connected,
+  reconnecting, and error copy when voice state changes. Added the signed-in
+  member's authenticated static cover poster as a focal-positioned background
+  across the shared Personal/server user dock with a neutral contrast gradient.
+  The dock never requests cover animation, and missing or failed posters retain
+  the existing neutral surface.
+- **Decisions:** Title copy rotates locally without persistence, randomness, or
+  backend state so tests and layouts remain deterministic. `OG Nahan Gang`
+  remains the first idle line. The centered track stays independently centered
+  and clips unusually long room names without changing the titlebar grid. The
+  user dock reuses `ProfileMediaCache` and the existing private cover-poster
+  authorization path; no media, voice, database, or preference contract changed.
+- **Validation:**
+  - Focused Vitest run — passed 3 files with 19 titlebar, App, and shared-user-
+    dock tests, including center dragging, title rotation/voice reset, static-
+    only focal cover loading, failure fallback, and existing callbacks.
+  - Focused appearance contract run — passed 7/7 glass and semantic-color tests.
+  - Initial `pnpm lint` — failed on one floating `act(...)` result in the new
+    timer test; the callback now returns nothing. Final lint passed with zero
+    warnings.
+  - Dark mock-browser QA at 1280×720 — passed with a measured 5 px gap between
+    member cards, automatic idle-title rotation, immediate
+    `Queue: chaos connected` copy after joining Queue, an interactive center
+    title surface, no document overflow, and no console warnings or errors. The
+    mock profile has no cover, so the dock cover's focal rendering and failure
+    behavior were verified in component/static tests instead of this screenshot.
+    Browser automation cannot physically drag the native desktop window; the
+    adapter invocation is covered by the component regression.
+  - `pnpm format:check` — passed; all files match Prettier.
+  - `pnpm lint` — passed with zero warnings.
+  - `pnpm typecheck` — passed both strict TypeScript projects.
+  - `pnpm test` — passed 55 Vitest files with 301 tests and 24/24 Node tests.
+  - `pnpm version:check` — passed at synchronized version `0.16.0`.
+  - `pnpm build` — passed; Vite retains the existing non-blocking large-chunk
+    warning. The stylesheet is 137.62 kB (22.79 kB gzip) and the main JavaScript
+    chunk is 1,249.67 kB (345.46 kB gzip).
+  - Final `pnpm security:scan`, `git diff --check`, and changed-diff secret-
+    pattern inspection — passed with no forbidden material.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; strict deep code-sign verification and Mach-O inspection
+    passed. Notarization was skipped because Apple credentials are absent.
+- **Documentation updated:** Updated plans 0001, 0017, and 0019, the titlebar,
+  member-rail, sidebar-media architecture contracts, and this canonical log.
+- **Known limitations:** Direct installed observation is still required for
+  macOS/Windows drag and double-click behavior. Light-mode cover contrast and an
+  actual cover-bearing user dock were not available in the mock browser fixture.
+  The local macOS bundle is not notarized.
+- **Next:** Open the rebuilt macOS bundle to confirm title dragging from the
+  text itself and cover contrast with the signed-in profile, then repeat those
+  checks in light mode and the Windows installed build.
+
+## 2026-07-22 — Full titlebar drag hit-area correction
+
+- **Completed:** Inspected the supplied 15.93-second macOS recording and
+  confirmed the previous fix covered only selected leading, centered, and
+  trailing children rather than the complete 48 px titlebar. Moved mouse-down
+  drag and double-click maximize handling to one header-level boundary so every
+  blank region and non-control descendant delegates to the existing native
+  window adapter. Removed the child-level handlers and explicitly excluded the
+  Personal/Bakbak navigation, panel controls, Windows controls, links, and form
+  controls from drag/maximize handling.
+- **Decisions:** The renderer continues using the narrowly scoped Tauri window
+  adapter; no capability or native command changed. Header event delegation is
+  used instead of relying on empty flex spans whose rendered hit area can
+  collapse. Primary-button drag prevents default text behavior, while control
+  groups retain their normal pointer interaction and never start a drag.
+- **Validation:**
+  - `ffprobe` plus an eight-frame contact sheet of the supplied 1632×1068 H.264
+    recording — confirmed the failed attempts occurred over titlebar regions
+    outside the previously instrumented child surfaces.
+  - Focused `WindowTitlebar` Vitest run — passed 8/8 tests covering direct
+    header, leading, centered text, center track, trailing, and pre-shell drag
+    targets; blank-region double-click maximize; and zero drag/maximize calls
+    from navigation, panel, and window controls.
+  - `node --test scripts/glass-shell.test.mjs` — passed 3/3 contracts and now
+    enforces exactly one titlebar mouse-down/double-click handler plus control
+    target filtering.
+  - Dark mock-browser QA at 1280×720 — the titlebar measured 1280×48 px with
+    `pointer-events: auto`; 40/40 sampled points at both the top and bottom and
+    31 non-control points at mid-height resolved to drag territory, while the
+    remaining nine mid-height samples were intentional controls. No sample was
+    uncovered, the Personal switch remained clickable, and the console had no
+    warnings or errors.
+  - `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and
+    `pnpm version:check` — passed; version remains synchronized at `0.16.0`.
+  - `pnpm test` — passed 55 Vitest files with 302 tests and 24/24 Node tests.
+  - `pnpm build` — passed; Vite retains the existing non-blocking large-chunk
+    warning. The stylesheet is 137.84 kB (22.83 kB gzip) and the main JavaScript
+    chunk is 1,250.39 kB (345.69 kB gzip).
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; strict deep code-sign verification and Mach-O inspection
+    passed. Notarization was skipped because Apple credentials are absent.
+  - Final `pnpm security:scan`, `git diff --check`, and changed-diff secret-
+    pattern inspection — passed with no forbidden material.
+- **Documentation updated:** Corrected the titlebar contract in plans 0001,
+  0017, and 0019, updated the architecture description, and appended this
+  correction rather than rewriting the earlier progress entry.
+- **Known limitations:** Browser automation verifies complete renderer hit-area
+  ownership and component tests verify native adapter calls, but it cannot
+  physically move the installed macOS/Windows window. The rebuilt macOS bundle
+  still requires one direct drag and maximize observation; it is not notarized.
+- **Next:** Launch the rebuilt macOS bundle and drag from the far-left blank
+  area, centered text, upper/lower titlebar edges, and blank space before the
+  panel controls, then repeat the same matrix on Windows.
+
+## 2026-07-22 — Instant panel resizing without selection
+
+- **Completed:** Made left and right pointer resizing bypass the shell's 220 ms
+  grid transition for the exact duration of an active drag, so the side panel
+  and conversation canvas respond to the same current width instead of chasing
+  it. Pointer start now prevents the browser's native selection gesture, clears
+  any existing range, focuses/captures the separator, and applies a temporary
+  document-wide `user-select: none` plus resize cursor. Pointer release,
+  cancellation, lost capture, or window blur removes listeners and restores
+  normal selection and motion. Panel show/hide animation, keyboard arrows,
+  Home/End, double-click reset, persisted widths, and the 200–360 px bounds are
+  unchanged.
+- **Decisions:** The resize guard is a short-lived root class rather than
+  persisted React state, so transition removal happens synchronously before the
+  first movement and adds no render-frame delay. Window-level release/cancel
+  listeners supplement pointer capture for cleanup if a platform delivers the
+  terminal event away from the separator.
+- **Validation:**
+  - Focused Vitest run — passed 2 files with 11 PanelResizer and App layout
+    tests, including pointer delta, focus/capture, selection clearing, active
+    class cleanup, both directions, keyboard bounds, reset, and hidden state.
+  - `node --test scripts/glass-shell.test.mjs` — passed 3/3 shell, resize,
+    glass, motion, and scrollbar contract tests.
+  - Dark mock-browser QA at 1280×720 — observed zero selection ranges and a
+    `0s` grid transition while the resize guard was active, followed by normal
+    `0.22s` collapse motion after cleanup; there was no page overflow or console
+    warning/error. The browser automation backend could not reliably deliver a
+    movement sequence to the captured 9 px separator, so exact pointer delta
+    and terminal-event behavior use the component regression above.
+  - The first full-suite attempt ran all heavyweight jobs concurrently and one
+    existing App draft test exceeded its timeout under contention. Its immediate
+    isolated rerun passed 7/7, and the final sequential `pnpm test` passed 55
+    Vitest files with 302 tests plus 24/24 Node tests.
+  - `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and
+    `pnpm version:check` — passed; version remains synchronized at `0.16.0`.
+  - `pnpm build` — passed; Vite retains the existing non-blocking large-chunk
+    warning. The stylesheet is 137.84 kB (22.83 kB gzip) and the main JavaScript
+    chunk is 1,250.39 kB (345.69 kB gzip).
+  - Final `pnpm security:scan`, `git diff --check`, and changed-diff secret-
+    pattern inspection — passed with no forbidden material.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; strict deep code-sign verification and Mach-O inspection
+    passed. Notarization was skipped because Apple credentials are absent.
+- **Documentation updated:** Updated plan 0018, active plan 0001, the shell and
+  local-preference resize architecture, and this canonical progress log.
+- **Known limitations:** The rebuilt macOS and Windows applications still need
+  direct human observation of continuous pointer feel and selection suppression
+  because the mock browser cannot reproduce native WebView pointer capture
+  perfectly. The local macOS bundle is not notarized.
+- **Next:** Drag both installed panel separators rapidly across their full range
+  on macOS, then repeat on Windows and confirm the canvas remains locked to the
+  pointer with no blue selection residue.
+
+## 2026-07-22 — Personal, voice, appearance, and soundboard polish
+
+- **Completed:** Replaced the Personal DM header's generic message icon with
+  the selected person's avatar. Made the Personal details rail load and play
+  GIF avatar/cover media while respecting reduced motion and preserving cover
+  focal position. Reworked the new-message member picker so long names remain
+  contained and outside pointer or Escape dismisses it. Added a funny,
+  actionable disconnected voice-room state with a direct rejoin action instead
+  of a blank canvas. Restored device-local Auto, Light, and Dark scheme
+  selection, applied it before React mounts, synchronized theme-color metadata,
+  removed the typography summary, and repaired the responsive Appearance
+  layout. Replaced the soundboard's large stop footer with a bottom-left
+  circular stop control and an active `n/5` count; the floating dock count now
+  uses the same format.
+- **Decisions:** Theme selection is intentionally scheme-only: accent, surface,
+  intensity, preset, and typography controls remain excluded. Auto continues
+  to follow live operating-system changes; invalid stored values fall back to
+  Auto. GIF playback remains disabled under reduced motion. The member picker
+  is a non-modal anchored dialog, so click-away dismissal does not make the
+  rest of the Personal space inert. Unrelated concurrent Bakbak Orbit
+  branding/icon changes were preserved and were not treated as work completed
+  by this task.
+- **Validation:**
+  - Focused strict TypeScript plus Vitest/Node appearance run — passed 7 files
+    with 65 tests and all 4 appearance contract tests.
+  - Mock-browser QA at 1280×800 — passed. The 216 px picker stayed inside the
+    232 px Personal rail with `scrollWidth === clientWidth`, outside click
+    dismissed it, and the DM header exposed the selected participant avatar.
+  - Mock-browser Appearance QA at 1280×800 and 1024×720 — passed. Auto, Light,
+    and Dark each applied the expected computed color scheme; the compact page,
+    canvas, and picker had no horizontal/document overflow; Auto was restored;
+    and the console had no warnings or errors.
+  - `pnpm format:check` — passed; all files match Prettier.
+  - `pnpm lint` — passed with zero warnings.
+  - `pnpm typecheck` — passed both strict TypeScript projects.
+  - `pnpm test` — passed 58 Vitest files with 310 tests and 24/24 Node tests.
+  - `pnpm version:check` — passed at synchronized version `0.16.0`.
+  - `pnpm build` — passed; Vite produced the renderer bundle with the existing
+    non-blocking large-chunk warning. The stylesheet is 146.19 kB (24.14 kB
+    gzip) and the main JavaScript chunk is 1,254.51 kB (346.86 kB gzip).
+  - Final `pnpm security:scan`, changed-diff secret-pattern inspection, and
+    `git diff --check` — passed with no forbidden material or whitespace errors.
+  - `pnpm tauri:build:local` — passed and produced the ad-hoc-signed ARM64
+    `Bakbak.app`; strict deep code-sign verification and Mach-O inspection
+    passed. Notarization was skipped because Apple credentials are absent.
+- **Documentation updated:** Updated the architecture's DM media/picker,
+  disconnected voice, appearance preference, local-storage, and compact
+  sound-stop contracts; amended active plan 0001 and plan 0016's supersession
+  boundary; appended this canonical progress entry.
+- **Known limitations:** The mock profiles do not contain GIF assets, so
+  animated DM avatar/cover loading and focal positioning were verified in
+  component tests rather than the browser preview. The browser path auto-joins
+  selected voice rooms and had no active sound stack, so the disconnected voice
+  state and compact active sound counter were verified in component tests.
+  Real installed GIF playback, explicit-theme native material contrast,
+  post-leave voice copy, and sound-stop behavior still require direct macOS and
+  Windows observation. The local macOS bundle is not notarized.
+- **Next:** In the installed app, open a DM with a GIF avatar/cover, switch all
+  three schemes, leave and rejoin a voice room, and play/stop overlapping sounds;
+  then repeat the interaction and contrast checks on Windows.
+
+## 2026-07-22 — Bakbak Orbit branding and native app icon
+
+- **Completed:** Replaced the messaging-bubble identity with the original
+  generated Bakbak Orbit artwork: two abstract circular conversation forms
+  facing a central spark over a dark aurora surface. Added the 512 px renderer
+  asset, switched the favicon, authentication, invite, loading, and empty
+  Personal identity surfaces to it, regenerated the tracked macOS, Windows,
+  iOS, and Android icon variants from the full-resolution output, and rebuilt
+  the local macOS app. Reworked the server header into a
+  contained 84 px premium brand card with a 46 px artwork tile, active server
+  name, restrained indigo/cyan/coral aura, orbit lines, and fine dot grain.
+  Removed `Friends-only adda` without adding another subtitle.
+- **Decisions:** Kept ordinary glass chrome neutral and treated the generated
+  artwork plus one explicitly delimited CSS brand block as the sole decorative
+  chroma exception. The mark remains decorative beside the visible server name.
+  The two-form silhouette is an original conversation metaphor with an
+  arcade-circle influence, not a Pac-Man, Discord, Gemini, or speech-bubble
+  reproduction. Used the built-in image generator and kept the project-bound
+  result at `public/bakbak-orbit.png`.
+- **Validation:**
+  - Focused ChannelSidebar Vitest — passed 11/11 tests, including artwork
+    presence and retired-tagline absence.
+  - `node --test scripts/monochrome-appearance.test.mjs` — passed 4/4 brand,
+    semantic-colour, font, and appearance guards; ordinary chrome remains
+    grayscale after removing only the marked brand block.
+  - Mock-browser dark QA at 1280×720 and 1024×680 — observed a 232×84 header,
+    loaded 512 px source artwork rendered at 46×46, no `Friends-only adda`, no
+    sidebar overflow, no page overflow, and a 550 px centre canvas at the
+    minimum viewport.
+  - `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and
+    `pnpm version:check` — passed; version remains synchronized at `0.16.0`.
+  - `pnpm test` — passed 58 Vitest files with 310 tests plus 24/24 Node tests.
+  - `pnpm build` — passed; Vite retains the existing non-blocking large-chunk
+    warning. The stylesheet is 146.36 kB (24.24 kB gzip), the main JavaScript
+    chunk is 1,254.51 kB (346.17 kB gzip), and the renderer icon is 312 kB.
+  - `pnpm security:scan`, changed-diff secret-pattern inspection,
+    `git diff --check`, and the rendered-text search — passed with no forbidden
+    material or remaining rendered tagline.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app` with the generated icon bundle. Notarization was skipped because
+    Apple credentials are absent.
+- **Documentation updated:** Added plan 0020 and updated the active plan,
+  architecture identity/appearance contracts, repository structure, visual
+  regression boundary, and this canonical progress log.
+- **Known limitations:** The final macOS Dock/app-switcher/DMG icon and Windows
+  taskbar/installer icon still need human observation. Browser QA covered the
+  dark mock shell; the fixed dark identity card is designed for both schemes but
+  still needs direct light-mode and installed native-material observation. The
+  standard updater-enabled `pnpm tauri build` was not run because protected
+  updater signing material is unavailable locally; the repository-supported
+  local app-only bundle passed instead.
+- **Next:** Open the rebuilt macOS app and inspect the icon in the Dock and app
+  switcher, then confirm the Windows taskbar/NSIS artwork and the header against
+  light native material before the next friend-test build.
+
+## 2026-07-23 — Hydrate Direct Message avatars
+
+- **Completed:** Fixed Personal conversation rows that showed initials even
+  when the other participant had an uploaded avatar. Direct-conversation
+  results now resolve their private `avatar_path` through the existing
+  profile-media cache before entering application state, so the left DM list
+  and selected-conversation header share the real poster URL. Matching
+  already-downloaded workspace avatars are reused.
+- **Decisions:** Kept avatar hydration outside the presentational sidebar so
+  every consumer of the selected direct participant receives the same resolved
+  media. A failed private-media download remains non-blocking and falls back to
+  initials, preserving access to the conversation.
+- **Validation:**
+  - Focused avatar/sidebar/details Vitest run — passed 3 files with 6 tests,
+    including private-path download, workspace-avatar reuse, and graceful
+    failure coverage.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects, 59
+    Vitest files with 313 tests, 24/24 Node contract tests, synchronized version
+    `0.16.0`, the production renderer build, and the bundle secret scan. Vite
+    retained the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are absent.
+  - Final `git diff --check` and changed-diff secret-pattern inspection —
+    passed.
+- **Documentation updated:** Documented private DM avatar-poster hydration in
+  the application-shell data flow and appended this canonical progress entry.
+- **Known limitations:** The live signed-in account and private Storage path
+  were not available to the automated browser fixture, so the exact Bhindi and
+  Thanda Admin posters still need a quick installed-app visual confirmation.
+  The local macOS bundle is not notarized.
+- **Next:** Reopen Personal in the installed app and confirm both uploaded
+  posters appear in the left DM list and selected-conversation header.
+
+## 2026-07-23 — Replace Orbit with minimal motion branding
+
+- **Completed:** Replaced the colorful Bakbak Orbit treatment with a generated
+  flat native/favicon frame built from one open conversation ring and three
+  particles. Added the reusable code-native `BakbakMotionMark` SVG to
+  authentication, invite, loading, empty-Personal, and server identity
+  surfaces; its jaws chomp and particles advance while reduced-motion users
+  receive a static mark. Regenerated the complete Tauri macOS, Windows, iOS,
+  and Android icon bundle. Rebuilt the server identity header as a solid,
+  gradient-free surface with light/dark-responsive ink, paper, border, orbit,
+  mark, lime-particle accent, and fine monochrome noise.
+- **Decisions:** Kept the desktop icon as a static, legible frame because native
+  shells do not provide one portable animated-icon contract; the renderer owns
+  the actual motion. Used an original open-ring conversation metaphor instead
+  of a character face or direct Pac-Man copy. Kept the texture in a separate
+  turbulence SVG so CSS can tint its blend and opacity per scheme without
+  baking another fixed background into the interface.
+- **Validation:**
+  - Focused motion-mark and channel-sidebar Vitest run — passed 2 files with 12
+    tests.
+  - `node --test scripts/monochrome-appearance.test.mjs` — passed 4/4 motion
+    branding, semantic-color, Roundo, and appearance contracts, including the
+    no-gradient, noise, bounded-accent, and reduced-motion guards.
+  - Mock-browser QA at 1280×720 and 1024×680 — passed. The header measured
+    232×80 px with a 48 px mark; the jaw transform changed over 360 ms; dark
+    used a solid `rgb(16, 17, 20)` surface with 0.14 noise opacity; light used
+    `rgb(242, 240, 233)` with ink `rgb(21, 22, 25)`, lime
+    `rgb(93, 122, 24)`, and 0.10 noise opacity. No gradient, page/sidebar
+    overflow, console warning, or console error was present.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects, 60
+    Vitest files with 314 tests, 24/24 Node contract tests, synchronized version
+    `0.16.0`, production renderer build, and bundle secret scan before a
+    separate concurrent soundboard edit entered the shared tree. On that final
+    shared tree, lint, both TypeScript projects, the same 314/24 tests,
+    production build, and bundle secret scan passed again; the repository-wide
+    format recheck failed only on that unrelated
+    `src/features/soundboard/Soundboard.test.tsx` edit. An explicit check of all
+    branding files passed.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are absent.
+  - Full-resolution inspection of `src-tauri/icons/icon.png` — passed for
+    centered geometry, safe margins, clean silhouette, and restrained grain.
+- **Documentation updated:** Updated the current architecture, active v1 plan,
+  and plan 0020 visual/acceptance contracts; appended this canonical progress
+  entry.
+- **Known limitations:** Native desktop icons remain static by platform
+  contract. The rebuilt icon still needs final installed Dock/app-switcher and
+  Windows taskbar/installer observation; the local macOS bundle is not
+  notarized. A concurrent soundboard test edit remains unformatted and was
+  preserved rather than modified as part of this branding task.
+- **Next:** Open the rebuilt app for the installed macOS icon check, then verify
+  the Windows taskbar and installer artwork before the next friend-test build.
+
+## 2026-07-23 — Float the soundboard stop control
+
+- **Completed:** Removed the soundboard's dedicated stop footer and replaced it
+  with a standalone circular control over the drawer's bottom-right corner.
+  The optional active `n/5` count now sits immediately to the button's left,
+  while a compact radial scrim fades from transparent into the active theme's
+  dark or light glass. The existing voice-control dock remains the full
+  bottom-bar treatment.
+- **Decisions:** Kept the stop control mounted and disabled at zero sounds so
+  its location stays predictable. The scrim is pointer-transparent except for
+  the button, and the scrolling sound list keeps enough trailing space that the
+  overlay cannot hide the final sound row.
+- **Validation:**
+  - Focused Soundboard Vitest — passed 9/9 tests, including the new standalone
+    non-footer contract and stop behavior.
+  - `node --test scripts/monochrome-appearance.test.mjs` — passed 4/4
+    appearance and semantic-control contracts.
+  - Mock-browser QA in Dark and Light — passed. The stop button remained the
+    rightmost item at an 11 px drawer-edge gap, the active `1/5` count rendered
+    to its left, and computed scrim colors resolved to black and white
+    respectively. The browser console had no warnings or errors; Auto theme was
+    restored after validation.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects, 60
+    Vitest files with 314 tests, 24/24 Node contract tests, synchronized version
+    `0.16.0`, the production renderer build, and the bundle secret scan. Vite
+    retained the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are absent.
+  - Final `git diff --check` and changed-diff secret inspection — passed.
+- **Documentation updated:** Updated the soundboard runtime contract and plan
+  0007's completed stopping-control criterion; appended this canonical progress
+  entry.
+- **Known limitations:** The corner fade still needs direct observation over
+  native macOS and Windows material. The local macOS bundle is not notarized.
+- **Next:** Open the installed soundboard in both schemes, play two overlapping
+  sounds, and confirm the bottom-right Stop plus `2/5` remain clear while
+  scrolling the final row.
+
+## 2026-07-23 — Add instant local workspace cache and voice acceleration
+
+- **Completed:** Added the user-scoped `bakbak-cache` IndexedDB database for
+  normalized account state, confirmed thread history, and profile-media blobs.
+  Restored the last text channel or Personal DM stale-while-revalidate, kept
+  per-thread in-session history, added cursor pagination and stable message
+  merging, progressively hydrated visible profile media through memory,
+  IndexedDB, then Supabase Storage, and introduced a clearly marked read-only
+  cached/offline state with online, focus, and bounded-backoff recovery.
+  Added Data & storage usage, retention copy, and confirmation-protected
+  current-account clearing. Accelerated voice preparation with immediate
+  keyboard focus, 75 ms hover dwell, a reusable prewarmed 48 kHz RNNoise
+  AudioContext, host-scoped ten-minute relay hints, and identifier-free stage
+  timings.
+- **Decisions:** Kept Supabase RLS, current membership, Storage policy,
+  Realtime, and LiveKit authorization authoritative; cached records only paint
+  the interface. Retained cache across logout but isolated every key by Bakbak
+  user ID. Persisted only the newest 200 confirmed messages per thread and
+  capped profile media at 256 MiB per account with least-recently-used pruning.
+  Kept soundboard caching separate and never persisted LiveKit tokens, rooms,
+  tracks, credentials, optimistic messages, or object URLs.
+- **Validation:**
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects, 62
+    Vitest files with 325 tests, 24/24 Node contract tests, synchronized version
+    `0.16.0`, the production renderer build, and the bundle secret scan. Vite
+    retained the existing non-blocking large-chunk warning.
+  - Mock-browser QA — passed the Data & storage layout, current usage and
+    freshness presentation, 200-message/256 MiB policy copy, two-step clear
+    confirmation, safe cancellation, and zero browser warnings or errors.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are absent.
+- **Documentation updated:** Added plan 0021, linked its delivery from the
+  active desktop-v1 plan, updated architecture data flow/security and cache
+  contracts, added the README privacy/retention explanation, and appended this
+  canonical progress entry.
+- **Known limitations:** The 300 ms cached-startup, 100 ms room-switch, 1.5
+  second prepared-voice, and 3 second cold-voice targets still require ten
+  installed runs with median, p95, and failure records on macOS and Windows.
+  Installed offline restore/reconnect/clear acceptance also remains pending on
+  both platforms. The local macOS bundle is not notarized.
+- **Next:** Run the plan 0021 installed performance matrix on macOS and Windows,
+  record median/p95 plus exact failures, and tune only stages that miss their
+  target.
+
+## 2026-07-23 — Recover stale cached profile covers
+
+- **Completed:** Replaced raw cached cover `<img>` elements with one shared
+  profile-media image boundary across the member rail, signed-in user dock,
+  profile popover, and Personal details panel. A WebKit decode failure now
+  removes the broken frame immediately, evicts that account/bucket/path from
+  memory and IndexedDB, coalesces concurrent recovery requests, and retries the
+  authenticated Storage object once. A second failure or pathless legacy-image
+  failure stays on the neutral fallback instead of showing the native blue
+  question-mark icon.
+- **Decisions:** Recovered only the exact failed media revision rather than
+  clearing the account cache or slowing every successful cache hit with an
+  eager decode probe. Limited recovery to one network retry per mounted image
+  so a deleted or genuinely invalid source cannot loop or hammer private
+  Storage. Kept retry authorization on the existing Supabase Storage path.
+- **Validation:**
+  - Focused profile-media Vitest run — passed 6 files with 21 tests, including
+    stale-path eviction, Storage refresh, one-retry behavior, final neutral
+    fallback, profile popover, member rail, user dock, and Personal details.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects, 63
+    Vitest files with 328 tests, 24/24 Node contract tests, synchronized version
+    `0.16.0`, the production renderer build, and bundle secret scan. Vite kept
+    the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are absent.
+- **Documentation updated:** Updated the profile-media lifecycle and failure
+  recovery contract in architecture and appended this canonical progress entry.
+- **Known limitations:** The exact private covers shown in the report are not
+  available in mock mode, so their successful authenticated retry still needs
+  one installed-app observation. The local macOS bundle is not notarized, and
+  Windows WebView2 observation remains pending.
+- **Next:** Open the rebuilt installed app, revisit the reported member rail,
+  user dock, and Bhindi profile, and confirm each stale cached cover refreshes
+  once without a question-mark placeholder.
+
+## 2026-07-23 — Replace the server logo with a Beta version chip
+
+- **Completed:** Removed the animated Bakbak mark from the channel-panel server
+  header and replaced it with an accessible `BETA` / `v0.16.0` release chip
+  beside the current server name. Added one renderer version constant sourced
+  directly from `package.json`, so the chip follows future synchronized release
+  bumps instead of carrying a second hardcoded version. Preserved the solid
+  theme-responsive header surface, restrained noise, orbit texture, and logo
+  use on the app icon and larger authentication/loading identity screens.
+- **Decisions:** Limited removal to the compact server header shown in the
+  report rather than deleting Bakbak's product icon globally. Used a 30 px
+  pill with an internal divider, tabular version numerals, the existing Roundo
+  11 px readability floor, and truncation only for unusually long server names.
+  Kept the complete release context in an accessible label.
+- **Validation:**
+  - Focused `ChannelSidebar` Vitest run — passed 11/11 tests, including the
+    current version, Beta label, retired tagline, and absent header-mark
+    contracts.
+  - `node --test scripts/monochrome-appearance.test.mjs` — passed 4/4 branding,
+    semantic-color, Roundo, and appearance contracts.
+  - Mock-browser QA at 1280×720 — passed in Dark and Light. The header measured
+    232×80 px and the chip 100.77×30 px; `BETA v0.16.0` and the complete mock
+    server name, The Corner, rendered without a logo or horizontal overflow.
+    Dark resolved to `rgb(16, 17, 20)` with 0.14 noise opacity; Light resolved
+    to `rgb(242, 240, 233)` with 0.10 noise opacity. Appearance was restored to
+    Auto after testing.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects, 63
+    Vitest files with 328 tests, 24/24 Node contract tests, synchronized version
+    `0.16.0`, production renderer build, and bundle secret scan. Vite retained
+    the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are absent.
+- **Documentation updated:** Updated the current architecture, active desktop-v1
+  plan, plan 0020 visual contract, and this canonical progress log.
+- **Known limitations:** The compact header still needs one installed
+  macOS/Windows native-material observation. The local macOS bundle is not
+  notarized.
+- **Next:** Confirm the Beta/version chip against real native light and dark
+  materials, then let the synchronized release tooling supply the next version
+  automatically.
+
+## 2026-07-23 — Refine the server header release chip
+
+- **Completed:** Replaced the shouty `BETA` / `v0.16.0` header badge with a
+  quieter Bakbak wordmark plus compact `β · v0.16.0` release chip. Kept the
+  version sourced from `package.json`, preserved the no-logo server header, and
+  retained the theme-responsive solid surface, noise, and orbit treatment.
+- **Decisions:** Made Bakbak the fixed brand text in the identity header rather
+  than repeating the mock server name, because this header is now product
+  branding instead of multi-server navigation. Used the visible beta symbol for
+  polish while keeping the accessible label as `Beta release, version 0.16.0`.
+  Added real spaces around the dot so copied/inspected text matches the visual
+  `β · vX.Y.Z` contract.
+- **Validation:**
+  - Focused `ChannelSidebar` Vitest run — passed 11/11 tests, including the
+    Bakbak wordmark, `β · v0.16.0` chip text, accessible beta/version label,
+    retired tagline, and absent header-logo contracts.
+  - `node --test scripts/monochrome-appearance.test.mjs` — passed 4/4 branding,
+    semantic-color, Roundo, and appearance contracts.
+  - Mock-browser QA at 1280×720 — passed in Dark and Light. The header measured
+    232×80 px, the chip measured 76.41×30 px, `β · v0.16.0` rendered with
+    `Beta release, version 0.16.0`, no logo appeared, and there was no page or
+    sidebar horizontal overflow. Dark resolved to `rgb(16, 17, 20)` with 0.14
+    noise opacity; Light was selected through Settings and resolved to
+    `rgb(242, 240, 233)` with 0.10 noise opacity. Appearance was restored to
+    Auto after testing.
+  - Initial `pnpm check` — failed at Prettier for
+    `src/features/channels/ChannelSidebar.tsx`; formatted the touched files and
+    reran.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects, 63
+    Vitest files with 328 tests, 24/24 Node contract tests, synchronized
+    version `0.16.0`, production renderer build, and bundle secret scan. Vite
+    retained the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+  - Post-documentation `pnpm format:check`, `git diff --check`, and
+    `git check-ignore -v .env.local supabase/functions/.env.local` — passed;
+    both local environment files remained ignored and outside the change set.
+- **Documentation updated:** Updated the current architecture, active
+  desktop-v1 plan, plan 0020 visual contract, and this canonical progress log.
+- **Known limitations:** The compact header still needs one installed
+  macOS/Windows native-material observation. The local macOS bundle is not
+  notarized.
+- **Next:** Confirm the refined `β · vX.Y.Z` chip against real native light and
+  dark materials during the next installed-app pass.
+
+## 2026-07-23 — Implement rich messaging, media, replies, and stickers
+
+- **Completed:** Implemented plan 0022 across text channels and Personal DMs.
+  Added compatible v2 rich-message contracts, same-thread replies with
+  notification coercion, author soft deletion, private attachment
+  reservations/finalization, server Bakbak stickers, sticker reactions,
+  deleted-message-aware activity, and Realtime hydration. Added private
+  `message-media` and `message-stickers` buckets plus authenticated
+  `message-media-manage` and `sticker-manage` Edge Functions. The shared
+  composer now supports staged/pasted/dropped images and GIFs, validated H.264
+  MP4, resumable progress/cancellation/retry, quoted replies, standalone
+  Bakbak stickers, direct GIPHY GIF/sticker search, and accessible message
+  actions. Rendering includes responsive media, static-first/reduced-motion
+  behavior, expanded images, lazy videos with offscreen pause, reaction pills,
+  deleted-parent placeholders, and offline labels. IndexedDB schema v2 adds a
+  256 MiB/account authenticated message/sticker poster LRU while excluding
+  videos, animated originals, transient URLs, and GIPHY assets. Existing GIF
+  avatar/cover behavior was not changed.
+- **Decisions:** Kept `send_message` and `send_direct_message` untouched for
+  installed-client rollback and generated compatibility bodies in v2. Kept
+  GIPHY entirely client-direct with rating `r`, `messaging_non_clips`,
+  20-result pages, attribution/analytics, ID-only persistence, 100-ID history
+  batches, session/in-flight deduplication, and a disabled missing-key state.
+  Used signed TUS reservations rather than renderer Storage grants, client-side
+  MP4Box inspection rather than extending the audio-only FFmpeg core, advisory
+  locks for quota/reaction races, and archived referenced stickers while
+  hard-deleting only unreferenced sticker assets.
+- **Validation:**
+  - Initial `pnpm check` — failed only because `src/app/App.tsx` needed
+    Prettier after the last upload-progress edit; formatted it and reran.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects, 66
+    Vitest files with 337 tests, 24/24 Node contract tests, synchronized
+    version `0.16.0`, production renderer build, and bundle secret scan. Vite
+    retained the existing non-blocking large-chunk warning; MP4Box is a lazy
+    130.33 kB chunk.
+  - `pnpm dlx supabase@latest db reset` — passed from a clean local database
+    with migration `202607230001_rich_messaging.sql`.
+  - `pnpm dlx supabase@latest test db` — passed 13 files and 331 pgTAP
+    assertions, including admin/member/outsider RLS, reply isolation,
+    attachment object finalization, sticker ownership/archive history,
+    reaction uniqueness/user cap, deletion tombstones, activity recalculation,
+    and Realtime publication.
+  - `deno test --allow-env --config supabase/deno.json
+supabase/functions/tests` — passed 37/37 tests, including media request
+    authentication/limits/lifecycle and PNG/GIF/WebP sticker inspection.
+  - Mock browser smoke at 1280×720 and 1024×680 — passed channel rendering,
+    GIPHY missing-key explanation, empty Bakbak sticker management, reply bar
+    with default Notify, sent quoted reply, picker/composer bounds, and no
+    horizontal overflow or console warnings/errors.
+  - `pnpm tauri build` — compiled and ad-hoc signed `Bakbak.app`, then failed
+    while running the local DMG wrapper. `pnpm tauri:build:local` passed and
+    rebuilt the ARM64 app bundle; notarization was skipped because Apple
+    credentials are absent.
+  - `pnpm dlx supabase@latest db push --dry-run` — passed and listed only
+    `202607230001_rich_messaging.sql`.
+  - `pnpm dlx supabase@latest db push` — passed and deployed the additive rich
+    messaging migration to the linked hosted project.
+  - `pnpm dlx supabase@latest functions deploy message-media-manage --use-api`
+    and `sticker-manage --use-api` — passed for hosted project
+    `ezdwfqcmrofcemmfzxgl`; unauthenticated probes to both functions returned
+    HTTP 401.
+  - `pnpm dlx supabase@latest migration list` — passed; local and hosted
+    migration history match through `202607230001`.
+  - GitHub Actions repository-variable inspection — confirmed
+    `VITE_GIPHY_API_KEY` is not configured; no secret value was read or
+    invented.
+- **Documentation updated:** Added plan 0022; updated architecture, the active
+  v1 plan, root/Supabase setup and deployment documentation, release GIPHY
+  build configuration, `.env.example`, Data & storage privacy copy, and this
+  canonical progress entry.
+- **Known limitations:** The GitHub Actions `VITE_GIPHY_API_KEY` repository
+  variable is not configured, so the renderer has not been released. Real
+  GIPHY attribution/analytics/CSP delivery and 429 behavior still require that
+  beta key. The two-account channel/DM Realtime/media/deletion matrix, real
+  H.264/AAC playback, reduced-motion/offline cache, existing GIF avatar/cover
+  regression, Windows installed test, and full macOS installed test remain
+  pending. The local DMG wrapper failure and missing signing/notarization
+  credentials remain packaging limitations.
+- **Next:** Configure the public `VITE_GIPHY_API_KEY` GitHub Actions repository
+  variable, run the plan 0022 hosted two-account and installed macOS/Windows
+  acceptance matrix, then release the renderer.
+
+## 2026-07-23 — Repair rich-message loading and false offline state
+
+- **Completed:** Reproduced the reported cached-DM/offline screen against local
+  PostgREST and found that both channel and DM rich selects used generated
+  self-constraint-name hints that PostgREST rejected with `PGRST200`, despite
+  the reply foreign keys existing. Switched both reply embeds to the accepted
+  `reply_to_id` column hint. Added connectivity-error classification so
+  PostgREST/API contract failures remain actionable alerts instead of placing
+  the entire app into read-only offline mode. Thread refreshes now participate
+  in the existing workspace reconnect revision, allowing genuine network
+  failures to retry after connectivity returns.
+- **Decisions:** Kept the deployed database and Edge Functions unchanged; the
+  fault was in the renderer's PostgREST select syntax. Retained HTTP 401 for
+  unauthenticated function and table probes because protected resources must
+  require an authenticated Supabase session.
+- **Validation:**
+  - Original anonymous local rich-DM and channel REST queries — reproduced
+    `PGRST200` because PostgREST could not resolve
+    `*_reply_to_id_fkey` as a self-relation hint.
+  - Corrected complete anonymous rich-DM REST query — reached the expected
+    table authorization boundary with HTTP 401 and no `PGRST200`, confirming
+    that PostgREST resolved replies, attachments, and reactions before denying
+    the unauthenticated read.
+  - Focused Vitest run — passed 3 files and 6 tests covering relationship hints,
+    connectivity classification, and existing DM behavior.
+  - Initial final `pnpm check` — failed only because
+    `src/lib/connectivity.test.ts` needed Prettier after the last assertion;
+    formatted it and reran.
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 68 Vitest files
+    with 341 tests, 24/24 Node contract tests, version synchronization,
+    production build, and bundle secret scan.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+- **Documentation updated:** Updated the cached/offline and rich-reply query
+  contracts in architecture and appended this canonical progress entry.
+- **Known limitations:** The rebuilt app still needs the signed-in account's
+  installed-app observation against hosted Supabase. Windows installed
+  validation, full plan 0022 two-account acceptance, and the GIPHY repository
+  variable remain pending.
+- **Next:** Quit the previously running build, open the rebuilt app, verify
+  channel and DM refresh/send while signed in, then continue the plan 0022
+  rollout matrix.
+
+## 2026-07-23 — Repair signed resumable message uploads
+
+- **Completed:** Reproduced the reported TUS HTTP 403 from its response text
+  and traced it to the renderer posting a valid signed upload token to
+  Storage's ordinary `/upload/resumable` endpoint. Switched hosted and local
+  message uploads to Supabase's signed
+  `/storage/v1/upload/resumable/sign` route, using the public project key and
+  scoped `x-signature` header. Removed the unnecessary user bearer header from
+  the signed object transfer while retaining authenticated reservation,
+  cancellation, finalization, and cleanup. Added a concise retry/sign-in
+  message for future TUS authorization failures instead of exposing the raw
+  transport exception.
+- **Decisions:** Preserved the no-insert RLS policy for renderers; widening
+  Storage INSERT access would bypass reservation limits and atomic message
+  publication. Kept the deployed management function unchanged because it
+  already generated correct path-scoped upload tokens.
+- **Validation:**
+  - Focused Vitest run — passed 2 files and 5 tests for media preparation plus
+    signed hosted/local endpoints, public-key/signature headers, and readable
+    TUS authorization errors.
+  - Initial `pnpm check` — failed at lint because the first TUS response parser
+    used an unsafe function cast; replaced it with a strict type guard and
+    reran.
+  - `pnpm check` — passed formatting, lint, strict TypeScript, 69 Vitest files
+    with 344 tests, 24/24 Node contract tests, version synchronization,
+    production build, and bundle secret scan.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+- **Documentation updated:** Updated the signed message-media upload boundary
+  in architecture and appended this canonical progress entry.
+- **Known limitations:** A signed-in installed-app retry against hosted Storage
+  is still required. Windows installed validation, full plan 0022 two-account
+  acceptance, and the GIPHY repository variable remain pending.
+- **Next:** Quit the previous build, open the rebuilt app, retry the image send
+  in `#wallpapers`, then exercise cancellation/retry and one DM upload.
+
+## 2026-07-23 — Repair reply attribution, deletion, and GIPHY composing
+
+- **Completed:** Removed the phantom “Former friend” row from ordinary rich
+  messages by replacing the recursive PostgREST reply embed with explicit
+  scalar `reply_to_id` hydration for both channel and DM history/Realtime
+  detail loads. Replaced the renderer's native delete prompt with an accessible
+  in-app confirmation dialog that awaits the delete request and displays
+  backend failures. Enlarged the GIPHY picker to a 680 px desktop maximum with
+  stable 150 px result rows. GIPHY selections now stage in the composer with a
+  removable preview, accept an optional text caption, preserve the draft after
+  failure, and register send analytics only after publication. Added and
+  deployed additive channel/DM v2 RPC wrappers that accept validated GIPHY
+  presentations with structured text while preserving standalone Bakbak
+  stickers and installed-client compatibility.
+- **Decisions:** Hydrated reply parents in a second authorized query because
+  PostgREST exposes the recursive reverse relation as an array, where an empty
+  array had been mistaken for a reply object. Used the shared Modal component
+  instead of `window.confirm` so delete behavior is consistent in Tauri
+  WebViews. Kept Bakbak stickers immediate and standalone, but treated GIPHY
+  assets like staged attachment content so users explicitly send them with or
+  without text.
+- **Validation:**
+  - Focused ESLint plus Vitest — passed 3 files and 8 tests covering explicit
+    reply hydration, rejection of empty reply arrays, staged GIPHY captions and
+    analytics, and confirmation-gated deletion.
+  - In-app browser mock-mode QA — passed: the delete dialog rendered with Keep
+    and Delete actions; the GIPHY picker measured 680×593 px with three 214 px
+    columns. Live GIPHY results were intentionally unavailable under the fake
+    visual-test key; the mocked interaction test covered selection and caption
+    send.
+  - `pnpm dlx supabase@latest db reset` — passed with migration
+    `202607230002_giphy_captions.sql`.
+  - `pnpm dlx supabase@latest test db` — passed 13 pgTAP files and 335
+    assertions, including channel and DM GIPHY-caption publication.
+  - `pnpm dlx supabase@latest db push --dry-run` — passed and identified only
+    `202607230002_giphy_captions.sql`.
+  - `pnpm dlx supabase@latest db push` — passed; the additive GIPHY-caption RPC
+    migration was applied to the linked hosted project.
+  - `pnpm dlx supabase@latest migration list` — passed; local and hosted
+    histories match through `202607230002`.
+  - Initial `pnpm check` — stopped at one unsafe-assignment lint finding in the
+    new GIPHY interaction test; replaced the matcher-derived `any` value with a
+    typed captured draft.
+  - Final `pnpm check` — passed formatting, lint, strict TypeScript, 70 Vitest
+    files with 346 tests, 24/24 Node contract tests, version synchronization,
+    production build, and bundle secret scan.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+  - `git diff --check` — passed.
+- **Documentation updated:** Updated architecture and plan 0022 for explicit
+  reply-parent hydration, staged/captioned GIPHY sends, and the preserved
+  standalone Bakbak-sticker boundary; appended this canonical progress entry.
+- **Known limitations:** The real `VITE_GIPHY_API_KEY` GitHub Actions variable
+  remains unconfigured, so a release build cannot exercise real GIPHY
+  attribution/analytics. Hosted two-account confirmation for deletion,
+  channel/DM captioned GIF sends, and Windows installed acceptance remain
+  pending. The local macOS build is ad-hoc signed and not notarized.
+- **Next:** Quit the previously running app, open the rebuilt
+  `src-tauri/target/release/bundle/macos/Bakbak.app`, then verify one channel
+  and one DM GIPHY-caption send plus confirmed deletion with two signed-in
+  accounts.
+
+## 2026-07-23 — Refine the message composer, emoji picker, and delete dialog
+
+- **Completed:** Reorganized the shared channel/DM composer into one
+  Discord-shaped bar with attachment at the leading edge, a flexible message
+  field, and GIF, Bakbak sticker, emoji, and send actions at the trailing edge.
+  Added a searchable five-category Unicode emoji picker that inserts at the
+  active text selection, updates mention offsets through the existing
+  structured-draft boundary, and restores input focus. Simplified the delete
+  confirmation from three repetitions of “Delete message” to one clear
+  irreversible-action label, a concise title/description, and distinct Keep
+  and Delete actions. Added 18–20 px of body/action inset so dialog buttons no
+  longer touch the outer border.
+- **Decisions:** Kept only implemented composer tools instead of copying
+  Discord's unsupported gift/application buttons. Used platform-rendered
+  Unicode emoji without a new dependency or custom artwork. Preserved the
+  explicit send button for pointer and assistive-technology users while Enter
+  continues to submit from the message field.
+- **Validation:**
+  - Focused ESLint plus Vitest — passed 2 chat files and 6 tests, including
+    cursor-position emoji insertion, picker dismissal, GIPHY staging, and
+    confirmation-gated deletion.
+  - Mock in-app browser QA at 1280×800 and 1024×680 — passed composer, emoji
+    picker, and delete-dialog visual/interaction checks. At the minimum
+    viewport, the composer measured 502 px wide, its action strip remained
+    inside the bar, the 388×401 px emoji picker remained fully in bounds,
+    document width stayed exactly 1024 px, and the console reported no
+    warnings or errors.
+  - Initial `pnpm check` — failed only because the GIF badge used a forbidden
+    10 px product-text size; changed it to the approved 11 px caption token.
+  - Final `pnpm check` — passed formatting, lint, both strict TypeScript
+    projects, 70 Vitest files with 347 tests, 24/24 Node contract tests,
+    synchronized version `0.16.0`, production renderer build, and bundle
+    secret scan. Vite retained the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+- **Documentation updated:** Updated the current architecture and plan 0022
+  composer contracts, and appended this canonical progress entry.
+- **Known limitations:** The picker intentionally starts with a curated common
+  Unicode set; recent emoji, skin-tone variants, and the complete Unicode
+  catalog are not yet included. Installed macOS/Windows light/dark observation
+  remains part of the pending plan 0022 acceptance matrix. The local macOS
+  bundle is ad-hoc signed and not notarized.
+- **Next:** Exercise the composer, picker, and confirmation once in the rebuilt
+  installed macOS app, then continue the plan 0022 two-account channel/DM
+  acceptance matrix.
+
+## 2026-07-23 — Align the composer and sidebar footer
+
+- **Completed:** Replaced the composer's asymmetric zero-top/20 px bottom
+  padding and the user dock's independent 58 px height with one shared 68 px
+  conversation-footer token. The resting 52 px message bar now has an even
+  8 px vertical inset, while the sidebar username dock fills the same footer
+  band. Added a shell regression that preserves the shared geometry.
+- **Decisions:** Aligned the footer surfaces by height and centre line instead
+  of fixing the entire composer area to one row; reply, attachment, and GIPHY
+  previews can still grow upward without compressing the message input.
+- **Validation:**
+  - Focused `glass-shell` contract test — passed 4/4 checks, including the new
+    shared conversation/identity footer rhythm.
+  - Mock in-app browser QA at 1280×800 — passed with both footer bands at
+    68 px and centre y=766; the 52 px composer measured y=740–792 with 8 px
+    above and below. At 1024×680, both bands shared centre y=646, document
+    width stayed exactly 1024 px, and the console reported no warnings or
+    errors.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects,
+    70 Vitest files with 347 tests, 25/25 Node contract tests, synchronized
+    version `0.16.0`, production renderer build, and bundle secret scan. Vite
+    retained the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+- **Documentation updated:** Updated the current architecture and plan 0022
+  footer-alignment contract, and appended this canonical progress entry.
+- **Known limitations:** The rebuilt app still needs direct installed-macOS
+  observation against the user's exact long display name and cover artwork.
+  Windows installed validation remains part of the pending plan 0022 matrix.
+- **Next:** Open the rebuilt `Bakbak.app` and confirm the username dock and
+  message bar remain centred on the same footer line with the reported account.
+
+## 2026-07-24 — Repair the Linux Tauri feature allowlist check
+
+- **Completed:** Added `app.macOSPrivateApi: true` to the base Tauri
+  configuration so plain cross-platform Cargo builds see the allowlist required
+  by the enabled `tauri/macos-private-api` feature. Preserved the macOS override
+  and added a native-config regression assertion for the base configuration.
+- **Decisions:** Kept the private API enabled because Bakbak's approved macOS
+  glass treatment depends on it. Duplicating the allowlist in the base and
+  macOS-specific configurations preserves the platform override contract while
+  allowing the Ubuntu `cargo check` job to validate the dependency features.
+- **Validation:**
+  - `node --test scripts/window-chrome-config.test.mjs` — passed 3/3 tests.
+  - `cargo check --locked --manifest-path src-tauri/Cargo.toml` — passed.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects,
+    70 Vitest files with 347 tests, 25/25 Node contract tests, synchronized
+    version `0.16.0`, the production renderer build, and bundle secret scan.
+    Vite retained the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+  - `git diff --check` — passed.
+- **Documentation updated:** Updated the Tauri shell contract in
+  `docs/architecture.md` and appended this canonical progress entry. The active
+  plan scope and acceptance state did not change.
+- **Known limitations:** The exact Ubuntu runner cannot be executed on the
+  local macOS host; the base-config regression covers the configuration path
+  missing from that runner, and the hosted PR check still needs to rerun.
+- **Next:** Push the fix and rerun PR #33's locked Rust check on Ubuntu.
+
+## 2026-07-24 — Replace retro cues with modern interface audio
+
+- **Completed:** Replaced the nine retro interface WAVs with an original,
+  deterministic twelve-cue pack built from soft sine plucks, quiet second
+  harmonics, rounded envelopes, and approximately -6 dBFS peaks. Added
+  committed message-send and successful microphone mute/unmute events alongside
+  the modernized message-receive, voice join/leave, screen-share start/stop,
+  reconnect, and failure cues. Updated the Settings description while
+  preserving system-output routing and the existing preference schema.
+- **Decisions:** Kept soundboard clips, microphone processing, voice effects,
+  LiveKit contracts, and native code outside this renderer-only change. Outgoing
+  messages play only after channel or DM commit, mute/unmute plays only after
+  the publication change succeeds, and remote screen-share entry continues to
+  mean another participant starts presenting rather than watching. The pack is
+  newly generated Bakbak work and contains no Discord or third-party samples.
+- **Validation:**
+  - `node --test scripts/generate-interface-sounds.test.mjs` — passed 1/1
+    deterministic asset contract for twelve exact names/durations, 48 kHz
+    16-bit mono PCM, fades, peak bounds, and the sub-1 MB ceiling; the committed
+    pack totals approximately 292 KB.
+  - Focused Vitest run for `App`, `interface-sounds`, and `useVoiceRoom` —
+    passed 3 files with 44/44 tests, including committed channel/DM sends,
+    failed-send silence, successful mute/unmute, failed-mute silence, gains,
+    throttling, and remote deafen behavior.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects,
+    70 Vitest files with 350 tests, 25/25 Node contract tests, synchronized
+    version `0.16.0`, production renderer build, and bundle secret scan. Vite
+    retained the existing non-blocking large-chunk warning.
+  - `cargo check --locked --manifest-path src-tauri/Cargo.toml` — passed.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+  - `git diff --check` — passed.
+- **Documentation updated:** Added plan 0023, marked its implemented Phase 5
+  scope in plan 0001, updated the current architecture and sound ownership
+  contract, and appended this canonical progress entry.
+- **Known limitations:** Automated checks validate lifecycle timing, binary
+  format, amplitude, determinism, and packaging but cannot judge the perceived
+  tone. Installed macOS and Windows two-client auditory QA remains required for
+  rapid messages, roster churn, mute/unmute, local/remote sharing, reconnect,
+  deafen, headphones, and separate system/call outputs.
+- **Next:** Audition all four Settings previews plus message send/receive and
+  mute/unmute in the rebuilt macOS app, tune only the generator if needed, then
+  run the same two-client matrix on Windows.
+
+## 2026-07-24 — Refresh the server identity header
+
+- **Completed:** Reworked the 232×80 px top-left server identity surface around
+  the existing Bakbak mark, wordmark, and package-backed beta chip. Added a
+  compact static frame of the code-native mark and replaced the previous
+  noise/orbit treatment with a theme-responsive graphite-or-paper atmosphere,
+  sparse constellation, and diagonal signal weave. Removed the now-unused
+  `brand-noise.svg` raster dependency.
+- **Decisions:** Used the supplied T3 Code reference for compact composition and
+  atmosphere without copying its purple palette or importing new artwork.
+  Kept the texture code-native and contained to the brand header, preserved
+  neutral ordinary chrome, kept the existing version chip, and disabled the
+  mark's animation in this always-visible surface.
+- **Validation:**
+  - Focused Prettier, ESLint, ChannelSidebar/BakbakMotionMark Vitest, branding
+    contract, and `git diff --check` — passed after correcting an initially
+    over-nested test selector; 12/12 focused component tests and 4/4 branding
+    contract tests passed.
+  - Mock in-app browser QA at 1280×800 and 1024×680 — passed in dark and light
+    schemes. The header remained exactly 232×80 px, the 36 px mark, wordmark,
+    and 78.4 px release chip stayed in bounds, horizontal overflow remained
+    zero, and the console reported no warnings or errors.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects, 70
+    Vitest files with 350 tests, 25/25 Node contract tests, synchronized version
+    `0.16.0`, production build, and bundle secret scan. Vite retained the
+    existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+- **Documentation updated:** Updated the current branding architecture and plan
+  0020 visual/acceptance contract, and appended this canonical progress entry.
+- **Known limitations:** The rebuilt native app still needs direct observation
+  with the macOS overlay traffic lights and native window material. Windows
+  installed light/dark observation remains part of the open cross-platform
+  appearance matrix.
+- **Next:** Open the rebuilt `Bakbak.app`, inspect the header once in native
+  macOS light and dark modes, then tune only the contained atmosphere if the
+  native material changes its perceived contrast.
+
+## 2026-07-24 — Replace the chomp logo with a linked-bb identity
+
+- **Completed:** Removed the logo from the top-left server brand strip so it
+  now contains only the Bakbak wordmark, package-backed beta/version chip, and
+  atmospheric texture. Replaced the open-ring/three-particle identity with a
+  custom static pair of linked lowercase `b` strokes. Promoted
+  `public/bakbak.svg` to the canonical browser/native source, switched the
+  favicon, replaced `BakbakMotionMark` with the static `BakbakMark`, removed the
+  old Orbit raster, and regenerated the complete tracked macOS, Windows, iOS,
+  and Android icon bundle.
+- **Decisions:** Chose a direct `bb` monogram because it names Bakbak at 16–32
+  px without a mascot, face, mouth, dot sequence, generic speech bubble, or
+  ornamental animation. Kept a flat graphite rounded-square ground with warm
+  ivory strokes for native consistency. Preserved the separately approved
+  server-header atmosphere while making that always-visible strip explicitly
+  logo-free.
+- **Validation:**
+  - Full-resolution and 32 px generated-icon inspection — passed for a clean
+    linked-`bb` silhouette, transparent rounded corners, safe margins, and
+    small-size legibility.
+  - Focused ESLint, App/ChannelSidebar/BakbakMark Vitest, and identity contract
+    checks — passed 21/21 component tests and 4/4 Node contract tests. The
+    contract verifies the canonical SVG favicon, exactly two SVG paths, absent
+    circles/filters/gradients, absent server-header mark, and contained
+    atmospheric colors.
+  - Mock in-app browser QA at 1280×800 — passed in light and dark. The auth mark
+    rendered at 42×42 px, Personal at 76×76 px, both used exactly two strokes
+    and zero circles, and the server header remained 232×80 px with zero
+    embedded SVG/mark nodes and zero horizontal overflow. The console reported
+    no warnings or errors.
+  - First `pnpm check` — stopped at formatting for the expanded identity test.
+    After formatting, the second run stopped at one missing `access` import in
+    that test; restored the import.
+  - Final `pnpm check` — passed formatting, lint, both strict TypeScript
+    projects, 70 Vitest files with 350 tests, 25/25 Node contract tests,
+    synchronized version `0.16.0`, production build, and bundle secret scan.
+    Vite retained the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app` with the regenerated icon bundle; notarization was skipped
+    because Apple credentials are absent.
+- **Documentation updated:** Updated the current identity architecture, active
+  v1 contract, plan 0020 visual/acceptance contract, and this canonical progress
+  log.
+- **Known limitations:** The new native icon still needs direct human
+  observation in the macOS Dock/app switcher and Windows taskbar/installer. The
+  local macOS bundle is ad-hoc signed and not notarized.
+- **Next:** Open the rebuilt `Bakbak.app`, judge the linked-`bb` icon once in
+  the macOS Dock and app switcher, then repeat the taskbar/installer observation
+  on the next Windows build.
+
+## 2026-07-24 — Add the collapsible channel tree
+
+- **Completed:** Replaced static channel-category headings with accessible
+  disclosure controls and an Apple-style connector tree while retaining the
+  existing hash/speaker room icons, mixed ordering, selection, unread state,
+  voice preparation, timers, occupant/profile rows, LIVE labels, and admin
+  controls. Added collapsed selected/unread/voice-occupancy summaries, the same
+  behavior for uncategorized Conversations and Voice rooms shelves, and
+  per-server device-local persistence with safe fallbacks.
+- **Decisions:** Kept collapse state renderer-only under
+  `bakbak.channelCategories.v1:<server ID>` with every new group expanded by
+  default. Collapsed groups remain closed during selection and activity, using
+  their header to summarize hidden state instead of surprising the user by
+  reopening. Retained disclosure/list semantics rather than claiming the full
+  ARIA tree keyboard model. Used plan number 0024 because plan 0023 already
+  owns the modern interface-audio work.
+- **Validation:**
+  - Focused ChannelSidebar and preference Vitest run — passed 2 files with
+    19/19 tests covering pointer/keyboard disclosure, hidden-child inertness,
+    ordering, persistence, new/stale groups, server isolation, summaries,
+    synthetic shelves, and existing channel/voice behavior.
+  - `node --test scripts/channel-tree-layout.test.mjs` — passed 1/1 connector,
+    terminal-branch, and reduced-motion CSS contract.
+  - Mock in-app browser QA at 1280×800 and 1024×680 — passed expanded and
+    collapsed interaction in light and dark. The 232 px sidebar retained
+    contained scrolling, branch geometry measured 1 px with an 8 px terminal
+    radius, document width matched the viewport at both sizes, and the console
+    reported no warnings or errors.
+  - Initial `pnpm check` — stopped at formatting for the new channel-tree
+    contract test; formatted that file.
+  - Final `pnpm check` — passed formatting, lint, both strict TypeScript
+    projects, 71 Vitest files with 358 tests, 26/26 Node contract tests,
+    synchronized version `0.16.0`, production build, and bundle secret scan.
+    Vite retained the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+- **Documentation updated:** Added plan 0024, updated the current architecture
+  and active v1 contract, and appended this canonical progress entry.
+- **Known limitations:** The rebuilt tree still needs direct observation with
+  installed macOS native material and on the next Windows build. The local
+  macOS bundle is ad-hoc signed and not notarized.
+- **Next:** Open the rebuilt `Bakbak.app`, inspect expanded/collapsed categories
+  once with native macOS material, then repeat the sidebar observation on the
+  next Windows build.
+
+## 2026-07-24 — Connect empty and populated conversations
+
+- **Completed:** Reframed the shared channel/DM introduction as a conversation
+  root with Quiet room or Conversation flowing state. Replaced the oversized
+  dashed empty placeholder with an accessible, target-aware first-branch node.
+  Added a theme-responsive populated-message rail aligned to the root icon and
+  avatar centers, short body branches, grouped-message dots, and a terminal
+  marker while preserving the complete existing chat interaction surface.
+- **Decisions:** Reused the current message order and grouping rather than
+  introducing a specialized tree role or new navigation model. Kept the
+  treatment renderer-only and descriptive: quiet/flowing state comes solely
+  from the currently rendered message list and does not affect subscriptions,
+  read state, pagination, drafts, or persistence. Added no suggested-post
+  actions so the empty state cannot send anything on the user's behalf.
+- **Validation:**
+  - Focused ChatView Vitest, conversation-trail Node contract, and strict
+    TypeScript run — passed 7/7 component tests, 2/2 geometry/reduced-motion
+    contracts, and both TypeScript projects.
+  - Mock in-app browser QA at 1280×800 and 1024×680 — passed empty and populated
+    layouts in dark and light schemes. Root, spark, and avatar centers stayed
+    within 0.5 px, the empty card compressed from 620 px to 385 px at minimum
+    size, messages wrapped cleanly, and conversation/document horizontal
+    overflow remained zero.
+  - Initial `pnpm check` — stopped at the typography contract because the new
+    eyebrow used unsupported weight 800; changed it to the approved 700.
+  - Final `pnpm check` — passed formatting, lint, both strict TypeScript
+    projects, 71 Vitest files with 360 tests, 28/28 Node contract tests,
+    synchronized version `0.16.0`, production build, and bundle secret scan.
+    Vite retained the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+  - Post-documentation `pnpm format:check` and `git diff --check` — passed;
+    the ignored `.env.local` remained outside the change set.
+- **Documentation updated:** Added plan 0025, updated the current architecture
+  and active v1 contract, and appended this canonical progress entry.
+- **Known limitations:** The rebuilt treatment still needs direct observation
+  with installed macOS native material and on the next Windows build. The local
+  macOS bundle is ad-hoc signed and not notarized.
+- **Next:** Open the rebuilt `Bakbak.app`, inspect empty and populated text
+  rooms once in native macOS light and dark modes, then repeat the observation
+  on the next Windows build.
+
+## 2026-07-24 — Unify the interface around the system accent
+
+- **Completed:** Added `get_system_accent` and the
+  `system-accent-changed` native bridge. macOS now converts
+  `NSColor.controlAccentColor` to sRGB and retains a system-color notification
+  observer; Windows reads `UISettings` Accent and retains its color-change
+  subscription. Added the pre-render renderer service with strict payload
+  validation, a 250 ms neutral fallback, live event/focus refresh, light/dark
+  recomputation, contrast normalization, black/white on-accent choice, and the
+  complete CSS token family. Replaced fixed green branding and blue selection
+  with that accent across glass atmosphere, channels, Personal conversations,
+  unread state, conversation trails, focus/hover, resizers, composer, and
+  ordinary active call controls. Added a read-only Appearance swatch and
+  bounded development-only red/blue/Graphite preview injection.
+- **Decisions:** Followed the OS-owned accent rather than reading wallpaper
+  pixels; Windows Automatic may derive that OS color from wallpaper, while
+  macOS follows its Appearance setting. Kept online/connected/in-voice green,
+  destructive/error/leave red, and warning/reconnecting/idle amber independent
+  because those colors carry meaning. Normalized the accent against the
+  resolved canvas instead of assuming every OS choice is readable. Increased
+  dark canvas/panel/strong neutral bases to 64/72/84% and light bases to
+  60/72/84%, then mixed only 6/5/3% accent into them so native wallpaper remains
+  visible without becoming a competing theme.
+- **Validation:**
+  - Focused renderer validation — passed lint, strict TypeScript, 4 Vitest files
+    with 44/44 tests, and 12/12 system-accent/appearance/glass Node contracts.
+    Coverage includes malformed payloads, fallback, red/blue/yellow/black/white/
+    Graphite contrast in both schemes, on-accent choice, listener-before-query
+    ordering, live updates, focus refresh, query-only degradation, scheme
+    recomputation, cleanup, read-only source reporting, and mute/deafen styling.
+  - `cargo test --locked system_accent --manifest-path src-tauri/Cargo.toml` —
+    passed 2/2 focused macOS-native/fallback tests; 13 unrelated native tests
+    were filtered out.
+  - Mock in-app browser matrix at 1280×800 and 1024×680 — passed red, blue, and
+    Graphite injections in dark and light schemes. Server panels, member rail,
+    selected channel, populated trail, composer, Settings, Personal lounge,
+    selected DM, empty first branch, and populated DM remained coherent.
+    Document, left/right panel, introduction, and composer overflow all measured
+    zero; the console reported no warnings or errors.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects, 72
+    Vitest files with 372 tests, 32/32 Node contract tests, synchronized version
+    `0.16.0`, production build, and bundle secret scan. Vite retained the
+    existing non-blocking large-chunk warning.
+  - `cargo check --locked` — passed on the current Apple Silicon macOS target.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+- **Documentation updated:** Added plan 0026, updated the current appearance,
+  renderer/native bridge, persistence, validation, and repository-structure
+  architecture contracts, updated the active v1 scope/checklist, and appended
+  this canonical progress entry.
+- **Known limitations:** The Windows source and feature contract are present,
+  but this macOS run did not compile or observe a Windows binary. Live accent
+  switching still needs direct observation in the rebuilt installed macOS app
+  and on Windows, including Windows Automatic wallpaper-derived color.
+  Connected mute/deafen and reduced-motion visual observation remain pending;
+  both have automated styling coverage.
+- **Next:** Open the rebuilt `Bakbak.app`, change macOS Accent Color while it is
+  running, and verify the live event plus focus fallback; then repeat the
+  connected-control and Automatic-accent matrix on the next Windows build.
+
+## 2026-07-24 — Add system rooms, safe previews, and deafen cues
+
+- **Completed:** Added the topmost expanded System category with stable
+  automation-only `releases` and `general` channels, typed system messages,
+  membership welcome insertion, current-membership history, historical-read
+  baselining, and idempotent release publication. Added the protected
+  `system-events` and authenticated `link-preview` Edge Functions, gated
+  release announcement/history workflows, URL tokenization for channel and DM
+  text, external opening, text-only page cards, click-to-load privacy-enhanced
+  YouTube embeds, and preview delivery through existing Realtime updates.
+  Added deterministic 170 ms deafen/undeafen cues under the Voice preference
+  and routed them to system output only after successful current operations.
+  Aligned the category chevron, connector spine, and row elbows to one shared
+  CSS axis.
+- **Decisions:** Kept `ChannelKind` about transport and introduced a separate
+  purpose discriminator so older text/voice behavior remains intact. Enforced
+  System immutability in tables, policies, and RPCs instead of relying on a
+  disabled composer. Kept release bodies readable for older clients and
+  service-role insertion behind a dedicated constant-time secret. Preview
+  functions re-read stored messages, resolve only public HTTPS targets, bound
+  redirects/time/size, store text metadata only, and never delay message
+  sending. Imported history is visible but marked read; future events retain
+  the normal unread and incoming-message behavior.
+- **Validation:**
+  - Focused renderer, audio, and layout suites — passed, including system-card
+    rendering, absent composer/actions, fallback bodies, link punctuation and
+    unsafe schemes, preview retries, Realtime update replacement, incoming
+    system sound, deterministic WAV properties, successful/stale/failed
+    deafen transitions, and the shared tree axis.
+  - `pnpm dlx supabase@latest db reset` and the complete database test suite —
+    passed all 14 files and 365 assertions, including member/admin write
+    denial, outsider isolation, trigger/read-state behavior, historical
+    timestamps, and release idempotency.
+  - Supabase Edge Function tests — passed all 44 tests across the existing and
+    new suites, including event-secret/repository validation and preview
+    authorization, DNS/IP rejection, redirects, timeouts, size limits, and
+    sanitization.
+  - `pnpm dlx supabase@latest db lint --local` — passed with no schema errors.
+  - Initial `pnpm check` — stopped at lint because an unknown thrown preview
+    error was interpolated directly; normalized it to a safe error string.
+  - Final `pnpm check` — passed formatting, lint, both strict TypeScript
+    projects, 73 Vitest files with 378 tests, 34/34 Node contract tests,
+    synchronized version `0.16.0`, production build, and bundle secret scan.
+    Vite retained the existing non-blocking large-chunk warning.
+  - `cargo check --locked --manifest-path src-tauri/Cargo.toml` — passed on the
+    current Apple Silicon macOS target.
+  - Mock in-app browser QA at 1280×800 and 1024×680 — passed the expanded and
+    collapsed System category in dark and light schemes. The System view had
+    no composer, message actions, or rename controls; the automation footer
+    remained visible; chevron and spine centers differed by 0 px; and
+    horizontal overflow remained zero.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+  - Post-documentation `pnpm format:check` and `git diff --check` — passed;
+    the ignored `.env.local` remained outside the change set.
+- **Documentation updated:** Added plan 0027; updated the architecture, active
+  v1 scope, root setup/release documentation, Supabase deployment notes, and
+  this canonical progress entry.
+- **Known limitations:** Hosted migration and Edge Function deployment, secret
+  configuration, the one-time stable release history sync, and enabling
+  `SYSTEM_CHANNELS_ENABLED` remain deliberate rollout steps. Live
+  multi-client unread/audio behavior and real network YouTube/page-preview
+  rendering still need friend-test observation. The local macOS bundle is
+  ad-hoc signed and not notarized, and this macOS run did not build Windows.
+- **Next:** Rotate any credential exposed during local setup, deploy the
+  migration and both Edge Functions, configure the system-event secret in
+  Supabase and GitHub, run the manual stable-release history workflow, verify
+  its imported rows/read baseline, then enable automatic announcements.
+
+## 2026-07-24 — Deploy System rooms and calm channel selection
+
+- **Completed:** Removed `SYSTEM_CHANNELS_ENABLED` from both release workflows
+  so stable announcements and manual history sync are standard behavior.
+  Removed the active channel's inset accent stripe while retaining its neutral
+  selected surface and accent-colored room icon. Applied hosted migration
+  `202607240001`, deployed `link-preview` and `system-events`, synchronized a
+  newly generated high-entropy System secret between Supabase and GitHub
+  Actions, and imported 15 published stable releases oldest-first in
+  historical mode.
+- **Decisions:** Kept the one-time history import manually invoked because it
+  is an operator action, while future verified stable releases announce
+  automatically. Kept the function's narrow shared-secret boundary and rotated
+  one generated value into both managed secret stores without persisting or
+  printing it. Removed only the selected-room inset stripe; the neutral
+  background and icon emphasis still identify the current room without drawing
+  a bright bracket through the connector tree.
+- **Validation:**
+  - `pnpm dlx supabase@latest db push --dry-run` — passed and listed only
+    `202607240001_system_channels_and_link_previews.sql`.
+  - `pnpm dlx supabase@latest db push` — passed and applied migration
+    `202607240001` to the linked hosted project.
+  - `pnpm dlx supabase@latest migration list --linked` — passed with every
+    local migration, including `202607240001`, matched remotely.
+  - Function deployment/list checks — passed; hosted `link-preview` version 3
+    is ACTIVE with JWT verification enabled, while hosted `system-events`
+    version 3 is ACTIVE with its intended platform JWT gate disabled.
+  - Managed-secret checks — passed; `BAKBAK_SYSTEM_EVENTS_SECRET` is present in
+    both Supabase Function Secrets and GitHub Actions without reading its
+    value.
+  - First direct history-sync attempt — inserted zero rows because this GitHub
+    CLI rejects `--slurp` together with `--jq`; moved page aggregation to
+    standard `jq --raw-output --slurp`.
+  - Corrected direct history sync — passed and posted 15 stable releases
+    oldest-first through the protected function.
+  - Unauthenticated hosted probes — both `system-events` and `link-preview`
+    returned HTTP 401.
+  - `pnpm dlx supabase@latest db lint --linked` — passed with no hosted schema
+    errors.
+  - Initial focused workflow/layout run — 9/10 passed; the new neutral-selection
+    assertion inspected only styles after the later channel-tree marker.
+    Pointing that assertion at the complete stylesheet corrected the test, not
+    the implementation.
+  - Final focused workflow/layout run — passed 10/10 tests, including absence
+    of either workflow gate, portable paginated history aggregation, and the
+    neutral active-row contract.
+  - Mock in-app browser QA at 1280×800 — passed. The selected `spawn` row
+    computed `box-shadow: none`, zero left-border width, and zero document
+    overflow; direct visual inspection confirmed the accent stripe is gone.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects,
+    73 Vitest files with 378 tests, 34/34 Node contract tests, synchronized
+    version `0.16.0`, production build, and bundle secret scan. Vite retained
+    the existing non-blocking large-chunk warning.
+  - Post-documentation `pnpm format:check`, `git diff --check`, and release-gate
+    search — passed; no active `SYSTEM_CHANNELS_ENABLED` reference remains and
+    the ignored `.env.local` stayed outside the change set.
+- **Documentation updated:** Updated root/Supabase setup, architecture,
+  plan 0027 status, active v1 deployment criteria, and this canonical progress
+  entry.
+- **Known limitations:** The gate-free GitHub workflow changes take effect only
+  after this working tree is committed and merged. Installed two-client
+  welcome/release unread and sound observation plus the remaining native
+  multi-zoom/light-dark matrix are still pending.
+- **Next:** Merge the workflow and renderer changes, then observe the next real
+  stable release arriving automatically in `#releases` and verify its unread
+  marker plus incoming-message cue on a second installed client.
+
+## 2026-07-24 — Repair live System category catch-up
+
+- **Completed:** Verified that the hosted server already contained the stable
+  topmost `System` category plus its `releases` and `general` channels.
+  Identified the missing live category subscription as the reason an app kept
+  open during migration could receive the channels without learning their
+  category. Added category INSERT/UPDATE Realtime reconciliation with an
+  ordered subscribe-before-snapshot catch-up and buffered race protection.
+  Added and deployed
+  `202607240002_channel_category_realtime.sql` so hosted category rows are
+  published through Supabase Realtime.
+- **Decisions:** Repaired the live data path instead of requiring cache
+  deletion, sign-out, or a permanent restart workaround. Mirrored the existing
+  channel subscription contract so category and channel collections both
+  reconcile by stable ID and deterministic position. Retained category RLS and
+  trusted-migration-only writes.
+- **Validation:**
+  - Hosted category/channel query — passed and returned `System` at position
+    zero with the `system-releases`/`releases` and
+    `system-general`/`general` text rows on the expected server.
+  - Focused channel/workspace renderer suites — passed 23/23 tests, including
+    ordered category catch-up, Realtime subscription/cleanup, and System before
+    Welcome reconciliation.
+  - `pnpm typecheck` — passed both strict TypeScript projects.
+  - Initial focused Prettier invocation — failed because Prettier has no SQL
+    parser and the edited TypeScript test needed formatting; formatted the
+    supported TypeScript files and used the repository-wide formatter contract
+    for the final check.
+  - `pnpm dlx supabase@latest db reset` — passed through migration
+    `202607240002`.
+  - `pnpm dlx supabase@latest test db` — passed all 14 files and 366 assertions,
+    including the new category-publication contract.
+  - `pnpm dlx supabase@latest db push --dry-run` and
+    `pnpm dlx supabase@latest db push` — passed and applied only follow-up
+    migration `202607240002` to the linked hosted project.
+  - `pnpm dlx supabase@latest migration list --linked` — passed with local and
+    hosted history matched through `202607240002`.
+  - Hosted publication query — passed with
+    `channel_categories_realtime = true`.
+  - `pnpm dlx supabase@latest db lint --linked` — passed with no hosted schema
+    errors. An earlier parallel CLI attempt lacked a transient legacy auth
+    context; the sequential linked rerun passed.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects,
+    73 Vitest files with 379 tests, 34/34 Node contract tests, synchronized
+    version `0.16.0`, production build, and bundle secret scan. Vite retained
+    the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+- **Documentation updated:** Updated architecture and Supabase deployment
+  notes for category Realtime/catch-up, then appended this canonical entry.
+- **Known limitations:** A currently running copy with the older renderer must
+  be relaunched once to load this repair. The local macOS bundle remains ad-hoc
+  signed and not notarized. Installed two-client System unread/audio and the
+  complete multi-zoom/light-dark matrix remain pending.
+- **Next:** Relaunch the rebuilt app and confirm `System` appears above
+  `Welcome` without clearing local data; then observe the next real join or
+  stable release on a second client.
+
+## 2026-07-24 — Prepare Bakbak 1.0 interaction and loading polish
+
+- **Completed:** Added plan 0028's shared successful-loading scene with six
+  staggered uppercase `BAKBAK` letters, an adaptive moving gradient, and an
+  immediate reduced-motion result while retaining the existing workspace-error
+  recovery. Replaced channel/DM smooth scrolling with synchronous initial
+  placement, 96 px bottom detection, exact history-prepend anchoring, a
+  pending history control, and a pluralized New message pill. Added a shared
+  viewport-clamped user menu to member/voice rails, message authors and
+  mentions, voice participant cards, Personal identities/details, and the
+  shared user dock. The menu supports profile, DM, user-ID copy, keyboard
+  navigation, focus restoration, offline/self rules, and participant-local
+  mute with last-volume restoration across speech, soundboard, and share
+  audio. Added remote hover/focus Watch Stream actions, channel-aware member
+  activity, cross-room join/switch requests, authoritative requested-owner
+  share discovery, automatic focus, and a ten-second stale-stream notice.
+  Created GitHub label `release:major` with description “Publish the next major
+  SemVer release” and applied it to open PR #33; its only label is
+  `release:major`.
+- **Decisions:** Kept package/Tauri versions at `0.16.0` because the release
+  workflow owns version injection and post-publication synchronization. Kept
+  the Watch action as explicit user intent and reused
+  `watchedScreenShareId`, so one remote share remains the only subscribed
+  video/source-audio pair. Treated plan 0028 as a narrow supersession of plan
+  0015's informational-only/cross-room restriction while retaining all native
+  isolation, source-audio, presenter-companion, explicit-subscription, and
+  cleanup rules. Kept moderation and database/native-capture changes outside
+  this pass.
+- **Validation:**
+  - Live GitHub release/PR inspection — passed; newest published tag remained
+    `v0.16.0`, PR #33 remained open against `main`, and the final label set was
+    exactly `release:major` with no `release:skip`.
+  - `node scripts/release-version.mjs --current v0.16.0 --fallback 0.16.0
+--labels release:major` — passed with `version=1.0.0`, `tag=v1.0.0`,
+    `skip=false`, and `bump=major`.
+  - Focused renderer run — passed 8 files and 100 tests covering loading,
+    anchored channel/DM scrolling, context-menu input/actions, member/voice
+    Watch actions, delayed/timeout stream discovery, and participant mute
+    restoration.
+  - Focused Node run — passed 12 tests covering the exact major resolver and
+    adaptive/reduced-motion loading contracts.
+  - Initial `pnpm lint` — failed on two timer callbacks in the new timeout test
+    returning values to React `act`; converted them to explicit void callbacks.
+    Final `pnpm lint` passed with zero warnings.
+  - Initial full `pnpm test` — failed one new menu assertion because the tested
+    action now executes in a guarded promise; awaited the user action. Final
+    `pnpm test` passed 75 Vitest files with 393 tests and 37/37 Node contract
+    tests.
+  - `pnpm format:check` — passed.
+  - `pnpm typecheck` — passed both strict TypeScript projects.
+  - `pnpm build` — passed; Vite retained the existing non-blocking
+    large-chunk warning.
+  - `pnpm security:scan` — passed for the renderer and existing desktop bundle.
+  - `pnpm version:check` — passed with synchronized tracked version `0.16.0`.
+  - `cargo check --locked` — passed in `src-tauri`.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; follow-up `codesign --verify --deep --strict` passed.
+- **Documentation updated:** Added plan 0028, updated architecture and the
+  active v1 plan with the new loading/scroll/user-action/watch contracts and
+  narrow plan 0015 supersession, then appended this canonical entry.
+- **Known limitations:** Direct installed observation of the loading scene in
+  light, dark, and reduced-motion modes was not performed. The required
+  three-client macOS/Windows matrix for same/cross-room watching, delayed and
+  stale presence, source audio, replacement, target stop, and cleanup remains
+  pending. The local macOS bundle is ad-hoc signed and not notarized; the full
+  production updater-signed `pnpm tauri build` was skipped because release
+  credentials belong to CI. PR #33 was not merged and no release workflow was
+  dispatched.
+- **Next:** Perform plan 0028's installed loading and three-client watch
+  matrix. Immediately before any separately approved merge of PR #33, recheck
+  the newest published tag and stop if `v1.0.0` already exists.

@@ -7,62 +7,153 @@ and phase completion belong in the numbered files under `docs/plans`.
 
 ## Current implementation state
 
-As of 2026-07-19, Bakbak has a complete local/mock product path and production
+As of 2026-07-24, Bakbak has a complete local/mock product path and production
 Supabase and LiveKit adapters. The renderer provides the invite-only welcome
-flow and one shared Signature/Classic/Signal Red shell. A fixed 68 px
-destination rail switches Personal and the single Bakbak server without
-interrupting voice. The adjacent context panel defaults to 232 px, the
-conversation canvas retains at least 420 px at the 1024 px minimum window, and
-the details panel defaults to 240 px. Both side panels are independently
-optional and pointer/keyboard resizable from 200–360 px; v2 layout preferences
-persist widths and visibility per device. Settings is a centered,
-focus-trapped in-app modal with internal scrolling, active-call controls, and
-confirmed logout.
+flow and one shared neutral glass shell with scoped semantic control colors. An
+always-present 48 px titlebar
+places the 232 px Personal/Bakbak switch at the left and a rotating idle or
+voice-aware joke at the true signed-in window centre without interrupting
+voice. One titlebar-level event boundary makes every non-control pixel a native
+drag/double-click region; startup,
+authentication, and invite-only states keep a navigation-free titlebar while
+their main content owns product branding. The titlebar's right edge holds both
+side-panel toggles and Windows window controls, leaving the contextual header
+dedicated to the current person or room.
+macOS retains native overlay traffic lights and uses an active-state-following
+`underWindowBackground` material. Windows uses renderer-owned controls and
+applies Mica on build 22000 or newer; Windows 10 and browser/mock mode use an
+opaque CSS underlay. The edge-to-edge shell keeps five tracks: the 232 px
+context panel, a 1 px separator with a 9 px resize hit area, the conversation
+canvas at a minimum 420 px, a second separator, and the 240 px details panel.
+Both side panels remain mounted but become inert while independently hidden;
+pointer/keyboard resizing stays within 200–360 px and v2 layout preferences
+persist widths and visibility per device. Settings is a centered, focus-trapped
+in-app modal with internal scrolling, active-call controls, and confirmed
+logout. Its Data & storage section reports the current account's bounded
+conversation/profile cache, freshness, and confirmed local clearing without
+removing cloud data, authentication, or device/appearance preferences.
 
-Classic System + Flat + Purple is the default. The v6 preference migration
-resets every older installation to that appearance once on its first updated
-launch; choices made afterward persist normally. Appearance presents three
-complete styles first and shows theme/surface/accent customization only while
-Classic is active. Signature remains the premium fixed option with a
-high-contrast night palette based on cognac, oxblood, brass, and green
-presence; bundled
-Cormorant Garamond is reserved for plaques/display headings while Inter remains
-the message, form, and profile face. Bakbak-owned textile/leather SVG grain is
-limited to outer furniture and controls at no more than 3% effective opacity.
-Messages, inputs, dialogs, and other reading surfaces remain opaque and
-texture-free. Classic retains System/Light/Dark,
-Coral/Purple/Red/Yellow accent/intensity, and Warm/Flat controls. Flat uses
-crisp grayscale surfaces without decorative gradients, glow, glass blur, or
-heavy shadows while preserving semantic accent, presence, danger, and focus
-colors. Profiles support validated display names, 190-character plain-text
+Appearance has one neutral glass treatment with a restrained, live
+operating-system accent and no selectable accent, global decorative texture,
+or heavy shadows. A device-local scheme choice offers Auto, Light, and Dark:
+Auto follows `prefers-color-scheme`, while the explicit choices apply before
+React mounts and update the matching `theme-color` metadata. The renderer
+listens before querying native color, renders a neutral fallback within 250 ms,
+normalizes arbitrary accents for the active light/dark canvas, and refreshes
+from native state on color events and window focus. Dark mode uses 64/72/84%
+near-black canvas/panel/strong bases; light mode uses 60/72/84% neutral-white
+bases. Both receive a quiet 6/5/3% accent veil and an 8% accent hover. Primary
+chrome uses 24 px blur at 120% saturation while avatars, covers, emoji, camera
+video, and screen sharing remain untouched. The Bakbak identity uses
+two custom linked lowercase `b` strokes. The canonical
+`public/bakbak.svg` drives the browser favicon and generated native icon bundle,
+while the matching code-native `BakbakMark` appears statically on
+authentication, invite, and empty Personal surfaces. Successful session and
+workspace loading instead share six staggered uppercase `BAKBAK` letters over a
+slow system-accent/neutral gradient. Reduced motion renders the completed word
+and static gradient immediately; workspace errors retain their explicit
+recovery surface. The server header
+intentionally omits the mark: it contains only the fixed Bakbak wordmark and
+`β · vX.Y.Z` chip whose value comes from the renderer's package metadata. Its
+neutral, system-accented aurora, sparse constellation, and diagonal signal
+weave remain contained to that header and load no raster texture. The icon
+retains a flat, gradient-free treatment with no face or mascot. Scoped
+Discord-inspired
+positive, danger, warning, and icon tokens identify connection/presence,
+destructive, warning, and inactive control state. Selection aliases the
+normalized system accent across navigation, trails, focus, and active ordinary
+controls. Appearance Settings exposes only the three scheme choices plus
+read-only System accent and `Glass` summaries; typography and accent controls
+remain absent.
+Legacy `bakbak.appearancePreferences.*` values are inert and intentionally left
+in local storage. Roundo v2.0 is served from a committed variable WOFF2 with
+upright weights 200–700 and a generic sans-serif fallback for unsupported
+glyphs; product UI uses only 500, 600, and 700, never renders below 11 px, and
+gives chat/composer text a 15 px weight-500 baseline. Profiles
+support validated display names, 190-character plain-text
 descriptions, static or GIF avatars, 3:1 static or GIF covers, integer cover
-focal points, and an accessible Discord-style anchored card. Admin-only
+focal points, lazy static member-row cover accents, and an accessible
+Discord-style anchored card. Admin-only
 controls create or rename text and voice channels, while Realtime reconciles
-changes for every member. Ordered channel categories reproduce the visible
-Unlucky Boys layout: 7 categories, 18 text rooms, and 6 voice rooms in the same
-mixed order. This layout imports no Discord messages or credentials.
-
-Signal Red is a fixed device-local special preset layered over those retained
-Classic choices. Its first paint resolves to Dark + Flat with a `#050505`
-canvas, near-black panels, `#e5062f` primary red, `#ff2648` hot red, and
-`#f4f2ef` off-white. League Gothic is restricted to display/UI chrome, IBM Plex
-Mono to signal metadata, and Inter remains the content/form/profile face. One
-pointer-transparent layer adds low-opacity static noise, edge grids, bars,
-timecodes, a slow ticker, scheduled Bakbak stamps, and typed communication
-labels without covering the center reading area. Reduced motion freezes the
-texture, removes marquees/glitches/random stamps, and keeps only a static event
-label.
+changes for every member. Category Realtime follows the same
+subscribe-before-snapshot catch-up path, so an already-open client discovers
+categories added by a migration without clearing its cache. Ordered channel
+categories reproduce the visible Unlucky Boys layout beneath an expanded
+topmost System category. System owns the lowercase `releases` and `general`
+automation-only text rooms; the mirrored layout remains 7 categories, 18 text
+rooms, and 6 voice rooms in the same mixed order. The channel shelf renders all
+eight categories as a collapsible connector tree while retaining
+room-type/read-only icons and hidden selected, unread, and voice-occupancy
+summaries. One shared spine coordinate aligns each category chevron, vertical
+connector, and row elbow. Collapse state is device-local per server and does
+not alter subscriptions or room state. This layout imports no Discord messages
+or credentials. Selected channel rows use a neutral panel fill and an
+accent-colored room icon without an inset accent border.
 
 Upgraded clients expose chat, structured individual mentions, account-synced
 unread emphasis, incoming-message sounds, and drafts only for text channels.
-Message alerts now use the same original generated interface-sound controller
-as voice join/leave, screen-share start/stop, reconnect success, and actionable
-communication failure. These cues run under every visual theme through the
-system output, independently of the selected call/soundboard output.
+One original soft, rounded interface-sound controller covers committed message
+send, incoming messages, successful microphone mute/unmute and
+deafen/undeafen, self/remote voice join/leave, local/remote screen-share
+start/stop, reconnect success, and actionable communication failure. The
+170 ms deafen cues are deterministic 48 kHz mono 560→390 Hz and 390→560 Hz
+glides at controller gain 0.72. These cues run through the system output,
+independently of the selected call/soundboard output.
 Voice-channel message rows, RPC permissions, and read-state data remain intact
 for installed-client compatibility, but the upgraded renderer neither loads,
 subscribes to, sends, drafts, notifies, nor shows unread state for them. No
 destructive database migration accompanies this client-only boundary.
+
+Text channels and Personal DMs now share the plan 0022 rich-message boundary.
+A theme-responsive conversation-root treatment makes their introduction the
+visual origin of the thread. Empty conversations expose an accessible compact
+first-branch status rather than a full-width placeholder. Populated
+conversations align a subtle rail through the introduction icon and message
+avatars, add compact dots for grouped messages, and terminate the trail after
+the visible history. Quiet/flowing labels describe only the current rendered
+message state; they do not alter loading, activity, read state, or
+subscriptions.
+A shared conversation scroll contract opens each channel or DM at the bottom
+without smooth motion. Within 96 px of the bottom, new rows pin immediately.
+Otherwise message appends preserve the viewport and increment a pluralized New
+message pill; hydration-only message, reaction, and preview updates never move
+the reader. Older-history fetches disable their trigger and restore the exact
+viewport through the post/pre `scrollHeight` delta.
+A draft may contain structured text/mentions plus up to four private
+image/GIF/H.264 MP4 attachments, one standalone Bakbak sticker, or one GIPHY
+GIF/sticker with an optional text caption, and may quote one visible message
+in the same thread. The shared Discord-shaped composer keeps attachment on the
+left, text in the flexible centre, and supported GIF, Bakbak sticker, searchable
+native emoji, and send actions on the right. Emoji insertion respects the
+current text selection and preserves structured mention ranges. In its resting
+state, the composer wrapper and sidebar user dock share a 68 px footer band;
+the 52 px message bar receives an even 8 px vertical inset so both surfaces
+share one centre line across the panel separator.
+Replies notify the other author by default, self/deleted/former-author
+notifications are disabled by the database, and author deletion leaves a
+scrubbed tombstone so read pointers and reply references remain valid. Message
+hover/focus actions provide Reply, Bakbak sticker reaction, and author-only
+Delete. Message INSERT/UPDATE and sticker/reaction events hydrate the complete
+row before replacing the cache, avoiding cross-table Realtime ordering
+assumptions. Existing `send_message` and `send_direct_message` remain available
+for installed-client compatibility; v2 sends generate `[Image]`, `[Video]`,
+`[GIF]`, or `[Sticker]` fallback bodies.
+
+Plain-text segments in channel messages and Personal DMs recognize `http://`,
+`https://`, and `www.` URLs without disturbing mention segments or trailing
+punctuation. Links open through Tauri's system-browser opener, with a
+`noopener` browser fallback. After a committed send—or once per session for
+loaded history—the renderer asynchronously requests one preview without
+delaying the message. The authenticated `link-preview` function re-reads the
+stored row through the caller's RLS session, extracts the first URL itself,
+allows only public HTTPS HTML, and stores text-only page metadata or a bounded
+YouTube descriptor. DNS A/AAAA, credentials, custom ports, IP literals,
+private/reserved networks, every redirect, three redirects, a three-second
+deadline, and 512 KiB are enforced server-side. Failed previews are timestamped
+for a 24-hour retry; Realtime UPDATE hydration distributes results without
+replaying incoming-message sounds. Generic remote images and markup never
+render. YouTube uses a CSP-limited `youtube-nocookie.com` iframe only after an
+explicit click and a permitted `i.ytimg.com` thumbnail.
 
 Voice rooms retain locally persisted microphone/speaker/camera selection,
 opt-in 720p camera calls, sidebar occupancy with elapsed timers, mute/deafen,
@@ -77,6 +168,13 @@ or failed processing falls back to the built-in capture cleanup without
 blocking the call. The explicit microphone test plays that same processed
 preview through the selected call output while rendering its level, and
 releases the monitor, stream, processor, and analyser together on stop.
+Every shared user identity can open one viewport-clamped portal action menu by
+right-click, Menu, or Shift+F10. The accessible menu supports profile, direct
+message, and user-ID copy actions, omits self messaging, and keeps existing DMs
+available offline while disabling offline creation. Remote participants in the
+active call additionally expose a local mute toggle. Participant volume zero
+is applied across speech, soundboard, and share audio; unmute restores the last
+non-zero level or 100%.
 Selecting a voice channel immediately joins it; selecting another voice channel switches
 the active call without a pre-join or initial connection surface. An active call
 adds a sidebar control block with room, backend latency, normalized local
@@ -96,8 +194,12 @@ without moving it from System or Bakbak. Uploaders and server admins may edit
 labels/emoji or delete member sounds, while only admins manage operator sounds.
 The drawer retains persisted global volume, per-participant volume, overlapping
 activity badges, retry states, and stop-all. A sender reserves at most five
-pending/active sounds, the drawer and global dock expose prominent stop
-controls, and upgraded clients clamp remote activity to the newest five events.
+pending/active sounds; the drawer overlays a standalone bottom-right circular
+stop action on a theme-responsive transparent-to-dark/light corner scrim, with
+the active `n/5` counter immediately to its left. The drawer has no dedicated
+stop footer; the global voice dock remains the full bottom-bar treatment and
+keeps its compact stop action. Upgraded clients clamp remote activity to the
+newest five events.
 Participant tiles replace a camera-off
 avatar with the newest sound emoji or overlay it on camera video, with overlap
 counting and reduced-motion behavior. Deafen suppresses remote speech and local/incoming soundboard
@@ -121,6 +223,35 @@ audio revision, and decodes ready clips into memory. `created_by = null`
 identifies operator-managed sounds; uploaders and matching server admins may
 update only labels and emoji. Favorites are owner-private rows and Realtime
 publishes catalog changes plus the signed-in user's stars.
+
+The separate `bakbak-cache` IndexedDB database stores account-scoped workspace
+metadata, recent channel/DM messages, and authenticated profile-media blobs.
+It renders only after the Supabase session identifies its owner, remains a
+display cache rather than an authorization source, and stays after logout until
+that account clears it. Threads retain the newest 200 confirmed messages.
+Profile media uses bucket/path revisions and a 256 MiB per-account
+least-recently-used ceiling. Schema v2 adds a separate 256 MiB/account LRU for
+authenticated message and sticker posters. Cached message metadata strips
+transient object URLs; full video, original animated media, GIPHY URLs, and
+GIPHY assets are never persisted. Data & storage clearing removes both media
+caches without touching cloud content.
+
+Private `message-media` and `message-stickers` Storage buckets back rich
+messages. The authenticated `message-media-manage` Edge Function reserves
+UUID paths, issues signed resumable-upload tokens, cleans stale reservations,
+cancels failures, and removes authored-message objects after the trusted
+deletion RPC. The renderer sends those scoped tokens to Storage's signed TUS
+endpoint at `/storage/v1/upload/resumable/sign` with only the public project key
+and `x-signature`; it has no direct object-insert policy. Publication links
+every uploaded object in the same transaction as its message and verifies both
+reserved objects exist. The
+`sticker-manage` function validates bounded PNG/WebP/GIF files, publishes
+member stickers under transactional 25/member, 200/server, and 1 GiB/user
+quotas, and lets uploaders or server admins archive them. Referenced archived
+stickers remain readable for history. GIPHY requests go directly from the
+renderer with rating `r`, the `messaging_non_clips` bundle, 20-result pages,
+required attribution and analytics; only provider IDs and display metadata are
+stored.
 
 Member upload sources may be common `audio/*` or `video/*` files up to 25 MiB.
 The upload modal uses native metadata/playback for preview and selection, then
@@ -184,6 +315,38 @@ rolled-back project. The clean reset, hosted schema lint, and 288-assertion
 pgTAP suite pass. Hosted admin/member/outsider and installed multi-client
 acceptance remain open.
 
+The additive `202607230001_rich_messaging.sql` migration is implemented,
+validated, and deployed to the hosted project. It preserves the legacy send
+RPCs, adds v2 channel/DM message contracts, private attachment reservations,
+the server sticker catalog, partial-unique sticker reactions, soft deletion,
+poster/original Storage RLS, deleted-message-aware activity, transactional
+quotas, and Realtime publication. The `message-media-manage` and
+`sticker-manage` functions are also deployed; unauthenticated hosted probes
+return HTTP 401. The clean local reset and 331-assertion pgTAP suite pass. The
+GitHub Actions `VITE_GIPHY_API_KEY` repository variable, renderer rollout,
+hosted two-account acceptance, and installed macOS/Windows acceptance remain
+open.
+
+The additive
+`202607240001_system_channels_and_link_previews.sql` migration is implemented
+and deployed. It adds typed channel purposes,
+stable System category/channel IDs, typed authorless automation messages,
+idempotency keys, link-preview fields, one atomic membership welcome/read-state
+trigger, membership-history backfill, release publication, and read baselines
+for imported history. Direct policies, legacy/rich send paths, replies,
+attachments, reactions, deletion, and rename all preserve ordinary chat
+behavior while rejecting System mutations. `system-events` accepts only the
+dedicated shared secret plus stable releases from `ayushrameja/bakbak`;
+`link-preview` keeps the platform JWT gate and authorizes each stored message
+through RLS. Both functions are deployed, the dedicated high-entropy secret is
+synchronized between Supabase and GitHub Actions, and 15 published stable
+releases were imported oldest-first with the historical read baseline.
+Announcements and the manual history workflow have no feature gate.
+Follow-up migration `202607240002_channel_category_realtime.sql` publishes
+`channel_categories` through Supabase Realtime. The renderer also performs an
+ordered category catch-up snapshot after subscribing, which repairs clients
+that were already open when the System category was first migrated.
+
 The additive
 `202607130001_voice_chat_mentions_and_read_state.sql` migration is implemented,
 validated locally, and deployed to the hosted project. It adds structured
@@ -221,7 +384,8 @@ clean local schema, invite, RLS, presence, Storage, catalog, structured-message,
 read-state, rich-profile, soundboard favorite, and member-upload suite passes
 288 assertions. Voice
 connections retry once with relay-only ICE after a normal peer-connection
-failure, remember a successful relay fallback for ten minutes in memory, and
+failure, remember a successful relay fallback for ten minutes in
+LiveKit-host-scoped device storage, and
 report a specific TURN/TLS diagnostic if both routes fail. The
 tracked token function now accepts an optional backward-compatible purpose.
 Ordinary voice tokens permit microphone, camera, LiveKit data, and video-only
@@ -298,17 +462,18 @@ approved.
 
 ## Technology stack
 
-| Layer                | Technology                        | Responsibility                                                                       |
-| -------------------- | --------------------------------- | ------------------------------------------------------------------------------------ |
-| Package/tooling      | pnpm, TypeScript                  | Dependency management and strict static types                                        |
-| Renderer             | React, Vite                       | Desktop UI and local interaction state                                               |
-| Desktop shell        | Tauri 2, Rust                     | Native window, packaging, capabilities, and later tray/desktop integrations          |
-| Identity/data        | Supabase Auth, Postgres, Realtime | Accounts, membership, channels, messages, invites, and realtime chat                 |
-| Trusted backend      | Supabase Edge Functions           | Membership-checked LiveKit tokens and managed sound publication/deletion             |
-| Object media         | Supabase Storage                  | Private sound packs, profile posters, and GIF animations with RLS-filtered access    |
-| Local microphone DSP | Web Audio, RNNoise WebAssembly    | Off-thread enhanced cleanup plus opt-in sender-side voice effects                    |
-| Voice/data transport | LiveKit                           | Voice rooms, participant state, processed speech, soundboard audio, and control data |
-| Validation/testing   | Zod, Vitest, Testing Library      | Boundary validation and unit/component tests                                         |
+| Layer                | Technology                        | Responsibility                                                                            |
+| -------------------- | --------------------------------- | ----------------------------------------------------------------------------------------- |
+| Package/tooling      | pnpm, TypeScript                  | Dependency management and strict static types                                             |
+| Renderer             | React, Vite                       | Desktop UI, local interaction state, and stale-while-revalidate restoration               |
+| Local read cache     | IndexedDB                         | User-scoped workspace, recent messages, and bounded authenticated profile/message posters |
+| Desktop shell        | Tauri 2, Rust                     | Native window, packaging, capabilities, and later tray/desktop integrations               |
+| Identity/data        | Supabase Auth, Postgres, Realtime | Accounts, membership, channels, messages, invites, and realtime chat                      |
+| Trusted backend      | Supabase Edge Functions           | Voice tokens, managed media, System events, and authenticated safe link metadata          |
+| Object media         | Supabase Storage                  | Private sound, profile, message, video, and sticker objects with RLS-filtered access      |
+| Local microphone DSP | Web Audio, RNNoise WebAssembly    | Off-thread enhanced cleanup plus opt-in sender-side voice effects                         |
+| Voice/data transport | LiveKit                           | Voice rooms, participant state, processed speech, soundboard audio, and control data      |
+| Validation/testing   | Zod, Vitest, Testing Library      | Boundary validation and unit/component tests                                              |
 
 There is one pnpm application, not a frontend/backend monorepo. `package.json`
 pins pnpm `11.3.0` through `packageManager` so local installs and GitHub Actions
@@ -340,19 +505,34 @@ bakbak/
 │       ├── 0010-cross-platform-screen-share-and-focus.md
 │       ├── 0011-soundboard-categories-favorites-and-uploads.md
 │       ├── 0012-unlucky-boys-channel-layout.md
-│       └── 0013-local-microphone-processing-and-voice-lab.md
+│       ├── 0013-local-microphone-processing-and-voice-lab.md
+│       ├── 0014-bakbak-signature-shell-personal-dms-live-watching.md
+│       ├── 0015-screen-share-reliability-and-call-layout.md
+│       ├── 0016-flat-monochrome-roundo.md
+│       ├── 0017-space-efficient-titlebar-and-comfortable-roundo.md
+│       ├── 0018-native-glass-edge-to-edge-motion.md
+│       ├── 0019-discord-inspired-controls-and-member-rail.md
+│       ├── 0020-bakbak-orbit-branding.md
+│       ├── 0021-instant-workspace-local-cache-and-voice-acceleration.md
+│       ├── 0022-rich-messaging-media-replies-stickers.md
+│       ├── 0023-modern-interface-audio.md
+│       ├── 0024-collapsible-channel-tree.md
+│       ├── 0025-conversation-root-and-message-trail.md
+│       ├── 0026-system-adaptive-unified-accent.md
+│       ├── 0027-system-channels-link-previews-and-deafen-audio.md
+│       └── 0028-bakbak-1-0-interaction-and-loading-polish.md
 ├── public/
-│   ├── bakbak.svg                 # renderer favicon/source logo
+│   ├── bakbak.svg                 # canonical favicon/native-icon source
+│   ├── fonts/roundo/              # pinned Roundo v2.0 variable WOFF2
 │   ├── interface-sounds/          # generated original 48 kHz mono WAV cues
-│   ├── signal-noise.svg           # Bakbak-owned tiled texture source
-│   ├── theme-init.js              # parser-blocking, CSP-safe first-paint theme bootstrap
 │   └── vendor/
 │       ├── ffmpeg/                # lazy reduced LGPL core and license
 │       └── rnnoise/               # bundled RNNoise/Jitsi license notices
 ├── scripts/                       # checks, release/audio generation, reduced-core build
+├── third_party/roundo/             # Roundo source record and SIL OFL notice
 ├── src/
 │   ├── app/                       # application shell, routing, providers
-│   ├── components/                # reusable presentation components
+│   ├── components/                # reusable UI, including the static SVG mark
 │   ├── features/
 │   │   ├── auth/
 │   │   ├── server/
@@ -369,8 +549,12 @@ bakbak/
 │   └── ffmpeg-soundboard/         # pinned reduced-core recipe and notices
 └── supabase/
     ├── functions/
+    │   ├── link-preview/
     │   ├── livekit-token/
-    │   └── soundboard-manage/
+    │   ├── message-media-manage/
+    │   ├── soundboard-manage/
+    │   ├── sticker-manage/
+    │   └── system-events/
     ├── migrations/
     ├── seed.sql
     └── tests/                     # RLS and database behavior tests
@@ -381,62 +565,112 @@ architectural placeholder folders are not used.
 
 ## UI composition
 
-The renderer uses a three-panel desktop layout plus a modal layer:
+The renderer uses a titlebar, three-panel desktop layout, and modal layer:
 
-1. The 232 px channel panel contains seven ordered Unlucky Boys categories with
-   18 text rooms and six voice rooms in mixed source order, plus
-   active-call/sidebar controls, signed-in user actions, voice occupancy, and
-   admin-only create/rename controls. The shelf scrolls independently; admin
-   creation adds an uncategorized room because category management is outside
-   plan 0012. Occupied rooms show one room-active timer; their compact occupant
-   rows omit personal timers/local suffixes and ring the current room's active
-   speakers.
-2. The flexible center canvas contains text chat or the voice room. Header-edge
-   buttons independently toggle the left and right panels, immediately
-   reallocating space across all four combinations.
-3. The 240 px member panel is visible by default and groups online/idle and
-   offline members in normal document flow. It is not a drawer or overlay.
-4. During a call, an absolute centered dock appears across channel navigation.
+1. The 48 px titlebar owns window drag behavior. Its left side holds the 232 px
+   Personal/Bakbak switch after an 88 px macOS traffic-light safe area, while
+   a deterministic eight-second idle joke cycle occupies an independent center
+   grid track so unequal edge controls cannot displace it. Connecting,
+   connected, reconnecting, and failed voice states replace the line
+   immediately with room-aware copy. One handler on the complete titlebar starts
+   native drag and double-click maximize from every non-control descendant and
+   blank region; the Personal/Bakbak navigation, panel controls, and Windows
+   controls are explicitly excluded. Unread and active-call markers remain attached
+   to their spaces, blocking dialogs disable space and panel navigation while
+   leaving native window controls available, and voice fullscreen temporarily
+   removes the titlebar. Its right-edge layout controls independently toggle
+   the context and details panels. A separate 60 px contextual header beneath
+   it is dedicated to the current conversation or room.
+2. The 232 px channel panel contains an expanded topmost System category with
+   read-only `releases` and `general`, followed by seven ordered Unlucky Boys
+   categories with 18 ordinary text rooms and six voice rooms in mixed source
+   order, plus
+   active-call/sidebar controls, a shared Personal/server user footer with the
+   signed-in member's authenticated static cover poster behind its identity and
+   controls, voice occupancy, and admin-only create/rename controls. Categories
+   use accessible disclosure buttons and an Apple-style connector rail with
+   hash, speaker, or System/read-only child icons. The chevron visual center,
+   vertical spine, and row elbows share one coordinate. A selected room keeps a
+   neutral surface plus its accent-colored icon without adding a colored inset
+   border. Collapsed headers remain closed during
+   selection or activity and summarize a contained selection, unread text
+   rooms, and total voice occupants. The shelf scrolls independently; admin
+   creation adds an uncategorized room to a matching collapsible Conversations
+   or Voice rooms group because category management is outside plan 0012.
+   Occupied rooms show one room-active timer; their compact occupant rows omit
+   personal timers/local suffixes and ring the current room's active speakers.
+3. The flexible center canvas contains text chat or the voice room. The shell
+   has no outer padding, gutters, rounding, outlines, or panel shadows; two
+   straight 1 px separators define its edges. Titlebar buttons independently
+   toggle the left and right tracks over 220 ms. Pointer resizing temporarily
+   removes that grid transition so the conversation canvas follows every drag
+   update immediately, clears any existing browser selection, and disables
+   selection until pointer release/cancel. Persistent clipping slots keep each
+   side component mounted while hidden, but `inert`, `aria-hidden`, and a
+   disabled resizer prevent interaction during the zero-width state.
+   Text channels and Personal DMs render their introduction as a conversation
+   root. Empty threads connect it to one compact, accessible first-branch
+   status; populated threads align a theme-responsive 1 px trail to the root
+   icon and every message avatar, with grouped-message dots and a terminal
+   marker. This presentation wraps the existing message elements without
+   changing their list semantics or interaction contracts.
+4. The 240 px member panel is visible by default and groups unique members as
+   In Voice, Online, and Offline in normal document flow, with a visible 5 px
+   separation between its compact member surfaces. Known heartbeat
+   sessions merge with the current LiveKit room so active members appear before
+   the next heartbeat. Rows lazily load static cover posters through the shared
+   authenticated cache, preserve focal positioning, and never request cover
+   animation. It is not a drawer or overlay.
+   Space changes replace any in-flight 0/40/80 ms left/center/right entrance
+   sequence rather than queueing transitions, while voice and draft ownership
+   remains above the animated subtrees.
+5. During a call, an absolute centered dock appears across channel navigation.
    It auto-hides without consuming layout, clears the text composer, remains
    keyboard discoverable, and owns its More menu and compact 480×380 maximum
    soundboard popover anchoring.
-5. Selecting a voice channel joins it immediately, and selecting another voice
+6. Selecting a voice channel joins it immediately, and selecting another voice
    channel switches the active call. Hover/focus can prepare one candidate room
    without media or presence side effects; click consumes that work and shows a
-   compact stage loader instead of a blank canvas. After connection, people
-   and active shares share one centered, count-aware 16:9 gallery. Tiles are
+   compact stage loader instead of a blank canvas. A disconnected room offers
+   a concise rejoin action instead of going blank. After connection, people and
+   active shares share one centered, count-aware 16:9 gallery. Tiles are
    bounded from 520 px for one target through 240–300 px auto-fit tiles for
    seven or more. Clicking either opens a single media-first focused stage with
    bottom-overlay Back/fullscreen controls and no metadata header or people
    strip. Clicking the active media or Back to grid returns to the gallery;
    watched share playback continues there, while target loss also clears its
    subscription.
-6. Shared dialogs use compact/default/wide widths, responsive viewport padding,
+7. Shared dialogs use compact/default/wide widths, responsive viewport padding,
    and a `100dvh`-bounded grid with a fixed header, internally scrollable body,
    and sticky wrapping footer actions. Buttons stack at narrow widths. The
-   layer stays above the soundboard and visual effects while retaining focus
+   layer stays above the soundboard while retaining focus
    trapping/restoration plus backdrop/X/Escape dismissal. Settings uses the
    wide shell up to 1000×720 with left navigation, compact call controls, live
    rich-profile editing, and confirmed logout. Its focus lifecycle runs once
    per mount so changing parent callbacks, presence, or voice state cannot
    steal focus from a field.
-7. One application-owned profile popover anchors to member rows, message
+8. One application-owned profile popover anchors to member rows, message
    authors, mentions, voice identities, or the user dock. It prefers the
    trigger's right side, flips/clamps inside the viewport, contains focus, and
    shows only current-server role/presence plus global profile fields.
-8. Signal Red adds one fixed, non-interactive effects layer above normal shell
-   content (`z-index: 50`) and below profile/dialog/settings surfaces
-   (`z-index: 90+`). Ambient stamps use only four safe edge positions and pause
-   while the document is hidden or an interactive overlay is open.
-
-The reusable backend health poll measures a Supabase Auth round trip every 30
-seconds and labels the result as backend latency. LiveKit
-`ConnectionQualityChanged` events separately normalize the local participant as
-Unknown/Excellent/Good/Poor; reconnecting display takes precedence. Warm uses
-oat/stone light surfaces or charcoal dark surfaces with restrained ambience.
-Flat retains the same theme/accent/semantic tokens on grayscale backgrounds but
-removes decorative depth. Both modes preserve focus, readable contrast,
-reduced-motion behavior, and the supported 1024×680 and 1280×800 layouts.
+   The reusable backend health poll measures a Supabase Auth round trip every 30
+   seconds and labels the result as backend latency. LiveKit
+   `ConnectionQualityChanged` events separately normalize the local participant as
+   Unknown/Excellent/Good/Poor; reconnecting display takes precedence. The
+   selected glass scheme uses neutral translucency with a subtle system-accent
+   veil plus independent positive, danger, warning, and icon colors. Renderer
+   selection and active ordinary controls use the normalized system accent.
+   Renderer identity
+   screens use the static linked-`bb` Bakbak mark. The server header omits the
+   logo and pairs the Bakbak wordmark with the package-version-backed
+   `β · vX.Y.Z` chip. Its theme-responsive atmospheric background contains a
+   sparse constellation and diagonal signal weave. A
+   one-shot renderer-launch assembly
+   completes within 500 ms; panel/space motion and message stagger collapse to
+   the final state under reduced motion. Every scroll surface uses a transparent
+   6 px track and reveals its thumb on hover, focus, or scroll activity, which
+   clears 650 ms after scrolling stops. The shell preserves readable contrast
+   and the supported 1024×680, 1280×800, and larger layouts.
 
 ## Runtime and trust boundaries
 
@@ -446,14 +680,46 @@ The renderer is untrusted for authorization purposes. It may hold a user's
 Supabase session, use the public Supabase credential, request permitted data,
 connect to LiveKit with a short-lived participant token, and download permitted
 sound objects. It must never contain a service-role key or LiveKit API secret.
+The renderer's per-account IndexedDB read cache relies on the operating-system
+account rather than application encryption. It may contain already-authorized
+workspace, message, and profile-media copies, but never invite codes, bearer
+tokens, authorization headers, LiveKit tokens, service credentials, presence
+authority, or pending optimistic sends. A backend denial purges inaccessible
+cached scopes.
 
 ### Tauri shell
 
 Tauri owns the native window, capabilities, application identity, and desktop
 bundles. V1 should expose the smallest capability set needed by the renderer.
+The shared main-window geometry remains 1280×800 with a 1024×680 minimum,
+resizing, and label `main` across the base, macOS, and Windows configurations.
+macOS uses the overlay titlebar with hidden native title and a 16 px horizontal,
+24 px vertical traffic-light inset that centres the controls in the 48 px bar.
+The base Tauri config enables `macOSPrivateApi` so plain cross-platform Cargo
+checks validate the matching `macos-private-api` feature; the macOS override
+also retains that allowlist while applying a transparent window, native shadow,
+and the `underWindowBackground` effect with active/inactive-state following.
+Windows disables native decorations while retaining the native shadow and
+transparent webview, exposes renderer minimize, toggle-maximize, close, drag, and
+maximize-state reconciliation through an injectable adapter, and applies Mica
+from Rust only when `windows-version` reports build 22000 or newer. Before
+React loads, Rust injects `data-window-material="native|fallback"`; native
+material makes document roots transparent, while Windows 10, browser preview,
+and unsupported platforms retain an opaque grayscale underlay. Acrylic is not
+used. Capabilities grant window operations only to the main window. Linux
+custom chrome and native material remain deferred. The macOS private material
+API makes Mac App Store distribution unsupported; Bakbak targets private
+distribution.
 The main window enables Tauri's built-in interface zoom hotkeys, providing
 Cmd/Ctrl `+`, Cmd/Ctrl `-`, and Cmd/Ctrl `0` through the narrowly scoped
 webview-zoom capability.
+The `get_system_accent` command returns RGB bytes and a
+`macos | windows | fallback` source. macOS converts
+`NSColor.controlAccentColor` to sRGB and observes
+`NSSystemColorsDidChangeNotification`; Windows reads
+`UISettings.GetColorValue(Accent)` and retains `ColorValuesChanged`. Both emit
+`system-accent-changed` for the application lifetime. Browser/mock and
+unsupported hosts use the renderer's neutral fallback.
 Native commands are not an authorization substitute for Supabase RLS or Edge
 Function validation. The updater capability may check, download, and install a
 manifest-signed update, while the process capability is narrowed to restart.
@@ -529,24 +795,27 @@ soundboard volume multiplied by the existing participant volume.
 All identifiers are UUIDs unless noted otherwise. Exact migrations become
 authoritative once Phase 2 starts.
 
-| Entity                  | Key fields and constraints                                                                                                                                                                           | Access intent                                                                              |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `profiles`              | `id` references `auth.users`; 1–50 character display name; 0–190 character description; legacy `avatar_url`; owner-prefixed avatar/cover poster and GIF paths; integer 0–100 cover focal coordinates | User updates their row; shared-server members read member-facing fields                    |
-| `servers`               | owner/admin reference, name, timestamps                                                                                                                                                              | Members of the server can read it                                                          |
-| `memberships`           | unique `(server_id, user_id)`; v1 admin/member role                                                                                                                                                  | A user can read memberships for servers they belong to                                     |
-| `channel_categories`    | `server_id`, trimmed 1–80 character name, unique ordered position                                                                                                                                    | Members read their server categories; trusted migrations manage them                       |
-| `channels`              | `server_id`, optional category ID, trimmed 1–80 character name, category-local or uncategorized position, immutable `text` or `voice` type                                                           | Members read; matching admins create/rename only through RPCs                              |
-| `messages`              | text/voice channel ID, author ID, plain-text body, nullable structured text/mention content, timestamps                                                                                              | Members read accessible channels; validated inserts use the message RPC                    |
-| `channel_read_states`   | private user/channel key, monotonic last-read message pointer and timestamp                                                                                                                          | The owner reads through RLS; membership-checked RPCs advance/query state                   |
-| `direct_conversations`  | canonical ordered participant pair, unique pair, creation/activity timestamps                                                                                                                        | Only either established participant can select; creation uses a shared-membership RPC      |
-| `direct_messages`       | conversation ID, server-derived author, 1–4,000 character body, structured participant-only text/mentions                                                                                            | Only participants read; validated security-definer RPC writes                              |
-| `direct_read_states`    | private user/conversation key, monotonic last-read message pointer and timestamp                                                                                                                     | Only the owner selects; participant-checked RPC advances                                   |
-| `invite_codes`          | server ID, one-way code digest, creator, expiry, redemption fields                                                                                                                                   | No broad client read policy; redeemed atomically through a controlled function             |
-| `presence_heartbeats`   | unique server/user row, last seen, nullable voice channel/join time, LIVE boolean constrained to voice occupancy                                                                                     | Members can read server rows; only security-definer heartbeat RPCs can write               |
-| `soundboard_categories` | server ID, name, ordered position, sole upload-target flag                                                                                                                                           | Members read; trusted server setup manages categories                                      |
-| `soundboard_sounds`     | server/category, label, emoji, Storage path, duration, order, revision, nullable creator, created time                                                                                               | Members read; uploader/admin label and emoji updates only                                  |
-| `soundboard_favorites`  | private user/server/sound key and created time; cascading server/sound/owner references                                                                                                              | The signed-in owner alone selects, inserts, or deletes                                     |
-| `storage.objects`       | private `soundboard/<server UUID>/<file-or-uploader/uuid.wav>`, `avatars/<owner UUID>/<asset UUID>`, and `profile-covers/<owner UUID>/<asset UUID>` objects                                          | Sound writes use trusted server code; profile owners write/delete; server or DM peers read |
+| Entity                      | Key fields and constraints                                                                                                                                                                            | Access intent                                                                                              |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `profiles`                  | `id` references `auth.users`; 1–50 character display name; 0–190 character description; legacy `avatar_url`; owner-prefixed avatar/cover poster and GIF paths; integer 0–100 cover focal coordinates  | User updates their row; shared-server members read member-facing fields                                    |
+| `servers`                   | owner/admin reference, name, timestamps                                                                                                                                                               | Members of the server can read it                                                                          |
+| `memberships`               | unique `(server_id, user_id)`; v1 admin/member role                                                                                                                                                   | A user can read memberships for servers they belong to                                                     |
+| `channel_categories`        | `server_id`, trimmed 1–80 character name, unique ordered position                                                                                                                                     | Members read their server categories; trusted migrations manage them                                       |
+| `channels`                  | `server_id`, optional category ID, trimmed name, ordered position, immutable `text`/`voice` kind, `chat`/`system-releases`/`system-general` purpose; one System purpose/server                        | Members read; admins manage only ordinary chat rooms through RPCs                                          |
+| `messages`                  | channel/nullable author, compatibility body/content, member/system kind, typed System event, automation key, reply/media/reaction/deletion metadata, optional text-only preview and attempt timestamp | Members read accessible channels; member writes require ordinary chat purpose; trusted code inserts System |
+| `channel_read_states`       | private user/channel key, monotonic last-read message pointer and timestamp                                                                                                                           | The owner reads through RLS; membership-checked RPCs advance/query state                                   |
+| `direct_conversations`      | canonical ordered participant pair, unique pair, creation/activity timestamps                                                                                                                         | Only either established participant can select; creation uses a shared-membership RPC                      |
+| `direct_messages`           | conversation/author, compatibility body, structured content, reply/notify metadata, presentation, soft-delete timestamp, optional text-only preview and attempt timestamp                             | Established participants read; validated legacy/v2 RPCs write; trusted preview function updates metadata   |
+| `direct_read_states`        | private user/conversation key, monotonic last-read message pointer and timestamp                                                                                                                      | Only the owner selects; participant-checked RPC advances                                                   |
+| `message_attachments`       | private reservation target, uploader, kind/limits, original/poster paths, optional channel/DM message link, lifecycle timestamps                                                                      | RLS permits current channel members or established DM participants; trusted functions reserve/delete       |
+| `stickers`                  | server/uploader, label, poster/optional animation paths, dimensions, active/archive lifecycle                                                                                                         | Current members see the catalog; referenced history stays readable; renderer has no mutation grants        |
+| `message_sticker_reactions` | exactly one channel/DM message, server sticker, reactor, timestamp; partial uniqueness indexes                                                                                                        | Authorized viewers select; the cap-enforcing toggle RPC alone mutates                                      |
+| `invite_codes`              | server ID, one-way code digest, creator, expiry, redemption fields                                                                                                                                    | No broad client read policy; redeemed atomically through a controlled function                             |
+| `presence_heartbeats`       | unique server/user row, last seen, nullable voice channel/join time, LIVE boolean constrained to voice occupancy                                                                                      | Members can read server rows; only security-definer heartbeat RPCs can write                               |
+| `soundboard_categories`     | server ID, name, ordered position, sole upload-target flag                                                                                                                                            | Members read; trusted server setup manages categories                                                      |
+| `soundboard_sounds`         | server/category, label, emoji, Storage path, duration, order, revision, nullable creator, created time                                                                                                | Members read; uploader/admin label and emoji updates only                                                  |
+| `soundboard_favorites`      | private user/server/sound key and created time; cascading server/sound/owner references                                                                                                               | The signed-in owner alone selects, inserts, or deletes                                                     |
+| `storage.objects`           | private sound/profile objects plus `message-media/<uploader>/<uuid>/{original,poster}` and server sticker paths                                                                                       | Trusted functions write message/sticker media; RLS authorizes current channel or retained DM/history reads |
 
 Initial admin membership and initial invite codes are managed with reviewed SQL.
 An invite-management UI is deferred until post-v1.
@@ -558,16 +827,36 @@ An invite-management UI is deferred until post-v1.
   membership, and message data.
 - Channel categories use the same server-membership read boundary as channels.
   Authenticated clients cannot insert, update, or delete categories.
+- System room purposes are unique per server and automation-managed. Direct
+  writes plus legacy/rich send, reply, media-reservation, reaction, deletion,
+  and rename paths reject them for members and admins. Only the membership
+  trigger and service-role-only release RPC create authorless typed events.
 - Message authorship is derived from the authenticated user, not trusted from a
   client-supplied user ID.
 - `send_message` accepts only exact text/mention segment shapes, validates the
   channel and every mentioned profile against the caller's server membership,
   limits the generated fallback to 4,000 characters and 25 mentions, and writes
   both structured content and an older-client body.
+- `send_message_v2` and `send_direct_message_v2` add same-thread replies,
+  atomic attachment finalization, one validated sticker/GIPHY presentation,
+  notification coercion, and compatibility fallback bodies. Bakbak stickers
+  remain standalone; GIPHY presentations may carry structured text. Empty
+  messages, cross-thread replies, missing uploaded objects, mixed attachment
+  and presentation drafts, and more than four attachments are rejected.
+- Sticker reactions use one trusted toggle that verifies current membership,
+  enforces five distinct stickers per user and twenty per message under an
+  advisory lock, and never changes activity or unread state. Author deletion
+  scrubs content, removes reactions, revokes attachment reads, and excludes the
+  tombstone from latest/unread calculations without deleting the row.
 - Channel read states are private to their owner. Clients cannot write the
   table directly; `mark_channel_read` requires channel membership and can only
   advance a pointer, while `get_channel_activity` exposes activity for one of
   the caller's servers.
+- Link previews are metadata, not client-supplied fetch instructions. The
+  authenticated function loads channel rows through membership RLS or DM rows
+  through participant RLS, extracts the first stored URL, and lets only its
+  service-role client update preview/attempt columns. System releases suppress
+  the generic preview.
 - Direct conversation, message, and read-state tables expose only RLS-filtered
   selects to renderer sessions. `get_or_create_direct_conversation` derives a
   canonical pair and requires current shared-server membership;
@@ -622,45 +911,89 @@ An invite-management UI is deferred until post-v1.
 
 ### Application shell and direct messages
 
-1. The 68 px destination rail switches an `AppSpace` discriminant between
-   Personal and the single server. Each space keeps its latest in-memory
-   conversation/channel selection. A cold start remains on Bakbak when
+1. The titlebar's left-positioned segmented switch selects a navigation-neutral
+   `AppSpace` discriminant between Personal and the single server. Each space keeps its
+   latest in-memory conversation/channel selection. A cold start remains on Bakbak when
    membership loads; missing membership plus established DM history resolves
    to Personal; neither history nor membership resolves to InviteGate.
 2. The context panel swaps the Personal conversation list and server channel
    shelf while retaining the shared user footer and current-call controls.
-   Settings remains an overlay and does not become a rail destination.
-3. Layout preferences v2 store visibility plus context/details widths. CSS grid
-   variables apply the same geometry to every visual preset. Pointer handles
-   use capture; keyboard separators support arrows, Shift+arrows, Home/End, and
-   double-click reset. Runtime maxima clamp the 200–360 px widths so the centre
-   retains at least 420 px; hidden panels keep their stored widths.
-4. Personal loads `get_direct_conversations()` activity ordered by the newest
+   Settings remains an overlay and does not become a rail destination. The
+   last selected server text channel or Personal DM is cached per account;
+   voice rooms are deliberately never restored or auto-joined.
+3. Layout preferences v2 store visibility plus context/details widths. A stable
+   five-track CSS grid uses two 1 px separator tracks for every visibility
+   combination; hidden panel and divider tracks animate to zero without being
+   removed. Each panel remains mounted in a clipping slot that becomes inert
+   and hidden from assistive technology. The invisible 9 px pointer target
+   overlaps its 1 px separator; keyboard separators support arrows,
+   Shift+arrows, Home/End, and double-click reset and disable immediately with
+   the panel. Pointer capture updates the grid without its collapse transition
+   and suppresses document selection only for the active drag. Release,
+   cancellation, capture loss, or window blur always restores normal selection
+   and motion. Runtime maxima clamp the 200–360 px widths so the centre retains
+   at least 420 px; hidden panels keep their stored widths.
+4. After Auth resolves the user ID, the renderer reads that account's
+   normalized IndexedDB snapshot and may paint it as cached data. It then
+   revalidates workspace, membership, profiles, DM summaries, unread state, and
+   Realtime. A connectivity failure retains a visibly offline, read-only cache;
+   online, visible-window, and ten-second backoff signals retry. API contract,
+   authorization, and query failures remain actionable alerts and do not mark
+   the entire app offline. Authorization denial removes the inaccessible
+   cached scope instead of treating it as authority.
+5. Personal loads `get_direct_conversations()` activity ordered by the newest
    message. Starting a row calls the canonical shared-membership creation RPC.
    Direct messages use a true direct `ConversationTarget`, never a fabricated
    server channel.
-5. Each direct conversation owns an in-memory draft and optimistic message.
+6. Each direct conversation owns an in-memory draft and optimistic message.
    Send failure removes the optimistic row and restores the submitted draft.
    Participant-authorized Realtime inserts update an open conversation,
    refresh ordering/unread state, and use the existing incoming-message sound.
-6. Selecting a conversation loads its RLS-filtered history and advances the
+7. Selecting a conversation renders its memory/IndexedDB thread immediately,
+   then requests rows after its newest `(created_at, id)` cursor. A cache miss
+   requests the newest 50; upward pagination requests 50 before the earliest
+   cursor. Realtime/query/optimistic results merge by stable ID, while only the
+   newest 200 confirmed rows persist. Rich channel and DM selects read the
+   scalar `reply_to_id`, then hydrate the unique parent IDs through a second
+   authorized query. This avoids PostgREST's ambiguous reverse-array result for
+   the recursive reply relationship and prevents empty arrays from rendering
+   as phantom “Former friend” replies.
+8. Selecting a conversation loads its RLS-filtered history and advances the
    signed-in participant's monotonic read state when visible. Private read-state
    Realtime refreshes Personal unread markers.
-7. The details panel resolves the other participant's profile and private media
+9. The details panel resolves the other participant's profile and private media
    through shared-server or established-DM policy. Former members may use the
-   reversible invite action while keeping established conversations.
+   reversible invite action while keeping established conversations. The DM
+   conversation row and header hydrate that participant's private avatar poster
+   through the shared profile-media cache, while the details rail plays their
+   GIF avatar and cover unless reduced motion is enabled. The Personal member
+   picker truncates long names and dismisses on outside pointer or Escape.
+   Media resolves memory first, then the user-scoped IndexedDB blob, then
+   authenticated Storage. Workspace metadata publishes before avatar hydration,
+   so a slow image cannot hold the shell hostage.
 
 ### Profile, appearance, and modal settings
 
-1. The renderer validates and applies `bakbak.appearancePreferences.v6`
-   synchronously before mounting React. A local parser-blocking bootstrap sets
-   visual preset, theme, accent, intensity, surface style, and theme-specific
-   CSS tokens before the production stylesheet loads; React then installs the
-   System media-query listener for Classic. A missing v6 preference, including
-   every v5-or-older installation, is written once as Classic System + Flat +
-   Purple before first paint. Subsequent v6 choices persist normally. Signature
-   and Signal Red lock their fixed values without overwriting the retained v6
-   Classic fields.
+1. The renderer loads one local Roundo font face and one glass token set before
+   mounting React. A validated `auto | light | dark` preference applies before
+   React mounts; Auto delegates to CSS `prefers-color-scheme`, so operating-
+   system changes continue to apply live. Rust supplies the pre-render
+   native/fallback material marker; fallback
+   mode uses an opaque system-coloured document underlay and native mode makes
+   only the document roots transparent. Dark canvas/panel/strong bases use
+   64/72/84% black; light bases use 60/72/84% white. Accent mixes of 6/5/3%
+   unify those surfaces while keeping wallpaper bleed subordinate. Primary
+   chrome uses 24 px blur and 120% saturation, never a filter on user/live
+   media. The native accent listener starts before its initial query, falls
+   back to neutral within 250 ms, validates byte channels, normalizes to 4.5:1
+   text contrast, chooses black or white on-accent text, and refreshes on
+   native color events, focus, and resolved scheme changes. Legacy
+   `bakbak.appearancePreferences.*` keys are neither read nor deleted. Shared
+   type, spacing, height, and radius tokens enforce the
+   500/600/700 UI hierarchy, 4 px spacing rhythm, 36/40/44 px controls and rows,
+   52 px composer, and restrained 10/14/16/18 px curves. Hover transitions use
+   color and border changes; reduced motion disables transitions and press
+   scaling.
 2. Profile edits validate a trimmed 1–50 character display name, a
    190-character plain-text description, integer 0–100 cover coordinates, and
    optional PNG/JPEG/WebP/GIF media. Avatars are limited to 5 MiB, covers to 10
@@ -673,12 +1006,21 @@ An invite-management UI is deferred until post-v1.
    `<user UUID>/<generated UUID>` before one profile-row update. Any failure
    removes every newly uploaded object. Success mirrors the display name into
    Auth metadata and best-effort deletes replaced/removed objects.
-5. One bucket/path-keyed cache deduplicates authenticated downloads and revokes
-   object URLs on replacement, sign-out, and teardown. Avatar posters load
-   eagerly; compact GIFs load only on identity hover/focus, while cover media
-   loads only for an open profile card or editor. Reduced-motion mode never
-   requests GIFs. Realtime generation guards stop stale downloads from
-   replacing newer profile state.
+5. A memory plus user-scoped IndexedDB bucket/path cache deduplicates
+   authenticated downloads and revokes object URLs on replacement, account
+   change, clearing, and teardown. Workspace metadata publishes before avatar
+   posters hydrate progressively; compact GIFs load only on identity
+   hover/focus. Static cover posters
+   load lazily for visible member rows, immediately for the always-visible
+   shared user dock, or on demand for an open profile card or editor; cover
+   animation loads only for the open card/editor. Reduced-motion
+   mode never
+   requests GIFs. If WebKit cannot decode a cached object URL, every shared
+   profile-media surface removes the failed image immediately, evicts that
+   account/bucket/path entry, retries authenticated Storage once, and otherwise
+   keeps the neutral fallback instead of exposing a native broken-image icon.
+   Realtime generation guards stop stale downloads from replacing newer
+   profile state.
 6. Cover framing uses a fixed 3:1 preview. Pointer drag or keyboard arrows
    update integer focal coordinates; Shift moves by a larger step and Reset
    returns to 50/50.
@@ -692,13 +1034,15 @@ An invite-management UI is deferred until post-v1.
    refreshes device enumeration because macOS WebKit can reveal named speakers
    only after capture permission. Microphone and output tests acquire only
    temporary resources and release them when stopped or unmounted. Preview
-   buttons activate and play one interface-sound category representative
+   buttons activate and play one modern interface-sound category representative
    through the system output.
 8. Settings is a modal overlay over the current canvas. It traps focus, restores
    the opener on close, exposes compact active-call controls, and confirms
    logout. Closing discards staged profile edits and revokes preview URLs; a
    failed save leaves the draft intact for retry. A failed logout leaves the
-   overlay open with an inline error.
+   overlay open with an inline error. Data & storage reports current-account
+   message/media usage, the 200-message/256 MiB policy, freshness, and a
+   confirmation-protected cache clear action.
 
 ### Channel management
 
@@ -712,38 +1056,67 @@ An invite-management UI is deferred until post-v1.
    rooms of that server and kind, and appends at the next increment of ten.
    Rename changes only the name, preserving the UUID, category, kind, server,
    messages, active voice identity, and ordering.
-4. Channel Realtime subscribes before its catch-up snapshot and replays buffered
-   events after the snapshot, so an overlapping create or rename cannot be
-   overwritten by stale data. Channels reconcile by stable ID and sort by
-   position then ID. Only the creating client selects a new channel; selecting
-   a newly created voice channel also joins it automatically.
+4. Channel and channel-category Realtime subscribe before their catch-up
+   snapshots and replay buffered events after the snapshot, so an overlapping
+   create, rename, or category migration cannot be overwritten by stale data.
+   Both collections reconcile by stable ID and sort by position then ID. Only
+   the creating client selects a new channel; selecting a newly created voice
+   channel also joins it automatically.
 
 ### Text-channel chat and voice-message compatibility
 
-1. A member selects a text channel. The upgraded renderer loads messages,
-   activity, drafts, and Realtime subscriptions only for known text-channel
-   IDs.
+1. A member selects a text channel. The upgraded renderer paints its
+   user-scoped memory/IndexedDB thread immediately, then loads rows after the
+   newest `(created_at, id)` cursor or the newest 50 on a miss. Upward
+   pagination reads 50 older rows; only the newest 200 confirmed rows persist.
+   Activity, drafts, and Realtime subscriptions remain limited to known
+   text-channel IDs.
 2. RLS verifies server membership. The deployed RPCs and schema still permit
    voice-channel messages for older clients, but upgraded clients do not expose
    that surface or create invisible voice unread state.
-3. A submitted structured draft becomes exact text/mention segments and calls
-   `send_message`. Postgres validates membership, segment shape, size, and each
-   mention before deriving the author and plain-text fallback.
-4. Supabase Realtime broadcasts the committed row to authorized clients.
-5. Clients reconcile realtime events with the loaded message list without
-   duplicating optimistic messages.
-6. A committed message from another user plays a short local notification tone.
+3. A submitted draft stages media locally. MP4Box rejects non-H.264 video,
+   non-AAC optional audio, excessive duration, or excessive resolution. On
+   send, TUS uploads each reserved original/poster with progress and retry;
+   only after every object succeeds does the v2 RPC atomically publish the
+   message. A failed attempt retains the complete draft for retry.
+4. Plain structured text may still call the compatible legacy RPC. Replies,
+   attachments, Bakbak stickers, and GIPHY presentations call the v2 RPC.
+   GIPHY selections are staged in the composer, where the user may add text
+   before sending; Bakbak sticker sends remain standalone. Postgres validates
+   membership/participation, segment shape, reply scope, presentation metadata,
+   reservation ownership, object existence, and quotas.
+5. Supabase Realtime broadcasts INSERT/UPDATE plus sticker/reaction changes.
+   The receiver hydrates the affected message by ID before cache replacement.
+6. Clients reconcile cached, query, realtime, and optimistic events by stable
+   ID and deterministic timestamp/ID order. Pending optimistic rows never
+   persist.
+7. A committed message from another user plays a short local notification tone.
    `get_channel_activity` compares the latest message with the account's private
    marker so unread emphasis follows the signed-in user across clients.
-7. A visible selected text chat advances the marker through
+8. A visible selected text chat advances the marker through
    `mark_channel_read`. Realtime read-state changes refresh the activity
    snapshot on other signed-in clients.
-8. Mention ranges are atomic draft metadata. Editing through one converts it to
+9. Mention ranges are atomic draft metadata. Editing through one converts it to
    plain text; selecting a member from the accessible `@` combobox stores that
    member ID. Rendering resolves the current Realtime profile name and uses the
    segment fallback only when the member is no longer visible.
-9. Composer drafts are controlled by the application shell in a per-channel
-   map, so switching rooms or opening settings preserves unfinished messages.
+10. Composer drafts and loaded thread maps are controlled by the application
+    shell per channel, so switching rooms or opening settings preserves
+    unfinished and already-rendered conversation state.
+11. The shared channel/DM composer exposes only implemented actions: attachment
+    at the leading edge and GIPHY, Bakbak stickers, searchable native emoji, and
+    send at the trailing edge. Choosing an emoji replaces the current selection,
+    updates structured mention offsets through the normal draft-text boundary,
+    and restores focus to the message input. With no staged preview, its wrapper
+    and the context-panel user dock use the same 68 px footer height; the 52 px
+    composer is vertically inset by 8 px while rich previews grow upward.
+12. System channels replace that composer with a compact automation-only
+    footer and render typed welcome/release cards without member avatars or
+    message actions. Membership creation inserts the welcome before initializing
+    the joiner's read pointers, so their own event starts read while existing
+    members receive it as normal unread Realtime activity. Preview requests run
+    after send/history hydration; a preview UPDATE replaces the stable-ID cache
+    row without replaying unread or sound side effects.
 
 ### Application presence
 
@@ -772,8 +1145,8 @@ An invite-management UI is deferred until post-v1.
 
 ### Voice room
 
-1. Live workspace load prepares the public LiveKit endpoint. Pointer hover or
-   keyboard focus held for 150 ms prepares only the newest voice channel by
+1. Live workspace load prepares the public LiveKit endpoint. A 75 ms pointer
+   dwell or immediate keyboard focus prepares only the newest voice channel by
    requesting one five-minute token and calling `Room.prepareConnection`.
    Preparation never requests microphone access, joins, or publishes presence;
    stale candidates and tokens within 30 seconds of expiry are discarded.
@@ -788,7 +1161,9 @@ An invite-management UI is deferred until post-v1.
 4. Microphone capture requests mono 48 kHz input with WebRTC echo
    cancellation, noise suppression, and automatic gain control. When enhanced
    cleanup or a voice effect is selected, a LiveKit `TrackProcessor` routes
-   capture through a dedicated AudioContext and AudioWorklet. The worklet
+   capture through a shared 48 kHz AudioContext and AudioWorklet. After the
+   first trusted gesture, Bakbak loads that worklet without requesting a
+   microphone, then reuses the context for preview and voice. The worklet
    bridges 128-sample render quanta into 480-sample RNNoise frames, then applies
    the selected sender-side effect. Unsupported initialization keeps the raw
    capture track and records a non-fatal Settings warning.
@@ -802,8 +1177,8 @@ An invite-management UI is deferred until post-v1.
    stopping it, disconnects the old room, republishes it into the new room,
    and preserves its processor plus mute/deafen state. Input-device changes
    restart the processor on the replacement source. Leave, sign-out, a failed
-   switch, and teardown stop every retained or pending microphone and close
-   its processing context immediately.
+   switch, and teardown stop every retained or pending microphone. Sign-out and
+   application teardown close the shared processing context.
 7. The renderer generation-gates all token, connection, and microphone work so
    a stale attempt can disconnect only its own room. A compact polite status
    loader announces authorization, connection, microphone, or soundboard work;
@@ -827,19 +1202,22 @@ An invite-management UI is deferred until post-v1.
     pause and detach the selected-speaker monitor, stop its MediaStream tracks,
     close its Web Audio context, disconnect the room, and release local tracks.
 11. If direct WebRTC fails and relay succeeds, later joins prefer relay for ten
-    minutes in memory. Relay-first failure retries direct; expiry periodically
-    restores direct probing. A total failure is reported as a TURN/TLS or local
-    network-policy problem rather than token/authentication failure.
-12. Development builds record preparation, authorization, connection,
-    microphone, soundboard, and total timing without identifiers or tokens.
+    minutes using only a non-sensitive LiveKit-host-scoped expiry. Relay-first
+    failure retries direct; direct success or expiry clears the hint. A total
+    failure is reported as a TURN/TLS or local network-policy problem rather
+    than token/authentication failure.
+12. Development diagnostics record preparation, authorization, connection,
+    microphone capture/processing/publication, output routing, soundboard, and
+    total timing without identifiers or tokens.
 13. `CommunicationEffectEvent` is emitted only after lifecycle truth: self join
     follows the complete connected gate; normal self leave requires an explicit
     user leave; switches emit only the destination join; sign-out, teardown,
     canceled joins, and unexpected disconnects never imitate a normal leave.
     The initial remote roster and share publications are baselined before later
     remote participant/share events become eligible. Native share companions
-    are excluded from voice-person events. Reconnect and actionable failure use
-    Status events rather than leave.
+    are excluded from voice-person events. Successful local microphone
+    mute/unmute emits only after publication state changes. Reconnect and
+    actionable failure use Status events rather than leave.
 
 ### Desktop screen share
 
@@ -892,12 +1270,19 @@ An invite-management UI is deferred until post-v1.
    The presenter's own companion video remains subscribed locally while its
    companion source audio is always forced unsubscribed.
    Deafen, selected output, and owner volume still apply to watched audio.
-8. Sidebar LIVE is informational and has no Watch action or pending cross-room
-   state. Database LIVE alone never creates a subscription; the viewer joins
-   the voice room and selects the share tile. Each occupied channel shows one
-   room-active timer based on its earliest current join. Occupants have no
-   personal timers or redundant local-user suffix; compact avatars use a live
-   speaking ring from the active LiveKit room.
+8. Sidebar and member-rail LIVE remains presence information until a remote
+   viewer activates its hover/focus Watch Stream action. That action stores a
+   request ID, owner ID, and channel ID, joins or switches to the advertised
+   voice room, and waits for the owner's authoritative LiveKit share before
+   invoking the same one-share subscription gate and focusing it. Database LIVE
+   alone never creates a subscription. A request with no matching share ten
+   seconds after connection clears with a dismissible stream-ended notice.
+   Each occupied channel shows one room-active timer based on its earliest
+   current join. Occupants have no personal timers or redundant local-user
+   suffix; compact avatars use a live speaking ring from the active LiveKit
+   room. This is plan 0028's narrow supersession of plan 0015's
+   informational-only/cross-room restriction; plan 0015's isolation,
+   source-audio, explicit-subscription, and cleanup contracts remain active.
 9. Focused people and shares use one `minmax(0, 1fr)` media stage without a
    metadata header or people filmstrip. Shared media uses `object-fit: contain`
    against a black canvas, while Back to grid and fullscreen sit above its
@@ -1006,13 +1391,16 @@ Interface cues deliberately bypass the selected call output.
 Soundboard section collapse state is stored independently per server under
 `bakbak.soundboardSections.v1:<server ID>` and never syncs; favorite rows sync
 through Supabase instead.
-The renderer stores `{ theme, accent, intensity, surfaceStyle, visualPreset }`
-separately under `bakbak.appearancePreferences.v6`. Missing v6 preferences,
-including all v5-or-older installations, reset once to Classic System + Flat +
-Purple. Theme is System/Light/Dark, accent is Coral/Purple/Red/Yellow, intensity is a
-validated 25–100% five-point step, surface style is Warm/Flat, and the visual
-preset is Signature/Standard/Signal Red. Only Standard exposes the variable
-theme, accent, intensity, and surface controls.
+Channel-category collapse state is stored independently per server under
+`bakbak.channelCategories.v1:<server ID>`. Only boolean values for currently
+known real or synthetic group IDs are accepted; malformed data falls back to
+expanded groups, and unavailable storage affects persistence rather than
+interaction.
+Appearance stores only `auto`, `light`, or `dark` under
+`bakbak.appearancePreference.v1`. Invalid values restore Auto. Old
+`bakbak.appearancePreferences.*` entries remain inert rather than receiving a
+cleanup migration. System accent is native-derived and has no device-local or
+account preference key.
 It stores `{ enabled, volume, categories }` under
 `bakbak.interfaceSoundPreferences.v1`; the default is enabled at 55% with
 Messages, Voice, Screen share, and Status enabled. Interface sounds lazily
@@ -1025,12 +1413,15 @@ reclamped to the viewport so at least 420 px remains for the centre canvas.
 All of these preferences are device-local and never part of the profile or
 Supabase schema.
 
-League Gothic `5.2.8`, IBM Plex Mono `5.2.7`, and Cormorant Garamond `5.2.11`
-are installed from Fontsource; their package manifests declare SIL Open Font
-License 1.1 (`OFL-1.1`). Every WAV under `public/interface-sounds` is original
-Bakbak project output from the checked-in deterministic
-oscillator/filter/envelope/seeded-noise generator.
-The assets contain no recordings or third-party samples. The microphone
+Roundo v2.0 is vendored from Fontshare as
+`public/fonts/roundo/Roundo-Variable.woff2` and served locally with no CDN
+dependency. Its SHA-256 is
+`74481965a428478803e36f6aaf21d163c36c5c8fc2cb27029dfbf1f9fb6f5a65`;
+the upstream/download record and SIL Open Font License 1.1 notice live under
+`third_party/roundo`. Every WAV under `public/interface-sounds` is original
+Bakbak project output from the checked-in deterministic sine-pluck and
+rounded-envelope generator. The modern pack contains no recordings, third-party
+samples, square/triangle oscillators, or seeded grit. The microphone
 worklet bundles `@jitsi/rnnoise-wasm` `0.2.1` and its RNNoise 0.2 synchronous
 model; Jitsi's Apache/MIT notice and Xiph.Org's BSD 3-Clause notice ship under
 `public/vendor/rnnoise`.
@@ -1042,7 +1433,10 @@ model; Jitsi's Apache/MIT notice and Xiph.Org's BSD 3-Clause notice ship under
    scan, and a locked Rust check.
 2. A merge to `main` resolves the next stable SemVer from the newest `v*` tag.
    Patch is the default; `release:minor` and `release:major` labels override it,
-   while `release:skip` suppresses documentation-only releases.
+   while `release:skip` suppresses documentation-only releases. The resolver
+   regression fixes the `v0.16.0 + release:major` boundary at `v1.0.0`; source
+   package versions are not changed manually before that isolated release
+   checkout.
 3. The release checkout synchronizes the calculated version across
    `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`.
 4. Tauri Action builds macOS `aarch64` and Windows `x86_64` installers with the
@@ -1058,7 +1452,13 @@ model; Jitsi's Apache/MIT notice and Xiph.Org's BSD 3-Clause notice ship under
    and immediately merges a protected-branch-compatible version PR. The bot
    commit uses GitHub's workflow token plus a skip annotation, so it cannot
    recursively start another release.
-7. Desktop clients check the public GitHub Releases `latest.json` shortly after
+7. A separate announcement job always reads the verified published release
+   from GitHub's API and posts it to the protected System endpoint with three
+   retries. Failures do not unpublish the desktop release, and the release ID
+   makes reruns idempotent. A manual workflow independently streams every
+   stable release oldest-first in historical mode and advances current
+   members' release read baseline.
+8. Desktop clients check the public GitHub Releases `latest.json` shortly after
    startup. An available update is shown globally; installation and restart
    require an explicit user action so an active conversation is not interrupted.
    Windows uses Tauri's passive installer mode.
@@ -1085,6 +1485,32 @@ These contracts match the current implementation.
 - **Errors:** normalized unauthorized, origin/method/payload,
   not-found/invalid-channel, request-failed, and service-unavailable responses
   without secret details.
+
+### `POST /functions/v1/system-events`
+
+- **Authentication:** exact `x-bakbak-system-secret`; the platform JWT gate is
+  intentionally disabled for this GitHub-to-function endpoint
+- **Request:** repository name, historical flag, and one GitHub release with
+  numeric ID, SemVer tag, name/body/URL, publication timestamp, and
+  draft/prerelease flags
+- **Validation:** exact `ayushrameja/bakbak` repository and release URL,
+  published stable release, bounded strings, valid timestamp, sanitized
+  plain-text notes
+- **Publication:** service-role-only `publish_system_release` upserts
+  `github-release:<id>` and optionally advances existing members' read baseline
+
+### `POST /functions/v1/link-preview`
+
+- **Authentication:** platform JWT gate plus verified Supabase claims
+- **Request:** `{ "scope": "channel|direct", "messageId": "<uuid>" }`
+- **Authorization:** the caller's RLS client must read the stored channel
+  message or DM; the function ignores caller-provided URL/content
+- **Network policy:** first stored URL only; public HTTPS DNS results, standard
+  port, no credentials/IP/local host, every redirect revalidated, at most three
+  redirects, three seconds, 512 KiB, and HTML/XHTML only
+- **Result:** one sanitized text page card or YouTube descriptor; the
+  service-role client stores the result and attempt time, with null attempts
+  retryable after 24 hours
 
 ### `POST /functions/v1/soundboard-manage`
 
@@ -1171,7 +1597,8 @@ These contracts match the current implementation.
 - **Request:** `{ "p_channel_id": "<channel-uuid>", "p_name": "<name>" }`
 - **Success:** the renamed `channels` row
 - **Validation:** `auth.uid()` identity, matching server admin membership,
-  trimmed 1–80 character name, and case-insensitive uniqueness
+  ordinary `chat` purpose, trimmed 1–80 character name, and case-insensitive
+  uniqueness
 - **Behavior:** changes only the name; ID, server, kind, position, history, and
   active voice identity remain stable
 
@@ -1181,9 +1608,9 @@ These contracts match the current implementation.
 - **Request:** `{ "p_channel_id": "<channel-uuid>", "p_content": [segments] }`
 - **Success:** the inserted message row with generated plain-text body and
   structured content
-- **Validation:** matching text/voice channel membership, 1–100 exact text or
-  mention segments, at most 4,000 fallback characters, at most 25 mentions, and
-  every mentioned UUID belonging to the channel's server
+- **Validation:** matching ordinary `chat` text/voice channel membership,
+  1–100 exact text or mention segments, at most 4,000 fallback characters, at
+  most 25 mentions, and every mentioned UUID belonging to the channel's server
 - **Behavior:** derives the author and current mention fallback names inside the
   database; direct authenticated message inserts remain unsupported for upgraded
   clients
@@ -1223,17 +1650,19 @@ credential in a `VITE_*` variable.
 | `VITE_SUPABASE_ANON_KEY` | Supabase public/anonymous client credential; RLS remains mandatory             | No      |
 | `VITE_LIVEKIT_URL`       | Public LiveKit WebSocket URL                                                   | No      |
 | `VITE_BACKEND_REGION`    | Public label for the deployed Supabase backend, currently Canada Central       | No      |
+| `VITE_GIPHY_API_KEY`     | Public GIPHY beta API key for direct GIF/sticker search and analytics          | No      |
 
 ### Edge Function managed values
 
-| Name                        | Purpose                                                            | Secret handling                |
-| --------------------------- | ------------------------------------------------------------------ | ------------------------------ |
-| `SUPABASE_URL`              | Supabase project URL available to the function                     | Platform-managed               |
-| `SUPABASE_ANON_KEY`         | Validates/forwards user-scoped Supabase access                     | Platform-managed               |
-| `SUPABASE_SERVICE_ROLE_KEY` | Privileged server-only database access if the function requires it | Secret; never bundle or commit |
-| `LIVEKIT_URL`               | Public WebSocket URL returned with the short-lived token           | Platform-managed               |
-| `LIVEKIT_API_KEY`           | LiveKit token issuer identity                                      | Secret; never bundle or commit |
-| `LIVEKIT_API_SECRET`        | Signs LiveKit participant tokens                                   | Secret; never bundle or commit |
+| Name                          | Purpose                                                            | Secret handling                |
+| ----------------------------- | ------------------------------------------------------------------ | ------------------------------ |
+| `SUPABASE_URL`                | Supabase project URL available to the function                     | Platform-managed               |
+| `SUPABASE_ANON_KEY`           | Validates/forwards user-scoped Supabase access                     | Platform-managed               |
+| `SUPABASE_SERVICE_ROLE_KEY`   | Privileged server-only database access if the function requires it | Secret; never bundle or commit |
+| `LIVEKIT_URL`                 | Public WebSocket URL returned with the short-lived token           | Platform-managed               |
+| `LIVEKIT_API_KEY`             | LiveKit token issuer identity                                      | Secret; never bundle or commit |
+| `LIVEKIT_API_SECRET`          | Signs LiveKit participant tokens                                   | Secret; never bundle or commit |
+| `BAKBAK_SYSTEM_EVENTS_SECRET` | Authenticates only GitHub release automation to `system-events`    | Secret; never bundle or commit |
 
 `.env.example` contains placeholders only. Real renderer development values use
 ignored local `.env` files; Edge Function secrets use Supabase's managed secret
@@ -1242,8 +1671,10 @@ store.
 Release workflows read the renderer-visible values from GitHub Actions
 repository variables and force `VITE_DATA_MODE=live`. They read
 `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` from
-GitHub Actions secrets. The updater private key and password are never Vite
-variables, renderer inputs, release assets, or committed files.
+GitHub Actions secrets. System announcements additionally require the
+`BAKBAK_SYSTEM_EVENTS_SECRET` Actions secret matching the Supabase function
+secret. The updater key/password and System secret are never Vite variables,
+renderer inputs, release assets, or committed files.
 
 ## Validation strategy
 
@@ -1271,6 +1702,10 @@ Soundboard upload work additionally runs reduced-core media tests, Deno
 request/WAV/cleanup tests, category/favorite/creator/quota pgTAP checks, short
 viewport modal QA, installed audio/video extraction, hosted two-account
 Realtime/moderation/playback checks, and before/after installer-size recording.
+System/link work additionally runs exact-layout and automation-only pgTAP,
+release-secret/idempotency and preview SSRF/redirect/timeout/size Deno tests,
+renderer URL/card/Realtime-side-effect checks, deterministic deafen-WAV tests,
+and multi-zoom dark/light connector alignment observation.
 Screen-sharing work additionally runs the Deno token suite, focused Rust tests,
 `cargo check --locked`, macOS and Windows native builds, compiled secret scans,
 and the bidirectional installed-client matrix in plan 0003. Artifact sizes are
@@ -1292,6 +1727,55 @@ that it has passed.
 
 ## Current limitations and deferred work
 
+- Plan 0019's adaptive semantic control tokens, shared sidebar user dock,
+  presence-aware member groups, and lazy static member-cover accents are
+  implemented with focused component, integration, contrast, and appearance
+  regressions. Dark/light three-resolution and min/default/max panel-width
+  visual QA plus installed macOS/Windows observation remain required.
+- Plan 0018's system-adaptive glass tokens, native/fallback bootstrap, macOS
+  material configuration, Windows 11 Mica gate, edge-to-edge five-track shell,
+  persistent inert panel slots, centered signed-in title, bounded motion, and
+  auto-hiding scrollbars are implemented with focused renderer/native contract
+  coverage. Installed macOS and Windows 10/11 validation still must cover real
+  vibrancy/Mica, inactive windows, varied-wallpaper contrast, startup flash,
+  traffic lights/window controls, shadow, drag/resize/fullscreen, and both
+  system schemes. Browser QA cannot prove those native effects.
+- Plan 0017's 48 px titlebar, segmented Personal/Bakbak switch, centered
+  draggable context jokes, rail-free geometry, comfortable Roundo scale,
+  platform configurations, adapter tests,
+  and dark mock-browser checks at 1024×680, 1280×800, and 2560×1440 are
+  implemented. Installed macOS and Windows verification still must cover
+  native controls, dragging, maximize/restore, resizing, light/dark modes,
+  offline font loading, OS shortcuts, and screen-share cleanup on close.
+- Plan 0026's native macOS/Windows accent bridge, renderer normalization,
+  unified interaction tokens, calmer accent-veiled glass, and read-only
+  Appearance swatch are implemented with focused renderer, native, contrast,
+  and styling contracts. Installed macOS live color changes and the Windows
+  Automatic/wallpaper-derived color path still require direct observation.
+- Plan 0027's System schema/functions/workflows, automation-only renderer,
+  safe links/previews, deafen cues, and shared connector axis are implemented
+  and locally validated. The migration and functions are hosted, the release
+  secret is configured in Supabase and GitHub Actions, and 15 stable releases
+  have been imported with the historical read baseline. Follow-up migration
+  `202607240002` publishes category changes, while renderer category catch-up
+  self-heals clients that were open during the initial migration. Installed
+  multi-client unread/audio plus dark/light multi-zoom layout observation
+  remain required.
+- Plan 0028's loading, scroll anchoring, user actions, local participant mute,
+  and requested-owner stream handoff are implemented and covered by focused
+  renderer/release regressions. Direct light/dark/reduced-motion observation
+  and the installed macOS/Windows three-client watch matrix remain required
+  before release acceptance.
+- Plan 0016's neutral appearance and local Roundo bundle remain active, while a
+  later user-directed follow-up restores only Auto/Light/Dark scheme selection
+  and removes the typography summary. Accent, surface, and font controls remain
+  absent. Plan 0026 supersedes only the fixed decorative/selection palette:
+  Bakbak always follows the native accent and exposes it read-only. Plan 0019's
+  semantic positive/danger/warning colors remain independent, while plan
+  0020's server-header atmosphere now derives from the same accent.
+  The in-app browser's localhost policy blocked the mock-preview reload, so the
+  dark/light 1024×680 and 1280×800 visual matrix plus installed macOS/Windows
+  glyph, clipping, wrapping, and offline-network observation remain required.
 - Plan 0006's three-panel shell, centered settings modal, Flat surfaces,
   text-only upgraded chat boundary, sidebar call controls, floating dock, and
   simplified voice canvas pass automated and mock-browser validation. The
@@ -1308,16 +1792,15 @@ that it has passed.
   anchored profile card, privacy boundary, and reduced-motion behavior pass
   automated and mock-browser validation at both supported viewport sizes. The
   hosted additive migration is deployed and linted, and Docker-backed pgTAP
-  passes. Installed-app theme/reduced-motion observation and the live
+  passes. Installed-app profile/reduced-motion observation and the live
   two-account media/Realtime/outsider matrix remain required before
   distribution.
-- Plan 0009's Signal Red preset, first-paint migration, edge effects,
-  reduced-motion behavior, generated sound pack, sound controller, preferences,
-  and typed lifecycle routing pass automated and mock-browser validation at
-  both supported viewport sizes. Installed-app multi-client audio observation
-  remains required for rapid messages, simultaneous joins/leaves, screen
-  sharing, reconnect, deafen, and a call output different from the system
-  output.
+- Plan 0016 retires plan 0009's Signal Red visuals and appearance persistence
+  while plan 0023 replaces its retro synthesis with a modern twelve-cue pack.
+  The controller, preferences, and typed lifecycle routing remain. Installed-app
+  multi-client audio observation is still required for rapid messages,
+  simultaneous joins/leaves, mute/unmute, screen sharing, reconnect, deafen,
+  and a call output different from the system output.
 - The Warm Adda renderer, profile/avatar services, channel RPCs, and policies
   are implemented, and migration
   `202607120003_profile_avatars_and_channel_management.sql` is deployed to the

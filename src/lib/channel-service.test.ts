@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Channel } from "./types";
+import type { Channel, ChannelCategory } from "./types";
 import {
   createLiveChannel,
+  reconcileChannelCategories,
   reconcileChannels,
   renameLiveChannel,
+  subscribeToLiveChannelCategories,
   subscribeToLiveChannels,
 } from "./channel-service";
 
@@ -41,7 +43,15 @@ const textRow = {
   category_id: null,
   name: "planning",
   kind: "text" as const,
+  purpose: "chat" as const,
   position: 20,
+};
+
+const categoryRow = {
+  id: "category-system",
+  server_id: "server-1",
+  name: "System",
+  position: 0,
 };
 
 describe("channel service", () => {
@@ -76,6 +86,7 @@ describe("channel service", () => {
       categoryId: null,
       name: "planning",
       kind: "text",
+      purpose: "chat",
       position: 20,
       topic: "A private conversation for server members.",
     });
@@ -188,6 +199,59 @@ describe("channel service", () => {
     ]);
   });
 
+  it("catches up and subscribes to live channel categories", async () => {
+    channelState.returns.mockResolvedValueOnce({
+      data: [categoryRow],
+      error: null,
+    });
+    const onCategory = vi.fn<(category: ChannelCategory) => void>();
+    const unsubscribe = subscribeToLiveChannelCategories(
+      "server-1",
+      onCategory,
+    );
+
+    expect(channelState.channel).toHaveBeenCalledWith(
+      "channel-categories:server-1",
+    );
+    expect(channelState.realtimeChannel.on).toHaveBeenNthCalledWith(
+      1,
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "channel_categories",
+        filter: "server_id=eq.server-1",
+      },
+      expect.any(Function),
+    );
+    expect(channelState.realtimeChannel.on).toHaveBeenNthCalledWith(
+      2,
+      "postgres_changes",
+      expect.objectContaining({
+        event: "UPDATE",
+        table: "channel_categories",
+      }),
+      expect.any(Function),
+    );
+
+    const statusHandler = channelState.realtimeChannel.subscribe.mock
+      .calls[0]?.[0] as ((status: string) => void) | undefined;
+    statusHandler?.("SUBSCRIBED");
+    await vi.waitFor(() =>
+      expect(onCategory).toHaveBeenCalledWith({
+        id: "category-system",
+        serverId: "server-1",
+        name: "System",
+        position: 0,
+      }),
+    );
+
+    unsubscribe();
+    expect(channelState.removeChannel).toHaveBeenCalledWith(
+      channelState.realtimeChannel,
+    );
+  });
+
   it("reconciles by ID and keeps position-plus-ID ordering deterministic", () => {
     const first = makeChannel({ id: "channel-a", position: 10 });
     const replaced = makeChannel({
@@ -205,6 +269,16 @@ describe("channel service", () => {
 
     const added = makeChannel({ id: "channel-c", position: 40 });
     expect(reconcileChannels(current, added)).toHaveLength(3);
+
+    const categories = [
+      makeCategory({ id: "welcome", name: "Welcome", position: 10 }),
+    ];
+    expect(
+      reconcileChannelCategories(
+        categories,
+        makeCategory({ id: "system", name: "System", position: 0 }),
+      ).map((category) => category.name),
+    ).toEqual(["System", "Welcome"]);
   });
 });
 
@@ -217,6 +291,16 @@ function makeChannel(overrides: Partial<Channel>): Channel {
     kind: "text",
     position: 0,
     topic: "Private chat",
+    ...overrides,
+  };
+}
+
+function makeCategory(overrides: Partial<ChannelCategory>): ChannelCategory {
+  return {
+    id: "category-default",
+    serverId: "server-1",
+    name: "Welcome",
+    position: 10,
     ...overrides,
   };
 }

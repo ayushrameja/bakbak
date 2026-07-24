@@ -6,7 +6,12 @@ import {
 } from "./interface-sound-preferences";
 
 export type InterfaceSoundName =
+  | "message-sent"
   | "message-received"
+  | "microphone-mute"
+  | "microphone-unmute"
+  | "deafen-on"
+  | "deafen-off"
   | "voice-self-join"
   | "voice-self-leave"
   | "voice-remote-join"
@@ -22,15 +27,20 @@ interface SoundDefinition {
 }
 
 const SOUND_DEFINITIONS: Record<InterfaceSoundName, SoundDefinition> = {
-  "message-received": { category: "messages", gain: 0.88 },
-  "voice-self-join": { category: "voice", gain: 0.92 },
-  "voice-self-leave": { category: "voice", gain: 0.86 },
-  "voice-remote-join": { category: "voice", gain: 0.72 },
-  "voice-remote-leave": { category: "voice", gain: 0.68 },
-  "screen-share-start": { category: "screen-share", gain: 0.86 },
-  "screen-share-stop": { category: "screen-share", gain: 0.8 },
-  "reconnect-success": { category: "status", gain: 0.86 },
-  "communication-failure": { category: "status", gain: 0.82 },
+  "message-sent": { category: "messages", gain: 0.62 },
+  "message-received": { category: "messages", gain: 0.72 },
+  "microphone-mute": { category: "voice", gain: 0.76 },
+  "microphone-unmute": { category: "voice", gain: 0.76 },
+  "deafen-on": { category: "voice", gain: 0.72 },
+  "deafen-off": { category: "voice", gain: 0.72 },
+  "voice-self-join": { category: "voice", gain: 0.84 },
+  "voice-self-leave": { category: "voice", gain: 0.78 },
+  "voice-remote-join": { category: "voice", gain: 0.58 },
+  "voice-remote-leave": { category: "voice", gain: 0.54 },
+  "screen-share-start": { category: "screen-share", gain: 0.78 },
+  "screen-share-stop": { category: "screen-share", gain: 0.7 },
+  "reconnect-success": { category: "status", gain: 0.76 },
+  "communication-failure": { category: "status", gain: 0.72 },
 };
 
 const CATEGORY_PREVIEWS: Record<InterfaceSoundCategory, InterfaceSoundName> = {
@@ -73,8 +83,18 @@ function soundForEvent(
   event: CommunicationEffectEvent,
 ): InterfaceSoundName | null {
   switch (event.type) {
+    case "message-sent":
+      return "message-sent";
     case "message-received":
       return "message-received";
+    case "microphone-muted":
+      return "microphone-mute";
+    case "microphone-unmuted":
+      return "microphone-unmute";
+    case "deafen-enabled":
+      return "deafen-on";
+    case "deafen-disabled":
+      return "deafen-off";
     case "voice-self-joined":
       return "voice-self-join";
     case "voice-self-left":
@@ -239,11 +259,13 @@ export class InterfaceSoundController {
       if (!context || context.state !== "running") return;
       const now = this.environment.now();
       const cooldown =
-        name === "message-received"
-          ? 350
-          : name === "communication-failure"
-            ? 2_000
-            : 0;
+        name === "message-sent"
+          ? 120
+          : name === "message-received"
+            ? 350
+            : name === "communication-failure"
+              ? 2_000
+              : 0;
       const previous = this.lastPlayed.get(name) ?? Number.NEGATIVE_INFINITY;
       if (!ignoreThrottle && now - previous < cooldown) return;
       this.lastPlayed.set(name, now);

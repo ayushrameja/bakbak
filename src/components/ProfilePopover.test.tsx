@@ -157,6 +157,32 @@ describe("rich profile surfaces", () => {
     expect(onOpenProfile).toHaveBeenCalledWith(member, trigger);
   });
 
+  it("opens user actions from pointer and keyboard context gestures", () => {
+    const onOpenContextMenu = vi.fn();
+    render(
+      <ProfileTrigger
+        member={member}
+        loadMedia={vi.fn().mockResolvedValue(null)}
+        onOpenProfile={vi.fn()}
+        onOpenContextMenu={onOpenContextMenu}
+      >
+        {() => <span>Mira</span>}
+      </ProfileTrigger>,
+    );
+
+    const trigger = screen.getByRole("button");
+    fireEvent.contextMenu(trigger, { clientX: 40, clientY: 80 });
+    expect(onOpenContextMenu).toHaveBeenLastCalledWith(member, trigger, {
+      clientX: 40,
+      clientY: 80,
+    });
+
+    fireEvent.keyDown(trigger, { key: "F10", shiftKey: true });
+    expect(onOpenContextMenu).toHaveBeenCalledTimes(2);
+    fireEvent.keyDown(trigger, { key: "ContextMenu" });
+    expect(onOpenContextMenu).toHaveBeenCalledTimes(3);
+  });
+
   it("never requests animated media when reduced motion is enabled", async () => {
     vi.stubGlobal(
       "matchMedia",

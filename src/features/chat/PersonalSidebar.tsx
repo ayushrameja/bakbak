@@ -1,19 +1,10 @@
-import {
-  HeadphoneOff,
-  Headphones,
-  MessageCirclePlus,
-  Mic,
-  MicOff,
-  KeyRound,
-  Settings,
-  X,
-} from "lucide-react";
+import { KeyRound, MessageCirclePlus, X } from "lucide-react";
 import { Avatar } from "../../components/Avatar";
-import {
-  ProfileTrigger,
-  type LoadProfileMedia,
-  type OpenProfile,
+import type {
+  LoadProfileMedia,
+  OpenProfile,
 } from "../../components/ProfileTrigger";
+import type { OpenUserContextMenu } from "../../components/UserContextMenu";
 import type {
   AppUser,
   DataMode,
@@ -21,8 +12,15 @@ import type {
   ServerMember,
 } from "../../lib/types";
 import { SidebarVoicePanel } from "../voice/SidebarVoicePanel";
+import { SidebarUserDock } from "../voice/SidebarUserDock";
 import type { useVoiceRoom } from "../voice/useVoiceRoom";
-import { useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 
 interface PersonalSidebarProps {
   user: AppUser;
@@ -39,9 +37,11 @@ interface PersonalSidebarProps {
   onOpenScreenShare: () => void;
   loadProfileMedia: LoadProfileMedia;
   onOpenProfile: OpenProfile;
+  onOpenUserContextMenu?: OpenUserContextMenu | undefined;
   openProfileId: string | null;
   inviteAvailable?: boolean;
   onOpenInvite?: () => void;
+  readOnly?: boolean;
 }
 
 export function PersonalSidebar({
@@ -59,15 +59,44 @@ export function PersonalSidebar({
   onOpenScreenShare,
   loadProfileMedia,
   onOpenProfile,
+  onOpenUserContextMenu,
   openProfileId,
   inviteAvailable = false,
   onOpenInvite = () => undefined,
+  readOnly = false,
 }: PersonalSidebarProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const pickerButtonRef = useRef<HTMLButtonElement>(null);
   const availableMembers = members.filter((member) => member.id !== user.id);
   const currentMember =
     members.find((member) => member.id === user.id) ??
     ({ ...user, role: "member" } satisfies ServerMember);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const closeFromOutside = (event: PointerEvent) => {
+      if (
+        event.target instanceof Node &&
+        !pickerRef.current?.contains(event.target) &&
+        !pickerButtonRef.current?.contains(event.target)
+      ) {
+        setPickerOpen(false);
+      }
+    };
+    const closeFromKeyboard = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setPickerOpen(false);
+      pickerButtonRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", closeFromOutside, true);
+    document.addEventListener("keydown", closeFromKeyboard);
+    return () => {
+      document.removeEventListener("pointerdown", closeFromOutside, true);
+      document.removeEventListener("keydown", closeFromKeyboard);
+    };
+  }, [pickerOpen]);
 
   return (
     <aside className="channel-sidebar personal-sidebar" id="context-panel">
@@ -77,15 +106,23 @@ export function PersonalSidebar({
           <span>Your private conversations</span>
         </div>
         <button
+          ref={pickerButtonRef}
           type="button"
           aria-label="New message"
-          onClick={() => setPickerOpen(true)}
-          disabled={availableMembers.length === 0}
+          aria-expanded={pickerOpen}
+          aria-controls="direct-message-picker"
+          onClick={() => setPickerOpen((open) => !open)}
+          disabled={readOnly || availableMembers.length === 0}
         >
           <MessageCirclePlus size={17} />
         </button>
         {inviteAvailable ? (
-          <button type="button" onClick={onOpenInvite} aria-label="Use invite">
+          <button
+            type="button"
+            onClick={onOpenInvite}
+            aria-label="Use invite"
+            disabled={readOnly}
+          >
             <KeyRound size={16} />
           </button>
         ) : null}
@@ -103,6 +140,20 @@ export function PersonalSidebar({
               type="button"
               key={conversation.id}
               onClick={() => onSelect(conversation)}
+              onContextMenu={(event) =>
+                openUserMenuFromPointer(
+                  event,
+                  conversation.otherMember,
+                  onOpenUserContextMenu,
+                )
+              }
+              onKeyDown={(event) =>
+                openUserMenuFromKeyboard(
+                  event,
+                  conversation.otherMember,
+                  onOpenUserContextMenu,
+                )
+              }
             >
               <Avatar user={conversation.otherMember} size="small" showStatus />
               <span>
@@ -124,64 +175,24 @@ export function PersonalSidebar({
         onToggleSoundboard={onToggleSoundboard}
         onOpenScreenShare={onOpenScreenShare}
       />
-      <div className="user-dock">
-        <ProfileTrigger
-          className="user-dock__profile"
-          member={currentMember}
-          loadMedia={loadProfileMedia}
-          onOpenProfile={onOpenProfile}
-          expanded={openProfileId === currentMember.id}
-        >
-          {({ animationUrl, animated }) => (
-            <>
-              <Avatar
-                user={currentMember}
-                size="small"
-                showStatus
-                animationUrl={animationUrl}
-                animated={animated}
-              />
-              <span className="user-dock__identity">
-                <strong>{user.displayName}</strong>
-                <span>
-                  {voice.status === "connected" ? "In voice" : "Available"}
-                </span>
-              </span>
-            </>
-          )}
-        </ProfileTrigger>
-        {voice.status !== "disconnected" ? (
-          <>
-            <button
-              className={voice.muted ? "is-active" : ""}
-              type="button"
-              disabled={voice.status !== "connected"}
-              onClick={() => void voice.toggleMute()}
-              aria-label={voice.muted ? "Unmute" : "Mute"}
-            >
-              {voice.muted ? <MicOff size={16} /> : <Mic size={16} />}
-            </button>
-            <button
-              className={voice.deafened ? "is-active" : ""}
-              type="button"
-              disabled={voice.status !== "connected"}
-              onClick={() => void voice.toggleDeafen()}
-              aria-label={voice.deafened ? "Undeafen" : "Deafen"}
-            >
-              {voice.deafened ? (
-                <HeadphoneOff size={16} />
-              ) : (
-                <Headphones size={16} />
-              )}
-            </button>
-          </>
-        ) : null}
-        <button type="button" onClick={onOpenSettings} aria-label="Settings">
-          <Settings size={16} />
-        </button>
-      </div>
+      <SidebarUserDock
+        member={currentMember}
+        voice={voice}
+        loadProfileMedia={loadProfileMedia}
+        onOpenProfile={onOpenProfile}
+        onOpenUserContextMenu={onOpenUserContextMenu}
+        openProfileId={openProfileId}
+        onOpenSettings={onOpenSettings}
+      />
       {pickerOpen ? (
-        <div className="direct-picker" role="dialog" aria-modal="true">
+        <div
+          ref={pickerRef}
+          className="direct-picker"
+          id="direct-message-picker"
+          role="dialog"
+          aria-modal="false"
+          aria-label="Choose a club member"
+        >
           <header>
             <div>
               <span className="eyebrow">New message</span>
@@ -200,6 +211,14 @@ export function PersonalSidebar({
               <button
                 type="button"
                 key={member.id}
+                aria-label={member.displayName}
+                disabled={readOnly}
+                onContextMenu={(event) =>
+                  openUserMenuFromPointer(event, member, onOpenUserContextMenu)
+                }
+                onKeyDown={(event) =>
+                  openUserMenuFromKeyboard(event, member, onOpenUserContextMenu)
+                }
                 onClick={() => {
                   void onStartConversation(member).then(() =>
                     setPickerOpen(false),
@@ -215,4 +234,36 @@ export function PersonalSidebar({
       ) : null}
     </aside>
   );
+}
+
+function openUserMenuFromPointer(
+  event: ReactMouseEvent<HTMLButtonElement>,
+  member: ServerMember,
+  onOpenUserContextMenu?: OpenUserContextMenu,
+) {
+  if (!onOpenUserContextMenu) return;
+  event.preventDefault();
+  onOpenUserContextMenu(member, event.currentTarget, {
+    clientX: event.clientX,
+    clientY: event.clientY,
+  });
+}
+
+function openUserMenuFromKeyboard(
+  event: ReactKeyboardEvent<HTMLButtonElement>,
+  member: ServerMember,
+  onOpenUserContextMenu?: OpenUserContextMenu,
+) {
+  if (
+    !onOpenUserContextMenu ||
+    !(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))
+  ) {
+    return;
+  }
+  event.preventDefault();
+  const rect = event.currentTarget.getBoundingClientRect();
+  onOpenUserContextMenu(member, event.currentTarget, {
+    clientX: rect.left,
+    clientY: rect.bottom,
+  });
 }

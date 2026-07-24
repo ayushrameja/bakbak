@@ -63,4 +63,72 @@ describe("PanelResizer", () => {
     fireEvent.keyDown(separator, { key: "ArrowLeft" });
     expect(onChange).toHaveBeenCalledWith(248);
   });
+
+  it("updates pointer drags without selecting the surrounding interface", () => {
+    const onChange = vi.fn();
+    render(
+      <PanelResizer
+        label="Resize navigation panel"
+        side="left"
+        value={232}
+        minimum={200}
+        maximum={360}
+        defaultValue={232}
+        onChange={onChange}
+      />,
+    );
+    const separator = screen.getByRole("separator", {
+      name: "Resize navigation panel",
+    });
+    const setPointerCapture = vi.fn();
+    const releasePointerCapture = vi.fn();
+    Object.defineProperties(separator, {
+      setPointerCapture: { value: setPointerCapture },
+      hasPointerCapture: { value: vi.fn(() => true) },
+      releasePointerCapture: { value: releasePointerCapture },
+    });
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(document.body);
+    selection?.addRange(range);
+    expect(selection?.rangeCount).toBe(1);
+
+    fireEvent.pointerDown(separator, { clientX: 100, pointerId: 7 });
+    expect(setPointerCapture).toHaveBeenCalledWith(7);
+    expect(document.documentElement).toHaveClass("is-panel-resizing");
+    expect(document.activeElement).toBe(separator);
+    expect(selection?.rangeCount).toBe(0);
+
+    fireEvent.pointerMove(separator, { clientX: 128, pointerId: 7 });
+    expect(onChange).toHaveBeenLastCalledWith(260);
+    fireEvent.pointerUp(separator, { clientX: 128, pointerId: 7 });
+    expect(releasePointerCapture).toHaveBeenCalledWith(7);
+    expect(document.documentElement).not.toHaveClass("is-panel-resizing");
+  });
+
+  it("is removed from interaction immediately when its panel is hidden", () => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <PanelResizer
+        label="Resize navigation panel"
+        side="left"
+        enabled={false}
+        value={232}
+        minimum={200}
+        maximum={360}
+        defaultValue={232}
+        onChange={onChange}
+      />,
+    );
+    const resizer = container.querySelector(".panel-resizer");
+
+    expect(resizer).toHaveAttribute("data-enabled", "false");
+    expect(resizer).toHaveAttribute("tabindex", "-1");
+    expect(resizer).toHaveAttribute("aria-hidden", "true");
+    expect(screen.queryByRole("separator")).not.toBeInTheDocument();
+    fireEvent.keyDown(resizer!, { key: "ArrowRight" });
+    fireEvent.doubleClick(resizer!);
+    fireEvent.pointerDown(resizer!, { clientX: 10, pointerId: 1 });
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });

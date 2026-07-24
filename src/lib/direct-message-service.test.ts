@@ -78,7 +78,7 @@ describe("direct message service", () => {
     expect(directState.rpc).toHaveBeenCalledWith("get_direct_conversations");
   });
 
-  it("subscribes to participant-authorized messages and owner read states", () => {
+  it("subscribes to participant-authorized messages and owner read states", async () => {
     const onMessage = vi.fn();
     const onReadState = vi.fn();
     const unsubscribeMessages = subscribeToDirectMessages(onMessage);
@@ -88,7 +88,7 @@ describe("direct message service", () => {
       1,
       "postgres_changes",
       expect.objectContaining({
-        event: "INSERT",
+        event: "*",
         table: "direct_messages",
       }),
       expect.any(Function),
@@ -116,11 +116,13 @@ describe("direct message service", () => {
         created_at: "2026-07-19T10:05:00.000Z",
       },
     });
-    expect(onMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        conversationId: "conversation-1",
-        body: "Hello",
-      }),
+    await vi.waitFor(() =>
+      expect(onMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conversation-1",
+          body: "Hello",
+        }),
+      ),
     );
 
     const readHandler = directState.realtimeChannel.on.mock.calls[1]?.[2] as

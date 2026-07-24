@@ -3,6 +3,8 @@ import {
   isMicrophoneProcessingSupported,
   microphoneCaptureOptions,
   needsMicrophoneProcessor,
+  prewarmMicrophoneProcessing,
+  releaseMicrophoneProcessing,
 } from "./microphone-processing";
 
 describe("microphone processing", () => {
@@ -54,5 +56,30 @@ describe("microphone processing", () => {
 
     vi.stubGlobal("AudioWorkletNode", undefined);
     expect(isMicrophoneProcessingSupported()).toBe(false);
+  });
+
+  it("warms one reusable worklet context and releases it on teardown", async () => {
+    const addModule = vi.fn().mockResolvedValue(undefined);
+    const resume = vi.fn().mockResolvedValue(undefined);
+    const close = vi.fn().mockResolvedValue(undefined);
+    class SupportedAudioContext {
+      readonly sampleRate = 48_000;
+      state = "running";
+      resume = resume;
+      close = close;
+    }
+    Object.defineProperty(SupportedAudioContext.prototype, "audioWorklet", {
+      configurable: true,
+      value: { addModule },
+    });
+    vi.stubGlobal("AudioContext", SupportedAudioContext);
+    vi.stubGlobal("AudioWorkletNode", class {});
+
+    await expect(prewarmMicrophoneProcessing()).resolves.toBe(true);
+    await expect(prewarmMicrophoneProcessing()).resolves.toBe(true);
+    expect(addModule).toHaveBeenCalledOnce();
+
+    await releaseMicrophoneProcessing();
+    expect(close).toHaveBeenCalledOnce();
   });
 });

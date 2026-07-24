@@ -1,95 +1,149 @@
-import { Crown, UserRound } from "lucide-react";
+import { Crown, MonitorUp, Volume2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Avatar } from "../../components/Avatar";
+import { ProfileMediaImage } from "../../components/ProfileMediaImage";
 import {
   ProfileTrigger,
   type LoadProfileMedia,
   type OpenProfile,
 } from "../../components/ProfileTrigger";
+import type { OpenUserContextMenu } from "../../components/UserContextMenu";
+import { COVER_BUCKET } from "../../lib/profile-service";
 import type { ServerMember } from "../../lib/types";
 
 const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
 const ignoreProfileOpen: OpenProfile = () => undefined;
 
+export interface MemberVoiceActivity {
+  userId: string;
+  channelId: string;
+  channelName: string;
+  isStreaming: boolean;
+}
+
 interface MemberPanelProps {
   members: ServerMember[];
+  voiceActivities?: ReadonlyArray<MemberVoiceActivity>;
   loadProfileMedia?: LoadProfileMedia;
   onOpenProfile?: OpenProfile;
+  onOpenUserContextMenu?: OpenUserContextMenu | undefined;
   openProfileId?: string | null;
+  currentUserId?: string;
+  onWatchStream?:
+    ((member: ServerMember, channelId: string) => void) | undefined;
+}
+
+interface MemberWithActivity {
+  member: ServerMember;
+  activity: MemberVoiceActivity | null;
 }
 
 export function MemberPanel({
   members,
+  voiceActivities = [],
   loadProfileMedia = emptyProfileMediaLoader,
   onOpenProfile = ignoreProfileOpen,
+  onOpenUserContextMenu,
   openProfileId = null,
+  currentUserId = "",
+  onWatchStream,
 }: MemberPanelProps) {
-  const activeMembers = members.filter((member) => member.status !== "offline");
-  const offlineMembers = members.filter(
-    (member) => member.status === "offline",
+  const activityByMemberId = new Map(
+    voiceActivities.map((activity) => [activity.userId, activity]),
   );
+  const inVoice = members
+    .flatMap((member) => {
+      const activity = activityByMemberId.get(member.id);
+      return activity ? [{ member, activity }] : [];
+    })
+    .sort(compareInVoiceMembers);
+  const online = members
+    .filter(
+      (member) =>
+        member.status !== "offline" && !activityByMemberId.has(member.id),
+    )
+    .sort(compareMembers)
+    .map((member) => ({ member, activity: null }));
+  const offline = members
+    .filter(
+      (member) =>
+        member.status === "offline" && !activityByMemberId.has(member.id),
+    )
+    .sort(compareMembers)
+    .map((member) => ({ member, activity: null }));
+  const groups = [
+    { label: "In Voice", entries: inVoice },
+    { label: "Online", entries: online },
+    { label: "Offline", entries: offline },
+  ].filter((group) => group.entries.length > 0);
 
   return (
     <aside className="member-panel" id="member-panel" aria-label="Members">
-      <header className="member-panel__header">
-        <div>
-          <span className="eyebrow">Your circle</span>
-          <strong>People</strong>
-        </div>
-        <span>
-          <UserRound size={14} /> {activeMembers.length} online
-        </span>
-      </header>
-      <MemberGroup
-        label="Online"
-        members={activeMembers}
-        loadProfileMedia={loadProfileMedia}
-        onOpenProfile={onOpenProfile}
-        openProfileId={openProfileId}
-      />
-      <MemberGroup
-        label="Offline"
-        members={offlineMembers}
-        loadProfileMedia={loadProfileMedia}
-        onOpenProfile={onOpenProfile}
-        openProfileId={openProfileId}
-      />
+      {groups.length === 0 ? (
+        <p className="member-panel__empty member-panel__empty--all">
+          Nobody here right now.
+        </p>
+      ) : (
+        groups.map((group) => (
+          <MemberGroup
+            key={group.label}
+            label={group.label}
+            entries={group.entries}
+            loadProfileMedia={loadProfileMedia}
+            onOpenProfile={onOpenProfile}
+            onOpenUserContextMenu={onOpenUserContextMenu}
+            openProfileId={openProfileId}
+            currentUserId={currentUserId}
+            onWatchStream={onWatchStream}
+          />
+        ))
+      )}
     </aside>
   );
 }
 
 function MemberGroup({
   label,
-  members,
+  entries,
   loadProfileMedia,
   onOpenProfile,
+  onOpenUserContextMenu,
   openProfileId,
+  currentUserId,
+  onWatchStream,
 }: {
   label: string;
-  members: ServerMember[];
+  entries: MemberWithActivity[];
   loadProfileMedia: LoadProfileMedia;
   onOpenProfile: OpenProfile;
+  onOpenUserContextMenu?: OpenUserContextMenu | undefined;
   openProfileId: string | null;
+  currentUserId: string;
+  onWatchStream?:
+    ((member: ServerMember, channelId: string) => void) | undefined;
 }) {
   return (
-    <section className="member-panel__group">
+    <section className="member-panel__group" aria-label={label}>
       <h2>
-        {label} <span>{members.length}</span>
+        {label} <span>— {entries.length}</span>
       </h2>
-      {members.length === 0 ? (
-        <p className="member-panel__empty">Nobody here right now.</p>
-      ) : (
-        members.map((member) => (
+      {entries.map(({ member, activity }) => (
+        <div className="member-panel__person-row" key={member.id}>
           <ProfileTrigger
-            className={`member-panel__person ${member.status === "offline" ? "is-offline" : ""}`}
-            key={member.id}
+            className={`member-panel__person ${member.status === "offline" ? "is-offline" : ""} ${activity ? "is-in-voice" : ""}`}
             member={member}
             loadMedia={loadProfileMedia}
             onOpenProfile={onOpenProfile}
+            onOpenContextMenu={onOpenUserContextMenu}
             expanded={openProfileId === member.id}
             aria-label={`View ${member.displayName}'s profile`}
           >
             {({ animationUrl, animated }) => (
               <>
+                <MemberCoverPoster
+                  member={member}
+                  loadProfileMedia={loadProfileMedia}
+                />
                 <Avatar
                   user={member}
                   size="small"
@@ -97,24 +151,147 @@ function MemberGroup({
                   animationUrl={animationUrl}
                   animated={animated}
                 />
-                <div>
+                <span className="member-panel__identity">
                   <strong>{member.displayName}</strong>
-                  <span>
-                    {member.status === "online"
-                      ? "Online"
-                      : member.status === "idle"
-                        ? "Away"
-                        : "Offline"}
+                  <span
+                    className={`member-panel__presence ${activity?.isStreaming ? "is-streaming" : activity ? "is-in-voice" : ""}`}
+                  >
+                    {activity ? (
+                      <>
+                        {activity.isStreaming ? (
+                          <MonitorUp size={12} aria-hidden="true" />
+                        ) : (
+                          <Volume2 size={12} aria-hidden="true" />
+                        )}
+                        {activity.isStreaming ? "Streaming in" : "In"}{" "}
+                        {activity.channelName}
+                      </>
+                    ) : member.status === "online" ? (
+                      "Online"
+                    ) : member.status === "idle" ? (
+                      "Away"
+                    ) : (
+                      "Offline"
+                    )}
                   </span>
-                </div>
+                </span>
                 {member.role === "admin" ? (
-                  <Crown size={13} aria-label="Admin" />
+                  <Crown
+                    className="member-panel__admin"
+                    size={14}
+                    aria-label="Admin"
+                  />
                 ) : null}
               </>
             )}
           </ProfileTrigger>
-        ))
-      )}
+          {activity?.isStreaming &&
+          member.id !== currentUserId &&
+          onWatchStream ? (
+            <button
+              className="member-panel__watch"
+              type="button"
+              aria-label={`Watch ${member.displayName}'s stream`}
+              onClick={() => onWatchStream(member, activity.channelId)}
+            >
+              Watch Stream
+            </button>
+          ) : null}
+        </div>
+      ))}
     </section>
   );
+}
+
+function MemberCoverPoster({
+  member,
+  loadProfileMedia,
+}: {
+  member: ServerMember;
+  loadProfileMedia: LoadProfileMedia;
+}) {
+  const markerRef = useRef<HTMLSpanElement>(null);
+  const [requested, setRequested] = useState(Boolean(member.coverUrl));
+  const [coverUrl, setCoverUrl] = useState(member.coverUrl);
+
+  useEffect(() => {
+    setRequested(Boolean(member.coverUrl));
+    setCoverUrl(member.coverUrl);
+  }, [member.coverPath, member.coverUrl, member.id]);
+
+  useEffect(() => {
+    if (requested || member.coverUrl || !member.coverPath) return;
+    const marker = markerRef.current;
+    if (!marker || typeof IntersectionObserver !== "function") {
+      setRequested(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        setRequested(true);
+        observer.disconnect();
+      },
+      { root: marker.closest(".member-panel"), rootMargin: "64px" },
+    );
+    observer.observe(marker);
+    return () => observer.disconnect();
+  }, [member.coverPath, member.coverUrl, requested]);
+
+  useEffect(() => {
+    if (!requested || member.coverUrl || !member.coverPath) return;
+    let current = true;
+    void loadProfileMedia(COVER_BUCKET, member.coverPath)
+      .then((url) => {
+        if (current) setCoverUrl(url);
+      })
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, [loadProfileMedia, member.coverPath, member.coverUrl, requested]);
+
+  return (
+    <span
+      ref={markerRef}
+      className={`member-panel__cover ${coverUrl ? "has-media" : ""}`}
+      aria-hidden="true"
+    >
+      {coverUrl ? (
+        <ProfileMediaImage
+          bucket={COVER_BUCKET}
+          loadMedia={loadProfileMedia}
+          path={member.coverPath}
+          src={coverUrl}
+          alt=""
+          loading="lazy"
+          draggable={false}
+          style={{
+            objectPosition: `${member.coverPositionX}% ${member.coverPositionY}%`,
+          }}
+        />
+      ) : null}
+    </span>
+  );
+}
+
+function compareMembers(left: ServerMember, right: ServerMember): number {
+  const roleOrder =
+    Number(right.role === "admin") - Number(left.role === "admin");
+  return (
+    roleOrder ||
+    left.displayName.localeCompare(right.displayName, undefined, {
+      sensitivity: "base",
+    })
+  );
+}
+
+function compareInVoiceMembers(
+  left: MemberWithActivity,
+  right: MemberWithActivity,
+): number {
+  const streamingOrder =
+    Number(Boolean(right.activity?.isStreaming)) -
+    Number(Boolean(left.activity?.isStreaming));
+  return streamingOrder || compareMembers(left.member, right.member);
 }

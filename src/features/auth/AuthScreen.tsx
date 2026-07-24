@@ -1,5 +1,6 @@
-import { ArrowRight, Check, MessageCircle } from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { BakbakMark } from "../../components/BakbakMark";
 import { signIn, signUpAndRedeemInvite } from "../../lib/auth-service";
 import type { AppUser, DataMode } from "../../lib/types";
 
@@ -67,9 +68,7 @@ export function AuthScreen({
         <div className="auth-card">
           <div className="auth-card__topline">
             <div className="brand-lockup">
-              <span className="brand-mark">
-                <MessageCircle size={21} />
-              </span>
+              <BakbakMark className="brand-mark" />
               <span>bakbak</span>
             </div>
             <span className={`mode-badge mode-badge--${mode}`}>

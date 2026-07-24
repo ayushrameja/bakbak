@@ -68,6 +68,20 @@ describe("VoiceControlDock", () => {
     expect(leave).toHaveBeenCalledOnce();
   });
 
+  it("marks muted and disconnect controls with destructive states", () => {
+    renderDock(createVoice({ muted: true }));
+
+    expect(screen.getByRole("button", { name: "Unmute" })).toHaveClass(
+      "is-active",
+    );
+    expect(screen.getByRole("button", { name: "Unmute" })).not.toHaveClass(
+      "is-danger",
+    );
+    expect(screen.getByRole("button", { name: "Leave voice" })).toHaveClass(
+      "voice-control-dock__leave",
+    );
+  });
+
   it("pins itself while soundboard is open and clears text-channel space", () => {
     vi.useFakeTimers();
     const { rerender } = renderDock(createVoice(), {
@@ -193,6 +207,7 @@ function createVoice(
     toggleDeafen: vi.fn().mockResolvedValue(undefined),
     resumeAudio: vi.fn().mockResolvedValue(undefined),
     setParticipantVolume: vi.fn(),
+    toggleParticipantMute: vi.fn(),
     refreshDevices: vi.fn().mockResolvedValue(undefined),
     setInputDevice: vi.fn().mockResolvedValue(undefined),
     setEnhancedNoiseSuppression: vi.fn().mockResolvedValue(undefined),

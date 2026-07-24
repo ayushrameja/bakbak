@@ -1,20 +1,22 @@
 import {
+  ChevronDown,
   Hash,
-  HeadphoneOff,
-  Headphones,
-  Mic,
-  MicOff,
+  LockKeyhole,
+  Megaphone,
   Pencil,
   Plus,
-  Settings,
+  Sparkles,
   Volume2,
 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { Avatar } from "../../components/Avatar";
 import {
   ProfileTrigger,
   type LoadProfileMedia,
   type OpenProfile,
 } from "../../components/ProfileTrigger";
+import type { OpenUserContextMenu } from "../../components/UserContextMenu";
+import { APP_VERSION } from "../../lib/app-version";
 import type {
   AppUser,
   Channel,
@@ -27,10 +29,23 @@ import type {
 } from "../../lib/types";
 import { VoiceElapsedTime } from "../voice/VoiceElapsedTime";
 import { SidebarVoicePanel } from "../voice/SidebarVoicePanel";
+import { SidebarUserDock } from "../voice/SidebarUserDock";
 import type { useVoiceRoom } from "../voice/useVoiceRoom";
+import {
+  loadCollapsedChannelGroups,
+  saveCollapsedChannelGroups,
+} from "./channel-group-preferences";
 
 const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
 const ignoreProfileOpen: OpenProfile = () => undefined;
+const UNCATEGORIZED_TEXT_GROUP_ID = "uncategorized:text";
+const UNCATEGORIZED_VOICE_GROUP_ID = "uncategorized:voice";
+
+interface ChannelGroupModel {
+  id: string;
+  label: string;
+  channels: Channel[];
+}
 
 interface ChannelSidebarProps {
   server: Server;
@@ -46,13 +61,15 @@ interface ChannelSidebarProps {
   soundboardOpen: boolean;
   canManageChannels: boolean;
   onSelect: (channel: Channel) => void;
-  onPrepareVoiceChannel: (channel: Channel) => void;
+  onPrepareVoiceChannel: (channel: Channel, immediate?: boolean) => void;
   onCreateChannel: (kind: ChannelKind) => void;
   onRenameChannel: (channel: Channel) => void;
   onOpenSettings: () => void;
   loadProfileMedia?: LoadProfileMedia;
   onOpenProfile?: OpenProfile;
+  onOpenUserContextMenu?: OpenUserContextMenu | undefined;
   openProfileId?: string | null;
+  onWatchStream?: (member: ServerMember, channel: Channel) => void;
   onToggleSoundboard: () => void;
   onOpenScreenShare: () => void;
 }
@@ -77,30 +94,80 @@ export function ChannelSidebar({
   onOpenSettings,
   loadProfileMedia = emptyProfileMediaLoader,
   onOpenProfile = ignoreProfileOpen,
+  onOpenUserContextMenu,
   openProfileId = null,
+  onWatchStream,
   onToggleSoundboard,
   onOpenScreenShare,
 }: ChannelSidebarProps) {
-  const orderedCategories = [...categories].sort(
-    (left, right) =>
-      left.position - right.position || left.id.localeCompare(right.id),
+  const channelGroups = useMemo<ChannelGroupModel[]>(() => {
+    const orderedCategories = [...categories].sort(
+      (left, right) =>
+        left.position - right.position || left.id.localeCompare(right.id),
+    );
+    const knownCategoryIds = new Set(
+      orderedCategories.map((category) => category.id),
+    );
+    const uncategorizedChannels = channels
+      .filter(
+        (channel) =>
+          channel.categoryId === null ||
+          !knownCategoryIds.has(channel.categoryId),
+      )
+      .sort(compareChannels);
+    const uncategorizedTextChannels = uncategorizedChannels.filter(
+      (channel) => channel.kind === "text",
+    );
+    const uncategorizedVoiceChannels = uncategorizedChannels.filter(
+      (channel) => channel.kind === "voice",
+    );
+    const groups = orderedCategories.map((category) => ({
+      id: category.id,
+      label: category.name,
+      channels: channels
+        .filter((channel) => channel.categoryId === category.id)
+        .sort(compareChannels),
+    }));
+
+    if (uncategorizedTextChannels.length > 0) {
+      groups.push({
+        id: UNCATEGORIZED_TEXT_GROUP_ID,
+        label: "Conversations",
+        channels: uncategorizedTextChannels,
+      });
+    }
+    if (uncategorizedVoiceChannels.length > 0) {
+      groups.push({
+        id: UNCATEGORIZED_VOICE_GROUP_ID,
+        label: "Voice rooms",
+        channels: uncategorizedVoiceChannels,
+      });
+    }
+    return groups;
+  }, [categories, channels]);
+  const channelGroupIds = useMemo(
+    () => channelGroups.map((group) => group.id),
+    [channelGroups],
   );
-  const knownCategoryIds = new Set(
-    orderedCategories.map((category) => category.id),
+  const [collapsedGroups, setCollapsedGroups] = useState(() =>
+    loadCollapsedChannelGroups(server.id, channelGroupIds),
   );
-  const uncategorizedChannels = channels
-    .filter(
-      (channel) =>
-        channel.categoryId === null ||
-        !knownCategoryIds.has(channel.categoryId),
-    )
-    .sort(compareChannels);
-  const uncategorizedTextChannels = uncategorizedChannels.filter(
-    (channel) => channel.kind === "text",
-  );
-  const uncategorizedVoiceChannels = uncategorizedChannels.filter(
-    (channel) => channel.kind === "voice",
-  );
+
+  useEffect(() => {
+    setCollapsedGroups(loadCollapsedChannelGroups(server.id, channelGroupIds));
+  }, [channelGroupIds, server.id]);
+
+  const toggleGroup = (groupId: string) => {
+    setCollapsedGroups((current) => {
+      const next = {
+        ...current,
+        [groupId]: !current[groupId],
+      };
+      saveCollapsedChannelGroups(server.id, next);
+      return next;
+    });
+  };
+
   const membersById = new Map(members.map((member) => [member.id, member]));
   const currentMember = membersById.get(user.id) ?? { ...user, role: "member" };
   const profileForOccupant = (occupant: VoiceRoomOccupant): ServerMember =>
@@ -124,6 +191,9 @@ export function ChannelSidebar({
     };
   const renderChannel = (channel: Channel) => {
     if (channel.kind === "text") {
+      const systemChannel =
+        channel.purpose === "system-releases" ||
+        channel.purpose === "system-general";
       return (
         <div className="channel-row-wrap" key={channel.id}>
           <button
@@ -131,10 +201,23 @@ export function ChannelSidebar({
             type="button"
             onClick={() => onSelect(channel)}
           >
-            <Hash size={17} />
+            {channel.purpose === "system-releases" ? (
+              <Megaphone size={17} />
+            ) : channel.purpose === "system-general" ? (
+              <Sparkles size={17} />
+            ) : (
+              <Hash size={17} />
+            )}
             <span>{channel.name}</span>
+            {systemChannel ? (
+              <LockKeyhole
+                className="channel-row__readonly"
+                size={12}
+                aria-label="Automation-only channel"
+              />
+            ) : null}
           </button>
-          {canManageChannels ? (
+          {canManageChannels && !systemChannel ? (
             <button
               className="channel-row-edit"
               type="button"
@@ -174,7 +257,7 @@ export function ChannelSidebar({
             className={`channel-row ${selectedChannelId === channel.id ? "active" : ""}`}
             type="button"
             onPointerEnter={() => onPrepareVoiceChannel(channel)}
-            onFocus={() => onPrepareVoiceChannel(channel)}
+            onFocus={() => onPrepareVoiceChannel(channel, true)}
             onClick={() => onSelect(channel)}
           >
             <Volume2 size={17} />
@@ -208,6 +291,7 @@ export function ChannelSidebar({
                     member={profileForOccupant(occupant)}
                     loadMedia={loadProfileMedia}
                     onOpenProfile={onOpenProfile}
+                    onOpenContextMenu={onOpenUserContextMenu}
                     expanded={openProfileId === occupant.userId}
                     aria-label={`View ${occupant.displayName}'s profile`}
                   >
@@ -228,7 +312,21 @@ export function ChannelSidebar({
                     )}
                   </ProfileTrigger>
                   {occupant.isStreaming ? (
-                    <span className="channel-voice-person__live">LIVE</span>
+                    <span className="channel-voice-person__stream-actions">
+                      <span className="channel-voice-person__live">LIVE</span>
+                      {occupant.userId !== user.id && onWatchStream ? (
+                        <button
+                          className="channel-voice-person__watch"
+                          type="button"
+                          aria-label={`Watch ${occupant.displayName}'s stream`}
+                          onClick={() =>
+                            onWatchStream(profileForOccupant(occupant), channel)
+                          }
+                        >
+                          Watch Stream
+                        </button>
+                      ) : null}
+                    </span>
                   ) : null}
                 </div>
               ))}
@@ -241,10 +339,24 @@ export function ChannelSidebar({
 
   return (
     <aside className="channel-sidebar" id="context-panel">
-      <header className="server-switcher">
-        <div>
-          <strong>{server.name}</strong>
-          <span>Friends-only adda</span>
+      <header
+        className="server-switcher server-brand"
+        aria-label={`${server.name} workspace brand`}
+      >
+        <div className="server-brand__wordmark">
+          <strong>Bakbak</strong>
+        </div>
+        <div
+          className="server-brand__release"
+          aria-label={`Beta release, version ${APP_VERSION}`}
+        >
+          <span className="server-brand__release-symbol" aria-hidden="true">
+            β
+          </span>
+          <span className="server-brand__release-dot" aria-hidden="true">
+            {" · "}
+          </span>
+          <span className="server-brand__release-version">v{APP_VERSION}</span>
         </div>
       </header>
       <nav className="channel-nav" aria-label="Channels">
@@ -273,24 +385,37 @@ export function ChannelSidebar({
             </button>
           </div>
         ) : null}
-        {orderedCategories.map((category) => (
-          <ChannelGroup key={category.id} label={category.name}>
-            {channels
-              .filter((channel) => channel.categoryId === category.id)
-              .sort(compareChannels)
-              .map(renderChannel)}
-          </ChannelGroup>
-        ))}
-        {uncategorizedTextChannels.length > 0 ? (
-          <ChannelGroup label="Conversations">
-            {uncategorizedTextChannels.map(renderChannel)}
-          </ChannelGroup>
-        ) : null}
-        {uncategorizedVoiceChannels.length > 0 ? (
-          <ChannelGroup label="Voice rooms">
-            {uncategorizedVoiceChannels.map(renderChannel)}
-          </ChannelGroup>
-        ) : null}
+        {channelGroups.map((group) => {
+          const collapsed = Boolean(collapsedGroups[group.id]);
+          const containsSelected = group.channels.some(
+            (channel) => channel.id === selectedChannelId,
+          );
+          const unreadCount = group.channels.filter(
+            (channel) =>
+              channel.kind === "text" && unreadChannelIds.has(channel.id),
+          ).length;
+          const groupChannelIds = new Set(
+            group.channels.map((channel) => channel.id),
+          );
+          const voiceOccupantCount = voiceOccupants.filter((occupant) =>
+            groupChannelIds.has(occupant.channelId),
+          ).length;
+
+          return (
+            <ChannelGroup
+              key={group.id}
+              groupId={group.id}
+              label={group.label}
+              collapsed={collapsed}
+              containsSelected={containsSelected}
+              unreadCount={unreadCount}
+              voiceOccupantCount={voiceOccupantCount}
+              onToggle={() => toggleGroup(group.id)}
+            >
+              {group.channels.map(renderChannel)}
+            </ChannelGroup>
+          );
+        })}
       </nav>
 
       <div className="sidebar-spacer" />
@@ -303,80 +428,95 @@ export function ChannelSidebar({
         onOpenScreenShare={onOpenScreenShare}
       />
 
-      <div className="user-dock">
-        <ProfileTrigger
-          className="user-dock__profile"
-          member={currentMember}
-          loadMedia={loadProfileMedia}
-          onOpenProfile={onOpenProfile}
-          expanded={openProfileId === currentMember.id}
-          aria-label={`View ${user.displayName}'s profile`}
-        >
-          {({ animationUrl, animated }) => (
-            <>
-              <Avatar
-                user={user}
-                size="small"
-                showStatus
-                animationUrl={animationUrl}
-                animated={animated}
-              />
-              <span className="user-dock__identity">
-                <strong>{user.displayName}</strong>
-                <span>
-                  {voice.status === "connected" ? "In voice" : "Available"}
-                </span>
-              </span>
-            </>
-          )}
-        </ProfileTrigger>
-        {voice.status !== "disconnected" ? (
-          <>
-            <button
-              className={voice.muted ? "is-active" : ""}
-              type="button"
-              disabled={voice.status !== "connected"}
-              onClick={() => void voice.toggleMute()}
-              aria-label={voice.muted ? "Unmute" : "Mute"}
-            >
-              {voice.muted ? <MicOff size={16} /> : <Mic size={16} />}
-            </button>
-            <button
-              className={voice.deafened ? "is-active" : ""}
-              type="button"
-              disabled={voice.status !== "connected"}
-              onClick={() => void voice.toggleDeafen()}
-              aria-label={voice.deafened ? "Undeafen" : "Deafen"}
-            >
-              {voice.deafened ? (
-                <HeadphoneOff size={16} />
-              ) : (
-                <Headphones size={16} />
-              )}
-            </button>
-          </>
-        ) : null}
-        <button type="button" onClick={onOpenSettings} aria-label="Settings">
-          <Settings size={16} />
-        </button>
-      </div>
+      <SidebarUserDock
+        member={currentMember}
+        voice={voice}
+        loadProfileMedia={loadProfileMedia}
+        onOpenProfile={onOpenProfile}
+        onOpenUserContextMenu={onOpenUserContextMenu}
+        openProfileId={openProfileId}
+        onOpenSettings={onOpenSettings}
+      />
     </aside>
   );
 }
 
 function ChannelGroup({
+  groupId,
   label,
+  collapsed,
+  containsSelected,
+  unreadCount,
+  voiceOccupantCount,
+  onToggle,
   children,
 }: {
+  groupId: string;
   label: string;
+  collapsed: boolean;
+  containsSelected: boolean;
+  unreadCount: number;
+  voiceOccupantCount: number;
+  onToggle: () => void;
   children: React.ReactNode;
 }) {
+  const panelId = `channel-group-${groupId.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
+
   return (
-    <section className="channel-group" aria-label={label}>
+    <section
+      className="channel-group"
+      aria-label={label}
+      data-collapsed={collapsed ? "true" : "false"}
+    >
       <header>
-        <h3>{label}</h3>
+        <button
+          className={`channel-group__toggle ${collapsed && containsSelected ? "is-selected" : ""}`}
+          type="button"
+          aria-expanded={!collapsed}
+          aria-controls={panelId}
+          onClick={onToggle}
+        >
+          <ChevronDown
+            className="channel-group__chevron"
+            size={15}
+            aria-hidden="true"
+          />
+          <span className="channel-group__label">{label}</span>
+          {collapsed ? (
+            <span className="channel-group__summary">
+              {containsSelected ? (
+                <span className="visually-hidden">
+                  Selected channel inside.
+                </span>
+              ) : null}
+              {unreadCount > 0 ? (
+                <span
+                  className="channel-group__unread-summary"
+                  aria-label={`${unreadCount} unread ${
+                    unreadCount === 1 ? "channel" : "channels"
+                  }`}
+                >
+                  <i aria-hidden="true" />
+                </span>
+              ) : null}
+              {voiceOccupantCount > 0 ? (
+                <span
+                  className="channel-group__voice-summary"
+                  aria-label={`${voiceOccupantCount} ${
+                    voiceOccupantCount === 1 ? "person" : "people"
+                  } in voice`}
+                >
+                  <Volume2 size={12} aria-hidden="true" />
+                  <b aria-hidden="true">{voiceOccupantCount}</b>
+                </span>
+              ) : null}
+            </span>
+          ) : null}
+        </button>
       </header>
-      {children}
+      <div className="channel-group__children" id={panelId} hidden={collapsed}>
+        {children}
+      </div>
     </section>
   );
 }

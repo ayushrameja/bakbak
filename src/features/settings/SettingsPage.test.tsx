@@ -43,11 +43,6 @@ function renderSettings(
   const props: React.ComponentProps<typeof SettingsPage> = {
     user,
     section,
-    visualPreset: "standard",
-    themePreference: "system",
-    accent: "coral",
-    accentIntensity: 100,
-    surfaceStyle: "warm",
     inputDevices: [],
     outputDevices: [],
     cameraDevices: [],
@@ -69,6 +64,16 @@ function renderSettings(
         status: true,
       },
     },
+    appearancePreference: "auto",
+    systemAccent: {
+      red: 10,
+      green: 132,
+      blue: 255,
+      source: "macos",
+      color: "#0a84ff",
+      onAccent: "#000000",
+      scheme: "dark",
+    },
     inputError: null,
     outputError: null,
     cameraError: null,
@@ -79,10 +84,6 @@ function renderSettings(
     voiceMuted: false,
     voiceDeafened: false,
     onSectionChange: vi.fn(),
-    onVisualPresetChange: vi.fn(),
-    onThemeChange: vi.fn(),
-    onAccentChange: vi.fn(),
-    onSurfaceStyleChange: vi.fn(),
     onSaveProfile: vi.fn().mockResolvedValue({}),
     onInputChange: vi.fn(),
     onOutputChange: vi.fn(),
@@ -92,6 +93,7 @@ function renderSettings(
     onEnhancedNoiseSuppressionChange: vi.fn(),
     onVoiceEffectChange: vi.fn(),
     onInterfaceSoundPreferencesChange: vi.fn(),
+    onAppearancePreferenceChange: vi.fn(),
     onPreviewInterfaceSound: vi.fn(),
     onToggleMute: vi.fn(),
     onToggleDeafen: vi.fn(),
@@ -105,6 +107,34 @@ function renderSettings(
 }
 
 describe("SettingsPage", () => {
+  it("reports account cache usage and confirms local clearing", async () => {
+    const onClearCachedData = vi.fn().mockResolvedValue(undefined);
+    renderSettings("storage", {
+      dataFreshness: "offline",
+      cacheStats: {
+        messageBytes: 2048,
+        messageCount: 42,
+        profileMediaBytes: 3 * 1024 * 1024,
+        profileMediaCount: 7,
+        messageMediaBytes: 512 * 1024,
+        messageMediaCount: 3,
+        totalBytes: 3 * 1024 * 1024 + 512 * 1024 + 2048,
+      },
+      onClearCachedData,
+    });
+
+    expect(screen.getByText("42 recent messages")).toBeVisible();
+    expect(screen.getByText("3.0 MiB")).toBeVisible();
+    expect(screen.getByText("Offline saved data")).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Clear cached data" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Clear cached data" }),
+    );
+    await waitFor(() => expect(onClearCachedData).toHaveBeenCalledOnce());
+  });
+
   it("saves a trimmed display name without requiring a unique handle", async () => {
     const onSaveProfile = vi.fn().mockResolvedValue({});
     renderSettings("profile", { onSaveProfile });
@@ -676,90 +706,24 @@ describe("SettingsPage", () => {
     vi.unstubAllGlobals();
   });
 
-  it("offers System, Light, and Dark as local appearance choices", async () => {
-    const onThemeChange = vi.fn();
-    renderSettings("appearance", { onThemeChange });
-    expect(screen.getByRole("radio", { name: /System/ })).toBeChecked();
-    await userEvent.click(screen.getByRole("radio", { name: /Light/ }));
-    expect(onThemeChange).toHaveBeenCalledWith("light");
-  });
+  it("selects Auto, Dark, or Light without typography controls", async () => {
+    const onAppearancePreferenceChange = vi.fn();
+    renderSettings("appearance", { onAppearancePreferenceChange });
 
-  it("presents Signature as a fixed preset and restores Classic controls", async () => {
-    const onVisualPresetChange = vi.fn();
-    const { rerender, props } = renderSettings("appearance", {
-      visualPreset: "signature",
-      onVisualPresetChange,
-    });
+    expect(screen.getByText("Glass")).toBeVisible();
+    expect(screen.getByText("#0A84FF")).toBeVisible();
+    expect(screen.getByText(/Following macOS Accent Color\./)).toBeVisible();
     expect(
-      screen.getByRole("button", { name: "Signature active" }),
-    ).toHaveAttribute("aria-pressed", "true");
-    expect(
-      screen.queryByRole("radiogroup", { name: "App theme" }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByText(/fixed night, leather, and brass/i)).toBeVisible();
-
-    await userEvent.click(screen.getByRole("button", { name: "Use Classic" }));
-    expect(onVisualPresetChange).toHaveBeenCalledWith("standard");
-    rerender(
-      <SettingsPage
-        {...props}
-        visualPreset="standard"
-        onVisualPresetChange={onVisualPresetChange}
-      />,
-    );
-    expect(screen.getByRole("radio", { name: /System/ })).toBeEnabled();
-  });
-
-  it("activates Signal Red and locks standard controls without losing them", async () => {
-    const onVisualPresetChange = vi.fn();
-    const { rerender, props } = renderSettings("appearance", {
-      onVisualPresetChange,
-    });
-    const activate = screen.getByRole("button", {
-      name: "Activate Signal Red",
-    });
-    activate.focus();
-    await userEvent.keyboard("{Enter}");
-    expect(onVisualPresetChange).toHaveBeenCalledWith("signal-red");
-
-    rerender(
-      <SettingsPage
-        {...props}
-        visualPreset="signal-red"
-        onVisualPresetChange={onVisualPresetChange}
-      />,
-    );
-    expect(
-      screen.getByText(/temporarily locks Dark, Flat/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("radiogroup", { name: "App theme" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("slider", { name: /Accent intensity/i }),
-    ).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Use standard" }));
-    expect(onVisualPresetChange).toHaveBeenLastCalledWith("standard");
-  });
-
-  it("changes accent colour and intensity", async () => {
-    const onAccentChange = vi.fn();
-    renderSettings("appearance", { onAccentChange });
-    await userEvent.click(screen.getByRole("radio", { name: /Purple/i }));
-    expect(onAccentChange).toHaveBeenCalledWith("purple", 100);
-    fireEvent.change(
-      screen.getByRole("slider", { name: /Accent intensity/i }),
-      { target: { value: "60" } },
-    );
-    expect(onAccentChange).toHaveBeenCalledWith("coral", 60);
-  });
-
-  it("switches between Warm and Flat surfaces", async () => {
-    const onSurfaceStyleChange = vi.fn();
-    renderSettings("appearance", { onSurfaceStyleChange });
-
-    await userEvent.click(screen.getByRole("radio", { name: /Flat/i }));
-    expect(onSurfaceStyleChange).toHaveBeenCalledWith("flat");
+      screen.getByRole("img", { name: "Current system accent #0a84ff" }),
+    ).toBeVisible();
+    expect(screen.getByRole("radio", { name: /Auto/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /Dark/ })).not.toBeChecked();
+    expect(screen.getByRole("radio", { name: /Light/ })).not.toBeChecked();
+    await userEvent.click(screen.getByRole("radio", { name: /Dark/ }));
+    expect(onAppearancePreferenceChange).toHaveBeenCalledWith("dark");
+    expect(screen.queryByText("Typeface")).not.toBeInTheDocument();
+    expect(screen.queryByText("Roundo")).not.toBeInTheDocument();
+    expect(screen.queryByRole("slider")).not.toBeInTheDocument();
   });
 
   it("traps focus, closes with Escape, and restores the opener", () => {

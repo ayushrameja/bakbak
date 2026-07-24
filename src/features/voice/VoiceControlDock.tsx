@@ -260,6 +260,7 @@ export function VoiceControlDock({
               role="menu"
             >
               <button
+                className={voice.deafened ? "is-active" : ""}
                 type="button"
                 role="menuitem"
                 disabled={!connected}
@@ -297,7 +298,9 @@ export function VoiceControlDock({
             onClick={() => void voice.stopLocalSounds()}
           >
             <Square size={18} />
-            <span>{voice.activeLocalSoundCount}</span>
+            <span>
+              {voice.activeLocalSoundCount}/{voice.maxConcurrentSounds}
+            </span>
           </button>
         ) : null}
         <button

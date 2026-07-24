@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Bakbak",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1024,
+        "minHeight": 680,
+        "center": true,
+        "resizable": true,
+        "zoomHotkeysEnabled": true,
+        "decorations": false,
+        "shadow": true,
+        "transparent": true,
+        "noRedirectionBitmap": true
+      }
+    ]
+  }
+}

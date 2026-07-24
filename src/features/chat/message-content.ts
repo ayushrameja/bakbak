@@ -5,7 +5,13 @@ import type {
   ServerMember,
 } from "../../lib/types";
 
-export const EMPTY_MESSAGE_DRAFT: MessageDraft = { text: "", mentions: [] };
+export const EMPTY_MESSAGE_DRAFT: MessageDraft = {
+  text: "",
+  mentions: [],
+  attachments: [],
+  replyTo: null,
+  notifyReplyAuthor: true,
+};
 
 export function updateDraftText(
   current: MessageDraft,
@@ -42,7 +48,7 @@ export function updateDraftText(
     }
     return [];
   });
-  return { text, mentions };
+  return { ...current, text, mentions };
 }
 
 export function insertMention(
@@ -70,7 +76,7 @@ export function insertMention(
     end: start + label.length,
   });
   mentions.sort((left, right) => left.start - right.start);
-  return { text: nextText, mentions };
+  return { ...current, text: nextText, mentions };
 }
 
 export function draftToSegments(draft: MessageDraft): MessageSegment[] {
