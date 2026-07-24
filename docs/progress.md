@@ -5054,7 +5054,7 @@ docs/progress.md` corrected it. Final `pnpm format:check` and
     tests. The first `pnpm format:check` then failed on the two new files;
     `pnpm exec prettier --write` corrected them, and the final focused run
     passed 14/14 again.
-  - Live recovery boundary — safely exhausted three REST attempts four times
+  - Live recovery boundary — safely exhausted three REST attempts five times
     because GitHub returned an empty HTTP 500, found no half-created PR after
     any uncertain response, and left the verified version branch intact.
     Direct authenticated GraphQL creation returned the matching internal
