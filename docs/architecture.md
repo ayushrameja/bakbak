@@ -71,18 +71,20 @@ descriptions, static or GIF avatars, 3:1 static or GIF covers, integer cover
 focal points, lazy static member-row cover accents, and an accessible
 Discord-style anchored card. Admin-only
 controls create or rename text and voice channels, while Realtime reconciles
-changes for every member. Ordered channel categories reproduce the visible
-Unlucky Boys layout beneath an expanded topmost System category. System owns
-the lowercase `releases` and `general` automation-only text rooms; the mirrored
-layout remains 7 categories, 18 text rooms, and 6 voice rooms in the same mixed
-order. The channel shelf renders all eight categories as a collapsible
-connector tree while retaining room-type/read-only icons and hidden selected,
-unread, and voice-occupancy summaries. One shared spine coordinate aligns each
-category chevron, vertical connector, and row elbow. Collapse state is
-device-local per server and does not alter subscriptions or room state. This
-layout imports no Discord messages or credentials. Selected channel rows use a
-neutral panel fill and an accent-colored room icon without an inset accent
-border.
+changes for every member. Category Realtime follows the same
+subscribe-before-snapshot catch-up path, so an already-open client discovers
+categories added by a migration without clearing its cache. Ordered channel
+categories reproduce the visible Unlucky Boys layout beneath an expanded
+topmost System category. System owns the lowercase `releases` and `general`
+automation-only text rooms; the mirrored layout remains 7 categories, 18 text
+rooms, and 6 voice rooms in the same mixed order. The channel shelf renders all
+eight categories as a collapsible connector tree while retaining
+room-type/read-only icons and hidden selected, unread, and voice-occupancy
+summaries. One shared spine coordinate aligns each category chevron, vertical
+connector, and row elbow. Collapse state is device-local per server and does
+not alter subscriptions or room state. This layout imports no Discord messages
+or credentials. Selected channel rows use a neutral panel fill and an
+accent-colored room icon without an inset accent border.
 
 Upgraded clients expose chat, structured individual mentions, account-synced
 unread emphasis, incoming-message sounds, and drafts only for text channels.
@@ -323,6 +325,10 @@ through RLS. Both functions are deployed, the dedicated high-entropy secret is
 synchronized between Supabase and GitHub Actions, and 15 published stable
 releases were imported oldest-first with the historical read baseline.
 Announcements and the manual history workflow have no feature gate.
+Follow-up migration `202607240002_channel_category_realtime.sql` publishes
+`channel_categories` through Supabase Realtime. The renderer also performs an
+ordered category catch-up snapshot after subscribing, which repairs clients
+that were already open when the System category was first migrated.
 
 The additive
 `202607130001_voice_chat_mentions_and_read_state.sql` migration is implemented,
@@ -1032,11 +1038,12 @@ An invite-management UI is deferred until post-v1.
    rooms of that server and kind, and appends at the next increment of ten.
    Rename changes only the name, preserving the UUID, category, kind, server,
    messages, active voice identity, and ordering.
-4. Channel Realtime subscribes before its catch-up snapshot and replays buffered
-   events after the snapshot, so an overlapping create or rename cannot be
-   overwritten by stale data. Channels reconcile by stable ID and sort by
-   position then ID. Only the creating client selects a new channel; selecting
-   a newly created voice channel also joins it automatically.
+4. Channel and channel-category Realtime subscribe before their catch-up
+   snapshots and replay buffered events after the snapshot, so an overlapping
+   create, rename, or category migration cannot be overwritten by stale data.
+   Both collections reconcile by stable ID and sort by position then ID. Only
+   the creating client selects a new channel; selecting a newly created voice
+   channel also joins it automatically.
 
 ### Text-channel chat and voice-message compatibility
 
@@ -1721,8 +1728,11 @@ that it has passed.
   safe links/previews, deafen cues, and shared connector axis are implemented
   and locally validated. The migration and functions are hosted, the release
   secret is configured in Supabase and GitHub Actions, and 15 stable releases
-  have been imported with the historical read baseline. Installed multi-client
-  unread/audio plus dark/light multi-zoom layout observation remain required.
+  have been imported with the historical read baseline. Follow-up migration
+  `202607240002` publishes category changes, while renderer category catch-up
+  self-heals clients that were open during the initial migration. Installed
+  multi-client unread/audio plus dark/light multi-zoom layout observation
+  remain required.
 - Plan 0016's neutral appearance and local Roundo bundle remain active, while a
   later user-directed follow-up restores only Auto/Light/Dark scheme selection
   and removes the typography summary. Accent, surface, and font controls remain

@@ -2,7 +2,7 @@ import {
   REALTIME_SUBSCRIBE_STATES,
   type RealtimeChannel,
 } from "@supabase/supabase-js";
-import type { Channel, ChannelKind } from "./types";
+import type { Channel, ChannelCategory, ChannelKind } from "./types";
 import { getSupabaseClient } from "./supabase";
 
 interface ChannelRow {
@@ -12,6 +12,13 @@ interface ChannelRow {
   name: string;
   kind: ChannelKind;
   purpose: "chat" | "system-releases" | "system-general";
+  position: number;
+}
+
+interface ChannelCategoryRow {
+  id: string;
+  server_id: string;
+  name: string;
   position: number;
 }
 
@@ -122,6 +129,73 @@ export function subscribeToLiveChannels(
   };
 }
 
+export function subscribeToLiveChannelCategories(
+  serverId: string,
+  onCategory: (category: ChannelCategory) => void,
+): () => void {
+  const supabase = getSupabaseClient();
+  let stopped = false;
+  let snapshotStarted = false;
+  let snapshotApplied = false;
+  const bufferedCategories: ChannelCategory[] = [];
+  const receiveRow = (row: ChannelCategoryRow) => {
+    const category = categoryFromRow(row);
+    if (snapshotApplied) onCategory(category);
+    else bufferedCategories.push(category);
+  };
+  const realtimeChannel: RealtimeChannel = supabase
+    .channel(`channel-categories:${serverId}`)
+    .on<ChannelCategoryRow>(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "channel_categories",
+        filter: `server_id=eq.${serverId}`,
+      },
+      (payload) => receiveRow(payload.new),
+    )
+    .on<ChannelCategoryRow>(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "channel_categories",
+        filter: `server_id=eq.${serverId}`,
+      },
+      (payload) => receiveRow(payload.new),
+    )
+    .subscribe((status) => {
+      if (status !== REALTIME_SUBSCRIBE_STATES.SUBSCRIBED || snapshotStarted) {
+        return;
+      }
+      snapshotStarted = true;
+      void (async () => {
+        try {
+          const { data, error } = await supabase
+            .from("channel_categories")
+            .select("id,server_id,name,position")
+            .eq("server_id", serverId)
+            .order("position")
+            .returns<ChannelCategoryRow[]>();
+          if (stopped) return;
+          if (!error) {
+            data.forEach((row) => onCategory(categoryFromRow(row)));
+          }
+        } catch {
+          if (stopped) return;
+        }
+        snapshotApplied = true;
+        bufferedCategories.splice(0).forEach(onCategory);
+      })();
+    });
+
+  return () => {
+    stopped = true;
+    void supabase.removeChannel(realtimeChannel);
+  };
+}
+
 export function reconcileChannels(
   current: readonly Channel[],
   incoming: Channel,
@@ -136,6 +210,22 @@ export function reconcileChannels(
           index === existingIndex ? incoming : channel,
         );
   return reconciled.sort(compareChannels);
+}
+
+export function reconcileChannelCategories(
+  current: readonly ChannelCategory[],
+  incoming: ChannelCategory,
+): ChannelCategory[] {
+  const existingIndex = current.findIndex(
+    (category) => category.id === incoming.id,
+  );
+  const reconciled =
+    existingIndex === -1
+      ? [...current, incoming]
+      : current.map((category, index) =>
+          index === existingIndex ? incoming : category,
+        );
+  return reconciled.sort(compareChannelCategories);
 }
 
 function normalizeChannelName(value: string): string {
@@ -167,7 +257,23 @@ function channelFromRow(row: ChannelRow): Channel {
   };
 }
 
+function categoryFromRow(row: ChannelCategoryRow): ChannelCategory {
+  return {
+    id: row.id,
+    serverId: row.server_id,
+    name: row.name,
+    position: row.position,
+  };
+}
+
 function compareChannels(left: Channel, right: Channel): number {
+  return left.position - right.position || left.id.localeCompare(right.id);
+}
+
+function compareChannelCategories(
+  left: ChannelCategory,
+  right: ChannelCategory,
+): number {
   return left.position - right.position || left.id.localeCompare(right.id);
 }
 

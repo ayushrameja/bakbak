@@ -93,8 +93,10 @@ import type { CommunicationEffectEvent } from "../lib/communication-effects";
 import { isConnectivityError } from "../lib/connectivity";
 import {
   createLiveChannel,
+  reconcileChannelCategories,
   reconcileChannels,
   renameLiveChannel,
+  subscribeToLiveChannelCategories,
   subscribeToLiveChannels,
 } from "../lib/channel-service";
 import { appConfig } from "../lib/env";
@@ -991,16 +993,39 @@ export default function App() {
 
   useEffect(() => {
     if (appConfig.dataMode !== "live" || !workspaceServerId) return;
-    return subscribeToLiveChannels(workspaceServerId, (channel) => {
-      setWorkspace((current) =>
-        current && current.server.id === workspaceServerId
-          ? {
-              ...current,
-              channels: reconcileChannels(current.channels, channel),
-            }
-          : current,
-      );
-    });
+    const unsubscribeChannels = subscribeToLiveChannels(
+      workspaceServerId,
+      (channel) => {
+        setWorkspace((current) =>
+          current && current.server.id === workspaceServerId
+            ? {
+                ...current,
+                channels: reconcileChannels(current.channels, channel),
+              }
+            : current,
+        );
+      },
+    );
+    const unsubscribeCategories = subscribeToLiveChannelCategories(
+      workspaceServerId,
+      (category) => {
+        setWorkspace((current) =>
+          current && current.server.id === workspaceServerId
+            ? {
+                ...current,
+                channelCategories: reconcileChannelCategories(
+                  current.channelCategories,
+                  category,
+                ),
+              }
+            : current,
+        );
+      },
+    );
+    return () => {
+      unsubscribeChannels();
+      unsubscribeCategories();
+    };
   }, [workspaceServerId]);
 
   const refreshStickers = useCallback(async () => {

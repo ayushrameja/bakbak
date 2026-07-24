@@ -189,10 +189,14 @@ objects remain available to authorized history.
 
 System channels and previews add migration
 `202607240001_system_channels_and_link_previews.sql`. Apply it before either
-new function. Keep JWT verification enabled for `link-preview`; it authorizes
-channel membership or DM participation by selecting the stored message through
-the caller's RLS session. `system-events` deliberately disables the platform
-JWT gate because GitHub Actions authenticates with the dedicated
+new function. Follow-up migration
+`202607240002_channel_category_realtime.sql` publishes
+`channel_categories` through Supabase Realtime so an already-open renderer can
+catch up the System category without clearing its cache. Keep JWT verification
+enabled for `link-preview`; it authorizes channel membership or DM
+participation by selecting the stored message through the caller's RLS session.
+`system-events` deliberately disables the platform JWT gate because GitHub
+Actions authenticates with the dedicated
 `x-bakbak-system-secret`; configure the same high-entropy
 `BAKBAK_SYSTEM_EVENTS_SECRET` in Supabase Function Secrets and GitHub Actions,
 and never use a `VITE_*` variable for it. Release announcements are standard
@@ -200,9 +204,9 @@ behavior with no feature flag. Deploy the migration and both functions before
 merging the workflow, then run the manual system-history workflow once to
 import earlier stable releases.
 
-The hosted Bakbak project has migration `202607240001` and both functions
-deployed. Its synchronized System secret is configured, and the one-time
-history pass imported 15 stable releases oldest-first on 2026-07-24.
+The hosted Bakbak project has migrations `202607240001` and `202607240002` plus
+both functions deployed. Its synchronized System secret is configured, and the
+one-time history pass imported 15 stable releases oldest-first on 2026-07-24.
 
 Validate the complete backend locally with:
 

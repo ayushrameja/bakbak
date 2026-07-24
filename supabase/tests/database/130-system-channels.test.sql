@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(30);
+select plan(31);
 
 select is(
   (
@@ -29,6 +29,16 @@ select is(
     'system-general:general:text'
   ]::text[],
   'System contains the stable releases and general text channels'
+);
+select ok(
+  exists (
+    select 1
+    from pg_catalog.pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'channel_categories'
+  ),
+  'channel categories are published for live workspace reconciliation'
 );
 select throws_ok(
   $$insert into public.channels (

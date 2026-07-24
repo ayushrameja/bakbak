@@ -4075,6 +4075,9 @@ Gang` at the true window center, and retained panel/Windows controls at the
   - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
     `Bakbak.app`; notarization was skipped because Apple credentials are
     absent.
+  - Post-documentation `pnpm format:check`, `git diff --check`, and
+    `git check-ignore -v .env.local supabase/functions/.env.local` — passed;
+    both local environment files remained ignored and outside the change set.
 - **Documentation updated:** Updated the current architecture, active
   desktop-v1 plan, plan 0020 visual contract, and this canonical progress log.
 - **Known limitations:** The compact header still needs one installed
@@ -4838,3 +4841,62 @@ supabase/functions/tests` — passed 37/37 tests, including media request
 - **Next:** Merge the workflow and renderer changes, then observe the next real
   stable release arriving automatically in `#releases` and verify its unread
   marker plus incoming-message cue on a second installed client.
+
+## 2026-07-24 — Repair live System category catch-up
+
+- **Completed:** Verified that the hosted server already contained the stable
+  topmost `System` category plus its `releases` and `general` channels.
+  Identified the missing live category subscription as the reason an app kept
+  open during migration could receive the channels without learning their
+  category. Added category INSERT/UPDATE Realtime reconciliation with an
+  ordered subscribe-before-snapshot catch-up and buffered race protection.
+  Added and deployed
+  `202607240002_channel_category_realtime.sql` so hosted category rows are
+  published through Supabase Realtime.
+- **Decisions:** Repaired the live data path instead of requiring cache
+  deletion, sign-out, or a permanent restart workaround. Mirrored the existing
+  channel subscription contract so category and channel collections both
+  reconcile by stable ID and deterministic position. Retained category RLS and
+  trusted-migration-only writes.
+- **Validation:**
+  - Hosted category/channel query — passed and returned `System` at position
+    zero with the `system-releases`/`releases` and
+    `system-general`/`general` text rows on the expected server.
+  - Focused channel/workspace renderer suites — passed 23/23 tests, including
+    ordered category catch-up, Realtime subscription/cleanup, and System before
+    Welcome reconciliation.
+  - `pnpm typecheck` — passed both strict TypeScript projects.
+  - Initial focused Prettier invocation — failed because Prettier has no SQL
+    parser and the edited TypeScript test needed formatting; formatted the
+    supported TypeScript files and used the repository-wide formatter contract
+    for the final check.
+  - `pnpm dlx supabase@latest db reset` — passed through migration
+    `202607240002`.
+  - `pnpm dlx supabase@latest test db` — passed all 14 files and 366 assertions,
+    including the new category-publication contract.
+  - `pnpm dlx supabase@latest db push --dry-run` and
+    `pnpm dlx supabase@latest db push` — passed and applied only follow-up
+    migration `202607240002` to the linked hosted project.
+  - `pnpm dlx supabase@latest migration list --linked` — passed with local and
+    hosted history matched through `202607240002`.
+  - Hosted publication query — passed with
+    `channel_categories_realtime = true`.
+  - `pnpm dlx supabase@latest db lint --linked` — passed with no hosted schema
+    errors. An earlier parallel CLI attempt lacked a transient legacy auth
+    context; the sequential linked rerun passed.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects,
+    73 Vitest files with 379 tests, 34/34 Node contract tests, synchronized
+    version `0.16.0`, production build, and bundle secret scan. Vite retained
+    the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+- **Documentation updated:** Updated architecture and Supabase deployment
+  notes for category Realtime/catch-up, then appended this canonical entry.
+- **Known limitations:** A currently running copy with the older renderer must
+  be relaunched once to load this repair. The local macOS bundle remains ad-hoc
+  signed and not notarized. Installed two-client System unread/audio and the
+  complete multi-zoom/light-dark matrix remain pending.
+- **Next:** Relaunch the rebuilt app and confirm `System` appears above
+  `Welcome` without clearing local data; then observe the next real join or
+  stable release on a second client.
