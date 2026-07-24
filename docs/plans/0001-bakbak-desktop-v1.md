@@ -246,6 +246,10 @@ Appearance swatch are approved under
 `0026-system-adaptive-unified-accent.md`. Plan 0026 supersedes fixed decorative
 green and blue selection colors while preserving semantic positive, danger,
 and warning colors and the graphite/ivory linked-`bb` assets.
+The topmost automation-only System rooms, stable-release/join history,
+authenticated SSRF-safe link previews, click-to-load YouTube cards,
+deafen/undeafen cues, and connector-axis correction are approved under
+`0027-system-channels-link-previews-and-deafen-audio.md`.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -328,6 +332,13 @@ and warning colors and the graphite/ivory linked-`bb` assets.
 - [x] Add plan 0026's live native system accent, contrast-normalized renderer
       tokens, unified decorative interaction states, calmer glass veil, and
       read-only Appearance swatch without adding an accent preference.
+- [x] Implement plan 0027's database-enforced System rooms, release
+      automation/history workflows, channel/DM link previews, deafen cues, and
+      aligned connector tree.
+- [x] Deploy plan 0027's migration/functions/secrets, make release
+      announcements standard behavior, and sync stable history.
+- [ ] Complete plan 0027's hosted/installed multi-client plus multi-zoom visual
+      acceptance.
 - [x] Deploy plan 0012's additive category/layout migration.
 - [ ] Complete plan 0012's hosted two-account hierarchy check.
 - [x] Add local RNNoise microphone cleanup plus Child, Robot, and

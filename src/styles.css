@@ -3094,6 +3094,198 @@ button:active:not(:disabled) {
   }
 }
 
+/* 0027 — automation rooms, links, and previews */
+.channel-row__readonly {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--faint);
+}
+
+.message-link {
+  color: var(--system-accent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(
+    in srgb,
+    var(--system-accent) 45%,
+    transparent
+  );
+  text-underline-offset: 2px;
+}
+
+.message-link:hover,
+.message-link:focus-visible {
+  color: var(--text);
+  text-decoration-color: currentColor;
+}
+
+.automation-only-footer {
+  min-height: 68px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 22px;
+  padding: 8px 13px;
+  border-top: 1px solid var(--glass-line);
+  color: var(--faint);
+  font-size: var(--font-caption);
+}
+
+.automation-only-footer > svg {
+  flex: 0 0 auto;
+  color: var(--system-accent);
+}
+
+.automation-only-footer span {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.automation-only-footer strong {
+  color: var(--text);
+  font-size: var(--font-meta);
+}
+
+.system-message__icon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--accent-border);
+  border-radius: 11px;
+  color: var(--system-accent);
+  background: var(--semantic-selected-soft);
+}
+
+.system-message__body {
+  min-width: 0;
+  display: grid;
+  align-content: center;
+  gap: 3px;
+}
+
+.system-message__body > span,
+.system-message__body > small,
+.system-message__body > time {
+  color: var(--faint);
+  font-size: var(--font-caption);
+}
+
+.system-message__body > span {
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.system-message__body > strong {
+  color: var(--text);
+  font-size: var(--font-chat);
+}
+
+.system-message__body--release > p {
+  max-width: 68ch;
+  margin: 7px 0;
+  white-space: pre-line;
+}
+
+.system-message__body--release > a {
+  width: max-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--system-accent);
+  font-size: var(--font-meta);
+  font-weight: 700;
+}
+
+.link-preview {
+  position: relative;
+  width: min(100%, 480px);
+  min-height: 74px;
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 12px 38px 12px 13px;
+  overflow: hidden;
+  border: 1px solid var(--glass-line-bright);
+  border-left: 3px solid var(--system-accent);
+  border-radius: 11px;
+  color: var(--muted);
+  background: var(--glass-soft);
+  text-decoration: none;
+}
+
+.link-preview > small {
+  color: var(--faint);
+  font-size: var(--font-caption);
+}
+
+.link-preview > strong {
+  color: var(--text);
+  font-size: var(--font-chat);
+}
+
+.link-preview > span {
+  overflow: hidden;
+  font-size: var(--font-meta);
+  line-height: 1.45;
+}
+
+.link-preview > svg {
+  position: absolute;
+  top: 13px;
+  right: 13px;
+  color: var(--system-accent);
+}
+
+.link-preview--youtube {
+  aspect-ratio: 16 / 9;
+  padding: 0;
+  border-left-width: 1px;
+}
+
+.link-preview--youtube iframe,
+.link-preview--youtube > button,
+.link-preview--youtube img {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.link-preview--youtube > button {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+  color: var(--text);
+  background: var(--glass-strong);
+  cursor: pointer;
+}
+
+.link-preview--youtube img {
+  display: block;
+  object-fit: cover;
+}
+
+.link-preview--youtube button > span {
+  position: absolute;
+  inset: auto 0 0;
+  display: flex;
+  flex-direction: column;
+  padding: 28px 13px 12px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.86));
+  text-align: left;
+}
+
+.link-preview--youtube button strong {
+  color: #fff;
+  font-size: var(--font-chat);
+}
+
+.link-preview--youtube button small {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: var(--font-caption);
+}
+
 /* BRAND-IDENTITY-START — theme-responsive identity and atmosphere only. */
 :root {
   --brand-panel: color-mix(
@@ -3508,7 +3700,6 @@ body {
 .channel-row.active {
   color: var(--text);
   background: var(--panel);
-  box-shadow: inset 3px 0 var(--accent);
 }
 
 .channel-row.active svg {
@@ -9958,6 +10149,19 @@ html.is-panel-resizing .desktop-shell {
   min-width: 0;
 }
 
+.channel-group {
+  --channel-tree-spine-x: calc(var(--space-1) + var(--space-2) + 7.5px);
+}
+
+.channel-group__children .channel-row-wrap::before {
+  left: var(--channel-tree-spine-x);
+  width: calc(24px - var(--channel-tree-spine-x));
+}
+
+.channel-group__children .channel-row-wrap:not(:last-child)::after {
+  left: var(--channel-tree-spine-x);
+}
+
 @keyframes channel-tree-reveal {
   from {
     opacity: 0;
@@ -10335,4 +10539,14 @@ html.is-panel-resizing .desktop-shell {
   .channel-intro__state {
     transition: none;
   }
+}
+
+/* Keep the System card above later generic message-density rules. */
+.message.message--system {
+  grid-template-columns: 42px minmax(0, 1fr);
+  margin: 5px 24px;
+  padding: 12px;
+  border: 1px solid var(--glass-line-bright);
+  border-radius: 14px;
+  background: var(--glass-soft);
 }

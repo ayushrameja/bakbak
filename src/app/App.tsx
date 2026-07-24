@@ -107,6 +107,10 @@ import {
   type DataFreshness,
 } from "../lib/local-cache";
 import {
+  requestLinkPreview,
+  shouldRequestLinkPreview,
+} from "../lib/link-preview";
+import {
   getOrCreateDirectConversation,
   loadDirectConversations,
   loadDirectMessages,
@@ -334,6 +338,7 @@ export default function App() {
   const stickerObjectUrlsRef = useRef(new Map<string, string[]>());
   const offlineStickerHydrationAttemptsRef = useRef(new Set<string>());
   const uploadAbortControllersRef = useRef(new Map<string, AbortController>());
+  const linkPreviewAttemptsRef = useRef(new Set<string>());
   const profileMediaCacheRef = useRef(new ProfileMediaCache(localCache));
   const profileUpdateSequenceRef = useRef(new Map<string, number>());
   const voiceDeafenedRef = useRef(false);
@@ -374,6 +379,10 @@ export default function App() {
   useEffect(() => {
     voiceDeafenedRef.current = voice.deafened;
   }, [voice.deafened]);
+
+  useEffect(() => {
+    linkPreviewAttemptsRef.current.clear();
+  }, [signedInUserId]);
 
   useEffect(() => {
     interfaceSoundController.setPreferences(interfaceSoundPreferences);
@@ -678,6 +687,11 @@ export default function App() {
         setSelectedChannelId(
           (current) =>
             snapshot.channels.find((channel) => channel.id === current)?.id ??
+            snapshot.channels.find(
+              (channel) =>
+                channel.kind === "text" &&
+                (channel.purpose ?? "chat") === "chat",
+            )?.id ??
             snapshot.channels.find((channel) => channel.kind === "text")?.id ??
             snapshot.channels[0]?.id ??
             "",
@@ -811,11 +825,12 @@ export default function App() {
         selected &&
         activeSpaceRef.current === "personal" &&
         activeViewRef.current === "channel";
-      updateDirectThread(message.conversationId, (current) =>
-        current.some((item) => item.id === message.id)
-          ? current
-          : mergeMessages(current, [message]),
-      );
+      let isNewMessage = false;
+      updateDirectThread(message.conversationId, (current) => {
+        isNewMessage = !current.some((item) => item.id === message.id);
+        return mergeMessages(current, [message]);
+      });
+      if (!isNewMessage) return;
       if (visible) {
         void markDirectConversationRead(
           message.conversationId,
@@ -1452,11 +1467,12 @@ export default function App() {
       subscribeToLiveMessages(channelId, (message) => {
         const selected = message.channelId === selectedChannelIdRef.current;
         const visible = selected && activeViewRef.current === "channel";
-        updateChannelThread(message.channelId, (current) =>
-          current.some((item) => item.id === message.id)
-            ? current
-            : mergeMessages(current, [message]),
-        );
+        let isNewMessage = false;
+        updateChannelThread(message.channelId, (current) => {
+          isNewMessage = !current.some((item) => item.id === message.id);
+          return mergeMessages(current, [message]);
+        });
+        if (!isNewMessage) return;
         setLatestMessageIds((current) => ({
           ...current,
           [message.channelId]: message.id,
@@ -1648,6 +1664,54 @@ export default function App() {
     signedInUserId,
     updateDirectThread,
     workspaceRevision,
+  ]);
+
+  useEffect(() => {
+    if (appConfig.dataMode !== "live" || !signedInUserId) return;
+    messages
+      .filter((message) =>
+        shouldRequestLinkPreview(message, linkPreviewAttemptsRef.current),
+      )
+      .forEach((message) => {
+        linkPreviewAttemptsRef.current.add(message.id);
+        void requestLinkPreview("channel", message.id)
+          .then((preview) => {
+            if (!preview) return;
+            updateChannelThread(message.channelId, (current) =>
+              current.map((item) =>
+                item.id === message.id
+                  ? { ...item, linkPreview: preview }
+                  : item,
+              ),
+            );
+          })
+          .catch(() => undefined);
+      });
+    directMessages
+      .filter((message) =>
+        shouldRequestLinkPreview(message, linkPreviewAttemptsRef.current),
+      )
+      .forEach((message) => {
+        linkPreviewAttemptsRef.current.add(message.id);
+        void requestLinkPreview("direct", message.id)
+          .then((preview) => {
+            if (!preview) return;
+            updateDirectThread(message.conversationId, (current) =>
+              current.map((item) =>
+                item.id === message.id
+                  ? { ...item, linkPreview: preview }
+                  : item,
+              ),
+            );
+          })
+          .catch(() => undefined);
+      });
+  }, [
+    directMessages,
+    messages,
+    signedInUserId,
+    updateChannelThread,
+    updateDirectThread,
   ]);
 
   useEffect(() => {
@@ -1843,6 +1907,9 @@ export default function App() {
   const handleSend = useCallback(
     async (draft: MessageDraft) => {
       if (!user || !selectedChannel || selectedChannel.kind !== "text") return;
+      if ((selectedChannel.purpose ?? "chat") !== "chat") {
+        throw new Error("This channel is managed by Bakbak automation.");
+      }
       if (dataFreshness === "offline") {
         throw new Error("Reconnect before sending a message.");
       }
@@ -2406,6 +2473,7 @@ export default function App() {
             categoryId: null,
             name: name.trim(),
             kind,
+            purpose: "chat" as const,
             position:
               Math.max(
                 -10,
@@ -2435,6 +2503,9 @@ export default function App() {
     }
     if (!workspace || workspace.currentUserRole !== "admin") {
       throw new Error("Only a server admin can rename channels.");
+    }
+    if ((channel.purpose ?? "chat") !== "chat") {
+      throw new Error("System channels are managed by Bakbak automation.");
     }
     const renamed =
       appConfig.dataMode === "live"
@@ -2930,10 +3001,14 @@ export default function App() {
                 openProfileId={openProfile?.memberId ?? null}
                 stickers={stickers}
                 currentUserIsAdmin={workspace.currentUserRole === "admin"}
-                onDeleteMessage={handleChannelDelete}
-                onReact={handleChannelReaction}
-                onUploadSticker={handleStickerUpload}
-                onArchiveSticker={handleStickerArchive}
+                {...((selectedChannel.purpose ?? "chat") === "chat"
+                  ? {
+                      onDeleteMessage: handleChannelDelete,
+                      onReact: handleChannelReaction,
+                      onUploadSticker: handleStickerUpload,
+                      onArchiveSticker: handleStickerArchive,
+                    }
+                  : {})}
               />
             ) : selectedChannel && workspace ? (
               <VoiceRoom

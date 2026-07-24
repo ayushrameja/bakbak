@@ -20,6 +20,8 @@ const EXPECTED_DURATIONS = {
   "message-received": 0.16,
   "microphone-mute": 0.15,
   "microphone-unmute": 0.15,
+  "deafen-on": 0.17,
+  "deafen-off": 0.17,
   "voice-self-join": 0.34,
   "voice-self-leave": 0.28,
   "voice-remote-join": 0.19,
@@ -76,4 +78,25 @@ test("interface sounds are deterministic, valid, faded, and compact", async () =
     totalBytes += committed.length;
   }
   assert.ok(totalBytes < 1_000_000, "sound bundle must remain below 1 MB");
+});
+
+test("deafen cues glide through the specified frequencies", () => {
+  assert.deepEqual(SOUND_SPECS["deafen-on"].notes, [
+    {
+      frequency: 560,
+      endFrequency: 390,
+      start: 0,
+      length: 0.17,
+      amplitude: 0.68,
+    },
+  ]);
+  assert.deepEqual(SOUND_SPECS["deafen-off"].notes, [
+    {
+      frequency: 390,
+      endFrequency: 560,
+      start: 0,
+      length: 0.17,
+      amplitude: 0.68,
+    },
+  ]);
 });

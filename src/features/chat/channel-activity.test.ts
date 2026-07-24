@@ -53,5 +53,21 @@ describe("channel activity", () => {
     expect(
       shouldPlayIncomingMessageSound({ ...message, pending: true }, "current"),
     ).toBe(false);
+    expect(
+      shouldPlayIncomingMessageSound(
+        {
+          ...message,
+          authorId: null,
+          messageKind: "system",
+          systemEvent: {
+            type: "member_joined",
+            memberId: "friend",
+            memberName: "Friend",
+            joinedAt: message.createdAt,
+          },
+        },
+        "current",
+      ),
+    ).toBe(true);
   });
 });

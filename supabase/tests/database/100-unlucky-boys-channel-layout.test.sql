@@ -55,8 +55,8 @@ select is(
     from public.channel_categories
     where server_id = '00000000-0000-4000-8000-000000000001'
   ),
-  7::bigint,
-  'the Bakbak server has all seven visible Discord categories'
+  8::bigint,
+  'the Bakbak server has System plus all seven mirrored categories'
 );
 select is(
   (
@@ -65,6 +65,7 @@ select is(
     where server_id = '00000000-0000-4000-8000-000000000001'
   ),
   array[
+    'System',
     'Welcome',
     'Gamez',
     'Only Study',
@@ -81,8 +82,8 @@ select is(
     from public.channels
     where server_id = '00000000-0000-4000-8000-000000000001'
   ),
-  24::bigint,
-  'the Bakbak server has all 24 visible Discord rooms'
+  26::bigint,
+  'the Bakbak server has System plus all 24 mirrored rooms'
 );
 select is(
   (
@@ -91,8 +92,8 @@ select is(
     where server_id = '00000000-0000-4000-8000-000000000001'
       and kind = 'text'
   ),
-  18::bigint,
-  'the mirrored layout has 18 text channels'
+  20::bigint,
+  'the layout has 18 mirrored and two System text channels'
 );
 select is(
   (
@@ -280,13 +281,13 @@ set local "request.jwt.claims" = '{"sub":"91000000-0000-4000-8000-000000000001",
 
 select is(
   (select count(*) from public.channel_categories),
-  7::bigint,
-  'a Bakbak member sees only the seven Bakbak categories'
+  8::bigint,
+  'a Bakbak member sees only the eight Bakbak categories'
 );
 select is(
   (select count(*) from public.channels),
-  24::bigint,
-  'a Bakbak member sees all 24 mirrored rooms'
+  26::bigint,
+  'a Bakbak member sees all mirrored and System rooms'
 );
 
 set local "request.jwt.claim.sub" = '91000000-0000-4000-8000-000000000002';

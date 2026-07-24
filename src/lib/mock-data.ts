@@ -3,6 +3,7 @@ import type {
   Channel,
   ChannelCategory,
   ChannelKind,
+  ChannelPurpose,
   ChatMessage,
   Server,
   ServerMember,
@@ -34,6 +35,7 @@ export const mockServer: Server = {
 };
 
 export const mockChannelCategories: ChannelCategory[] = [
+  channelCategory("system", "System", 0),
   channelCategory("welcome", "Welcome", 10),
   channelCategory("gamez", "Gamez", 20),
   channelCategory("study", "Only Study", 30),
@@ -44,6 +46,8 @@ export const mockChannelCategories: ChannelCategory[] = [
 ];
 
 export const mockChannels: Channel[] = [
+  mockChannel("releases", "releases", "text", "system", 10, "system-releases"),
+  mockChannel("general", "general", "text", "system", 20, "system-general"),
   mockChannel("spawn", "spawn", "text", "welcome", 10),
   mockChannel("law", "law", "text", "welcome", 20),
   mockChannel("ladder", "ladder", "text", "welcome", 30),
@@ -133,6 +137,40 @@ const now = Date.now();
 
 export const mockMessages: ChatMessage[] = [
   {
+    id: "system-release-1",
+    channelId: "channel-releases",
+    authorId: null,
+    body: "Bakbak v0.16.0 is now available.",
+    content: [{ type: "text", text: "Bakbak v0.16.0 is now available." }],
+    createdAt: new Date(now - 8 * 60 * 60 * 1000).toISOString(),
+    messageKind: "system",
+    systemEvent: {
+      type: "release_published",
+      releaseId: 160,
+      tag: "v0.16.0",
+      name: "Bakbak v0.16.0",
+      notes:
+        "A calmer system-accented shell, richer messages, and several bugs politely shown the exit.",
+      url: "https://github.com/ayushrameja/bakbak/releases/tag/v0.16.0",
+      publishedAt: new Date(now - 8 * 60 * 60 * 1000).toISOString(),
+    },
+  },
+  {
+    id: "system-welcome-1",
+    channelId: "channel-general",
+    authorId: null,
+    body: "Welcome Mira to Bakbak!",
+    content: [{ type: "text", text: "Welcome Mira to Bakbak!" }],
+    createdAt: new Date(now - 7 * 60 * 60 * 1000).toISOString(),
+    messageKind: "system",
+    systemEvent: {
+      type: "member_joined",
+      memberId: "user-mira",
+      memberName: "Mira",
+      joinedAt: new Date(now - 7 * 60 * 60 * 1000).toISOString(),
+    },
+  },
+  {
     id: "message-1",
     channelId: "channel-spawn",
     authorId: "user-mira",
@@ -193,6 +231,7 @@ function mockChannel(
   kind: ChannelKind,
   categoryId: string,
   position: number,
+  purpose: ChannelPurpose = "chat",
 ): Channel {
   return {
     id: `channel-${id}`,
@@ -200,10 +239,15 @@ function mockChannel(
     categoryId: `category-${categoryId}`,
     name,
     kind,
+    purpose,
     position,
     topic:
-      kind === "voice"
-        ? "Drop in when you feel like talking."
-        : "A private conversation for server members.",
+      purpose === "system-releases"
+        ? "Published Bakbak releases and their notes."
+        : purpose === "system-general"
+          ? "Automatic welcomes for friends joining Bakbak."
+          : kind === "voice"
+            ? "Drop in when you feel like talking."
+            : "A private conversation for server members.",
   };
 }

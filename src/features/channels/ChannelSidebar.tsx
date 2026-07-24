@@ -1,4 +1,13 @@
-import { ChevronDown, Hash, Pencil, Plus, Volume2 } from "lucide-react";
+import {
+  ChevronDown,
+  Hash,
+  LockKeyhole,
+  Megaphone,
+  Pencil,
+  Plus,
+  Sparkles,
+  Volume2,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Avatar } from "../../components/Avatar";
 import {
@@ -177,6 +186,9 @@ export function ChannelSidebar({
     };
   const renderChannel = (channel: Channel) => {
     if (channel.kind === "text") {
+      const systemChannel =
+        channel.purpose === "system-releases" ||
+        channel.purpose === "system-general";
       return (
         <div className="channel-row-wrap" key={channel.id}>
           <button
@@ -184,10 +196,23 @@ export function ChannelSidebar({
             type="button"
             onClick={() => onSelect(channel)}
           >
-            <Hash size={17} />
+            {channel.purpose === "system-releases" ? (
+              <Megaphone size={17} />
+            ) : channel.purpose === "system-general" ? (
+              <Sparkles size={17} />
+            ) : (
+              <Hash size={17} />
+            )}
             <span>{channel.name}</span>
+            {systemChannel ? (
+              <LockKeyhole
+                className="channel-row__readonly"
+                size={12}
+                aria-label="Automation-only channel"
+              />
+            ) : null}
           </button>
-          {canManageChannels ? (
+          {canManageChannels && !systemChannel ? (
             <button
               className="channel-row-edit"
               type="button"

@@ -72,19 +72,26 @@ focal points, lazy static member-row cover accents, and an accessible
 Discord-style anchored card. Admin-only
 controls create or rename text and voice channels, while Realtime reconciles
 changes for every member. Ordered channel categories reproduce the visible
-Unlucky Boys layout: 7 categories, 18 text rooms, and 6 voice rooms in the same
-mixed order. The channel shelf renders that hierarchy as a collapsible
-connector tree while retaining room-type icons and hidden selected, unread, and
-voice-occupancy summaries. Collapse state is device-local per server and does
-not alter subscriptions or room state. This layout imports no Discord messages
-or credentials.
+Unlucky Boys layout beneath an expanded topmost System category. System owns
+the lowercase `releases` and `general` automation-only text rooms; the mirrored
+layout remains 7 categories, 18 text rooms, and 6 voice rooms in the same mixed
+order. The channel shelf renders all eight categories as a collapsible
+connector tree while retaining room-type/read-only icons and hidden selected,
+unread, and voice-occupancy summaries. One shared spine coordinate aligns each
+category chevron, vertical connector, and row elbow. Collapse state is
+device-local per server and does not alter subscriptions or room state. This
+layout imports no Discord messages or credentials. Selected channel rows use a
+neutral panel fill and an accent-colored room icon without an inset accent
+border.
 
 Upgraded clients expose chat, structured individual mentions, account-synced
 unread emphasis, incoming-message sounds, and drafts only for text channels.
 One original soft, rounded interface-sound controller covers committed message
-send, incoming messages, successful microphone mute/unmute, self/remote voice
-join/leave, local/remote screen-share start/stop, reconnect success, and
-actionable communication failure. These cues run through the system output,
+send, incoming messages, successful microphone mute/unmute and
+deafen/undeafen, self/remote voice join/leave, local/remote screen-share
+start/stop, reconnect success, and actionable communication failure. The
+170 ms deafen cues are deterministic 48 kHz mono 560→390 Hz and 390→560 Hz
+glides at controller gain 0.72. These cues run through the system output,
 independently of the selected call/soundboard output.
 Voice-channel message rows, RPC permissions, and read-state data remain intact
 for installed-client compatibility, but the upgraded renderer neither loads,
@@ -119,6 +126,22 @@ row before replacing the cache, avoiding cross-table Realtime ordering
 assumptions. Existing `send_message` and `send_direct_message` remain available
 for installed-client compatibility; v2 sends generate `[Image]`, `[Video]`,
 `[GIF]`, or `[Sticker]` fallback bodies.
+
+Plain-text segments in channel messages and Personal DMs recognize `http://`,
+`https://`, and `www.` URLs without disturbing mention segments or trailing
+punctuation. Links open through Tauri's system-browser opener, with a
+`noopener` browser fallback. After a committed send—or once per session for
+loaded history—the renderer asynchronously requests one preview without
+delaying the message. The authenticated `link-preview` function re-reads the
+stored row through the caller's RLS session, extracts the first URL itself,
+allows only public HTTPS HTML, and stores text-only page metadata or a bounded
+YouTube descriptor. DNS A/AAAA, credentials, custom ports, IP literals,
+private/reserved networks, every redirect, three redirects, a three-second
+deadline, and 512 KiB are enforced server-side. Failed previews are timestamped
+for a 24-hour retry; Realtime UPDATE hydration distributes results without
+replaying incoming-message sounds. Generic remote images and markup never
+render. YouTube uses a CSP-limited `youtube-nocookie.com` iframe only after an
+explicit click and a permitted `i.ytimg.com` thumbnail.
 
 Voice rooms retain locally persisted microphone/speaker/camera selection,
 opt-in 720p camera calls, sidebar occupancy with elapsed timers, mute/deafen,
@@ -286,6 +309,22 @@ hosted two-account acceptance, and installed macOS/Windows acceptance remain
 open.
 
 The additive
+`202607240001_system_channels_and_link_previews.sql` migration is implemented
+and deployed. It adds typed channel purposes,
+stable System category/channel IDs, typed authorless automation messages,
+idempotency keys, link-preview fields, one atomic membership welcome/read-state
+trigger, membership-history backfill, release publication, and read baselines
+for imported history. Direct policies, legacy/rich send paths, replies,
+attachments, reactions, deletion, and rename all preserve ordinary chat
+behavior while rejecting System mutations. `system-events` accepts only the
+dedicated shared secret plus stable releases from `ayushrameja/bakbak`;
+`link-preview` keeps the platform JWT gate and authorizes each stored message
+through RLS. Both functions are deployed, the dedicated high-entropy secret is
+synchronized between Supabase and GitHub Actions, and 15 published stable
+releases were imported oldest-first with the historical read baseline.
+Announcements and the manual history workflow have no feature gate.
+
+The additive
 `202607130001_voice_chat_mentions_and_read_state.sql` migration is implemented,
 validated locally, and deployed to the hosted project. It adds structured
 message content, membership-checked message/read RPCs, private monotonic channel
@@ -407,7 +446,7 @@ approved.
 | Local read cache     | IndexedDB                         | User-scoped workspace, recent messages, and bounded authenticated profile/message posters |
 | Desktop shell        | Tauri 2, Rust                     | Native window, packaging, capabilities, and later tray/desktop integrations               |
 | Identity/data        | Supabase Auth, Postgres, Realtime | Accounts, membership, channels, messages, invites, and realtime chat                      |
-| Trusted backend      | Supabase Edge Functions           | Membership-checked voice tokens plus managed sound/message/sticker media                  |
+| Trusted backend      | Supabase Edge Functions           | Voice tokens, managed media, System events, and authenticated safe link metadata          |
 | Object media         | Supabase Storage                  | Private sound, profile, message, video, and sticker objects with RLS-filtered access      |
 | Local microphone DSP | Web Audio, RNNoise WebAssembly    | Off-thread enhanced cleanup plus opt-in sender-side voice effects                         |
 | Voice/data transport | LiveKit                           | Voice rooms, participant state, processed speech, soundboard audio, and control data      |
@@ -456,7 +495,8 @@ bakbak/
 │       ├── 0023-modern-interface-audio.md
 │       ├── 0024-collapsible-channel-tree.md
 │       ├── 0025-conversation-root-and-message-trail.md
-│       └── 0026-system-adaptive-unified-accent.md
+│       ├── 0026-system-adaptive-unified-accent.md
+│       └── 0027-system-channels-link-previews-and-deafen-audio.md
 ├── public/
 │   ├── bakbak.svg                 # canonical favicon/native-icon source
 │   ├── fonts/roundo/              # pinned Roundo v2.0 variable WOFF2
@@ -485,8 +525,12 @@ bakbak/
 │   └── ffmpeg-soundboard/         # pinned reduced-core recipe and notices
 └── supabase/
     ├── functions/
+    │   ├── link-preview/
     │   ├── livekit-token/
-    │   └── soundboard-manage/
+    │   ├── message-media-manage/
+    │   ├── soundboard-manage/
+    │   ├── sticker-manage/
+    │   └── system-events/
     ├── migrations/
     ├── seed.sql
     └── tests/                     # RLS and database behavior tests
@@ -513,13 +557,18 @@ The renderer uses a titlebar, three-panel desktop layout, and modal layer:
    removes the titlebar. Its right-edge layout controls independently toggle
    the context and details panels. A separate 60 px contextual header beneath
    it is dedicated to the current conversation or room.
-2. The 232 px channel panel contains seven ordered Unlucky Boys categories with
-   18 text rooms and six voice rooms in mixed source order, plus
+2. The 232 px channel panel contains an expanded topmost System category with
+   read-only `releases` and `general`, followed by seven ordered Unlucky Boys
+   categories with 18 ordinary text rooms and six voice rooms in mixed source
+   order, plus
    active-call/sidebar controls, a shared Personal/server user footer with the
    signed-in member's authenticated static cover poster behind its identity and
    controls, voice occupancy, and admin-only create/rename controls. Categories
    use accessible disclosure buttons and an Apple-style connector rail with
-   hash or speaker child icons. Collapsed headers remain closed during
+   hash, speaker, or System/read-only child icons. The chevron visual center,
+   vertical spine, and row elbows share one coordinate. A selected room keeps a
+   neutral surface plus its accent-colored icon without adding a colored inset
+   border. Collapsed headers remain closed during
    selection or activity and summarize a contained selection, unread text
    rooms, and total voice occupants. The shelf scrolls independently; admin
    creation adds an uncategorized room to a matching collapsible Conversations
@@ -722,27 +771,27 @@ soundboard volume multiplied by the existing participant volume.
 All identifiers are UUIDs unless noted otherwise. Exact migrations become
 authoritative once Phase 2 starts.
 
-| Entity                      | Key fields and constraints                                                                                                                                                                           | Access intent                                                                                              |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `profiles`                  | `id` references `auth.users`; 1–50 character display name; 0–190 character description; legacy `avatar_url`; owner-prefixed avatar/cover poster and GIF paths; integer 0–100 cover focal coordinates | User updates their row; shared-server members read member-facing fields                                    |
-| `servers`                   | owner/admin reference, name, timestamps                                                                                                                                                              | Members of the server can read it                                                                          |
-| `memberships`               | unique `(server_id, user_id)`; v1 admin/member role                                                                                                                                                  | A user can read memberships for servers they belong to                                                     |
-| `channel_categories`        | `server_id`, trimmed 1–80 character name, unique ordered position                                                                                                                                    | Members read their server categories; trusted migrations manage them                                       |
-| `channels`                  | `server_id`, optional category ID, trimmed 1–80 character name, category-local or uncategorized position, immutable `text` or `voice` type                                                           | Members read; matching admins create/rename only through RPCs                                              |
-| `messages`                  | channel/author, compatibility body, structured content, reply/notify metadata, presentation, soft-delete timestamp                                                                                   | Members read accessible channels; validated legacy/v2 RPCs derive authorship                               |
-| `channel_read_states`       | private user/channel key, monotonic last-read message pointer and timestamp                                                                                                                          | The owner reads through RLS; membership-checked RPCs advance/query state                                   |
-| `direct_conversations`      | canonical ordered participant pair, unique pair, creation/activity timestamps                                                                                                                        | Only either established participant can select; creation uses a shared-membership RPC                      |
-| `direct_messages`           | conversation/author, compatibility body, structured content, reply/notify metadata, presentation, soft-delete timestamp                                                                              | Established participants read; validated legacy/v2 RPCs write                                              |
-| `direct_read_states`        | private user/conversation key, monotonic last-read message pointer and timestamp                                                                                                                     | Only the owner selects; participant-checked RPC advances                                                   |
-| `message_attachments`       | private reservation target, uploader, kind/limits, original/poster paths, optional channel/DM message link, lifecycle timestamps                                                                     | RLS permits current channel members or established DM participants; trusted functions reserve/delete       |
-| `stickers`                  | server/uploader, label, poster/optional animation paths, dimensions, active/archive lifecycle                                                                                                        | Current members see the catalog; referenced history stays readable; renderer has no mutation grants        |
-| `message_sticker_reactions` | exactly one channel/DM message, server sticker, reactor, timestamp; partial uniqueness indexes                                                                                                       | Authorized viewers select; the cap-enforcing toggle RPC alone mutates                                      |
-| `invite_codes`              | server ID, one-way code digest, creator, expiry, redemption fields                                                                                                                                   | No broad client read policy; redeemed atomically through a controlled function                             |
-| `presence_heartbeats`       | unique server/user row, last seen, nullable voice channel/join time, LIVE boolean constrained to voice occupancy                                                                                     | Members can read server rows; only security-definer heartbeat RPCs can write                               |
-| `soundboard_categories`     | server ID, name, ordered position, sole upload-target flag                                                                                                                                           | Members read; trusted server setup manages categories                                                      |
-| `soundboard_sounds`         | server/category, label, emoji, Storage path, duration, order, revision, nullable creator, created time                                                                                               | Members read; uploader/admin label and emoji updates only                                                  |
-| `soundboard_favorites`      | private user/server/sound key and created time; cascading server/sound/owner references                                                                                                              | The signed-in owner alone selects, inserts, or deletes                                                     |
-| `storage.objects`           | private sound/profile objects plus `message-media/<uploader>/<uuid>/{original,poster}` and server sticker paths                                                                                      | Trusted functions write message/sticker media; RLS authorizes current channel or retained DM/history reads |
+| Entity                      | Key fields and constraints                                                                                                                                                                            | Access intent                                                                                              |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `profiles`                  | `id` references `auth.users`; 1–50 character display name; 0–190 character description; legacy `avatar_url`; owner-prefixed avatar/cover poster and GIF paths; integer 0–100 cover focal coordinates  | User updates their row; shared-server members read member-facing fields                                    |
+| `servers`                   | owner/admin reference, name, timestamps                                                                                                                                                               | Members of the server can read it                                                                          |
+| `memberships`               | unique `(server_id, user_id)`; v1 admin/member role                                                                                                                                                   | A user can read memberships for servers they belong to                                                     |
+| `channel_categories`        | `server_id`, trimmed 1–80 character name, unique ordered position                                                                                                                                     | Members read their server categories; trusted migrations manage them                                       |
+| `channels`                  | `server_id`, optional category ID, trimmed name, ordered position, immutable `text`/`voice` kind, `chat`/`system-releases`/`system-general` purpose; one System purpose/server                        | Members read; admins manage only ordinary chat rooms through RPCs                                          |
+| `messages`                  | channel/nullable author, compatibility body/content, member/system kind, typed System event, automation key, reply/media/reaction/deletion metadata, optional text-only preview and attempt timestamp | Members read accessible channels; member writes require ordinary chat purpose; trusted code inserts System |
+| `channel_read_states`       | private user/channel key, monotonic last-read message pointer and timestamp                                                                                                                           | The owner reads through RLS; membership-checked RPCs advance/query state                                   |
+| `direct_conversations`      | canonical ordered participant pair, unique pair, creation/activity timestamps                                                                                                                         | Only either established participant can select; creation uses a shared-membership RPC                      |
+| `direct_messages`           | conversation/author, compatibility body, structured content, reply/notify metadata, presentation, soft-delete timestamp, optional text-only preview and attempt timestamp                             | Established participants read; validated legacy/v2 RPCs write; trusted preview function updates metadata   |
+| `direct_read_states`        | private user/conversation key, monotonic last-read message pointer and timestamp                                                                                                                      | Only the owner selects; participant-checked RPC advances                                                   |
+| `message_attachments`       | private reservation target, uploader, kind/limits, original/poster paths, optional channel/DM message link, lifecycle timestamps                                                                      | RLS permits current channel members or established DM participants; trusted functions reserve/delete       |
+| `stickers`                  | server/uploader, label, poster/optional animation paths, dimensions, active/archive lifecycle                                                                                                         | Current members see the catalog; referenced history stays readable; renderer has no mutation grants        |
+| `message_sticker_reactions` | exactly one channel/DM message, server sticker, reactor, timestamp; partial uniqueness indexes                                                                                                        | Authorized viewers select; the cap-enforcing toggle RPC alone mutates                                      |
+| `invite_codes`              | server ID, one-way code digest, creator, expiry, redemption fields                                                                                                                                    | No broad client read policy; redeemed atomically through a controlled function                             |
+| `presence_heartbeats`       | unique server/user row, last seen, nullable voice channel/join time, LIVE boolean constrained to voice occupancy                                                                                      | Members can read server rows; only security-definer heartbeat RPCs can write                               |
+| `soundboard_categories`     | server ID, name, ordered position, sole upload-target flag                                                                                                                                            | Members read; trusted server setup manages categories                                                      |
+| `soundboard_sounds`         | server/category, label, emoji, Storage path, duration, order, revision, nullable creator, created time                                                                                                | Members read; uploader/admin label and emoji updates only                                                  |
+| `soundboard_favorites`      | private user/server/sound key and created time; cascading server/sound/owner references                                                                                                               | The signed-in owner alone selects, inserts, or deletes                                                     |
+| `storage.objects`           | private sound/profile objects plus `message-media/<uploader>/<uuid>/{original,poster}` and server sticker paths                                                                                       | Trusted functions write message/sticker media; RLS authorizes current channel or retained DM/history reads |
 
 Initial admin membership and initial invite codes are managed with reviewed SQL.
 An invite-management UI is deferred until post-v1.
@@ -754,6 +803,10 @@ An invite-management UI is deferred until post-v1.
   membership, and message data.
 - Channel categories use the same server-membership read boundary as channels.
   Authenticated clients cannot insert, update, or delete categories.
+- System room purposes are unique per server and automation-managed. Direct
+  writes plus legacy/rich send, reply, media-reservation, reaction, deletion,
+  and rename paths reject them for members and admins. Only the membership
+  trigger and service-role-only release RPC create authorless typed events.
 - Message authorship is derived from the authenticated user, not trusted from a
   client-supplied user ID.
 - `send_message` accepts only exact text/mention segment shapes, validates the
@@ -775,6 +828,11 @@ An invite-management UI is deferred until post-v1.
   table directly; `mark_channel_read` requires channel membership and can only
   advance a pointer, while `get_channel_activity` exposes activity for one of
   the caller's servers.
+- Link previews are metadata, not client-supplied fetch instructions. The
+  authenticated function loads channel rows through membership RLS or DM rows
+  through participant RLS, extracts the first stored URL, and lets only its
+  service-role client update preview/attempt columns. System releases suppress
+  the generic preview.
 - Direct conversation, message, and read-state tables expose only RLS-filtered
   selects to renderer sessions. `get_or_create_direct_conversation` derives a
   canonical pair and requires current shared-server membership;
@@ -1027,6 +1085,13 @@ An invite-management UI is deferred until post-v1.
     and restores focus to the message input. With no staged preview, its wrapper
     and the context-panel user dock use the same 68 px footer height; the 52 px
     composer is vertically inset by 8 px while rich previews grow upward.
+12. System channels replace that composer with a compact automation-only
+    footer and render typed welcome/release cards without member avatars or
+    message actions. Membership creation inserts the welcome before initializing
+    the joiner's read pointers, so their own event starts read while existing
+    members receive it as normal unread Realtime activity. Preview requests run
+    after send/history hydration; a preview UPDATE replaces the stable-ID cache
+    row without replaying unread or sound side effects.
 
 ### Application presence
 
@@ -1352,7 +1417,13 @@ model; Jitsi's Apache/MIT notice and Xiph.Org's BSD 3-Clause notice ship under
    and immediately merges a protected-branch-compatible version PR. The bot
    commit uses GitHub's workflow token plus a skip annotation, so it cannot
    recursively start another release.
-7. Desktop clients check the public GitHub Releases `latest.json` shortly after
+7. A separate announcement job always reads the verified published release
+   from GitHub's API and posts it to the protected System endpoint with three
+   retries. Failures do not unpublish the desktop release, and the release ID
+   makes reruns idempotent. A manual workflow independently streams every
+   stable release oldest-first in historical mode and advances current
+   members' release read baseline.
+8. Desktop clients check the public GitHub Releases `latest.json` shortly after
    startup. An available update is shown globally; installation and restart
    require an explicit user action so an active conversation is not interrupted.
    Windows uses Tauri's passive installer mode.
@@ -1379,6 +1450,32 @@ These contracts match the current implementation.
 - **Errors:** normalized unauthorized, origin/method/payload,
   not-found/invalid-channel, request-failed, and service-unavailable responses
   without secret details.
+
+### `POST /functions/v1/system-events`
+
+- **Authentication:** exact `x-bakbak-system-secret`; the platform JWT gate is
+  intentionally disabled for this GitHub-to-function endpoint
+- **Request:** repository name, historical flag, and one GitHub release with
+  numeric ID, SemVer tag, name/body/URL, publication timestamp, and
+  draft/prerelease flags
+- **Validation:** exact `ayushrameja/bakbak` repository and release URL,
+  published stable release, bounded strings, valid timestamp, sanitized
+  plain-text notes
+- **Publication:** service-role-only `publish_system_release` upserts
+  `github-release:<id>` and optionally advances existing members' read baseline
+
+### `POST /functions/v1/link-preview`
+
+- **Authentication:** platform JWT gate plus verified Supabase claims
+- **Request:** `{ "scope": "channel|direct", "messageId": "<uuid>" }`
+- **Authorization:** the caller's RLS client must read the stored channel
+  message or DM; the function ignores caller-provided URL/content
+- **Network policy:** first stored URL only; public HTTPS DNS results, standard
+  port, no credentials/IP/local host, every redirect revalidated, at most three
+  redirects, three seconds, 512 KiB, and HTML/XHTML only
+- **Result:** one sanitized text page card or YouTube descriptor; the
+  service-role client stores the result and attempt time, with null attempts
+  retryable after 24 hours
 
 ### `POST /functions/v1/soundboard-manage`
 
@@ -1465,7 +1562,8 @@ These contracts match the current implementation.
 - **Request:** `{ "p_channel_id": "<channel-uuid>", "p_name": "<name>" }`
 - **Success:** the renamed `channels` row
 - **Validation:** `auth.uid()` identity, matching server admin membership,
-  trimmed 1–80 character name, and case-insensitive uniqueness
+  ordinary `chat` purpose, trimmed 1–80 character name, and case-insensitive
+  uniqueness
 - **Behavior:** changes only the name; ID, server, kind, position, history, and
   active voice identity remain stable
 
@@ -1475,9 +1573,9 @@ These contracts match the current implementation.
 - **Request:** `{ "p_channel_id": "<channel-uuid>", "p_content": [segments] }`
 - **Success:** the inserted message row with generated plain-text body and
   structured content
-- **Validation:** matching text/voice channel membership, 1–100 exact text or
-  mention segments, at most 4,000 fallback characters, at most 25 mentions, and
-  every mentioned UUID belonging to the channel's server
+- **Validation:** matching ordinary `chat` text/voice channel membership,
+  1–100 exact text or mention segments, at most 4,000 fallback characters, at
+  most 25 mentions, and every mentioned UUID belonging to the channel's server
 - **Behavior:** derives the author and current mention fallback names inside the
   database; direct authenticated message inserts remain unsupported for upgraded
   clients
@@ -1521,14 +1619,15 @@ credential in a `VITE_*` variable.
 
 ### Edge Function managed values
 
-| Name                        | Purpose                                                            | Secret handling                |
-| --------------------------- | ------------------------------------------------------------------ | ------------------------------ |
-| `SUPABASE_URL`              | Supabase project URL available to the function                     | Platform-managed               |
-| `SUPABASE_ANON_KEY`         | Validates/forwards user-scoped Supabase access                     | Platform-managed               |
-| `SUPABASE_SERVICE_ROLE_KEY` | Privileged server-only database access if the function requires it | Secret; never bundle or commit |
-| `LIVEKIT_URL`               | Public WebSocket URL returned with the short-lived token           | Platform-managed               |
-| `LIVEKIT_API_KEY`           | LiveKit token issuer identity                                      | Secret; never bundle or commit |
-| `LIVEKIT_API_SECRET`        | Signs LiveKit participant tokens                                   | Secret; never bundle or commit |
+| Name                          | Purpose                                                            | Secret handling                |
+| ----------------------------- | ------------------------------------------------------------------ | ------------------------------ |
+| `SUPABASE_URL`                | Supabase project URL available to the function                     | Platform-managed               |
+| `SUPABASE_ANON_KEY`           | Validates/forwards user-scoped Supabase access                     | Platform-managed               |
+| `SUPABASE_SERVICE_ROLE_KEY`   | Privileged server-only database access if the function requires it | Secret; never bundle or commit |
+| `LIVEKIT_URL`                 | Public WebSocket URL returned with the short-lived token           | Platform-managed               |
+| `LIVEKIT_API_KEY`             | LiveKit token issuer identity                                      | Secret; never bundle or commit |
+| `LIVEKIT_API_SECRET`          | Signs LiveKit participant tokens                                   | Secret; never bundle or commit |
+| `BAKBAK_SYSTEM_EVENTS_SECRET` | Authenticates only GitHub release automation to `system-events`    | Secret; never bundle or commit |
 
 `.env.example` contains placeholders only. Real renderer development values use
 ignored local `.env` files; Edge Function secrets use Supabase's managed secret
@@ -1537,8 +1636,10 @@ store.
 Release workflows read the renderer-visible values from GitHub Actions
 repository variables and force `VITE_DATA_MODE=live`. They read
 `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` from
-GitHub Actions secrets. The updater private key and password are never Vite
-variables, renderer inputs, release assets, or committed files.
+GitHub Actions secrets. System announcements additionally require the
+`BAKBAK_SYSTEM_EVENTS_SECRET` Actions secret matching the Supabase function
+secret. The updater key/password and System secret are never Vite variables,
+renderer inputs, release assets, or committed files.
 
 ## Validation strategy
 
@@ -1566,6 +1667,10 @@ Soundboard upload work additionally runs reduced-core media tests, Deno
 request/WAV/cleanup tests, category/favorite/creator/quota pgTAP checks, short
 viewport modal QA, installed audio/video extraction, hosted two-account
 Realtime/moderation/playback checks, and before/after installer-size recording.
+System/link work additionally runs exact-layout and automation-only pgTAP,
+release-secret/idempotency and preview SSRF/redirect/timeout/size Deno tests,
+renderer URL/card/Realtime-side-effect checks, deterministic deafen-WAV tests,
+and multi-zoom dark/light connector alignment observation.
 Screen-sharing work additionally runs the Deno token suite, focused Rust tests,
 `cargo check --locked`, macOS and Windows native builds, compiled secret scans,
 and the bidirectional installed-client matrix in plan 0003. Artifact sizes are
@@ -1612,6 +1717,12 @@ that it has passed.
   Appearance swatch are implemented with focused renderer, native, contrast,
   and styling contracts. Installed macOS live color changes and the Windows
   Automatic/wallpaper-derived color path still require direct observation.
+- Plan 0027's System schema/functions/workflows, automation-only renderer,
+  safe links/previews, deafen cues, and shared connector axis are implemented
+  and locally validated. The migration and functions are hosted, the release
+  secret is configured in Supabase and GitHub Actions, and 15 stable releases
+  have been imported with the historical read baseline. Installed multi-client
+  unread/audio plus dark/light multi-zoom layout observation remain required.
 - Plan 0016's neutral appearance and local Roundo bundle remain active, while a
   later user-directed follow-up restores only Auto/Light/Dark scheme selection
   and removes the typography summary. Accent, surface, and font controls remain

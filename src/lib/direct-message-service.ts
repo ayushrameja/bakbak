@@ -12,6 +12,7 @@ import {
   attachReplyRows,
   DIRECT_RICH_SELECT,
   parseAttachments,
+  parseLinkPreview,
   parseMessageContent,
   parsePresentation,
   parseReactions,
@@ -64,6 +65,10 @@ function directMessageFromRow(row: DirectMessageRow): DirectMessage {
     body: row.body,
     content: parseMessageContent(row.content),
     createdAt: row.created_at,
+    messageKind: "member",
+    systemEvent: null,
+    linkPreview: parseLinkPreview(row.link_preview),
+    linkPreviewAttemptedAt: row.link_preview_attempted_at ?? null,
     presentation: parsePresentation(row.presentation),
     attachments: parseAttachments(row.attachments),
     reply: parseReply(row.reply),
@@ -205,7 +210,7 @@ export async function sendDirectMessage(
       }),
     })
     .select(
-      "id,conversation_id,author_id,body,content,created_at,presentation,reply_notifies_author,deleted_at",
+      "id,conversation_id,author_id,body,content,created_at,link_preview,link_preview_attempted_at,presentation,reply_notifies_author,deleted_at",
     )
     .single<DirectMessageRow>();
   if (error) throw error;

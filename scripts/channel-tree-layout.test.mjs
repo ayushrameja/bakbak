@@ -29,6 +29,22 @@ test("channel tree keeps its branch geometry and reduced-motion fallback", () =>
   );
   assert.match(
     treeStyles,
+    /--channel-tree-spine-x:\s*calc\([\s\S]*var\(--space-1\)[\s\S]*var\(--space-2\)[\s\S]*7\.5px/,
+  );
+  assert.match(
+    treeStyles,
+    /\.channel-group__children \.channel-row-wrap::before\s*\{[\s\S]*left: var\(--channel-tree-spine-x\);/,
+  );
+  assert.match(
+    treeStyles,
+    /\.channel-group__children \.channel-row-wrap:not\(:last-child\)::after\s*\{[\s\S]*left: var\(--channel-tree-spine-x\);/,
+  );
+  assert.match(
+    styles,
+    /\.channel-row\.active\s*\{\s*color:\s*var\(--text\);\s*background:\s*var\(--panel\);\s*\}/,
+  );
+  assert.match(
+    treeStyles,
     /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*\.channel-group__chevron\s*\{\s*transition: none;[\s\S]*\.channel-group__children\s*\{\s*animation: none;/,
   );
 });

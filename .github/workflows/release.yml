@@ -201,6 +201,47 @@ jobs:
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         run: gh release edit "$RELEASE_TAG" --draft=false --latest
 
+  announce:
+    needs: [prepare, publish]
+    if: needs.prepare.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Announce published release in Bakbak
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          SYSTEM_EVENTS_SECRET: ${{ secrets.BAKBAK_SYSTEM_EVENTS_SECRET }}
+          SYSTEM_EVENTS_URL: ${{ vars.VITE_SUPABASE_URL }}/functions/v1/system-events
+        shell: bash
+        run: |
+          test -n "$SYSTEM_EVENTS_SECRET"
+          payload="$(gh api \
+            "/repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" \
+            --jq '{
+              repository: "ayushrameja/bakbak",
+              historical: false,
+              release: {
+                id: .id,
+                tag_name: .tag_name,
+                name: .name,
+                body: (.body // ""),
+                html_url: .html_url,
+                published_at: .published_at,
+                draft: .draft,
+                prerelease: .prerelease
+              }
+            }')"
+          curl \
+            --fail-with-body \
+            --retry 3 \
+            --retry-all-errors \
+            --header "Content-Type: application/json" \
+            --header "x-bakbak-system-secret: $SYSTEM_EVENTS_SECRET" \
+            --data "$payload" \
+            "$SYSTEM_EVENTS_URL"
+
   sync-version:
     needs: [prepare, publish]
     if: needs.prepare.outputs.skip != 'true'

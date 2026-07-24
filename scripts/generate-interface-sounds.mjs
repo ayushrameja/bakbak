@@ -35,6 +35,30 @@ export const SOUND_SPECS = {
       { frequency: 620, start: 0.05, length: 0.1, amplitude: 0.68 },
     ],
   },
+  "deafen-on": {
+    duration: 0.17,
+    notes: [
+      {
+        frequency: 560,
+        endFrequency: 390,
+        start: 0,
+        length: 0.17,
+        amplitude: 0.68,
+      },
+    ],
+  },
+  "deafen-off": {
+    duration: 0.17,
+    notes: [
+      {
+        frequency: 390,
+        endFrequency: 560,
+        start: 0,
+        length: 0.17,
+        amplitude: 0.68,
+      },
+    ],
+  },
   "voice-self-join": {
     duration: 0.34,
     notes: [
@@ -114,7 +138,12 @@ function renderNote(time, note) {
   if (localTime < 0 || localTime >= note.length) return 0;
   const attack = Math.min(0.012, Math.max(0.008, note.length * 0.1));
   const release = Math.min(0.09, Math.max(0.045, note.length * 0.35));
-  const phase = localTime * note.frequency * Math.PI * 2;
+  const frequencyDelta = (note.endFrequency ?? note.frequency) - note.frequency;
+  const phase =
+    (note.frequency * localTime +
+      (frequencyDelta * localTime * localTime) / (2 * note.length)) *
+    Math.PI *
+    2;
   const tone = Math.sin(phase) + Math.sin(phase * 2) * SECOND_HARMONIC_GAIN;
   return (
     tone * note.amplitude * envelope(localTime, note.length, attack, release)

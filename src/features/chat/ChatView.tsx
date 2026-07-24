@@ -1,6 +1,10 @@
 import {
   CirclePlus,
+  ExternalLink,
+  LockKeyhole,
+  Megaphone,
   MessageSquareReply,
+  PartyPopper,
   Send,
   Smile,
   SmilePlus,
@@ -33,11 +37,14 @@ import type {
   ChatMessage,
   ConversationMessage,
   ConversationTarget,
+  LinkPreview,
   MessageDraft,
   MessagePresentation,
   ServerMember,
   Sticker,
+  SystemMessageEvent,
 } from "../../lib/types";
+import { openExternalLink, tokenizeMessageText } from "../../lib/link-preview";
 import {
   registerGiphyAction,
   resolveGiphyAssets,
@@ -112,6 +119,7 @@ export function ChatView({
         id: channel.id,
         name: channel.name,
         topic: channel.topic,
+        purpose: channel.purpose ?? "chat",
       }}
       messages={messages}
       members={members}
@@ -120,6 +128,10 @@ export function ChatView({
       draft={draft}
       onDraftChange={onDraftChange}
       onSend={onSend}
+      automationOnly={
+        channel.purpose === "system-releases" ||
+        channel.purpose === "system-general"
+      }
       readOnlyReason={readOnlyReason}
       {...(onLoadOlder ? { onLoadOlder } : {})}
       loadProfileMedia={loadProfileMedia}
@@ -144,6 +156,7 @@ interface ConversationViewProps {
   draft: MessageDraft;
   onDraftChange: (draft: MessageDraft) => void;
   onSend: (draft: MessageDraft) => Promise<void>;
+  automationOnly?: boolean;
   readOnlyReason?: string | null;
   onLoadOlder?: () => Promise<void>;
   loadProfileMedia?: LoadProfileMedia;
@@ -166,6 +179,7 @@ export function ConversationView({
   draft,
   onDraftChange,
   onSend,
+  automationOnly = false,
   readOnlyReason = null,
   onLoadOlder,
   loadProfileMedia = emptyProfileMediaLoader,
@@ -360,7 +374,9 @@ export function ConversationView({
   }
 
   function beginReply(message: ConversationMessage) {
-    const author = membersById.get(message.authorId);
+    const author = message.authorId
+      ? membersById.get(message.authorId)
+      : undefined;
     onDraftChange({
       ...draft,
       replyTo: {
@@ -497,7 +513,13 @@ export function ConversationView({
           <div className="channel-intro">
             <div className="channel-intro__root">
               <span className="channel-intro__icon">
-                {target.kind === "channel" ? "#" : "@"}
+                {target.kind === "channel" &&
+                target.purpose !== "system-releases" &&
+                target.purpose !== "system-general"
+                  ? "#"
+                  : target.kind === "direct"
+                    ? "@"
+                    : "•"}
               </span>
               <span className="channel-intro__state">
                 <i aria-hidden="true" />
@@ -519,7 +541,9 @@ export function ConversationView({
             <span className="channel-intro__meta">
               <Sparkles size={15} />{" "}
               {target.kind === "channel"
-                ? "Private room · friends only"
+                ? automationOnly
+                  ? "Automation-only · members can view"
+                  : "Private room · friends only"
                 : "Direct message · participants only"}
             </span>
           </div>
@@ -559,11 +583,26 @@ export function ConversationView({
             ) : null}
 
             {visibleMessages.map((message, index) => {
+              if ((message.messageKind ?? "member") === "system") {
+                const systemEvent = message.systemEvent ?? null;
+                return (
+                  <SystemMessage
+                    key={message.id}
+                    message={message}
+                    event={systemEvent}
+                    member={
+                      systemEvent?.type === "member_joined"
+                        ? (membersById.get(systemEvent.memberId) ?? null)
+                        : null
+                    }
+                  />
+                );
+              }
               const author =
-                membersById.get(message.authorId) ??
+                (message.authorId ? membersById.get(message.authorId) : null) ??
                 (message.authorId === currentUser.id ? currentUser : null);
               const authorMember =
-                membersById.get(message.authorId) ??
+                (message.authorId ? membersById.get(message.authorId) : null) ??
                 (message.authorId === currentUser.id
                   ? { ...currentUser, role: "member" }
                   : null);
@@ -717,6 +756,9 @@ export function ConversationView({
                           : null
                       }
                     />
+                    {message.linkPreview ? (
+                      <LinkPreviewCard preview={message.linkPreview} />
+                    ) : null}
                     {message.pending && message.attachments?.length ? (
                       <progress
                         className="message-upload-progress"
@@ -781,317 +823,335 @@ export function ConversationView({
         </div>
       </div>
 
-      <div className="composer-wrap">
-        {readOnlyReason ? (
-          <p className="composer-status" role="status">
-            {readOnlyReason}
-          </p>
-        ) : null}
-        {mediaError ? (
-          <p className="composer-status" role="alert">
-            {mediaError}
-          </p>
-        ) : null}
-        {draft.replyTo ? (
-          <div className="composer-reply">
-            <MessageSquareReply size={15} />
-            <span>
-              Replying to <strong>{draft.replyTo.authorName}</strong>
-            </span>
-            {draft.replyTo.authorId !== currentUser.id ? (
-              <label>
-                <input
-                  type="checkbox"
-                  checked={draft.notifyReplyAuthor ?? true}
-                  onChange={(event) =>
-                    onDraftChange({
-                      ...draft,
-                      notifyReplyAuthor: event.target.checked,
-                    })
-                  }
-                />
-                Notify
-              </label>
-            ) : null}
-            <button
-              type="button"
-              onClick={() =>
-                onDraftChange({
-                  ...draft,
-                  replyTo: null,
-                  notifyReplyAuthor: true,
-                })
-              }
-              aria-label="Cancel reply"
-            >
-              <X size={15} />
-            </button>
-          </div>
-        ) : null}
-        {draft.presentation?.kind === "giphy" ? (
-          <div className="composer-giphy-preview">
-            {selectedGiphyAsset?.id === draft.presentation.assetId ? (
-              selectedGiphyAsset.previewUrl.includes(".mp4") ? (
-                <video
-                  src={selectedGiphyAsset.previewUrl}
-                  poster={selectedGiphyAsset.stillUrl}
-                  muted
-                  autoPlay
-                  loop
-                  playsInline
-                />
-              ) : (
-                <img
-                  src={selectedGiphyAsset.previewUrl}
-                  alt={draft.presentation.altText}
-                />
-              )
-            ) : (
-              <div aria-label="Loading GIF preview">GIF</div>
-            )}
-            <span>{draft.presentation.title || "GIPHY selection"}</span>
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedGiphyAsset(null);
-                onDraftChange({ ...draft, presentation: null });
-              }}
-              aria-label="Remove selected GIPHY asset"
-            >
-              <X size={15} />
-            </button>
-          </div>
-        ) : null}
-        {draft.attachments?.length ? (
-          <div className="composer-attachments">
-            {draft.attachments.map((attachment) => (
-              <div key={attachment.id}>
-                <img src={attachment.previewUrl} alt="" />
-                <span>{attachment.file.name}</span>
-                {attachment.status === "uploading" ? (
-                  <progress value={attachment.progress} max={1} />
-                ) : null}
-                <button
-                  type="button"
-                  aria-label={`Remove ${attachment.file.name}`}
-                  onClick={() => {
-                    URL.revokeObjectURL(attachment.previewUrl);
-                    onDraftChange({
-                      ...draft,
-                      attachments: draft.attachments!.filter(
-                        (item) => item.id !== attachment.id,
-                      ),
-                    });
-                  }}
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : null}
-        {mentionQuery && suggestions.length > 0 ? (
-          <div
-            className="mention-suggestions"
-            id={`mention-suggestions-${target.id}`}
-            role="listbox"
-            aria-label="Mention a friend"
-          >
-            {suggestions.map((member, index) => (
+      {automationOnly ? (
+        <footer className="automation-only-footer">
+          <LockKeyhole size={16} aria-hidden="true" />
+          <span>
+            <strong>Automation-only channel</strong>
+            Bakbak posts verified updates here.
+          </span>
+        </footer>
+      ) : (
+        <div className="composer-wrap">
+          {readOnlyReason ? (
+            <p className="composer-status" role="status">
+              {readOnlyReason}
+            </p>
+          ) : null}
+          {mediaError ? (
+            <p className="composer-status" role="alert">
+              {mediaError}
+            </p>
+          ) : null}
+          {draft.replyTo ? (
+            <div className="composer-reply">
+              <MessageSquareReply size={15} />
+              <span>
+                Replying to <strong>{draft.replyTo.authorName}</strong>
+              </span>
+              {draft.replyTo.authorId !== currentUser.id ? (
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={draft.notifyReplyAuthor ?? true}
+                    onChange={(event) =>
+                      onDraftChange({
+                        ...draft,
+                        notifyReplyAuthor: event.target.checked,
+                      })
+                    }
+                  />
+                  Notify
+                </label>
+              ) : null}
               <button
                 type="button"
-                role="option"
-                aria-selected={index === activeSuggestion}
-                className={index === activeSuggestion ? "is-active" : ""}
-                id={`mention-option-${target.id}-${member.id}`}
-                key={member.id}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => chooseMention(member)}
+                onClick={() =>
+                  onDraftChange({
+                    ...draft,
+                    replyTo: null,
+                    notifyReplyAuthor: true,
+                  })
+                }
+                aria-label="Cancel reply"
               >
-                <Avatar user={member} size="small" />
-                <span>
-                  <strong>{member.displayName}</strong>
-                  {member.id === currentUser.id ? <small>(you)</small> : null}
-                </span>
+                <X size={15} />
               </button>
-            ))}
-          </div>
-        ) : null}
-        {picker === "giphy" ? (
-          <GiphyPicker onClose={() => setPicker(null)} onSelect={stageGiphy} />
-        ) : picker === "emoji" ? (
-          <EmojiPicker onClose={() => setPicker(null)} onSelect={insertEmoji} />
-        ) : picker === "sticker" ? (
-          <StickerPicker
-            stickers={stickers}
-            currentUserId={currentUser.id}
-            currentUserIsAdmin={currentUserIsAdmin}
-            onClose={() => setPicker(null)}
-            onSelect={(sticker) =>
-              void sendPresentation({
-                kind: "sticker",
-                stickerId: sticker.id,
-              })
-            }
-            {...(onUploadSticker ? { onUpload: onUploadSticker } : {})}
-            {...(onArchiveSticker ? { onArchive: onArchiveSticker } : {})}
-          />
-        ) : picker && typeof picker === "object" ? (
-          <StickerPicker
-            reactionMode
-            stickers={stickers}
-            currentUserId={currentUser.id}
-            currentUserIsAdmin={currentUserIsAdmin}
-            onClose={() => setPicker(null)}
-            onSelect={(sticker) => {
-              void onReact?.(picker.reactionMessageId, sticker.id);
-              setPicker(null);
-            }}
-          />
-        ) : null}
-        <form
-          className="composer"
-          onSubmit={handleSubmit}
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={(event: DragEvent<HTMLFormElement>) => {
-            event.preventDefault();
-            void addFiles([...event.dataTransfer.files]);
-          }}
-        >
-          <input
-            ref={attachmentInputRef}
-            className="visually-hidden"
-            type="file"
-            multiple
-            accept="image/png,image/jpeg,image/webp,image/gif,video/mp4"
-            onChange={(event) => {
-              void addFiles([...(event.target.files ?? [])]);
-              event.target.value = "";
-            }}
-          />
-          <button
-            type="button"
-            className="composer__attachment"
-            aria-label="Add attachment"
-            title="Add attachment"
-            disabled={Boolean(readOnlyReason) || preparingMedia}
-            onClick={() => attachmentInputRef.current?.click()}
-          >
-            <CirclePlus size={20} />
-          </button>
-          <input
-            ref={inputRef}
-            aria-label={
-              target.kind === "channel"
-                ? `Message #${target.name}`
-                : `Message ${target.member.displayName}`
-            }
-            aria-controls={
-              mentionQuery && suggestions.length > 0
-                ? `mention-suggestions-${target.id}`
-                : undefined
-            }
-            aria-activedescendant={
-              mentionQuery && suggestions[activeSuggestion]
-                ? `mention-option-${target.id}-${suggestions[activeSuggestion].id}`
-                : undefined
-            }
-            aria-expanded={Boolean(mentionQuery && suggestions.length)}
-            aria-autocomplete="list"
-            role="combobox"
-            disabled={Boolean(readOnlyReason)}
-            value={draft.text}
-            onChange={(event) => {
-              const next = updateDraftText(draft, event.target.value);
-              onDraftChange(next);
-              setMentionQuery(
-                findMentionQuery(
-                  event.target.value,
-                  event.target.selectionStart ?? event.target.value.length,
-                ),
-              );
-            }}
-            onClick={() => refreshMentionQuery()}
-            onKeyUp={(event) => {
-              if (
-                !["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(event.key)
-              ) {
-                refreshMentionQuery();
-              }
-            }}
-            onKeyDown={handleComposerKeyDown}
-            onPaste={(event: ClipboardEvent<HTMLInputElement>) => {
-              const files = [...event.clipboardData.files];
-              if (files.length) {
-                event.preventDefault();
-                void addFiles(files);
-              }
-            }}
-            placeholder={
-              readOnlyReason ??
-              (target.kind === "channel"
-                ? `Message #${target.name}`
-                : `Message ${target.member.displayName}`)
-            }
-            maxLength={4000}
-          />
-          <div className="composer__actions">
-            <button
-              type="button"
-              className="composer__gif"
-              aria-label="Open GIPHY"
-              aria-expanded={picker === "giphy"}
-              title="GIFs"
-              disabled={Boolean(readOnlyReason)}
-              onClick={() =>
-                setPicker((current) => (current === "giphy" ? null : "giphy"))
-              }
-            >
-              <span aria-hidden="true">GIF</span>
-            </button>
-            <button
-              type="button"
-              aria-label="Open Bakbak stickers"
-              aria-expanded={picker === "sticker"}
-              title="Bakbak stickers"
-              disabled={Boolean(readOnlyReason)}
-              onClick={() =>
-                setPicker((current) =>
-                  current === "sticker" ? null : "sticker",
+            </div>
+          ) : null}
+          {draft.presentation?.kind === "giphy" ? (
+            <div className="composer-giphy-preview">
+              {selectedGiphyAsset?.id === draft.presentation.assetId ? (
+                selectedGiphyAsset.previewUrl.includes(".mp4") ? (
+                  <video
+                    src={selectedGiphyAsset.previewUrl}
+                    poster={selectedGiphyAsset.stillUrl}
+                    muted
+                    autoPlay
+                    loop
+                    playsInline
+                  />
+                ) : (
+                  <img
+                    src={selectedGiphyAsset.previewUrl}
+                    alt={draft.presentation.altText}
+                  />
                 )
-              }
+              ) : (
+                <div aria-label="Loading GIF preview">GIF</div>
+              )}
+              <span>{draft.presentation.title || "GIPHY selection"}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedGiphyAsset(null);
+                  onDraftChange({ ...draft, presentation: null });
+                }}
+                aria-label="Remove selected GIPHY asset"
+              >
+                <X size={15} />
+              </button>
+            </div>
+          ) : null}
+          {draft.attachments?.length ? (
+            <div className="composer-attachments">
+              {draft.attachments.map((attachment) => (
+                <div key={attachment.id}>
+                  <img src={attachment.previewUrl} alt="" />
+                  <span>{attachment.file.name}</span>
+                  {attachment.status === "uploading" ? (
+                    <progress value={attachment.progress} max={1} />
+                  ) : null}
+                  <button
+                    type="button"
+                    aria-label={`Remove ${attachment.file.name}`}
+                    onClick={() => {
+                      URL.revokeObjectURL(attachment.previewUrl);
+                      onDraftChange({
+                        ...draft,
+                        attachments: draft.attachments!.filter(
+                          (item) => item.id !== attachment.id,
+                        ),
+                      });
+                    }}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {mentionQuery && suggestions.length > 0 ? (
+            <div
+              className="mention-suggestions"
+              id={`mention-suggestions-${target.id}`}
+              role="listbox"
+              aria-label="Mention a friend"
             >
-              <StickerIcon size={19} />
-            </button>
+              {suggestions.map((member, index) => (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={index === activeSuggestion}
+                  className={index === activeSuggestion ? "is-active" : ""}
+                  id={`mention-option-${target.id}-${member.id}`}
+                  key={member.id}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => chooseMention(member)}
+                >
+                  <Avatar user={member} size="small" />
+                  <span>
+                    <strong>{member.displayName}</strong>
+                    {member.id === currentUser.id ? <small>(you)</small> : null}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {picker === "giphy" ? (
+            <GiphyPicker
+              onClose={() => setPicker(null)}
+              onSelect={stageGiphy}
+            />
+          ) : picker === "emoji" ? (
+            <EmojiPicker
+              onClose={() => setPicker(null)}
+              onSelect={insertEmoji}
+            />
+          ) : picker === "sticker" ? (
+            <StickerPicker
+              stickers={stickers}
+              currentUserId={currentUser.id}
+              currentUserIsAdmin={currentUserIsAdmin}
+              onClose={() => setPicker(null)}
+              onSelect={(sticker) =>
+                void sendPresentation({
+                  kind: "sticker",
+                  stickerId: sticker.id,
+                })
+              }
+              {...(onUploadSticker ? { onUpload: onUploadSticker } : {})}
+              {...(onArchiveSticker ? { onArchive: onArchiveSticker } : {})}
+            />
+          ) : picker && typeof picker === "object" ? (
+            <StickerPicker
+              reactionMode
+              stickers={stickers}
+              currentUserId={currentUser.id}
+              currentUserIsAdmin={currentUserIsAdmin}
+              onClose={() => setPicker(null)}
+              onSelect={(sticker) => {
+                void onReact?.(picker.reactionMessageId, sticker.id);
+                setPicker(null);
+              }}
+            />
+          ) : null}
+          <form
+            className="composer"
+            onSubmit={handleSubmit}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event: DragEvent<HTMLFormElement>) => {
+              event.preventDefault();
+              void addFiles([...event.dataTransfer.files]);
+            }}
+          >
+            <input
+              ref={attachmentInputRef}
+              className="visually-hidden"
+              type="file"
+              multiple
+              accept="image/png,image/jpeg,image/webp,image/gif,video/mp4"
+              onChange={(event) => {
+                void addFiles([...(event.target.files ?? [])]);
+                event.target.value = "";
+              }}
+            />
             <button
               type="button"
-              aria-label="Open emoji picker"
-              aria-expanded={picker === "emoji"}
-              title="Emoji"
+              className="composer__attachment"
+              aria-label="Add attachment"
+              title="Add attachment"
+              disabled={Boolean(readOnlyReason) || preparingMedia}
+              onClick={() => attachmentInputRef.current?.click()}
+            >
+              <CirclePlus size={20} />
+            </button>
+            <input
+              ref={inputRef}
+              aria-label={
+                target.kind === "channel"
+                  ? `Message #${target.name}`
+                  : `Message ${target.member.displayName}`
+              }
+              aria-controls={
+                mentionQuery && suggestions.length > 0
+                  ? `mention-suggestions-${target.id}`
+                  : undefined
+              }
+              aria-activedescendant={
+                mentionQuery && suggestions[activeSuggestion]
+                  ? `mention-option-${target.id}-${suggestions[activeSuggestion].id}`
+                  : undefined
+              }
+              aria-expanded={Boolean(mentionQuery && suggestions.length)}
+              aria-autocomplete="list"
+              role="combobox"
               disabled={Boolean(readOnlyReason)}
-              onClick={() =>
-                setPicker((current) => (current === "emoji" ? null : "emoji"))
+              value={draft.text}
+              onChange={(event) => {
+                const next = updateDraftText(draft, event.target.value);
+                onDraftChange(next);
+                setMentionQuery(
+                  findMentionQuery(
+                    event.target.value,
+                    event.target.selectionStart ?? event.target.value.length,
+                  ),
+                );
+              }}
+              onClick={() => refreshMentionQuery()}
+              onKeyUp={(event) => {
+                if (
+                  !["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(
+                    event.key,
+                  )
+                ) {
+                  refreshMentionQuery();
+                }
+              }}
+              onKeyDown={handleComposerKeyDown}
+              onPaste={(event: ClipboardEvent<HTMLInputElement>) => {
+                const files = [...event.clipboardData.files];
+                if (files.length) {
+                  event.preventDefault();
+                  void addFiles(files);
+                }
+              }}
+              placeholder={
+                readOnlyReason ??
+                (target.kind === "channel"
+                  ? `Message #${target.name}`
+                  : `Message ${target.member.displayName}`)
               }
-            >
-              <Smile size={20} />
-            </button>
-            <button
-              type="submit"
-              className="composer__send"
-              aria-label="Send message"
-              title="Send message"
-              disabled={
-                Boolean(readOnlyReason) ||
-                !isSendable(draft) ||
-                sending ||
-                preparingMedia
-              }
-            >
-              <Send size={18} />
-            </button>
-          </div>
-        </form>
-      </div>
+              maxLength={4000}
+            />
+            <div className="composer__actions">
+              <button
+                type="button"
+                className="composer__gif"
+                aria-label="Open GIPHY"
+                aria-expanded={picker === "giphy"}
+                title="GIFs"
+                disabled={Boolean(readOnlyReason)}
+                onClick={() =>
+                  setPicker((current) => (current === "giphy" ? null : "giphy"))
+                }
+              >
+                <span aria-hidden="true">GIF</span>
+              </button>
+              <button
+                type="button"
+                aria-label="Open Bakbak stickers"
+                aria-expanded={picker === "sticker"}
+                title="Bakbak stickers"
+                disabled={Boolean(readOnlyReason)}
+                onClick={() =>
+                  setPicker((current) =>
+                    current === "sticker" ? null : "sticker",
+                  )
+                }
+              >
+                <StickerIcon size={19} />
+              </button>
+              <button
+                type="button"
+                aria-label="Open emoji picker"
+                aria-expanded={picker === "emoji"}
+                title="Emoji"
+                disabled={Boolean(readOnlyReason)}
+                onClick={() =>
+                  setPicker((current) => (current === "emoji" ? null : "emoji"))
+                }
+              >
+                <Smile size={20} />
+              </button>
+              <button
+                type="submit"
+                className="composer__send"
+                aria-label="Send message"
+                title="Send message"
+                disabled={
+                  Boolean(readOnlyReason) ||
+                  !isSendable(draft) ||
+                  sending ||
+                  preparingMedia
+                }
+              >
+                <Send size={18} />
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
       {deleteRequest ? (
         <Modal
           eyebrow={
@@ -1169,9 +1229,11 @@ function MessageContent({
   onOpenProfile: OpenProfile;
   openProfileId: string | null;
 }) {
-  if (!message.content) return message.body;
+  if (!message.content) return <LinkedText text={message.body} />;
   return message.content.map((segment, index) => {
-    if (segment.type === "text") return segment.text;
+    if (segment.type === "text") {
+      return <LinkedText key={`text-${index}`} text={segment.text} />;
+    }
     const member = membersById.get(segment.userId);
     const className = `message-mention ${segment.userId === currentUserId ? "message-mention--self" : ""}`;
     return member ? (
@@ -1197,6 +1259,142 @@ function MessageContent({
       </span>
     );
   });
+}
+
+function LinkedText({ text }: { text: string }) {
+  return tokenizeMessageText(text).map((token, index) =>
+    token.type === "text" ? (
+      token.text
+    ) : (
+      <a
+        className="message-link"
+        href={token.url}
+        key={`${token.url}-${index}`}
+        rel="noopener noreferrer"
+        target="_blank"
+        onClick={(event) => {
+          event.preventDefault();
+          void openExternalLink(token.url);
+        }}
+      >
+        {token.text}
+      </a>
+    ),
+  );
+}
+
+function SystemMessage({
+  message,
+  event,
+  member,
+}: {
+  message: ConversationMessage;
+  event: SystemMessageEvent | null;
+  member: ServerMember | null;
+}) {
+  if (!event) {
+    return (
+      <article className="message message--system" id={`message-${message.id}`}>
+        <span className="system-message__icon" aria-hidden="true">
+          <Megaphone size={18} />
+        </span>
+        <div className="system-message__body">
+          <span>Bakbak System</span>
+          <strong>{message.body}</strong>
+          <time>{formatMessageDate(message.createdAt)}</time>
+        </div>
+      </article>
+    );
+  }
+  if (event.type === "member_joined") {
+    return (
+      <article className="message message--system" id={`message-${message.id}`}>
+        <span className="system-message__icon" aria-hidden="true">
+          <PartyPopper size={18} />
+        </span>
+        <div className="system-message__body">
+          <span>Bakbak System</span>
+          <strong>
+            Welcome {member?.displayName ?? event.memberName} to Bakbak!
+          </strong>
+          <time>{formatMessageDate(event.joinedAt)}</time>
+        </div>
+      </article>
+    );
+  }
+  return (
+    <article className="message message--system" id={`message-${message.id}`}>
+      <span className="system-message__icon" aria-hidden="true">
+        <Megaphone size={18} />
+      </span>
+      <div className="system-message__body system-message__body--release">
+        <span>Bakbak release</span>
+        <strong>{event.name || `Bakbak ${event.tag}`}</strong>
+        <small>
+          {event.tag} · {formatMessageDate(event.publishedAt)}
+        </small>
+        {event.notes ? <p>{event.notes}</p> : null}
+        <a
+          href={event.url}
+          rel="noopener noreferrer"
+          target="_blank"
+          onClick={(click) => {
+            click.preventDefault();
+            void openExternalLink(event.url);
+          }}
+        >
+          View release <ExternalLink size={13} aria-hidden="true" />
+        </a>
+      </div>
+    </article>
+  );
+}
+
+function LinkPreviewCard({ preview }: { preview: LinkPreview }) {
+  const [playing, setPlaying] = useState(false);
+  if (preview.kind === "youtube") {
+    return (
+      <section className="link-preview link-preview--youtube">
+        {playing ? (
+          <iframe
+            src={`https://www.youtube-nocookie.com/embed/${preview.videoId}?autoplay=1`}
+            title={preview.title}
+            allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        ) : (
+          <button type="button" onClick={() => setPlaying(true)}>
+            <img
+              src={`https://i.ytimg.com/vi/${preview.videoId}/hqdefault.jpg`}
+              alt=""
+              loading="lazy"
+            />
+            <span>
+              <strong>{preview.title}</strong>
+              <small>Click to load YouTube</small>
+            </span>
+          </button>
+        )}
+      </section>
+    );
+  }
+  return (
+    <a
+      className="link-preview"
+      href={preview.url}
+      rel="noopener noreferrer"
+      target="_blank"
+      onClick={(event) => {
+        event.preventDefault();
+        void openExternalLink(preview.url);
+      }}
+    >
+      <small>{preview.siteName}</small>
+      <strong>{preview.title}</strong>
+      {preview.description ? <span>{preview.description}</span> : null}
+      <ExternalLink size={14} aria-hidden="true" />
+    </a>
+  );
 }
 
 const fallbackUser: AppUser = {

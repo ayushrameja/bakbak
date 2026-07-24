@@ -1702,21 +1702,29 @@ export function useVoiceRoom(
       },
     );
     if (
-      !result ||
       playbackOperationRef.current !== operationId ||
       roomRef.current !== room
     )
       return;
 
-    if (result.ok) {
+    if (!result || result.ok) {
       setAudioPlaybackBlocked(false);
       setError(null);
+      emitCommunicationEffect({
+        type: nextDeafened ? "deafen-enabled" : "deafen-disabled",
+      });
       return;
     }
 
     setAudioPlaybackBlocked(true);
     setError(result.message);
-  }, [audioPlaybackBlocked, remoteAudio, soundboardAudio, status]);
+  }, [
+    audioPlaybackBlocked,
+    emitCommunicationEffect,
+    remoteAudio,
+    soundboardAudio,
+    status,
+  ]);
 
   const resumeAudio = useCallback(async () => {
     const room = roomRef.current;

@@ -10,6 +10,8 @@ export type InterfaceSoundName =
   | "message-received"
   | "microphone-mute"
   | "microphone-unmute"
+  | "deafen-on"
+  | "deafen-off"
   | "voice-self-join"
   | "voice-self-leave"
   | "voice-remote-join"
@@ -29,6 +31,8 @@ const SOUND_DEFINITIONS: Record<InterfaceSoundName, SoundDefinition> = {
   "message-received": { category: "messages", gain: 0.72 },
   "microphone-mute": { category: "voice", gain: 0.76 },
   "microphone-unmute": { category: "voice", gain: 0.76 },
+  "deafen-on": { category: "voice", gain: 0.72 },
+  "deafen-off": { category: "voice", gain: 0.72 },
   "voice-self-join": { category: "voice", gain: 0.84 },
   "voice-self-leave": { category: "voice", gain: 0.78 },
   "voice-remote-join": { category: "voice", gain: 0.58 },
@@ -87,6 +91,10 @@ function soundForEvent(
       return "microphone-mute";
     case "microphone-unmuted":
       return "microphone-unmute";
+    case "deafen-enabled":
+      return "deafen-on";
+    case "deafen-disabled":
+      return "deafen-off";
     case "voice-self-joined":
       return "voice-self-join";
     case "voice-self-left":

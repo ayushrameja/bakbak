@@ -11,6 +11,7 @@ interface ChannelRow {
   category_id: string | null;
   name: string;
   kind: ChannelKind;
+  purpose: "chat" | "system-releases" | "system-general";
   position: number;
 }
 
@@ -99,7 +100,7 @@ export function subscribeToLiveChannels(
         try {
           const { data, error } = await supabase
             .from("channels")
-            .select("id,server_id,category_id,name,kind,position")
+            .select("id,server_id,category_id,name,kind,purpose,position")
             .eq("server_id", serverId)
             .order("position")
             .returns<ChannelRow[]>();
@@ -153,11 +154,16 @@ function channelFromRow(row: ChannelRow): Channel {
     categoryId: row.category_id,
     name: row.name,
     kind: row.kind,
+    purpose: row.purpose,
     position: row.position,
     topic:
-      row.kind === "voice"
-        ? "Drop in when you feel like talking."
-        : "A private conversation for server members.",
+      row.purpose === "system-releases"
+        ? "Published Bakbak releases and their notes."
+        : row.purpose === "system-general"
+          ? "Automatic welcomes for friends joining Bakbak."
+          : row.kind === "voice"
+            ? "Drop in when you feel like talking."
+            : "A private conversation for server members.",
   };
 }
 

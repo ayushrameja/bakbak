@@ -1,5 +1,6 @@
 import type {
   MessageAttachment,
+  LinkPreview,
   MessagePresentation,
   MessageReplyPreview,
   MessageSegment,
@@ -8,10 +9,14 @@ import type {
 
 export interface RichMessageRow {
   id: string;
-  author_id: string;
+  author_id: string | null;
   body: string;
   content: unknown;
   created_at: string;
+  message_kind?: "member" | "system";
+  system_event?: unknown;
+  link_preview?: unknown;
+  link_preview_attempted_at?: string | null;
   presentation?: unknown;
   reply_notifies_author?: boolean;
   deleted_at?: string | null;
@@ -112,6 +117,93 @@ export function parsePresentation(value: unknown): MessagePresentation | null {
   return null;
 }
 
+export function parseLinkPreview(value: unknown): LinkPreview | null {
+  if (!value || typeof value !== "object" || !("kind" in value)) return null;
+  if (
+    value.kind === "page" &&
+    "url" in value &&
+    "title" in value &&
+    "description" in value &&
+    "siteName" in value &&
+    typeof value.url === "string" &&
+    typeof value.title === "string" &&
+    typeof value.description === "string" &&
+    typeof value.siteName === "string"
+  ) {
+    return {
+      kind: "page",
+      url: value.url,
+      title: value.title,
+      description: value.description,
+      siteName: value.siteName,
+    };
+  }
+  if (
+    value.kind === "youtube" &&
+    "url" in value &&
+    "videoId" in value &&
+    "title" in value &&
+    typeof value.url === "string" &&
+    typeof value.videoId === "string" &&
+    /^[A-Za-z0-9_-]{11}$/.test(value.videoId) &&
+    typeof value.title === "string"
+  ) {
+    return {
+      kind: "youtube",
+      url: value.url,
+      videoId: value.videoId,
+      title: value.title,
+    };
+  }
+  return null;
+}
+
+export function parseSystemEvent(value: unknown) {
+  if (!value || typeof value !== "object" || !("type" in value)) return null;
+  if (
+    value.type === "member_joined" &&
+    "member_id" in value &&
+    "member_name" in value &&
+    "joined_at" in value &&
+    typeof value.member_id === "string" &&
+    typeof value.member_name === "string" &&
+    typeof value.joined_at === "string"
+  ) {
+    return {
+      type: "member_joined" as const,
+      memberId: value.member_id,
+      memberName: value.member_name,
+      joinedAt: value.joined_at,
+    };
+  }
+  if (
+    value.type === "release_published" &&
+    "release_id" in value &&
+    "tag" in value &&
+    "name" in value &&
+    "notes" in value &&
+    "url" in value &&
+    "published_at" in value &&
+    typeof value.release_id === "number" &&
+    typeof value.tag === "string" &&
+    typeof value.name === "string" &&
+    typeof value.notes === "string" &&
+    typeof value.url === "string" &&
+    typeof value.published_at === "string"
+  ) {
+    return {
+      type: "release_published" as const,
+      releaseId: value.release_id,
+      tag: value.tag,
+      name: value.name,
+      notes: value.notes,
+      url: value.url,
+      publishedAt: value.published_at,
+    };
+  }
+  return null;
+}
+
 export function parseAttachments(
   rows: RichMessageRow["attachments"],
 ): MessageAttachment[] {
@@ -179,7 +271,7 @@ export function parseReactions(
 }
 
 export const CHANNEL_RICH_SELECT =
-  "id,channel_id,author_id,body,content,created_at,presentation,reply_to_id,reply_notifies_author,deleted_at,attachments:message_attachments!message_attachments_message_id_fkey(id,kind,mime_type,byte_size,width,height,duration_ms,object_path,poster_path),reaction_rows:message_sticker_reactions!message_sticker_reactions_message_id_fkey(sticker_id,user_id)";
+  "id,channel_id,author_id,body,content,created_at,message_kind,system_event,link_preview,link_preview_attempted_at,presentation,reply_to_id,reply_notifies_author,deleted_at,attachments:message_attachments!message_attachments_message_id_fkey(id,kind,mime_type,byte_size,width,height,duration_ms,object_path,poster_path),reaction_rows:message_sticker_reactions!message_sticker_reactions_message_id_fkey(sticker_id,user_id)";
 
 export const DIRECT_RICH_SELECT =
-  "id,conversation_id,author_id,body,content,created_at,presentation,reply_to_id,reply_notifies_author,deleted_at,attachments:message_attachments!message_attachments_direct_message_id_fkey(id,kind,mime_type,byte_size,width,height,duration_ms,object_path,poster_path),reaction_rows:message_sticker_reactions!message_sticker_reactions_direct_message_id_fkey(sticker_id,user_id)";
+  "id,conversation_id,author_id,body,content,created_at,link_preview,link_preview_attempted_at,presentation,reply_to_id,reply_notifies_author,deleted_at,attachments:message_attachments!message_attachments_direct_message_id_fkey(id,kind,mime_type,byte_size,width,height,duration_ms,object_path,poster_path),reaction_rows:message_sticker_reactions!message_sticker_reactions_direct_message_id_fkey(sticker_id,user_id)";

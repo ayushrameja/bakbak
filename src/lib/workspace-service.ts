@@ -16,10 +16,12 @@ import {
   attachReplyRows,
   CHANNEL_RICH_SELECT,
   parseAttachments,
+  parseLinkPreview,
   parseMessageContent,
   parsePresentation,
   parseReactions,
   parseReply,
+  parseSystemEvent,
   type RichReplyRow,
   type RichMessageRow,
 } from "./rich-message-row";
@@ -35,6 +37,7 @@ interface ChannelRow {
   category_id: string | null;
   name: string;
   kind: "text" | "voice";
+  purpose: "chat" | "system-releases" | "system-general";
   position: number;
 }
 
@@ -66,7 +69,7 @@ interface ProfileRow {
 interface MessageRow extends RichMessageRow {
   id: string;
   channel_id: string;
-  author_id: string;
+  author_id: string | null;
   body: string;
   content: unknown;
   created_at: string;
@@ -101,6 +104,10 @@ function messageFromRow(row: MessageRow): ChatMessage {
     body: row.body,
     content: parseMessageContent(row.content),
     createdAt: row.created_at,
+    messageKind: row.message_kind ?? "member",
+    systemEvent: parseSystemEvent(row.system_event),
+    linkPreview: parseLinkPreview(row.link_preview),
+    linkPreviewAttemptedAt: row.link_preview_attempted_at ?? null,
     presentation: parsePresentation(row.presentation),
     attachments: parseAttachments(row.attachments),
     reply: parseReply(row.reply),
@@ -133,7 +140,7 @@ export async function loadLiveWorkspace(
       .returns<ChannelCategoryRow[]>(),
     supabase
       .from("channels")
-      .select("id,server_id,category_id,name,kind,position")
+      .select("id,server_id,category_id,name,kind,purpose,position")
       .eq("server_id", server.id)
       .order("position")
       .returns<ChannelRow[]>(),
@@ -198,11 +205,16 @@ export async function loadLiveWorkspace(
     categoryId: channel.category_id,
     name: channel.name,
     kind: channel.kind,
+    purpose: channel.purpose,
     position: channel.position,
     topic:
-      channel.kind === "voice"
-        ? "Drop in when you feel like talking."
-        : "A private conversation for server members.",
+      channel.purpose === "system-releases"
+        ? "Published Bakbak releases and their notes."
+        : channel.purpose === "system-general"
+          ? "Automatic welcomes for friends joining Bakbak."
+          : channel.kind === "voice"
+            ? "Drop in when you feel like talking."
+            : "A private conversation for server members.",
   }));
 
   return {
@@ -290,7 +302,7 @@ export async function sendLiveMessage(
       }),
     })
     .select(
-      "id,channel_id,author_id,body,content,created_at,presentation,reply_notifies_author,deleted_at",
+      "id,channel_id,author_id,body,content,created_at,message_kind,system_event,link_preview,link_preview_attempted_at,presentation,reply_notifies_author,deleted_at",
     )
     .single<MessageRow>();
   if (error) throw error;

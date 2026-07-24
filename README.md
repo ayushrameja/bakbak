@@ -4,9 +4,10 @@ Bakbak is a private desktop room for 5–10 friends: persistent text chat,
 drop-in voice, desktop screen sharing, and a synchronized hosted soundboard with
 account favorites and five-second member uploads from audio or video. Its Warm
 Adda interface includes light/dark theming, in-app profile and media settings,
-private member avatars, local RNNoise microphone cleanup, opt-in voice effects,
-and admin-managed text and voice rooms. It uses React, strict TypeScript, Vite,
-Tauri 2, Supabase, and LiveKit.
+private member avatars, automation-only System rooms, safe link previews, local
+RNNoise microphone cleanup, opt-in voice effects, and admin-managed ordinary
+text and voice rooms. It uses React, strict TypeScript, Vite, Tauri 2, Supabase,
+and LiveKit.
 
 The default local experience is fully interactive and needs no account or
 credentials. Production integrations are present behind live mode and remain
@@ -82,9 +83,13 @@ deleting cloud data, authentication settings, or device preferences.
 5. For rich messaging, deploy `supabase/functions/message-media-manage` and
    then `supabase/functions/sticker-manage`, both with JWT verification
    enabled. The additive rich-messaging migration must be applied first.
-6. Follow `supabase/admin/README.md` to create and assign the first admin, then
+6. For System rooms and link cards, apply the plan 0027 migration, deploy
+   `link-preview` with JWT verification and `system-events` with its dedicated
+   function secret, then run the stable-release history workflow once. See the
+   backend README for the safe rollout order.
+7. Follow `supabase/admin/README.md` to create and assign the first admin, then
    issue an invite. Plaintext invite codes are returned once and never stored.
-7. Copy `.env.example` to an ignored `.env`, set the public service values,
+8. Copy `.env.example` to an ignored `.env`, set the public service values,
    optionally add the public GIPHY beta key to `VITE_GIPHY_API_KEY`, and change
    `VITE_DATA_MODE` to `live`. Without that key, the GIPHY picker explains why
    it is disabled; uploads and Bakbak stickers still work. Restart or rebuild
@@ -149,7 +154,11 @@ the installers and updater manifest are verified and the release is published,
 the workflow opens and merges a small protected-branch-compatible PR that
 synchronizes the released version in `package.json`, the Tauri configuration,
 and the Rust package manifest and lockfile. That bot commit does not start
-another release.
+another release. A separate three-retry job also posts every verified stable
+release to `#releases`;
+publication itself remains successful if announcement delivery needs a rerun.
+The manual System history workflow imports stable releases oldest-first and is
+idempotent by GitHub release ID.
 
 Because `main` requires pull requests, repository **Settings → Actions →
 General → Workflow permissions** must allow GitHub Actions to create and
@@ -173,11 +182,13 @@ Release builds require these GitHub Actions repository variables:
 - `VITE_GIPHY_API_KEY`
 
 They also require `TAURI_SIGNING_PRIVATE_KEY` and
-`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` as GitHub Actions secrets. The committed
-public key verifies updates; the private key must remain backed up and must
-never be committed. The current macOS builds remain ad-hoc signed and Windows
-builds remain unsigned, so first-install operating-system warnings are expected
-until Developer ID/notarization and Windows code signing are configured.
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` as GitHub Actions secrets. System release
+announcements additionally require `BAKBAK_SYSTEM_EVENTS_SECRET`, matching the
+Supabase Function Secret. The committed public updater key verifies updates;
+private values must remain backed up and must never be committed. The current
+macOS builds remain ad-hoc signed and Windows builds remain unsigned, so
+first-install operating-system warnings are expected until Developer
+ID/notarization and Windows code signing are configured.
 
 ## Project memory
 

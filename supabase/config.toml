@@ -61,3 +61,13 @@ import_map = "./functions/message-media-manage/deno.json"
 enabled = true
 verify_jwt = true
 import_map = "./functions/sticker-manage/deno.json"
+
+[functions.system-events]
+enabled = true
+verify_jwt = false
+import_map = "./functions/system-events/deno.json"
+
+[functions.link-preview]
+enabled = true
+verify_jwt = true
+import_map = "./functions/link-preview/deno.json"

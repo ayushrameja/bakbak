@@ -5,6 +5,8 @@ export type CommunicationEffectEvent =
   | { type: "message-received" }
   | { type: "microphone-muted" }
   | { type: "microphone-unmuted" }
+  | { type: "deafen-enabled" }
+  | { type: "deafen-disabled" }
   | { type: "voice-self-joined"; channelName: string }
   | { type: "voice-self-left" }
   | {
@@ -42,6 +44,10 @@ export function communicationEffectLabel(
       return "MICROPHONE MUTED";
     case "microphone-unmuted":
       return "MICROPHONE LIVE";
+    case "deafen-enabled":
+      return "ROOM AUDIO DEAFENED";
+    case "deafen-disabled":
+      return "ROOM AUDIO RESTORED";
     case "voice-self-joined":
       return `VOICE LINKED // ${event.channelName}`;
     case "voice-self-left":

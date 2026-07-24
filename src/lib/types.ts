@@ -1,5 +1,6 @@
 export type DataMode = "mock" | "live";
 export type ChannelKind = "text" | "voice";
+export type ChannelPurpose = "chat" | "system-releases" | "system-general";
 export type MembershipRole = "admin" | "member";
 
 export interface AppUser {
@@ -39,6 +40,7 @@ export interface Channel {
   categoryId: string | null;
   name: string;
   kind: ChannelKind;
+  purpose?: ChannelPurpose;
   position: number;
   topic: string;
 }
@@ -52,8 +54,41 @@ export type MessageSegment =
   | { type: "mention"; userId: string; fallback: string };
 
 export type MessageScope = "channel" | "direct";
+export type MessageKind = "member" | "system";
 export type MessageAttachmentKind = "image" | "gif" | "video";
 export type GiphyAssetKind = "gif" | "sticker";
+
+export type SystemMessageEvent =
+  | {
+      type: "member_joined";
+      memberId: string;
+      memberName: string;
+      joinedAt: string;
+    }
+  | {
+      type: "release_published";
+      releaseId: number;
+      tag: string;
+      name: string;
+      notes: string;
+      url: string;
+      publishedAt: string;
+    };
+
+export type LinkPreview =
+  | {
+      kind: "page";
+      url: string;
+      title: string;
+      description: string;
+      siteName: string;
+    }
+  | {
+      kind: "youtube";
+      url: string;
+      videoId: string;
+      title: string;
+    };
 
 export type MessagePresentation =
   | {
@@ -147,10 +182,14 @@ export interface MessageDraft {
 
 export interface ConversationMessage {
   id: string;
-  authorId: string;
+  authorId: string | null;
   body: string;
   content: MessageSegment[] | null;
   createdAt: string;
+  messageKind?: MessageKind;
+  systemEvent?: SystemMessageEvent | null;
+  linkPreview?: LinkPreview | null;
+  linkPreviewAttemptedAt?: string | null;
   presentation?: MessagePresentation | null;
   attachments?: MessageAttachment[];
   reply?: MessageReplyPreview | null;
@@ -192,6 +231,7 @@ export type ConversationTarget =
       id: string;
       name: string;
       topic: string;
+      purpose?: ChannelPurpose;
     }
   | {
       kind: "direct";

@@ -1176,6 +1176,18 @@ describe("useVoiceRoom join lifecycle", () => {
     expect(effects).toHaveBeenCalledWith({ type: "microphone-unmuted" });
 
     await act(async () => {
+      await result.current.toggleDeafen();
+    });
+    expect(result.current.deafened).toBe(true);
+    expect(effects).toHaveBeenCalledWith({ type: "deafen-enabled" });
+
+    await act(async () => {
+      await result.current.toggleDeafen();
+    });
+    expect(result.current.deafened).toBe(false);
+    expect(effects).toHaveBeenCalledWith({ type: "deafen-disabled" });
+
+    await act(async () => {
       await result.current.toggleMute();
       await result.current.join(coffeeTable);
     });

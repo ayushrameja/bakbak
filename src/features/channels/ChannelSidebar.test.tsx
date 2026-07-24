@@ -128,6 +128,38 @@ describe("ChannelSidebar room shelf", () => {
     expect(onRenameChannel).toHaveBeenCalledWith(voiceChannel);
   });
 
+  it("keeps automation channels expanded and hides their rename control", () => {
+    const systemCategory: ChannelCategory = {
+      id: "category-system",
+      serverId: server.id,
+      name: "System",
+      position: 0,
+    };
+    const releases: Channel = {
+      ...voiceChannel,
+      id: "releases",
+      categoryId: systemCategory.id,
+      name: "releases",
+      kind: "text",
+      purpose: "system-releases",
+    };
+    renderSidebar([releases], {
+      categories: [systemCategory],
+      canManageChannels: true,
+    });
+
+    expect(screen.getByRole("button", { name: "System" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(
+      screen.getByLabelText("Automation-only channel"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Rename releases" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("hides management controls from ordinary members", () => {
     renderSidebar([voiceChannel]);
     expect(

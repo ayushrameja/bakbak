@@ -4701,3 +4701,140 @@ supabase/functions/tests` — passed 37/37 tests, including media request
 - **Next:** Open the rebuilt `Bakbak.app`, change macOS Accent Color while it is
   running, and verify the live event plus focus fallback; then repeat the
   connected-control and Automatic-accent matrix on the next Windows build.
+
+## 2026-07-24 — Add system rooms, safe previews, and deafen cues
+
+- **Completed:** Added the topmost expanded System category with stable
+  automation-only `releases` and `general` channels, typed system messages,
+  membership welcome insertion, current-membership history, historical-read
+  baselining, and idempotent release publication. Added the protected
+  `system-events` and authenticated `link-preview` Edge Functions, gated
+  release announcement/history workflows, URL tokenization for channel and DM
+  text, external opening, text-only page cards, click-to-load privacy-enhanced
+  YouTube embeds, and preview delivery through existing Realtime updates.
+  Added deterministic 170 ms deafen/undeafen cues under the Voice preference
+  and routed them to system output only after successful current operations.
+  Aligned the category chevron, connector spine, and row elbows to one shared
+  CSS axis.
+- **Decisions:** Kept `ChannelKind` about transport and introduced a separate
+  purpose discriminator so older text/voice behavior remains intact. Enforced
+  System immutability in tables, policies, and RPCs instead of relying on a
+  disabled composer. Kept release bodies readable for older clients and
+  service-role insertion behind a dedicated constant-time secret. Preview
+  functions re-read stored messages, resolve only public HTTPS targets, bound
+  redirects/time/size, store text metadata only, and never delay message
+  sending. Imported history is visible but marked read; future events retain
+  the normal unread and incoming-message behavior.
+- **Validation:**
+  - Focused renderer, audio, and layout suites — passed, including system-card
+    rendering, absent composer/actions, fallback bodies, link punctuation and
+    unsafe schemes, preview retries, Realtime update replacement, incoming
+    system sound, deterministic WAV properties, successful/stale/failed
+    deafen transitions, and the shared tree axis.
+  - `pnpm dlx supabase@latest db reset` and the complete database test suite —
+    passed all 14 files and 365 assertions, including member/admin write
+    denial, outsider isolation, trigger/read-state behavior, historical
+    timestamps, and release idempotency.
+  - Supabase Edge Function tests — passed all 44 tests across the existing and
+    new suites, including event-secret/repository validation and preview
+    authorization, DNS/IP rejection, redirects, timeouts, size limits, and
+    sanitization.
+  - `pnpm dlx supabase@latest db lint --local` — passed with no schema errors.
+  - Initial `pnpm check` — stopped at lint because an unknown thrown preview
+    error was interpolated directly; normalized it to a safe error string.
+  - Final `pnpm check` — passed formatting, lint, both strict TypeScript
+    projects, 73 Vitest files with 378 tests, 34/34 Node contract tests,
+    synchronized version `0.16.0`, production build, and bundle secret scan.
+    Vite retained the existing non-blocking large-chunk warning.
+  - `cargo check --locked --manifest-path src-tauri/Cargo.toml` — passed on the
+    current Apple Silicon macOS target.
+  - Mock in-app browser QA at 1280×800 and 1024×680 — passed the expanded and
+    collapsed System category in dark and light schemes. The System view had
+    no composer, message actions, or rename controls; the automation footer
+    remained visible; chevron and spine centers differed by 0 px; and
+    horizontal overflow remained zero.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+  - Post-documentation `pnpm format:check` and `git diff --check` — passed;
+    the ignored `.env.local` remained outside the change set.
+- **Documentation updated:** Added plan 0027; updated the architecture, active
+  v1 scope, root setup/release documentation, Supabase deployment notes, and
+  this canonical progress entry.
+- **Known limitations:** Hosted migration and Edge Function deployment, secret
+  configuration, the one-time stable release history sync, and enabling
+  `SYSTEM_CHANNELS_ENABLED` remain deliberate rollout steps. Live
+  multi-client unread/audio behavior and real network YouTube/page-preview
+  rendering still need friend-test observation. The local macOS bundle is
+  ad-hoc signed and not notarized, and this macOS run did not build Windows.
+- **Next:** Rotate any credential exposed during local setup, deploy the
+  migration and both Edge Functions, configure the system-event secret in
+  Supabase and GitHub, run the manual stable-release history workflow, verify
+  its imported rows/read baseline, then enable automatic announcements.
+
+## 2026-07-24 — Deploy System rooms and calm channel selection
+
+- **Completed:** Removed `SYSTEM_CHANNELS_ENABLED` from both release workflows
+  so stable announcements and manual history sync are standard behavior.
+  Removed the active channel's inset accent stripe while retaining its neutral
+  selected surface and accent-colored room icon. Applied hosted migration
+  `202607240001`, deployed `link-preview` and `system-events`, synchronized a
+  newly generated high-entropy System secret between Supabase and GitHub
+  Actions, and imported 15 published stable releases oldest-first in
+  historical mode.
+- **Decisions:** Kept the one-time history import manually invoked because it
+  is an operator action, while future verified stable releases announce
+  automatically. Kept the function's narrow shared-secret boundary and rotated
+  one generated value into both managed secret stores without persisting or
+  printing it. Removed only the selected-room inset stripe; the neutral
+  background and icon emphasis still identify the current room without drawing
+  a bright bracket through the connector tree.
+- **Validation:**
+  - `pnpm dlx supabase@latest db push --dry-run` — passed and listed only
+    `202607240001_system_channels_and_link_previews.sql`.
+  - `pnpm dlx supabase@latest db push` — passed and applied migration
+    `202607240001` to the linked hosted project.
+  - `pnpm dlx supabase@latest migration list --linked` — passed with every
+    local migration, including `202607240001`, matched remotely.
+  - Function deployment/list checks — passed; hosted `link-preview` version 3
+    is ACTIVE with JWT verification enabled, while hosted `system-events`
+    version 3 is ACTIVE with its intended platform JWT gate disabled.
+  - Managed-secret checks — passed; `BAKBAK_SYSTEM_EVENTS_SECRET` is present in
+    both Supabase Function Secrets and GitHub Actions without reading its
+    value.
+  - First direct history-sync attempt — inserted zero rows because this GitHub
+    CLI rejects `--slurp` together with `--jq`; moved page aggregation to
+    standard `jq --raw-output --slurp`.
+  - Corrected direct history sync — passed and posted 15 stable releases
+    oldest-first through the protected function.
+  - Unauthenticated hosted probes — both `system-events` and `link-preview`
+    returned HTTP 401.
+  - `pnpm dlx supabase@latest db lint --linked` — passed with no hosted schema
+    errors.
+  - Initial focused workflow/layout run — 9/10 passed; the new neutral-selection
+    assertion inspected only styles after the later channel-tree marker.
+    Pointing that assertion at the complete stylesheet corrected the test, not
+    the implementation.
+  - Final focused workflow/layout run — passed 10/10 tests, including absence
+    of either workflow gate, portable paginated history aggregation, and the
+    neutral active-row contract.
+  - Mock in-app browser QA at 1280×800 — passed. The selected `spawn` row
+    computed `box-shadow: none`, zero left-border width, and zero document
+    overflow; direct visual inspection confirmed the accent stripe is gone.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects,
+    73 Vitest files with 378 tests, 34/34 Node contract tests, synchronized
+    version `0.16.0`, production build, and bundle secret scan. Vite retained
+    the existing non-blocking large-chunk warning.
+  - Post-documentation `pnpm format:check`, `git diff --check`, and release-gate
+    search — passed; no active `SYSTEM_CHANNELS_ENABLED` reference remains and
+    the ignored `.env.local` stayed outside the change set.
+- **Documentation updated:** Updated root/Supabase setup, architecture,
+  plan 0027 status, active v1 deployment criteria, and this canonical progress
+  entry.
+- **Known limitations:** The gate-free GitHub workflow changes take effect only
+  after this working tree is committed and merged. Installed two-client
+  welcome/release unread and sound observation plus the remaining native
+  multi-zoom/light-dark matrix are still pending.
+- **Next:** Merge the workflow and renderer changes, then observe the next real
+  stable release arriving automatically in `#releases` and verify its unread
+  marker plus incoming-message cue on a second installed client.

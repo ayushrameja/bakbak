@@ -40,6 +40,126 @@ const channel: Channel = {
 };
 
 describe("ChatView controlled drafts", () => {
+  it("renders automation-only System events without a composer or message actions", () => {
+    const releases: Channel = {
+      ...channel,
+      id: "releases",
+      name: "releases",
+      purpose: "system-releases",
+      topic: "Published Bakbak releases and their notes.",
+    };
+    const message: ChatMessage = {
+      id: "release-1",
+      channelId: releases.id,
+      authorId: null,
+      body: "Bakbak v0.16.0 is now available.",
+      content: null,
+      createdAt: "2026-07-24T12:00:00.000Z",
+      messageKind: "system",
+      systemEvent: {
+        type: "release_published",
+        releaseId: 16,
+        tag: "v0.16.0",
+        name: "Bakbak v0.16.0",
+        notes: "System channels have entered the chat.",
+        url: "https://github.com/ayushrameja/bakbak/releases/tag/v0.16.0",
+        publishedAt: "2026-07-24T12:00:00.000Z",
+      },
+    };
+    const fallback: ChatMessage = {
+      id: "release-fallback",
+      channelId: releases.id,
+      authorId: null,
+      body: "Bakbak v0.15.0 is available to install.",
+      content: null,
+      createdAt: "2026-07-23T12:00:00.000Z",
+      messageKind: "system",
+      systemEvent: null,
+    };
+
+    render(
+      <ChatView
+        channel={releases}
+        messages={[fallback, message]}
+        members={[member]}
+        currentUser={user}
+        sending={false}
+        draft={EMPTY_MESSAGE_DRAFT}
+        onDraftChange={vi.fn()}
+        onSend={vi.fn().mockResolvedValue(undefined)}
+        onDeleteMessage={vi.fn()}
+        onReact={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Automation-only channel")).toBeVisible();
+    expect(screen.getByText("Bakbak v0.16.0")).toBeVisible();
+    expect(
+      screen.getByText("System channels have entered the chat."),
+    ).toBeVisible();
+    expect(
+      screen.getByText("Bakbak v0.15.0 is available to install."),
+    ).toBeVisible();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Reply to message" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("linkifies safe text and reveals click-to-load YouTube previews", async () => {
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    const message: ChatMessage = {
+      id: "message-link",
+      channelId: channel.id,
+      authorId: user.id,
+      body: "Read https://example.com/docs.",
+      content: [{ type: "text", text: "Read https://example.com/docs." }],
+      createdAt: "2026-07-24T12:00:00.000Z",
+      linkPreview: {
+        kind: "youtube",
+        url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        videoId: "dQw4w9WgXcQ",
+        title: "A deeply important architecture review",
+      },
+    };
+    render(
+      <ChatView
+        channel={channel}
+        messages={[message]}
+        members={[member]}
+        currentUser={user}
+        sending={false}
+        draft={EMPTY_MESSAGE_DRAFT}
+        onDraftChange={vi.fn()}
+        onSend={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    const link = screen.getByRole("link", {
+      name: "https://example.com/docs",
+    });
+    expect(link).toHaveAttribute("href", "https://example.com/docs");
+    await userEvent.click(link);
+    expect(open).toHaveBeenCalledWith(
+      "https://example.com/docs",
+      "_blank",
+      "noopener,noreferrer",
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: /A deeply important architecture review/i,
+      }),
+    );
+    expect(
+      screen.getByTitle("A deeply important architecture review"),
+    ).toHaveAttribute(
+      "src",
+      "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?autoplay=1",
+    );
+    open.mockRestore();
+  });
+
   it("presents an empty channel as the first branch of its conversation", () => {
     const { container } = render(
       <ChatView
