@@ -5054,11 +5054,12 @@ docs/progress.md` corrected it. Final `pnpm format:check` and
     tests. The first `pnpm format:check` then failed on the two new files;
     `pnpm exec prettier --write` corrected them, and the final focused run
     passed 14/14 again.
-  - Live recovery boundary — safely exhausted three REST attempts twice because
-    GitHub returned an empty HTTP 500, found no half-created PR after any
-    uncertain response, and left the verified version branch intact. A
-    GitHub-app fallback was also unable to create the PR because that
-    integration lacks repository write permission.
+  - Live recovery boundary — safely exhausted three REST attempts four times
+    because GitHub returned an empty HTTP 500, found no half-created PR after
+    any uncertain response, and left the verified version branch intact.
+    Direct authenticated GraphQL creation returned the matching internal
+    service error, while a GitHub-app fallback lacked repository write
+    permission.
   - `pnpm check` — passed formatting, lint, both strict TypeScript projects,
     75 Vitest files with 393 tests, 41/41 Node contract tests, version
     synchronization, production renderer build, and bundle secret scanning;
@@ -5071,10 +5072,12 @@ docs/progress.md` corrected it. Final `pnpm format:check` and
   plan was unchanged because the approved release/version contract and product
   scope are unchanged.
 - **Known limitations:** GitHub's PR creation APIs were still returning server
-  errors at handoff time, so published v1.0.0 remains tracked as `0.16.0` on
-  `main`; the exact `1.0.0` commit remains recoverable on the preserved
-  automation branch. The full Tauri bundle was not rebuilt because this change
-  affects only release orchestration, Node tests, and documentation.
+  errors at handoff time. The tested workflow fix is pushed at `27786d7` on
+  `OpenBhai/fix-release-version-sync`, but its `release:skip` PR could not yet
+  be opened. Published v1.0.0 remains tracked as `0.16.0` on `main`; the exact
+  `1.0.0` commit remains recoverable on the preserved automation branch. The
+  full Tauri bundle was not rebuilt because this change affects only release
+  orchestration, Node tests, and documentation.
 - **Next:** Retry the idempotent v1.0.0 recovery after GitHub PR creation
   recovers, then publish this workflow fix in a `release:skip` PR and confirm
   the next release synchronizes its tracked version without leaving an
