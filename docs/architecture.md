@@ -706,10 +706,12 @@ from Rust only when `windows-version` reports build 22000 or newer. Before
 React loads, Rust injects `data-window-material="native|fallback"`; native
 material makes document roots transparent, while Windows 10, browser preview,
 and unsupported platforms retain an opaque grayscale underlay. Acrylic is not
-used. Capabilities grant window operations only to the main window. Linux
-custom chrome and native material remain deferred. The macOS private material
-API makes Mac App Store distribution unsupported; Bakbak targets private
-distribution.
+used. The Windows override intentionally omits `noRedirectionBitmap` because
+the released Tauri 2.11 configuration schema rejects that unreleased option;
+the existing opaque pre-render fallback continues to cover startup. Capabilities
+grant window operations only to the main window. Linux custom chrome and native
+material remain deferred. The macOS private material API makes Mac App Store
+distribution unsupported; Bakbak targets private distribution.
 The main window enables Tauri's built-in interface zoom hotkeys, providing
 Cmd/Ctrl `+`, Cmd/Ctrl `-`, and Cmd/Ctrl `0` through the narrowly scoped
 webview-zoom capability.

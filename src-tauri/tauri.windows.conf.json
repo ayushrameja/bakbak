@@ -14,8 +14,7 @@
         "zoomHotkeysEnabled": true,
         "decorations": false,
         "shadow": true,
-        "transparent": true,
-        "noRedirectionBitmap": true
+        "transparent": true
       }
     ]
   }
