@@ -301,13 +301,4 @@ jobs:
           VERSION_BRANCH: ${{ steps.commit.outputs.branch }}
           VERSION_HEAD: ${{ steps.commit.outputs.head }}
         shell: bash
-        run: |
-          pr_url="$(gh pr create \
-            --base main \
-            --head "$VERSION_BRANCH" \
-            --title "chore(release): sync version to ${RELEASE_VERSION}" \
-            --body "Synchronizes tracked application metadata after publishing ${RELEASE_TAG}.")"
-          gh pr merge "$pr_url" \
-            --merge \
-            --delete-branch \
-            --match-head-commit "$VERSION_HEAD"
+        run: node scripts/sync-release-pr.mjs

@@ -5023,3 +5023,59 @@ docs/progress.md` corrected it. Final `pnpm format:check` and
   systems, mitigated by Bakbak's existing opaque pre-render fallback.
 - **Next:** Rerun the failed release workflow and confirm the Windows job
   produces its x64 NSIS installer and signed updater artifacts.
+
+## 2026-07-25 — Harden release version synchronization
+
+- **Completed:** Inspected Desktop release run `30120007215` and confirmed that
+  validation, both native builds, publication, and the System announcement
+  succeeded for v1.0.0; only the post-publication `sync-version` job failed.
+  Replaced its unguarded GraphQL `gh pr create`/`gh pr merge` sequence with a
+  tested Node boundary over GitHub's REST API. The boundary discovers an
+  existing branch-specific PR before creation, recovers after uncertain
+  responses, retries creation/merge/deletion three times, verifies the exact
+  expected head SHA before merging, sets `[skip ci]` explicitly on the merge
+  commit, and deletes the automation branch only after a confirmed merge.
+- **Decisions:** Treated GitHub's generic GraphQL error as a transient service
+  failure rather than a repository permission problem: the job had
+  `contents: write` and `pull-requests: write`, repository Actions settings
+  permit write-created PRs, the version commit pushed successfully, and no PR
+  existed afterward. Kept retries bounded at three with 5- and 10-second
+  backoff, and preserved the branch after exhaustion so recovery remains
+  inspectable and cannot silently merge a changed head.
+- **Validation:**
+  - Authenticated `gh run view 30120007215 --json ... --log-failed` — confirmed
+    every release job except `sync-version` passed, v1.0.0 published, and PR
+    creation alone returned GitHub's internal GraphQL error.
+  - GitHub repository/branch inspection — confirmed Actions write permissions,
+    protected `main` at `549b368`, no PR for the failed attempt, and orphaned
+    branch `automation/release-v1.0.0-30120007215-1` exactly one commit ahead
+    with only the four expected version metadata files changed.
+  - Initial focused Node run — passed 14/14 release workflow and sync boundary
+    tests. The first `pnpm format:check` then failed on the two new files;
+    `pnpm exec prettier --write` corrected them, and the final focused run
+    passed 14/14 again.
+  - Live recovery boundary — safely exhausted three REST attempts twice because
+    GitHub returned an empty HTTP 500, found no half-created PR after any
+    uncertain response, and left the verified version branch intact. A
+    GitHub-app fallback was also unable to create the PR because that
+    integration lacks repository write permission.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects,
+    75 Vitest files with 393 tests, 41/41 Node contract tests, version
+    synchronization, production renderer build, and bundle secret scanning;
+    Vite retained the existing non-blocking large-chunk warning.
+  - `cargo check --locked --manifest-path src-tauri/Cargo.toml` — passed.
+  - Final focused Node run, `pnpm format:check`, and `git diff --check` —
+    passed.
+- **Documentation updated:** Updated the release flow in
+  `docs/architecture.md` and appended this canonical progress entry. The active
+  plan was unchanged because the approved release/version contract and product
+  scope are unchanged.
+- **Known limitations:** GitHub's PR creation APIs were still returning server
+  errors at handoff time, so published v1.0.0 remains tracked as `0.16.0` on
+  `main`; the exact `1.0.0` commit remains recoverable on the preserved
+  automation branch. The full Tauri bundle was not rebuilt because this change
+  affects only release orchestration, Node tests, and documentation.
+- **Next:** Retry the idempotent v1.0.0 recovery after GitHub PR creation
+  recovers, then publish this workflow fix in a `release:skip` PR and confirm
+  the next release synchronizes its tracked version without leaving an
+  automation branch.

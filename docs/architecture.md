@@ -1450,10 +1450,16 @@ model; Jitsi's Apache/MIT notice and Xiph.Org's BSD 3-Clause notice ship under
    duplicate targets fail manifest verification.
 6. After publication, the workflow synchronizes the released version across
    `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`, then
-   updates the Bakbak package entry in `src-tauri/Cargo.lock`. It then creates
-   and immediately merges a protected-branch-compatible version PR. The bot
-   commit uses GitHub's workflow token plus a skip annotation, so it cannot
-   recursively start another release.
+   updates the Bakbak package entry in `src-tauri/Cargo.lock`. It pushes an
+   attempt-scoped branch, then a tested Node boundary discovers or creates its
+   protected-branch-compatible PR through GitHub's REST API. Creation and merge
+   tolerate empty, malformed, rate-limited, and server-error responses with
+   three bounded attempts and a branch-specific lookup after every uncertain
+   response. The boundary verifies the exact expected head before merging,
+   gives the merge commit an explicit skip annotation, and deletes the branch
+   only after GitHub confirms the merge. Exhausted retries leave the branch
+   intact for operator recovery instead of risking a duplicate PR or merging a
+   changed head.
 7. A separate announcement job always reads the verified published release
    from GitHub's API and posts it to the protected System endpoint with three
    retries. Failures do not unpublish the desktop release, and the release ID

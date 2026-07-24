@@ -184,8 +184,9 @@ test("published releases synchronize their version through a protected-branch PR
   assert.match(workflow, /node scripts\/set-version\.mjs "\$RELEASE_VERSION"/);
   assert.match(workflow, /src-tauri\/Cargo\.lock/);
   assert.match(workflow, /git commit -m ".*\[skip ci\]"/);
-  assert.match(workflow, /gh pr create/);
-  assert.match(workflow, /gh pr merge/);
+  assert.match(workflow, /node scripts\/sync-release-pr\.mjs/);
+  assert.doesNotMatch(workflow, /gh pr create/);
+  assert.doesNotMatch(workflow, /gh pr merge/);
 });
 
 test("stable releases announce idempotently and history syncs oldest first", async () => {
