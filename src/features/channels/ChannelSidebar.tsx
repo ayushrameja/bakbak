@@ -199,6 +199,7 @@ export function ChannelSidebar({
           <button
             className={`channel-row ${selectedChannelId === channel.id ? "active" : ""} ${unreadChannelIds.has(channel.id) ? "channel-row--unread" : ""}`}
             type="button"
+            aria-current={selectedChannelId === channel.id ? "page" : undefined}
             onClick={() => onSelect(channel)}
           >
             {channel.purpose === "system-releases" ? (
@@ -256,6 +257,7 @@ export function ChannelSidebar({
           <button
             className={`channel-row ${selectedChannelId === channel.id ? "active" : ""}`}
             type="button"
+            aria-current={selectedChannelId === channel.id ? "page" : undefined}
             onPointerEnter={() => onPrepareVoiceChannel(channel)}
             onFocus={() => onPrepareVoiceChannel(channel, true)}
             onClick={() => onSelect(channel)}

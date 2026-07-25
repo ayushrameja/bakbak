@@ -1,8 +1,4 @@
-import {
-  DEFAULT_MICROPHONE_PROCESSING_PREFERENCES,
-  readVoiceEffect,
-  type MicrophoneProcessingPreferences,
-} from "./microphone-preferences";
+import { DEFAULT_MICROPHONE_PROCESSING_PREFERENCES } from "./microphone-preferences";
 
 export interface DevicePreferences {
   inputDeviceId: string;
@@ -10,7 +6,7 @@ export interface DevicePreferences {
   cameraDeviceId: string;
   soundboardVolume: number;
   enhancedNoiseSuppression: boolean;
-  voiceEffect: MicrophoneProcessingPreferences["voiceEffect"];
+  macosKeepOtherAudioFullVolume: boolean;
 }
 
 export const DEFAULT_DEVICE_PREFERENCES: DevicePreferences = {
@@ -19,10 +15,14 @@ export const DEFAULT_DEVICE_PREFERENCES: DevicePreferences = {
   cameraDeviceId: "default",
   soundboardVolume: 0.7,
   ...DEFAULT_MICROPHONE_PROCESSING_PREFERENCES,
+  macosKeepOtherAudioFullVolume: false,
 };
 
-const DEVICE_PREFERENCES_KEY = "bakbak.devicePreferences.v2";
-const LEGACY_DEVICE_PREFERENCES_KEY = "bakbak.devicePreferences.v1";
+const DEVICE_PREFERENCES_KEY = "bakbak.devicePreferences.v3";
+const LEGACY_DEVICE_PREFERENCES_KEYS = [
+  "bakbak.devicePreferences.v2",
+  "bakbak.devicePreferences.v1",
+] as const;
 
 export function loadDevicePreferences(
   storage: Pick<Storage, "getItem"> = window.localStorage,
@@ -30,7 +30,9 @@ export function loadDevicePreferences(
   try {
     const raw =
       storage.getItem(DEVICE_PREFERENCES_KEY) ??
-      storage.getItem(LEGACY_DEVICE_PREFERENCES_KEY);
+      LEGACY_DEVICE_PREFERENCES_KEYS.map((key) => storage.getItem(key)).find(
+        (value) => value !== null,
+      );
     if (!raw) return { ...DEFAULT_DEVICE_PREFERENCES };
     const parsed: unknown = JSON.parse(raw);
     if (!isRecord(parsed)) return { ...DEFAULT_DEVICE_PREFERENCES };
@@ -43,7 +45,10 @@ export function loadDevicePreferences(
         typeof parsed.enhancedNoiseSuppression === "boolean"
           ? parsed.enhancedNoiseSuppression
           : DEFAULT_DEVICE_PREFERENCES.enhancedNoiseSuppression,
-      voiceEffect: readVoiceEffect(parsed.voiceEffect),
+      macosKeepOtherAudioFullVolume:
+        typeof parsed.macosKeepOtherAudioFullVolume === "boolean"
+          ? parsed.macosKeepOtherAudioFullVolume
+          : DEFAULT_DEVICE_PREFERENCES.macosKeepOtherAudioFullVolume,
     };
   } catch {
     return { ...DEFAULT_DEVICE_PREFERENCES };

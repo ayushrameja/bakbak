@@ -7,7 +7,7 @@ and phase completion belong in the numbered files under `docs/plans`.
 
 ## Current implementation state
 
-As of 2026-07-24, Bakbak has a complete local/mock product path and production
+As of 2026-07-25, Bakbak has a complete local/mock product path and production
 Supabase and LiveKit adapters. The renderer provides the invite-only welcome
 flow and one shared neutral glass shell with scoped semantic control colors. An
 always-present 48 px titlebar
@@ -61,7 +61,7 @@ retains a flat, gradient-free treatment with no face or mascot. Scoped
 Discord-inspired
 positive, danger, warning, and icon tokens identify connection/presence,
 destructive, warning, and inactive control state. Selection aliases the
-normalized system accent across navigation, trails, focus, and active ordinary
+normalized system accent across navigation, focus, and active ordinary
 controls. Appearance Settings exposes only the three scheme choices plus
 read-only System accent and `Glass` summaries; typography and accent controls
 remain absent.
@@ -87,8 +87,10 @@ room-type/read-only icons and hidden selected, unread, and voice-occupancy
 summaries. One shared spine coordinate aligns each category chevron, vertical
 connector, and row elbow. Collapse state is device-local per server and does
 not alter subscriptions or room state. This layout imports no Discord messages
-or credentials. Selected channel rows use a neutral panel fill and an
-accent-colored room icon without an inset accent border.
+or credentials. Selected text and voice channel rows use a persistent soft
+accent pill, thin accent outline, brighter icon/label, and stronger active
+hover while exposing `aria-current="page"`. The tree connector remains visible
+without restoring the retired accent stripe.
 
 Upgraded clients expose chat, structured individual mentions, account-synced
 unread emphasis, incoming-message sounds, and drafts only for text channels.
@@ -105,14 +107,13 @@ subscribes to, sends, drafts, notifies, nor shows unread state for them. No
 destructive database migration accompanies this client-only boundary.
 
 Text channels and Personal DMs now share the plan 0022 rich-message boundary.
-A theme-responsive conversation-root treatment makes their introduction the
-visual origin of the thread. Empty conversations expose an accessible compact
-first-branch status rather than a full-width placeholder. Populated
-conversations align a subtle rail through the introduction icon and message
-avatars, add compact dots for grouped messages, and terminate the trail after
-the visible history. Quiet/flowing labels describe only the current rendered
-message state; they do not alter loading, activity, read state, or
-subscriptions.
+Each keeps its channel- or person-specific welcome introduction, followed by a
+plain message history or a compact accessible `No messages yet` status with
+target-specific first-message copy. Conversation rails, branches, grouped-row
+dots, terminal markers, decorative empty branches, and Quiet/Flowing labels
+are absent. Only chat-author avatars and their profile triggers are circular;
+member, profile, sidebar, and participant avatars retain their established
+shapes.
 A shared conversation scroll contract opens each channel or DM at the bottom
 without smooth motion. Within 96 px of the bottom, new rows pin immediately.
 Otherwise message appends preserve the viewport and increment a pluralized New
@@ -159,15 +160,30 @@ Voice rooms retain locally persisted microphone/speaker/camera selection,
 opt-in 720p camera calls, sidebar occupancy with elapsed timers, mute/deafen,
 per-participant volume, remote-track audio/video rendering, autoplay recovery,
 reconnect/error states, and a unified participant/screen-share media gallery.
-Microphone capture keeps WebRTC echo cancellation, noise suppression, and
-automatic gain control, then defaults to a second device-local RNNoise stage in
-a 48 kHz AudioWorklet before LiveKit publication. Audio settings can disable
-that stage or select Natural, Child, Robot, or Walkie-talkie output; effects
-apply only to the named speech track and never to the soundboard. Unsupported
-or failed processing falls back to the built-in capture cleanup without
-blocking the call. The explicit microphone test plays that same processed
-preview through the selected call output while rendering its level, and
-releases the monitor, stream, processor, and analyser together on stop.
+Microphone capture keeps WebRTC noise suppression and automatic gain control,
+uses speaker-safe echo cancellation by default, and then defaults to a second
+device-local RNNoise stage in a 48 kHz AudioWorklet before LiveKit publication.
+Audio settings expose only the Bakbak noise-cleanup switch; the former Natural,
+Child, Robot, and Walkie-talkie Voice Lab effects no longer exist. Unsupported
+or failed RNNoise processing falls back to the built-in WebRTC cleanup without
+blocking the call. Installed macOS additionally offers a default-off `Keep
+other audio at full volume` switch. It sets `echoCancellation: false` to avoid
+WebKit/macOS voice-processing attenuation while retaining WebRTC noise
+suppression, automatic gain control, and RNNoise, and warns the user to wear
+headphones because RNNoise is not acoustic echo cancellation. Browser/mock,
+Windows, and other platforms always keep echo cancellation enabled and do not
+show this control. The explicit microphone test uses the same resolved capture
+mode and processed preview through the selected call output while rendering
+its level, and releases the monitor, stream, processor, and analyser together
+on stop.
+Connected microphone and macOS capture-mode changes are one serialized restart
+transaction on the existing named speech track. LiveKit preserves its mute
+state and restarts any attached RNNoise processor against the new source.
+Controls remain disabled while pending; the renderer commits and persists the
+new selection only after successful capture. A failed capture restarts the
+previous complete constraint set and reports whether rollback recovered or the
+old microphone could not be restored. Leaving or replacing the room makes the
+pending result stale, so it cannot commit to the next room.
 Every shared user identity can open one viewport-clamped portal action menu by
 right-click, Menu, or Shift+F10. The accessible menu supports profile, direct
 message, and user-ID copy actions, omits self messaging, and keeps existing DMs
@@ -471,7 +487,7 @@ approved.
 | Identity/data        | Supabase Auth, Postgres, Realtime | Accounts, membership, channels, messages, invites, and realtime chat                      |
 | Trusted backend      | Supabase Edge Functions           | Voice tokens, managed media, System events, and authenticated safe link metadata          |
 | Object media         | Supabase Storage                  | Private sound, profile, message, video, and sticker objects with RLS-filtered access      |
-| Local microphone DSP | Web Audio, RNNoise WebAssembly    | Off-thread enhanced cleanup plus opt-in sender-side voice effects                         |
+| Local microphone DSP | Web Audio, RNNoise WebAssembly    | Off-thread enhanced cleanup with a built-in WebRTC fallback                               |
 | Voice/data transport | LiveKit                           | Voice rooms, participant state, processed speech, soundboard audio, and control data      |
 | Validation/testing   | Zod, Vitest, Testing Library      | Boundary validation and unit/component tests                                              |
 
@@ -520,7 +536,8 @@ bakbak/
 │       ├── 0025-conversation-root-and-message-trail.md
 │       ├── 0026-system-adaptive-unified-accent.md
 │       ├── 0027-system-channels-link-previews-and-deafen-audio.md
-│       └── 0028-bakbak-1-0-interaction-and-loading-polish.md
+│       ├── 0028-bakbak-1-0-interaction-and-loading-polish.md
+│       └── 0029-simpler-chat-and-reliable-voice-input.md
 ├── public/
 │   ├── bakbak.svg                 # canonical favicon/native-icon source
 │   ├── fonts/roundo/              # pinned Roundo v2.0 variable WOFF2
@@ -591,8 +608,9 @@ The renderer uses a titlebar, three-panel desktop layout, and modal layer:
    use accessible disclosure buttons and an Apple-style connector rail with
    hash, speaker, or System/read-only child icons. The chevron visual center,
    vertical spine, and row elbows share one coordinate. A selected room keeps a
-   neutral surface plus its accent-colored icon without adding a colored inset
-   border. Collapsed headers remain closed during
+   soft accent surface, thin inset accent outline, brighter icon and label, and
+   a distinct active hover while declaring the current page. Collapsed headers
+   remain closed during
    selection or activity and summarize a contained selection, unread text
    rooms, and total voice occupants. The shelf scrolls independently; admin
    creation adds an uncategorized room to a matching collapsible Conversations
@@ -608,12 +626,11 @@ The renderer uses a titlebar, three-panel desktop layout, and modal layer:
    selection until pointer release/cancel. Persistent clipping slots keep each
    side component mounted while hidden, but `inert`, `aria-hidden`, and a
    disabled resizer prevent interaction during the zero-width state.
-   Text channels and Personal DMs render their introduction as a conversation
-   root. Empty threads connect it to one compact, accessible first-branch
-   status; populated threads align a theme-responsive 1 px trail to the root
-   icon and every message avatar, with grouped-message dots and a terminal
-   marker. This presentation wraps the existing message elements without
-   changing their list semantics or interaction contracts.
+   Text channels and Personal DMs keep their introduction above a simple
+   message list or compact target-specific empty status. They render no rails,
+   branches, grouped-message dots, terminal markers, or message-state badges.
+   Chat-author avatar/profile triggers alone are circular. The existing message
+   list semantics and interaction contracts remain unchanged.
 4. The 240 px member panel is visible by default and groups unique members as
    In Voice, Online, and Offline in normal document flow, with a visible 5 px
    separation between its compact member surfaces. Known heartbeat
@@ -783,7 +800,10 @@ participant/speaking state, and small soundboard control messages.
 Before publication, the renderer may replace the speech track's source with
 the output of its device-local microphone AudioWorklet. LiveKit receives only
 that selected processed or fallback speech track; it does not configure or
-host the RNNoise stage.
+host the RNNoise stage. Live input changes restart that same named track with
+the complete device and capture constraints; LiveKit restarts the attached
+processor and retains track mute state without republishing a second
+microphone.
 A protected Supabase Edge Function is the only component allowed to sign
 LiveKit participant tokens. Voice tokens allow microphone, camera, data, and
 video-only screen publication. Screen-companion tokens use generated identities
@@ -1384,11 +1404,12 @@ check therefore remains required.
 ### Local preferences
 
 The renderer validates and stores only `{ inputDeviceId, outputDeviceId,
-cameraDeviceId, soundboardVolume, enhancedNoiseSuppression, voiceEffect }`
-under the versioned local-storage key `bakbak.devicePreferences.v2`. Valid v1
-device and volume values migrate with enhanced cleanup enabled and Natural
-voice selected. These preferences never sync to Supabase. If a remembered
-device is absent, the selector returns to the runtime's default device.
+cameraDeviceId, soundboardVolume, enhancedNoiseSuppression,
+macosKeepOtherAudioFullVolume }` under the versioned local-storage key
+`bakbak.devicePreferences.v3`. Valid v1/v2 device, volume, and cleanup values
+migrate; the old v2 `voiceEffect` is ignored and the macOS full-volume mode
+defaults off. These preferences never sync to Supabase. If a remembered device
+is absent, the selector returns to the runtime's default device.
 Interface cues deliberately bypass the selected call output.
 Soundboard section collapse state is stored independently per server under
 `bakbak.soundboardSections.v1:<server ID>` and never syncs; favorite rows sync

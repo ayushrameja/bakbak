@@ -1,34 +1,60 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   resumeAudioPlayback,
+  restartAudioInput,
   switchAudioOutput,
   setAudioDeafened,
-  switchAudioInput,
   switchCameraInput,
 } from "./audio-actions";
 
-describe("switchAudioInput", () => {
-  it("reports a successful microphone switch", async () => {
-    const switchActiveDevice = vi.fn().mockResolvedValue(true);
+describe("restartAudioInput", () => {
+  const nextOptions = {
+    deviceId: "studio-mic",
+    echoCancellation: true,
+  };
+  const previousOptions = {
+    deviceId: "default",
+    echoCancellation: true,
+  };
 
+  it("reports a successful microphone restart", async () => {
+    const restartTrack = vi.fn().mockResolvedValue(undefined);
     await expect(
-      switchAudioInput({ switchActiveDevice }, "studio-mic"),
+      restartAudioInput({ restartTrack }, nextOptions, previousOptions),
     ).resolves.toEqual({ ok: true });
-    expect(switchActiveDevice).toHaveBeenCalledWith("audioinput", "studio-mic");
+    expect(restartTrack).toHaveBeenCalledWith(nextOptions);
   });
 
-  it.each([
-    ["returns false", vi.fn().mockResolvedValue(false)],
-    ["rejects", vi.fn().mockRejectedValue(new Error("device vanished"))],
-  ])("keeps the previous selection when LiveKit %s", async (_label, action) => {
-    const result = await switchAudioInput(
-      { switchActiveDevice: action },
-      "missing-mic",
+  it("restores the previous capture when the new microphone fails", async () => {
+    const restartTrack = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("device vanished"))
+      .mockResolvedValueOnce(undefined);
+    const result = await restartAudioInput(
+      { restartTrack },
+      nextOptions,
+      previousOptions,
     );
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.message).toContain("previous microphone is still active");
+    }
+    expect(restartTrack).toHaveBeenNthCalledWith(1, nextOptions);
+    expect(restartTrack).toHaveBeenNthCalledWith(2, previousOptions);
+  });
+
+  it("distinguishes a failed switch whose rollback also fails", async () => {
+    const restartTrack = vi.fn().mockRejectedValue(new Error("capture failed"));
+    const result = await restartAudioInput(
+      { restartTrack },
+      nextOptions,
+      previousOptions,
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).toContain("couldn't restore the previous one");
     }
   });
 });

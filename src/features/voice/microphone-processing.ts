@@ -148,15 +148,16 @@ export function isMicrophoneProcessingSupported(): boolean {
 export function needsMicrophoneProcessor(
   preferences: MicrophoneProcessingPreferences,
 ): boolean {
-  return (
-    preferences.enhancedNoiseSuppression || preferences.voiceEffect !== "none"
-  );
+  return preferences.enhancedNoiseSuppression;
 }
 
-export function microphoneCaptureOptions(deviceId: string) {
+export function microphoneCaptureOptions(
+  deviceId: string,
+  echoCancellation = true,
+) {
   return {
     ...(deviceId === "default" ? {} : { deviceId }),
-    echoCancellation: true,
+    echoCancellation,
     noiseSuppression: true,
     autoGainControl: true,
     channelCount: 1,

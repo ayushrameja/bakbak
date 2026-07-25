@@ -88,6 +88,27 @@ function renderSidebar(
 describe("ChannelSidebar room shelf", () => {
   beforeEach(() => window.localStorage.clear());
 
+  it("marks the selected room as the current page", () => {
+    const textChannel: Channel = {
+      ...voiceChannel,
+      id: "text-lobby",
+      name: "lobby",
+      kind: "text",
+    };
+    renderSidebar([textChannel, voiceChannel], {
+      selectedChannelId: textChannel.id,
+    });
+
+    expect(screen.getByRole("button", { name: "lobby" })).toHaveClass("active");
+    expect(screen.getByRole("button", { name: "lobby" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("button", { name: "Lounge" })).not.toHaveAttribute(
+      "aria-current",
+    );
+  });
+
   it("shows the Bakbak wordmark without a logo or retired adda tagline", () => {
     const { container } = renderSidebar([voiceChannel]);
 

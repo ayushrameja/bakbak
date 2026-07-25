@@ -1,10 +1,5 @@
 import createRNNWasmModuleSync from "@jitsi/rnnoise-wasm/dist/rnnoise-sync.js";
-import type {
-  MicrophoneProcessingPreferences,
-  VoiceEffect,
-} from "../settings/microphone-preferences";
-
-declare const sampleRate: number;
+import type { MicrophoneProcessingPreferences } from "../settings/microphone-preferences";
 
 declare abstract class AudioWorkletProcessor {
   readonly port: MessagePort;
@@ -41,7 +36,6 @@ const RNNOISE_BUFFER_BYTES =
 const PCM_SCALE = 32_768;
 const WORKLET_BLOCK_SIZE = 128;
 const CIRCULAR_BUFFER_SIZE = 1_920;
-const CHILD_PITCH_RATIO = 2 ** (4 / 12);
 
 const rnnoiseModule = createRNNWasmModuleSync() as RnnoiseModule;
 
@@ -102,28 +96,15 @@ class BakbakMicrophoneWorklet extends AudioWorkletProcessor {
   private outputStarted = false;
   private running = true;
 
-  private robotPhase = 0;
-  private radioLowPass = 0;
-  private radioHighPass = 0;
-  private radioPreviousInput = 0;
-
-  private pitchBuffer = new Float32Array(Math.ceil(sampleRate * 0.07) + 8);
-  private pitchWriteIndex = 0;
-  private pitchPhase = 0;
-
   constructor(options?: AudioWorkletNodeOptions) {
     super();
     this.preferences = readPreferences(options?.processorOptions);
     this.port.onmessage = (event: MessageEvent<WorkletMessage>) => {
       const message = event.data;
       if (message.type === "configure" && message.preferences) {
-        const previousEffect = this.preferences.voiceEffect;
         const previousSuppression = this.preferences.enhancedNoiseSuppression;
         this.preferences = readPreferences(message.preferences);
-        if (
-          previousEffect !== this.preferences.voiceEffect ||
-          previousSuppression !== this.preferences.enhancedNoiseSuppression
-        ) {
+        if (previousSuppression !== this.preferences.enhancedNoiseSuppression) {
           this.resetBuffers();
         }
       } else if (message.type === "reset") {
@@ -147,7 +128,6 @@ class BakbakMicrophoneWorklet extends AudioWorkletProcessor {
     ) {
       output.fill(0);
       output.set(input.subarray(0, output.length));
-      this.applyVoiceEffect(output, this.preferences.voiceEffect);
       return true;
     }
 
@@ -156,7 +136,6 @@ class BakbakMicrophoneWorklet extends AudioWorkletProcessor {
     } else {
       output.set(input);
     }
-    this.applyVoiceEffect(output, this.preferences.voiceEffect);
     return true;
   }
 
@@ -210,85 +189,12 @@ class BakbakMicrophoneWorklet extends AudioWorkletProcessor {
     }
   }
 
-  private applyVoiceEffect(block: Float32Array, effect: VoiceEffect): void {
-    if (effect === "none") return;
-    for (let index = 0; index < block.length; index += 1) {
-      const input = block[index] ?? 0;
-      if (effect === "child") {
-        block[index] = this.pitchShift(input);
-      } else if (effect === "robot") {
-        const carrier = Math.sin(this.robotPhase);
-        this.robotPhase += (2 * Math.PI * 72) / sampleRate;
-        if (this.robotPhase > 2 * Math.PI) this.robotPhase -= 2 * Math.PI;
-        block[index] = clamp(input * (0.32 + carrier * 0.92));
-      } else {
-        block[index] = this.radioFilter(input);
-      }
-    }
-  }
-
-  private pitchShift(input: number): number {
-    this.pitchBuffer[this.pitchWriteIndex] = input;
-    const grainSamples = Math.round(sampleRate * 0.04);
-    const firstPhase = this.pitchPhase;
-    const secondPhase = (firstPhase + 0.5) % 1;
-    const firstWeight = Math.sin(Math.PI * firstPhase) ** 2;
-    const secondWeight = Math.sin(Math.PI * secondPhase) ** 2;
-    const firstSample = this.readPitchDelay(
-      6 + (1 - firstPhase) * grainSamples,
-    );
-    const secondSample = this.readPitchDelay(
-      6 + (1 - secondPhase) * grainSamples,
-    );
-    const output =
-      (firstSample * firstWeight + secondSample * secondWeight) /
-      Math.max(0.001, firstWeight + secondWeight);
-
-    this.pitchPhase += (CHILD_PITCH_RATIO - 1) / grainSamples;
-    if (this.pitchPhase >= 1) this.pitchPhase -= 1;
-    this.pitchWriteIndex = (this.pitchWriteIndex + 1) % this.pitchBuffer.length;
-    return clamp(output * 1.06);
-  }
-
-  private readPitchDelay(delay: number): number {
-    let position = this.pitchWriteIndex - delay;
-    while (position < 0) position += this.pitchBuffer.length;
-    const firstIndex = Math.floor(position) % this.pitchBuffer.length;
-    const secondIndex = (firstIndex + 1) % this.pitchBuffer.length;
-    const fraction = position - Math.floor(position);
-    const first = this.pitchBuffer[firstIndex] ?? 0;
-    const second = this.pitchBuffer[secondIndex] ?? 0;
-    return first + (second - first) * fraction;
-  }
-
-  private radioFilter(input: number): number {
-    const lowPassAlpha = Math.min(1, (2 * Math.PI * 3_500) / sampleRate);
-    this.radioLowPass += lowPassAlpha * (input - this.radioLowPass);
-
-    const timeStep = 1 / sampleRate;
-    const highPassTimeConstant = 1 / (2 * Math.PI * 280);
-    const highPassAlpha =
-      highPassTimeConstant / (highPassTimeConstant + timeStep);
-    this.radioHighPass =
-      highPassAlpha *
-      (this.radioHighPass + this.radioLowPass - this.radioPreviousInput);
-    this.radioPreviousInput = this.radioLowPass;
-    return clamp(Math.tanh(this.radioHighPass * 3.4) * 0.72);
-  }
-
   private resetBuffers(): void {
     this.circularBuffer.fill(0);
     this.inputLength = 0;
     this.denoisedLength = 0;
     this.outputIndex = 0;
     this.outputStarted = false;
-    this.robotPhase = 0;
-    this.radioLowPass = 0;
-    this.radioHighPass = 0;
-    this.radioPreviousInput = 0;
-    this.pitchBuffer.fill(0);
-    this.pitchWriteIndex = 0;
-    this.pitchPhase = 0;
   }
 }
 
@@ -297,20 +203,9 @@ function readPreferences(value: unknown): MicrophoneProcessingPreferences {
     typeof value === "object" && value !== null
       ? (value as Partial<MicrophoneProcessingPreferences>)
       : {};
-  const voiceEffect =
-    candidate.voiceEffect === "child" ||
-    candidate.voiceEffect === "robot" ||
-    candidate.voiceEffect === "radio"
-      ? candidate.voiceEffect
-      : "none";
   return {
     enhancedNoiseSuppression: candidate.enhancedNoiseSuppression !== false,
-    voiceEffect,
   };
-}
-
-function clamp(value: number): number {
-  return Math.max(-1, Math.min(1, value));
 }
 
 registerProcessor(PROCESSOR_NAME, BakbakMicrophoneWorklet);
