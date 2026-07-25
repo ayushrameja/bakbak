@@ -51,7 +51,8 @@ function renderSettings(
     selectedCameraId: "default",
     soundboardVolume: 0.7,
     enhancedNoiseSuppression: true,
-    voiceEffect: "none",
+    macosFullVolumeModeAvailable: false,
+    macosKeepOtherAudioFullVolume: false,
     microphoneProcessingSupported: true,
     microphoneProcessingError: null,
     interfaceSoundPreferences: {
@@ -91,7 +92,7 @@ function renderSettings(
     onRefreshDevices: vi.fn().mockResolvedValue(undefined),
     onSoundboardVolumeChange: vi.fn(),
     onEnhancedNoiseSuppressionChange: vi.fn(),
-    onVoiceEffectChange: vi.fn(),
+    onMacosKeepOtherAudioFullVolumeChange: vi.fn(),
     onInterfaceSoundPreferencesChange: vi.fn(),
     onAppearancePreferenceChange: vi.fn(),
     onPreviewInterfaceSound: vi.fn(),
@@ -399,12 +400,13 @@ describe("SettingsPage", () => {
     expect(onRefreshDevices).toHaveBeenCalledOnce();
   });
 
-  it("controls local noise cleanup and outgoing voice filters", async () => {
+  it("keeps one cleanup toggle and exposes the macOS full-volume mode", async () => {
     const onEnhancedNoiseSuppressionChange = vi.fn();
-    const onVoiceEffectChange = vi.fn();
+    const onMacosKeepOtherAudioFullVolumeChange = vi.fn();
     renderSettings("audio", {
       onEnhancedNoiseSuppressionChange,
-      onVoiceEffectChange,
+      macosFullVolumeModeAvailable: true,
+      onMacosKeepOtherAudioFullVolumeChange,
     });
 
     await userEvent.click(
@@ -412,12 +414,21 @@ describe("SettingsPage", () => {
     );
     expect(onEnhancedNoiseSuppressionChange).toHaveBeenCalledWith(false);
 
-    await userEvent.click(screen.getByRole("radio", { name: "Robot" }));
-    expect(onVoiceEffectChange).toHaveBeenCalledWith("robot");
-    expect(screen.getByText(/not the soundboard/i)).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("switch", {
+        name: "Keep other audio at full volume",
+      }),
+    );
+    expect(onMacosKeepOtherAudioFullVolumeChange).toHaveBeenCalledWith(true);
+    expect(
+      screen.getByText(/Turns off macOS echo cancellation/i),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("radiogroup", { name: "Voice filter" }),
+    ).not.toBeInTheDocument();
   });
 
-  it("disables enhanced microphone effects in unsupported runtimes", () => {
+  it("hides the macOS mode elsewhere and disables unavailable cleanup", () => {
     renderSettings("audio", {
       microphoneProcessingSupported: false,
     });
@@ -425,11 +436,99 @@ describe("SettingsPage", () => {
     expect(
       screen.getByRole("switch", { name: /Bakbak noise cleanup/i }),
     ).toBeDisabled();
-    expect(screen.getByRole("radio", { name: "Child" })).toBeDisabled();
-    expect(screen.getByRole("radio", { name: "Natural" })).toBeEnabled();
+    expect(
+      screen.queryByRole("switch", {
+        name: "Keep other audio at full volume",
+      }),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByText(/keeps the built-in WebRTC cleanup/i),
     ).toBeInTheDocument();
+  });
+
+  it("uses the selected macOS echo mode for microphone tests", async () => {
+    const getUserMedia = vi
+      .fn()
+      .mockRejectedValue(new Error("test capture stopped"));
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia },
+    });
+    renderSettings("audio", {
+      selectedInputId: "studio-mic",
+      macosFullVolumeModeAvailable: true,
+      macosKeepOtherAudioFullVolume: true,
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Test microphone" }),
+    );
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledOnce());
+    expect(getUserMedia).toHaveBeenCalledWith({
+      audio: {
+        deviceId: "studio-mic",
+        echoCancellation: false,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: 1,
+        sampleRate: 48_000,
+      },
+    });
+  });
+
+  it("cancels a pending mic test before changing its input or capture mode", async () => {
+    type TestStream = {
+      getTracks: () => Array<{ stop: () => void }>;
+    };
+    const streamResolvers: Array<(stream: TestStream) => void> = [];
+    const getUserMedia = vi.fn(
+      () =>
+        new Promise<TestStream>((resolve) => {
+          streamResolvers.push(resolve);
+        }),
+    );
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia },
+    });
+    const onInputChange = vi.fn();
+    const onMacosKeepOtherAudioFullVolumeChange = vi.fn();
+    renderSettings("audio", {
+      inputDevices: [
+        mediaDevice("audioinput", "default", "System default"),
+        mediaDevice("audioinput", "studio-mic", "Studio microphone"),
+      ],
+      macosFullVolumeModeAvailable: true,
+      onInputChange,
+      onMacosKeepOtherAudioFullVolumeChange,
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Test microphone" }),
+    );
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Input device" }),
+      "studio-mic",
+    );
+    expect(onInputChange).toHaveBeenCalledWith("studio-mic");
+    const inputStop = vi.fn();
+    streamResolvers[0]?.({ getTracks: () => [{ stop: inputStop }] });
+    await waitFor(() => expect(inputStop).toHaveBeenCalledOnce());
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Test microphone" }),
+    );
+    await userEvent.click(
+      screen.getByRole("switch", {
+        name: "Keep other audio at full volume",
+      }),
+    );
+    expect(onMacosKeepOtherAudioFullVolumeChange).toHaveBeenCalledWith(true);
+    const captureModeStop = vi.fn();
+    streamResolvers[1]?.({
+      getTracks: () => [{ stop: captureModeStop }],
+    });
+    await waitFor(() => expect(captureModeStop).toHaveBeenCalledOnce());
   });
 
   it("releases the temporary microphone stream when settings unmount", async () => {

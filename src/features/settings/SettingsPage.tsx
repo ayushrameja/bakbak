@@ -50,7 +50,6 @@ import type {
   InterfaceSoundCategory,
   InterfaceSoundPreferences,
 } from "./interface-sound-preferences";
-import type { VoiceEffect } from "./microphone-preferences";
 import {
   createMicrophonePreview,
   microphoneCaptureOptions,
@@ -83,7 +82,8 @@ interface SettingsPageProps {
   selectedCameraId: string;
   soundboardVolume: number;
   enhancedNoiseSuppression: boolean;
-  voiceEffect: VoiceEffect;
+  macosFullVolumeModeAvailable: boolean;
+  macosKeepOtherAudioFullVolume: boolean;
   microphoneProcessingSupported: boolean;
   microphoneProcessingError: string | null;
   interfaceSoundPreferences: InterfaceSoundPreferences;
@@ -110,7 +110,7 @@ interface SettingsPageProps {
   onRefreshDevices: () => Promise<void>;
   onSoundboardVolumeChange: (volume: number) => void;
   onEnhancedNoiseSuppressionChange: (enabled: boolean) => void;
-  onVoiceEffectChange: (effect: VoiceEffect) => void;
+  onMacosKeepOtherAudioFullVolumeChange: (enabled: boolean) => void;
   onInterfaceSoundPreferencesChange: (
     preferences: InterfaceSoundPreferences,
   ) => void;
@@ -1032,11 +1032,15 @@ function AudioSettings(props: SettingsPageProps) {
     };
   }, []);
 
+  function stopMicTest() {
+    testRequestRef.current += 1;
+    if (stopTestRef.current) stopTestRef.current();
+    else if (mountedRef.current) setTesting(false);
+  }
+
   async function toggleMicTest() {
     if (testing) {
-      testRequestRef.current += 1;
-      if (stopTestRef.current) stopTestRef.current();
-      else setTesting(false);
+      stopMicTest();
       return;
     }
     const requestId = ++testRequestRef.current;
@@ -1050,7 +1054,13 @@ function AudioSettings(props: SettingsPageProps) {
     let stopStartedTest: (() => void) | null = null;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        audio: microphoneCaptureOptions(props.selectedInputId),
+        audio: microphoneCaptureOptions(
+          props.selectedInputId,
+          !(
+            props.macosFullVolumeModeAvailable &&
+            props.macosKeepOtherAudioFullVolume
+          ),
+        ),
       });
       if (!mountedRef.current || requestId !== testRequestRef.current) {
         stream.getTracks().forEach((track) => track.stop());
@@ -1063,7 +1073,6 @@ function AudioSettings(props: SettingsPageProps) {
       }
       const preview = await createMicrophonePreview(stream, {
         enhancedNoiseSuppression: props.enhancedNoiseSuppression,
-        voiceEffect: props.voiceEffect,
       });
       previewStream = preview.stream;
       previewCleanup = preview.cleanup;
@@ -1245,7 +1254,10 @@ function AudioSettings(props: SettingsPageProps) {
                 selectedId={props.selectedInputId}
                 fallbackLabel="Microphone"
                 disabled={props.inputDisabled}
-                onChange={props.onInputChange}
+                onChange={(deviceId) => {
+                  stopMicTest();
+                  props.onInputChange(deviceId);
+                }}
               />
               <div className="audio-device-action">
                 <span>Mic test</span>
@@ -1253,6 +1265,7 @@ function AudioSettings(props: SettingsPageProps) {
                   className="secondary-button"
                   type="button"
                   aria-label={testing ? "Stop test" : "Test microphone"}
+                  disabled={props.inputDisabled}
                   onClick={() => void toggleMicTest()}
                 >
                   {testing ? <Square size={14} /> : <Play size={14} />}
@@ -1296,47 +1309,32 @@ function AudioSettings(props: SettingsPageProps) {
                   {props.enhancedNoiseSuppression ? "On" : "Off"}
                 </button>
               </div>
-              <fieldset>
-                <legend>Voice lab</legend>
-                <div
-                  className="voice-effect-options"
-                  role="radiogroup"
-                  aria-label="Voice filter"
-                >
-                  {(
-                    [
-                      ["none", "Natural"],
-                      ["child", "Child"],
-                      ["robot", "Robot"],
-                      ["radio", "Walkie-talkie"],
-                    ] as const satisfies ReadonlyArray<
-                      readonly [VoiceEffect, string]
-                    >
-                  ).map(([effect, label]) => (
-                    <button
-                      key={effect}
-                      type="button"
-                      role="radio"
-                      aria-checked={props.voiceEffect === effect}
-                      className={
-                        props.voiceEffect === effect ? "is-active" : undefined
-                      }
-                      disabled={
-                        props.inputDisabled ||
-                        (!props.microphoneProcessingSupported &&
-                          effect !== "none")
-                      }
-                      onClick={() => props.onVoiceEffectChange(effect)}
-                    >
-                      {label}
-                    </button>
-                  ))}
+              {props.macosFullVolumeModeAvailable ? (
+                <div className="microphone-capture-mode">
+                  <div>
+                    <strong>Keep other audio at full volume</strong>
+                    <small>
+                      Turns off macOS echo cancellation while active. Use
+                      headphones so friends do not hear themselves.
+                    </small>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-label="Keep other audio at full volume"
+                    aria-checked={props.macosKeepOtherAudioFullVolume}
+                    disabled={props.inputDisabled}
+                    onClick={() => {
+                      stopMicTest();
+                      props.onMacosKeepOtherAudioFullVolumeChange(
+                        !props.macosKeepOtherAudioFullVolume,
+                      );
+                    }}
+                  >
+                    {props.macosKeepOtherAudioFullVolume ? "On" : "Off"}
+                  </button>
                 </div>
-                <small>
-                  Filters affect your outgoing microphone, not the soundboard.
-                  Comedy remains user-supplied.
-                </small>
-              </fieldset>
+              ) : null}
             </div>
             {!props.microphoneProcessingSupported ? (
               <p className="settings-note">

@@ -29,10 +29,7 @@ import {
   loadDevicePreferences,
   saveDevicePreferences,
 } from "../settings/device-preferences";
-import type {
-  MicrophoneProcessingPreferences,
-  VoiceEffect,
-} from "../settings/microphone-preferences";
+import type { MicrophoneProcessingPreferences } from "../settings/microphone-preferences";
 import {
   SOUND_PLAY_EVENT_TYPE,
   SOUND_STOP_EVENT_TYPE,
@@ -59,9 +56,9 @@ import type {
 } from "../soundboard/types";
 import {
   resumeAudioPlayback,
+  restartAudioInput,
   setAudioDeafened,
   switchAudioOutput,
-  switchAudioInput,
   switchCameraInput,
 } from "./audio-actions";
 import { AudioOutputRouter } from "./audio-output-router";
@@ -121,6 +118,20 @@ export const VOICE_PREPARE_DEBOUNCE_MS = 75;
 export const VOICE_TOKEN_EXPIRY_BUFFER_MS = 30_000;
 export const RELAY_PREFERENCE_DURATION_MS = 10 * 60_000;
 export const OUTPUT_DEVICE_NOTICE_DURATION_MS = 8_000;
+
+export function supportsMacosFullVolumeMode(
+  desktopApp: boolean,
+  userAgent: string,
+): boolean {
+  return desktopApp && /mac os x|macintosh/i.test(userAgent);
+}
+
+export function echoCancellationForCapture(
+  macosFullVolumeModeAvailable: boolean,
+  macosKeepOtherAudioFullVolume: boolean,
+): boolean {
+  return !(macosFullVolumeModeAvailable && macosKeepOtherAudioFullVolume);
+}
 
 export interface VoiceJoinTimingSnapshot {
   outcome: "connected" | "error";
@@ -204,7 +215,9 @@ interface VoiceRoomState {
   selectedOutputId: string;
   selectedCameraId: string;
   enhancedNoiseSuppression: boolean;
-  voiceEffect: VoiceEffect;
+  inputDevicePending: boolean;
+  macosFullVolumeModeAvailable: boolean;
+  macosKeepOtherAudioFullVolume: boolean;
   microphoneProcessingSupported: boolean;
   outputSelectionSupported: boolean;
   cameraEnabled: boolean;
@@ -239,7 +252,7 @@ interface VoiceRoomState {
   refreshDevices: () => Promise<void>;
   setInputDevice: (deviceId: string) => Promise<void>;
   setEnhancedNoiseSuppression: (enabled: boolean) => Promise<void>;
-  setVoiceEffect: (effect: VoiceEffect) => Promise<void>;
+  setMacosKeepOtherAudioFullVolume: (enabled: boolean) => Promise<void>;
   setOutputDevice: (deviceId: string) => Promise<void>;
   dismissOutputDeviceError: () => void;
   setCameraDevice: (deviceId: string) => Promise<void>;
@@ -304,9 +317,9 @@ export function useVoiceRoom(
   const [enhancedNoiseSuppression, setEnhancedNoiseSuppressionState] = useState(
     initialPreferences.enhancedNoiseSuppression,
   );
-  const [voiceEffect, setVoiceEffectState] = useState(
-    initialPreferences.voiceEffect,
-  );
+  const [inputDevicePending, setInputDevicePending] = useState(false);
+  const [macosKeepOtherAudioFullVolume, setMacosKeepOtherAudioFullVolumeState] =
+    useState(initialPreferences.macosKeepOtherAudioFullVolume);
   const [cameraEnabled, setCameraEnabled] = useState(false);
   const [cameraPending, setCameraPending] = useState(false);
   const [screenShares, setScreenShares] = useState<VoiceScreenShare[]>([]);
@@ -360,6 +373,7 @@ export function useVoiceRoom(
   const scheduledPrepareChannelRef = useRef<string | null>(null);
   const prepareOperationRef = useRef(0);
   const joiningMicrophoneRef = useRef<LocalAudioTrack | null>(null);
+  const inputRestartPendingRef = useRef(false);
   const outputDeviceErrorTimerRef = useRef<number | null>(null);
   const relayPreferredUntilRef = useRef(
     loadRelayPreference(appConfig.livekitUrl),
@@ -388,10 +402,16 @@ export function useVoiceRoom(
   const microphoneProcessingPreferencesRef =
     useRef<MicrophoneProcessingPreferences>({
       enhancedNoiseSuppression,
-      voiceEffect,
     });
+  const macosKeepOtherAudioFullVolumeRef = useRef(
+    macosKeepOtherAudioFullVolume,
+  );
 
   const desktopApp = isDesktopApp();
+  const macosFullVolumeModeAvailable = supportsMacosFullVolumeMode(
+    desktopApp,
+    typeof navigator === "undefined" ? "" : navigator.userAgent,
+  );
   const microphoneProcessingSupported = isMicrophoneProcessingSupported();
 
   const dismissOutputDeviceError = useCallback(() => {
@@ -516,15 +536,15 @@ export function useVoiceRoom(
       cameraDeviceId: selectedCameraId,
       soundboardVolume,
       enhancedNoiseSuppression,
-      voiceEffect,
+      macosKeepOtherAudioFullVolume,
     });
   }, [
     enhancedNoiseSuppression,
+    macosKeepOtherAudioFullVolume,
     selectedCameraId,
     selectedInputId,
     selectedOutputId,
     soundboardVolume,
-    voiceEffect,
   ]);
 
   useEffect(() => {
@@ -534,9 +554,12 @@ export function useVoiceRoom(
   useEffect(() => {
     microphoneProcessingPreferencesRef.current = {
       enhancedNoiseSuppression,
-      voiceEffect,
     };
-  }, [enhancedNoiseSuppression, voiceEffect]);
+  }, [enhancedNoiseSuppression]);
+
+  useEffect(() => {
+    macosKeepOtherAudioFullVolumeRef.current = macosKeepOtherAudioFullVolume;
+  }, [macosKeepOtherAudioFullVolume]);
 
   useEffect(() => {
     soundboardVolumeRef.current = soundboardVolume;
@@ -1388,6 +1411,10 @@ export function useVoiceRoom(
         currentRoom === null
           ? acquireMicrophoneTrack(
               selectedInputId,
+              echoCancellationForCapture(
+                macosFullVolumeModeAvailable,
+                macosKeepOtherAudioFullVolumeRef.current,
+              ),
               microphoneProcessingPreferencesRef.current,
               isCurrentJoin,
               joiningMicrophoneRef,
@@ -1444,6 +1471,10 @@ export function useVoiceRoom(
       } else if (microphonePromise === null) {
         microphonePromise = acquireMicrophoneTrack(
           selectedInputId,
+          echoCancellationForCapture(
+            macosFullVolumeModeAvailable,
+            macosKeepOtherAudioFullVolumeRef.current,
+          ),
           microphoneProcessingPreferencesRef.current,
           isCurrentJoin,
           joiningMicrophoneRef,
@@ -1623,6 +1654,7 @@ export function useVoiceRoom(
       disconnectCurrentRoom,
       dismissOutputDeviceError,
       emitCommunicationEffect,
+      macosFullVolumeModeAvailable,
       mode,
       remoteAudio,
       refreshDevices,
@@ -1801,43 +1833,98 @@ export function useVoiceRoom(
     [participants, setParticipantVolume],
   );
 
-  const setInputDevice = useCallback(
-    async (deviceId: string) => {
-      if (status === "connecting" || status === "reconnecting") return;
+  const updateMicrophoneCapture = useCallback(
+    async (
+      deviceId: string,
+      keepOtherAudioFullVolume: boolean,
+    ): Promise<void> => {
+      if (
+        status === "connecting" ||
+        status === "reconnecting" ||
+        inputRestartPendingRef.current
+      ) {
+        return;
+      }
 
       const room = roomRef.current;
-      if (!room) {
+      if (!room || mode === "mock") {
         setSelectedInputId(deviceId);
+        setMacosKeepOtherAudioFullVolumeState(keepOtherAudioFullVolume);
         setInputDeviceError(null);
         return;
       }
 
-      const result = await switchAudioInput(room, deviceId);
-      if (roomRef.current !== room) return;
-      if (!result.ok) {
-        setInputDeviceError(result.message);
+      const track = readLocalMicrophoneTrack(room);
+      if (!track) {
+        setInputDeviceError(
+          "Bakbak could not find the active microphone. Rejoin voice and try again.",
+        );
         return;
       }
 
-      if (!muted) {
-        await room.localParticipant.setMicrophoneEnabled(
-          true,
-          microphoneCaptureOptions(deviceId),
+      inputRestartPendingRef.current = true;
+      setInputDevicePending(true);
+      setInputDeviceError(null);
+      const previousOptions = microphoneCaptureOptions(
+        selectedInputId,
+        echoCancellationForCapture(
+          macosFullVolumeModeAvailable,
+          macosKeepOtherAudioFullVolume,
+        ),
+      );
+      const nextOptions = microphoneCaptureOptions(
+        deviceId,
+        echoCancellationForCapture(
+          macosFullVolumeModeAvailable,
+          keepOtherAudioFullVolume,
+        ),
+      );
+      try {
+        const result = await restartAudioInput(
+          track,
+          nextOptions,
+          previousOptions,
         );
         if (roomRef.current !== room) return;
+        if (!result.ok) {
+          setInputDeviceError(result.message);
+          return;
+        }
+        setSelectedInputId(deviceId);
+        setMacosKeepOtherAudioFullVolumeState(keepOtherAudioFullVolume);
+        setInputDeviceError(null);
+      } finally {
+        inputRestartPendingRef.current = false;
+        setInputDevicePending(false);
       }
-
-      setSelectedInputId(deviceId);
-      setInputDeviceError(null);
     },
-    [muted, status],
+    [
+      macosFullVolumeModeAvailable,
+      macosKeepOtherAudioFullVolume,
+      mode,
+      selectedInputId,
+      status,
+    ],
+  );
+
+  const setInputDevice = useCallback(
+    (deviceId: string) =>
+      updateMicrophoneCapture(deviceId, macosKeepOtherAudioFullVolume),
+    [macosKeepOtherAudioFullVolume, updateMicrophoneCapture],
+  );
+
+  const setMacosKeepOtherAudioFullVolume = useCallback(
+    (enabled: boolean) => {
+      if (!macosFullVolumeModeAvailable) return Promise.resolve();
+      return updateMicrophoneCapture(selectedInputId, enabled);
+    },
+    [macosFullVolumeModeAvailable, selectedInputId, updateMicrophoneCapture],
   );
 
   const updateMicrophoneProcessing = useCallback(
     async (preferences: MicrophoneProcessingPreferences) => {
       microphoneProcessingPreferencesRef.current = preferences;
       setEnhancedNoiseSuppressionState(preferences.enhancedNoiseSuppression);
-      setVoiceEffectState(preferences.voiceEffect);
       setMicrophoneProcessingError(null);
 
       const track =
@@ -1873,17 +1960,7 @@ export function useVoiceRoom(
   const setEnhancedNoiseSuppression = useCallback(
     (enabled: boolean) =>
       updateMicrophoneProcessing({
-        ...microphoneProcessingPreferencesRef.current,
         enhancedNoiseSuppression: enabled,
-      }),
-    [updateMicrophoneProcessing],
-  );
-
-  const setVoiceEffect = useCallback(
-    (effect: VoiceEffect) =>
-      updateMicrophoneProcessing({
-        ...microphoneProcessingPreferencesRef.current,
-        voiceEffect: effect,
       }),
     [updateMicrophoneProcessing],
   );
@@ -2397,7 +2474,9 @@ export function useVoiceRoom(
     selectedOutputId,
     selectedCameraId,
     enhancedNoiseSuppression,
-    voiceEffect,
+    inputDevicePending,
+    macosFullVolumeModeAvailable,
+    macosKeepOtherAudioFullVolume,
     microphoneProcessingSupported,
     outputSelectionSupported,
     cameraEnabled,
@@ -2437,7 +2516,7 @@ export function useVoiceRoom(
     refreshDevices,
     setInputDevice,
     setEnhancedNoiseSuppression,
-    setVoiceEffect,
+    setMacosKeepOtherAudioFullVolume,
     setOutputDevice,
     dismissOutputDeviceError,
     setCameraDevice,
@@ -2483,6 +2562,7 @@ function readLocalMicrophoneTrack(room: Room | null): LocalAudioTrack | null {
 
 function acquireMicrophoneTrack(
   deviceId: string,
+  echoCancellation: boolean,
   preferences: MicrophoneProcessingPreferences,
   isCurrentJoin: () => boolean,
   joiningTrackRef: { current: LocalAudioTrack | null },
@@ -2492,7 +2572,9 @@ function acquireMicrophoneTrack(
   error: unknown;
   processingError: string | null;
 }> {
-  return createLocalAudioTrack(microphoneCaptureOptions(deviceId)).then(
+  return createLocalAudioTrack(
+    microphoneCaptureOptions(deviceId, echoCancellation),
+  ).then(
     async (track) => {
       onStage("microphoneCapture");
       if (!isCurrentJoin()) {

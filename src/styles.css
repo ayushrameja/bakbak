@@ -4182,16 +4182,19 @@ body {
 }
 
 .microphone-processing-settings__heading strong,
-.microphone-processing-settings__heading small {
+.microphone-processing-settings__heading small,
+.microphone-capture-mode strong,
+.microphone-capture-mode small {
   display: block;
 }
 
-.microphone-processing-settings__heading strong {
+.microphone-processing-settings__heading strong,
+.microphone-capture-mode strong {
   font-size: 12px;
 }
 
 .microphone-processing-settings__heading small,
-.microphone-processing-settings fieldset > small {
+.microphone-capture-mode small {
   margin-top: 4px;
   color: var(--faint);
   font-size: 11px;
@@ -4199,7 +4202,8 @@ body {
   line-height: 1.45;
 }
 
-.microphone-processing-settings__heading button {
+.microphone-processing-settings__heading button,
+.microphone-capture-mode button {
   min-width: 52px;
   min-height: 30px;
   border: 1px solid var(--line-bright);
@@ -4209,7 +4213,8 @@ body {
   cursor: pointer;
 }
 
-.microphone-processing-settings__heading button[aria-checked="true"] {
+.microphone-processing-settings__heading button[aria-checked="true"],
+.microphone-capture-mode button[aria-checked="true"] {
   color: var(--accent-bright);
   border-color: var(--accent-border);
   background: var(--accent-soft);
@@ -4220,43 +4225,14 @@ body {
   opacity: 0.4;
 }
 
-.microphone-processing-settings fieldset {
-  min-width: 0;
-  margin: 12px 0 0;
-  padding: 0;
-  border: 0;
-}
-
-.microphone-processing-settings legend {
-  margin-bottom: 7px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.voice-effect-options {
+.microphone-capture-mode {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.voice-effect-options button {
-  min-height: 29px;
-  padding: 0 9px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  color: var(--muted);
-  background: var(--panel-soft);
-  cursor: pointer;
-  font-size: 11px;
-}
-
-.voice-effect-options button.is-active {
-  color: var(--text);
-  border-color: var(--accent-border);
-  background: var(--accent-soft);
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
 }
 
 .microphone-test > div {
@@ -4407,15 +4383,13 @@ body {
 }
 
 .audio-settings .microphone-processing-settings__heading small,
-.audio-settings .microphone-processing-settings fieldset > small {
+.audio-settings .microphone-capture-mode small {
   max-width: 420px;
   font-size: 11px;
 }
 
-.audio-settings .voice-effect-options button {
-  min-height: 34px;
-  padding: 0 12px;
-  font-size: 11px;
+.audio-settings .microphone-capture-mode strong {
+  font-size: 13px;
 }
 
 .audio-settings-category__body > .settings-note,
@@ -5145,7 +5119,6 @@ body {
 .settings-field select,
 .settings-two-column > section,
 .microphone-processing-settings,
-.voice-effect-options button,
 .settings-call-strip,
 .settings-confirm,
 .modal-card,
@@ -10184,233 +10157,25 @@ html.is-panel-resizing .desktop-shell {
   }
 }
 
-/* 0025 — conversation root and message trail */
+/* 0029 — simple conversations and unambiguous selected channels */
 .conversation-flow {
-  --conversation-rail-x: 57px;
   min-height: 100%;
 }
 
-.channel-intro {
-  position: relative;
-  overflow: hidden;
-}
-
-.channel-intro::before {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(
-      circle at 12% 0,
-      color-mix(in srgb, var(--semantic-selected) 12%, transparent),
-      transparent 34%
-    ),
-    linear-gradient(
-      120deg,
-      transparent 58%,
-      color-mix(in srgb, var(--glass-line-bright) 28%, transparent)
-    );
-  content: "";
-  pointer-events: none;
-}
-
-.channel-intro > * {
-  position: relative;
-  z-index: 1;
-}
-
-.channel-intro__root {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin-bottom: 18px;
-}
-
-.channel-intro__root .channel-intro__icon {
-  flex: 0 0 auto;
-  margin-bottom: 0;
-}
-
-.channel-intro__state {
-  min-height: 25px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 0 9px;
-  border: 1px solid var(--glass-line);
-  border-radius: var(--radius-control);
-  color: var(--faint);
-  background: color-mix(in srgb, var(--glass-strong) 72%, transparent);
-  font-size: var(--font-caption);
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  white-space: nowrap;
-}
-
-.channel-intro__state i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--semantic-selected);
-  box-shadow: 0 0 0 3px var(--semantic-selected-soft);
-}
-
-.conversation-flow--filled .channel-intro__state {
-  color: var(--semantic-selected);
-}
-
-.conversation-flow--filled .channel-intro__state i {
-  background: var(--semantic-selected);
-  box-shadow: 0 0 0 3px var(--semantic-selected-soft);
-}
-
 .conversation-thread {
-  position: relative;
   min-width: 0;
   padding: 14px 0 28px;
-  isolation: isolate;
-}
-
-.conversation-thread::before {
-  position: absolute;
-  z-index: 0;
-  top: -36px;
-  bottom: 12px;
-  left: var(--conversation-rail-x);
-  width: 1px;
-  background: linear-gradient(
-    180deg,
-    var(--glass-line-bright),
-    color-mix(in srgb, var(--semantic-selected) 42%, var(--glass-line-bright))
-      56%,
-    var(--glass-line-bright)
-  );
-  content: "";
-  pointer-events: none;
-}
-
-.conversation-thread__end {
-  position: absolute;
-  z-index: 2;
-  bottom: 7px;
-  left: calc(var(--conversation-rail-x) - 4px);
-  width: 9px;
-  height: 9px;
-  border: 2px solid var(--glass-canvas);
-  border-radius: 50%;
-  background: var(--semantic-selected);
-  box-shadow: 0 0 0 1px var(--glass-line-bright);
-  pointer-events: none;
-}
-
-.conversation-flow--empty .conversation-thread {
-  padding-bottom: 14px;
-}
-
-.conversation-flow--empty .conversation-thread::before {
-  bottom: calc(50% - 1px);
-}
-
-.conversation-flow--empty .conversation-thread__end {
-  display: none;
-}
-
-.conversation-flow--filled .message {
-  z-index: 1;
-}
-
-.conversation-flow--filled .message:not(.message--grouped)::after {
-  position: absolute;
-  z-index: 0;
-  top: 28px;
-  left: 66px;
-  width: 12px;
-  border-top: 1px solid var(--glass-line-bright);
-  content: "";
-  pointer-events: none;
-}
-
-.conversation-flow--filled
-  .message:not(.message--grouped)
-  > .message__profile-avatar,
-.conversation-flow--filled .message:not(.message--grouped) > .avatar {
-  position: relative;
-  z-index: 1;
-  box-shadow: 0 0 0 5px var(--glass-canvas);
-}
-
-.conversation-flow--filled .message--grouped::before {
-  position: absolute;
-  z-index: 1;
-  top: calc(50% - 3px);
-  left: 42px;
-  width: 6px;
-  height: 6px;
-  border: 1px solid var(--glass-canvas);
-  border-radius: 50%;
-  background: var(--glass-line-bright);
-  content: "";
-  pointer-events: none;
 }
 
 .empty-conversation {
-  position: relative;
-  z-index: 1;
   max-width: 620px;
-  min-height: 86px;
-  display: grid;
-  align-items: center;
-  margin: 0 28px 0 90px;
-  padding: 17px 20px;
-  border: 1px solid var(--glass-line);
+  margin: 0 var(--space-6);
+  padding: 14px 16px;
+  border: 0;
   border-radius: var(--radius-card);
   color: var(--muted);
-  background:
-    linear-gradient(
-      110deg,
-      color-mix(in srgb, var(--semantic-selected-soft) 56%, transparent),
-      transparent 58%
-    ),
-    color-mix(in srgb, var(--glass-strong) 74%, transparent);
+  background: color-mix(in srgb, var(--glass-strong) 62%, transparent);
   text-align: left;
-  animation: conversation-node-reveal 160ms ease both;
-}
-
-.empty-conversation::before {
-  position: absolute;
-  top: 35px;
-  left: -33px;
-  width: 33px;
-  border-top: 1px solid var(--glass-line-bright);
-  content: "";
-  pointer-events: none;
-}
-
-.empty-conversation__spark {
-  position: absolute;
-  top: 19px;
-  left: -49px;
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--glass-line-bright);
-  border-radius: 11px;
-  color: var(--semantic-selected);
-  background: var(--glass-strong);
-  box-shadow:
-    0 0 0 5px var(--glass-canvas),
-    0 8px 24px rgba(0, 0, 0, 0.12);
-}
-
-.empty-conversation__eyebrow {
-  display: block;
-  margin-bottom: 4px;
-  color: var(--semantic-selected);
-  font-size: var(--font-caption);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
 .empty-conversation strong {
@@ -10426,32 +10191,36 @@ html.is-panel-resizing .desktop-shell {
   line-height: 1.45;
 }
 
-@keyframes conversation-node-reveal {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.message__profile-avatar,
+.message__profile-avatar .avatar,
+.message > .avatar {
+  border-radius: 50%;
 }
 
-@media (max-width: 700px) {
-  .channel-intro__root {
-    align-items: center;
-  }
-
-  .empty-conversation {
-    margin-right: 12px;
-  }
+.channel-row.active {
+  color: var(--text);
+  background: color-mix(
+    in srgb,
+    var(--semantic-selected-soft) 78%,
+    var(--glass-strong)
+  );
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--semantic-selected) 46%, transparent);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .empty-conversation {
-    animation: none;
-  }
+.channel-row.active:hover,
+.channel-row.active:focus-visible {
+  background: color-mix(
+    in srgb,
+    var(--semantic-selected-soft) 90%,
+    var(--glass-strong)
+  );
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--semantic-selected) 68%, transparent);
+}
+
+.channel-row.active > span:not(.channel-voice-duration) {
+  font-weight: 700;
 }
 
 /* 0026 — one system-owned accent across decorative interaction states */
@@ -10468,8 +10237,7 @@ html.is-panel-resizing .desktop-shell {
 .voice-control-dock__more > button,
 .voice-control-dock__menu button,
 .panel-resizer::after,
-.empty-conversation,
-.channel-intro__state {
+.empty-conversation {
   transition:
     color 160ms ease,
     border-color 160ms ease,
@@ -10511,9 +10279,7 @@ html.is-panel-resizing .desktop-shell {
 }
 
 .channel-group__children .channel-row-wrap::before,
-.channel-group__children .channel-row-wrap:not(:last-child)::after,
-.empty-conversation::before,
-.conversation-flow--filled .message:not(.message--grouped)::after {
+.channel-group__children .channel-row-wrap:not(:last-child)::after {
   border-color: color-mix(
     in srgb,
     var(--system-accent) 34%,
@@ -10535,8 +10301,7 @@ html.is-panel-resizing .desktop-shell {
   .voice-control-dock__more > button,
   .voice-control-dock__menu button,
   .panel-resizer::after,
-  .empty-conversation,
-  .channel-intro__state {
+  .empty-conversation {
     transition: none;
   }
 }

@@ -41,7 +41,11 @@ test("channel tree keeps its branch geometry and reduced-motion fallback", () =>
   );
   assert.match(
     styles,
-    /\.channel-row\.active\s*\{\s*color:\s*var\(--text\);\s*background:\s*var\(--panel\);\s*\}/,
+    /\.channel-row\.active\s*\{[\s\S]*background:\s*color-mix\([\s\S]*var\(--semantic-selected-soft\)[\s\S]*box-shadow:\s*inset 0 0 0 1px/,
+  );
+  assert.match(
+    styles,
+    /\.channel-row\.active:hover,[\s\S]*\.channel-row\.active:focus-visible\s*\{[\s\S]*var\(--semantic-selected\) 68%/,
   );
   assert.match(
     treeStyles,

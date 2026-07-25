@@ -257,6 +257,14 @@ explicit remote hover-to-watch handoff are approved under
 supersedes plan 0015's informational-only LIVE and cross-room-watch restriction
 while retaining its isolation, source-audio, one-share subscription, and
 cleanup contracts.
+The persistent selected-channel accent pill, simplified conversation
+presentation, circular chat-only avatars, serialized microphone restart,
+cleanup-only microphone processing, v3 device preferences, and optional
+installed-macOS full-volume capture mode are approved under
+`0029-simpler-chat-and-reliable-voice-input.md`. Plan 0029 supersedes plan
+0013's Voice Lab effects, plan 0025's conversation trail, and plan 0027's
+neutral-only selected-room treatment while preserving RNNoise cleanup, the
+connector tree, and speaker-safe echo cancellation by default.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -334,8 +342,8 @@ cleanup contracts.
       hierarchy under plan 0012 without importing messages.
 - [x] Present channel categories and uncategorized shelves as the persisted,
       accessible connector tree defined by plan 0024.
-- [x] Present empty and populated text conversations with the shared root and
-      message trail defined by plan 0025.
+- [x] Keep the shared channel/DM introductions while presenting simple empty
+      and populated conversations without plan 0025's trail under plan 0029.
 - [x] Add plan 0026's live native system accent, contrast-normalized renderer
       tokens, unified decorative interaction states, calmer glass veil, and
       read-only Appearance swatch without adding an accent preference.
@@ -353,9 +361,14 @@ cleanup contracts.
       and installed macOS/Windows three-client watch matrix.
 - [x] Deploy plan 0012's additive category/layout migration.
 - [ ] Complete plan 0012's hosted two-account hierarchy check.
-- [x] Add local RNNoise microphone cleanup plus Child, Robot, and
-      Walkie-talkie sender-side filters under plan 0013.
-- [ ] Complete plan 0013's macOS and Windows installed two-client audio checks.
+- [x] Retain local RNNoise microphone cleanup from plan 0013 while removing its
+      sender-side Voice Lab filters under plan 0029.
+- [x] Add plan 0029's persistent selected-channel accent pill, circular
+      chat-only avatars, serialized live microphone restart/rollback, v3
+      preference migration, and installed-macOS full-volume capture option.
+- [ ] Complete plan 0029's macOS and Windows installed two-client audio checks,
+      including speaker-safe echo, full-volume mode, muted/unmuted device
+      switching, and RNNoise intelligibility.
 - [x] Add the Bakbak Signature preset, fixed destination rail, and
       accessible persisted side-panel resizing under plan 0014.
 - [x] Reset every v5-or-older installation once to Classic System + Flat +

@@ -31,8 +31,10 @@ import {
   RELAY_PREFERENCE_DURATION_MS,
   VOICE_PREPARE_DEBOUNCE_MS,
   VOICE_TOKEN_EXPIRY_BUFFER_MS,
+  echoCancellationForCapture,
   isPreparedVoiceTokenUsable,
   normalizeVoiceConnectionQuality,
+  supportsMacosFullVolumeMode,
   useVoiceRoom,
 } from "./useVoiceRoom";
 
@@ -102,6 +104,8 @@ vi.mock("livekit-client", () => {
 
   class LocalAudioTrack {
     readonly stop = vi.fn();
+    readonly restartTrack = vi.fn().mockResolvedValue(undefined);
+    readonly getProcessor = vi.fn(() => null);
     readonly mute = vi.fn(() => {
       this.isMuted = true;
       return Promise.resolve();
@@ -280,6 +284,25 @@ describe("voice connection quality", () => {
     expect(normalizeVoiceConnectionQuality(ConnectionQuality.Unknown)).toBe(
       "unknown",
     );
+  });
+});
+
+describe("macOS capture mode", () => {
+  it("is offered only by the installed macOS runtime", () => {
+    expect(
+      supportsMacosFullVolumeMode(
+        true,
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X)",
+      ),
+    ).toBe(true);
+    expect(supportsMacosFullVolumeMode(false, "Macintosh")).toBe(false);
+    expect(supportsMacosFullVolumeMode(true, "Windows NT 10.0")).toBe(false);
+  });
+
+  it("disables echo cancellation only for the selected macOS mode", () => {
+    expect(echoCancellationForCapture(true, true)).toBe(false);
+    expect(echoCancellationForCapture(true, false)).toBe(true);
+    expect(echoCancellationForCapture(false, true)).toBe(true);
   });
 });
 
@@ -1129,6 +1152,197 @@ describe("useVoiceRoom join lifecycle", () => {
     expect(result.current.selectedInputId).toBe("default");
     expect(result.current.status).toBe("connected");
     expect(result.current.channel).toEqual(coffeeTable);
+  });
+
+  it("restarts the connected speech track and commits the selected microphone", async () => {
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    const room = liveKitState.rooms[0];
+    const microphone = room?.localParticipant
+      .getTrackPublications()
+      .find(
+        (publication) => publication.trackName === SPEECH_MICROPHONE_TRACK_NAME,
+      )?.track as unknown as {
+      restartTrack: Mock;
+      isMuted: boolean;
+    };
+
+    await act(async () => {
+      await result.current.setInputDevice("usb-microphone");
+    });
+
+    expect(microphone.restartTrack).toHaveBeenCalledWith({
+      deviceId: "usb-microphone",
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+      channelCount: 1,
+      sampleRate: 48_000,
+    });
+    expect(result.current.selectedInputId).toBe("usb-microphone");
+    expect(result.current.inputDeviceError).toBeNull();
+    expect(room?.localParticipant.setMicrophoneEnabled).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await result.current.toggleMute();
+      await result.current.setInputDevice("default");
+    });
+    expect(microphone.isMuted).toBe(true);
+    expect(result.current.selectedInputId).toBe("default");
+  });
+
+  it("serializes microphone changes while a restart is pending", async () => {
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    const microphone = liveKitState.rooms[0]?.localParticipant
+      .getTrackPublications()
+      .find(
+        (publication) => publication.trackName === SPEECH_MICROPHONE_TRACK_NAME,
+      )?.track as unknown as { restartTrack: Mock };
+    const restart = deferred<void>();
+    microphone.restartTrack.mockReturnValueOnce(restart.promise);
+
+    let firstSwitch!: Promise<void>;
+    act(() => {
+      firstSwitch = result.current.setInputDevice("usb-microphone");
+    });
+    await waitFor(() => expect(result.current.inputDevicePending).toBe(true));
+
+    await act(async () => {
+      await result.current.setInputDevice("ignored-microphone");
+    });
+    expect(microphone.restartTrack).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      restart.resolve(undefined);
+      await firstSwitch;
+    });
+    expect(result.current.inputDevicePending).toBe(false);
+    expect(result.current.selectedInputId).toBe("usb-microphone");
+  });
+
+  it("does not commit a microphone restart after its room becomes stale", async () => {
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    const microphone = liveKitState.rooms[0]?.localParticipant
+      .getTrackPublications()
+      .find(
+        (publication) => publication.trackName === SPEECH_MICROPHONE_TRACK_NAME,
+      )?.track as unknown as { restartTrack: Mock };
+    const restart = deferred<void>();
+    microphone.restartTrack.mockReturnValueOnce(restart.promise);
+
+    let inputSwitch!: Promise<void>;
+    act(() => {
+      inputSwitch = result.current.setInputDevice("usb-microphone");
+    });
+    await waitFor(() => expect(result.current.inputDevicePending).toBe(true));
+
+    await act(async () => {
+      await result.current.leave();
+      restart.resolve(undefined);
+      await inputSwitch;
+    });
+
+    expect(result.current.status).toBe("disconnected");
+    expect(result.current.inputDevicePending).toBe(false);
+    expect(result.current.selectedInputId).toBe("default");
+  });
+
+  it("keeps the previous microphone after a recovered switch failure", async () => {
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    const microphone = liveKitState.rooms[0]?.localParticipant
+      .getTrackPublications()
+      .find(
+        (publication) => publication.trackName === SPEECH_MICROPHONE_TRACK_NAME,
+      )?.track as unknown as { restartTrack: Mock };
+    microphone.restartTrack
+      .mockRejectedValueOnce(new Error("device vanished"))
+      .mockResolvedValueOnce(undefined);
+
+    await act(async () => {
+      await result.current.setInputDevice("missing-microphone");
+    });
+
+    expect(microphone.restartTrack).toHaveBeenCalledTimes(2);
+    expect(result.current.selectedInputId).toBe("default");
+    expect(result.current.inputDeviceError).toContain(
+      "previous microphone is still active",
+    );
+  });
+
+  it("reports when both a microphone switch and its rollback fail", async () => {
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    const microphone = liveKitState.rooms[0]?.localParticipant
+      .getTrackPublications()
+      .find(
+        (publication) => publication.trackName === SPEECH_MICROPHONE_TRACK_NAME,
+      )?.track as unknown as { restartTrack: Mock };
+    microphone.restartTrack.mockRejectedValue(new Error("capture failed"));
+
+    await act(async () => {
+      await result.current.setInputDevice("missing-microphone");
+    });
+
+    expect(result.current.selectedInputId).toBe("default");
+    expect(result.current.inputDeviceError).toContain(
+      "couldn't restore the previous one",
+    );
+  });
+
+  it("applies the macOS full-volume mode to an active microphone", async () => {
+    screenShareState.desktop = true;
+    const originalUserAgent = navigator.userAgent;
+    Object.defineProperty(navigator, "userAgent", {
+      configurable: true,
+      value: "Mozilla/5.0 (Macintosh; Intel Mac OS X)",
+    });
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    try {
+      const { result } = renderHook(() => useVoiceRoom(user, "live"));
+      await act(async () => {
+        await result.current.join(lounge);
+      });
+      const microphone = liveKitState.rooms[0]?.localParticipant
+        .getTrackPublications()
+        .find(
+          (publication) =>
+            publication.trackName === SPEECH_MICROPHONE_TRACK_NAME,
+        )?.track as unknown as { restartTrack: Mock };
+
+      await act(async () => {
+        await result.current.setMacosKeepOtherAudioFullVolume(true);
+      });
+
+      expect(result.current.macosFullVolumeModeAvailable).toBe(true);
+      expect(result.current.macosKeepOtherAudioFullVolume).toBe(true);
+      expect(microphone.restartTrack).toHaveBeenCalledWith(
+        expect.objectContaining({ echoCancellation: false }),
+      );
+    } finally {
+      Object.defineProperty(navigator, "userAgent", {
+        configurable: true,
+        value: originalUserAgent,
+      });
+    }
   });
 
   it("mutes and reuses speech when the soundboard microphone publication arrives first", async () => {

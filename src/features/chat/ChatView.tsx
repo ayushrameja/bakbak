@@ -618,27 +618,17 @@ export function ConversationView({
             if (nearBottom) setNewMessageCount(0);
           }}
         >
-          <div
-            className={`conversation-flow ${visibleMessages.length === 0 ? "conversation-flow--empty" : "conversation-flow--filled"}`}
-          >
+          <div className="conversation-flow">
             <div className="channel-intro">
-              <div className="channel-intro__root">
-                <span className="channel-intro__icon">
-                  {target.kind === "channel" &&
-                  target.purpose !== "system-releases" &&
-                  target.purpose !== "system-general"
-                    ? "#"
-                    : target.kind === "direct"
-                      ? "@"
-                      : "•"}
-                </span>
-                <span className="channel-intro__state">
-                  <i aria-hidden="true" />
-                  {visibleMessages.length === 0
-                    ? "Quiet room"
-                    : "Conversation flowing"}
-                </span>
-              </div>
+              <span className="channel-intro__icon">
+                {target.kind === "channel" &&
+                target.purpose !== "system-releases" &&
+                target.purpose !== "system-general"
+                  ? "#"
+                  : target.kind === "direct"
+                    ? "@"
+                    : "•"}
+              </span>
               <h2>
                 {target.kind === "channel"
                   ? `Welcome to #${target.name}`
@@ -679,24 +669,12 @@ export function ConversationView({
                   role="status"
                   aria-label="This conversation has no messages yet"
                 >
-                  <span
-                    className="empty-conversation__spark"
-                    aria-hidden="true"
-                  >
-                    <Sparkles size={17} />
-                  </span>
-                  <div>
-                    <span className="empty-conversation__eyebrow">
-                      {target.kind === "channel"
-                        ? `#${target.name} is listening`
-                        : `${target.member.displayName} is one message away`}
-                    </span>
-                    <strong>The first branch is yours.</strong>
-                    <p>
-                      Drop a thought, a plan, or a gloriously unnecessary
-                      opinion.
-                    </p>
-                  </div>
+                  <strong>No messages yet.</strong>
+                  <p>
+                    {target.kind === "channel"
+                      ? `Be the first to say something in #${target.name}.`
+                      : `Send the first message to ${target.member.displayName}.`}
+                  </p>
                 </div>
               ) : null}
 
@@ -948,9 +926,6 @@ export function ConversationView({
                   </article>
                 );
               })}
-              {visibleMessages.length > 0 ? (
-                <span className="conversation-thread__end" aria-hidden="true" />
-              ) : null}
             </div>
           </div>
         </div>

@@ -21,25 +21,24 @@ describe("microphone processing", () => {
       channelCount: 1,
       sampleRate: 48_000,
     });
+    expect(microphoneCaptureOptions("default", false)).toEqual({
+      echoCancellation: false,
+      noiseSuppression: true,
+      autoGainControl: true,
+      channelCount: 1,
+      sampleRate: 48_000,
+    });
   });
 
-  it("uses the processor for either enhanced cleanup or a voice effect", () => {
+  it("uses the processor only for enhanced cleanup", () => {
     expect(
       needsMicrophoneProcessor({
         enhancedNoiseSuppression: false,
-        voiceEffect: "none",
       }),
     ).toBe(false);
     expect(
       needsMicrophoneProcessor({
         enhancedNoiseSuppression: true,
-        voiceEffect: "none",
-      }),
-    ).toBe(true);
-    expect(
-      needsMicrophoneProcessor({
-        enhancedNoiseSuppression: false,
-        voiceEffect: "radio",
       }),
     ).toBe(true);
   });

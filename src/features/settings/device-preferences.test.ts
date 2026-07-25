@@ -16,7 +16,7 @@ describe("device preferences", () => {
           cameraDeviceId: "camera-1",
           soundboardVolume: 0.45,
           enhancedNoiseSuppression: false,
-          voiceEffect: "robot",
+          macosKeepOtherAudioFullVolume: true,
         }),
       ),
     };
@@ -26,7 +26,7 @@ describe("device preferences", () => {
       cameraDeviceId: "camera-1",
       soundboardVolume: 0.45,
       enhancedNoiseSuppression: false,
-      voiceEffect: "robot",
+      macosKeepOtherAudioFullVolume: true,
     });
   });
 
@@ -55,7 +55,7 @@ describe("device preferences", () => {
         cameraDeviceId: "camera-1",
         soundboardVolume: 0.6,
         enhancedNoiseSuppression: true,
-        voiceEffect: "child",
+        macosKeepOtherAudioFullVolume: false,
       },
       { setItem },
     );
@@ -65,23 +65,52 @@ describe("device preferences", () => {
       cameraDeviceId: "camera-1",
       soundboardVolume: 0.6,
       enhancedNoiseSuppression: true,
-      voiceEffect: "child",
+      macosKeepOtherAudioFullVolume: false,
+    });
+    expect(setItem).toHaveBeenCalledWith(
+      "bakbak.devicePreferences.v3",
+      expect.any(String),
+    );
+  });
+
+  it("migrates v2 values while discarding the removed voice effect", () => {
+    const storage = {
+      getItem: vi.fn((key: string) =>
+        key === "bakbak.devicePreferences.v2"
+          ? JSON.stringify({
+              inputDeviceId: "legacy-mic",
+              outputDeviceId: "default",
+              cameraDeviceId: "default",
+              soundboardVolume: 0.5,
+              enhancedNoiseSuppression: false,
+              voiceEffect: "robot",
+            })
+          : null,
+      ),
+    };
+
+    expect(loadDevicePreferences(storage)).toEqual({
+      inputDeviceId: "legacy-mic",
+      outputDeviceId: "default",
+      cameraDeviceId: "default",
+      soundboardVolume: 0.5,
+      enhancedNoiseSuppression: false,
+      macosKeepOtherAudioFullVolume: false,
     });
   });
 
   it("migrates v1 values with safe microphone-processing defaults", () => {
     const storage = {
-      getItem: vi
-        .fn()
-        .mockReturnValueOnce(null)
-        .mockReturnValueOnce(
-          JSON.stringify({
-            inputDeviceId: "legacy-mic",
-            outputDeviceId: "default",
-            cameraDeviceId: "default",
-            soundboardVolume: 0.5,
-          }),
-        ),
+      getItem: vi.fn((key: string) =>
+        key === "bakbak.devicePreferences.v1"
+          ? JSON.stringify({
+              inputDeviceId: "legacy-mic",
+              outputDeviceId: "default",
+              cameraDeviceId: "default",
+              soundboardVolume: 0.5,
+            })
+          : null,
+      ),
     };
 
     expect(loadDevicePreferences(storage)).toEqual({
@@ -90,7 +119,7 @@ describe("device preferences", () => {
       cameraDeviceId: "default",
       soundboardVolume: 0.5,
       enhancedNoiseSuppression: true,
-      voiceEffect: "none",
+      macosKeepOtherAudioFullVolume: false,
     });
   });
 });

@@ -1,7 +1,13 @@
-import type { Room } from "livekit-client";
+import type {
+  AudioCaptureOptions,
+  LocalAudioTrack,
+  Room,
+} from "livekit-client";
 
 const INPUT_SWITCH_ERROR =
-  "Bakbak couldn't switch microphones. The previous microphone is still active; reconnect the device or check macOS Privacy & Security.";
+  "Bakbak couldn't switch microphones. The previous microphone is still active; reconnect the device or check microphone permissions.";
+const INPUT_SWITCH_RESTORE_ERROR =
+  "Bakbak couldn't switch microphones and couldn't restore the previous one. Rejoin voice after checking microphone permissions.";
 const PLAYBACK_RESUME_ERROR =
   "Bakbak still couldn't start audio. Check the system output, then try Enable audio again.";
 const OUTPUT_SWITCH_ERROR =
@@ -11,6 +17,7 @@ const CAMERA_SWITCH_ERROR =
 
 type AudioInputRoom = Pick<Room, "switchActiveDevice">;
 type AudioPlaybackRoom = Pick<Room, "startAudio">;
+type RestartableAudioTrack = Pick<LocalAudioTrack, "restartTrack">;
 
 interface DeafenAudioTargets {
   isCurrent: () => boolean;
@@ -20,15 +27,21 @@ interface DeafenAudioTargets {
 
 export type AudioActionResult = { ok: true } | { ok: false; message: string };
 
-export async function switchAudioInput(
-  room: AudioInputRoom,
-  deviceId: string,
+export async function restartAudioInput(
+  track: RestartableAudioTrack,
+  nextOptions: AudioCaptureOptions,
+  previousOptions: AudioCaptureOptions,
 ): Promise<AudioActionResult> {
   try {
-    const switched = await room.switchActiveDevice("audioinput", deviceId);
-    return switched ? { ok: true } : { ok: false, message: INPUT_SWITCH_ERROR };
+    await track.restartTrack(nextOptions);
+    return { ok: true };
   } catch {
-    return { ok: false, message: INPUT_SWITCH_ERROR };
+    try {
+      await track.restartTrack(previousOptions);
+      return { ok: false, message: INPUT_SWITCH_ERROR };
+    } catch {
+      return { ok: false, message: INPUT_SWITCH_RESTORE_ERROR };
+    }
   }
 }
 

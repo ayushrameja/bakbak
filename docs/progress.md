@@ -5082,3 +5082,59 @@ docs/progress.md` corrected it. Final `pnpm format:check` and
   recovers, then publish this workflow fix in a `release:skip` PR and confirm
   the next release synchronizes its tracked version without leaving an
   automation branch.
+
+## 2026-07-25 — Simpler chat and reliable voice input
+
+- **Completed:** Implemented plan 0029 end to end in the renderer: selected
+  text/voice channels now use a persistent soft accent pill with thin outline,
+  brighter icon/label, distinct active hover, and `aria-current="page"`;
+  conversation rails/branches/Quiet-Flowing badges/empty-branch decoration are
+  gone while channel/DM welcome intros and compact empty copy remain; chat-only
+  author avatars are circular; Voice Lab effects and their worklet DSP are
+  removed; connected microphone and macOS capture-mode changes use one
+  serialized `restartTrack` transaction with mute preservation, pending-state
+  serialization, success commit, recovered rollback, failed rollback, and
+  stale-room rejection; device preferences migrate to
+  `bakbak.devicePreferences.v3` with cleanup plus default-off
+  `macosKeepOtherAudioFullVolume`; installed macOS alone exposes the full-volume
+  switch and mic-test capture constraints. Fixed one Settings test lint failure
+  by asserting exact capture options instead of an untyped matcher.
+- **Decisions:** Kept speaker-safe echo cancellation as the default and limited
+  `echoCancellation: false` to opt-in installed macOS, because RNNoise is not
+  acoustic echo cancellation. Removed the redundant
+  `setMicrophoneEnabled` switch path so LiveKit restarts the existing named
+  speech track and its attached processor. Plan 0029 supersedes plan 0013 Voice
+  Lab effects, plan 0025 conversation trail, and plan 0027's neutral-only
+  selected-room treatment without backend or LiveKit protocol changes.
+- **Validation:**
+  - Focused voice/settings/layout suites — passed during implementation,
+    including microphone restart success, mute preservation, serialization,
+    rollback, failed rollback, stale-room cleanup, v1/v2-to-v3 migration, and
+    macOS control visibility.
+  - Initial `pnpm check` — failed eslint on
+    `SettingsPage.test.tsx` (`no-unsafe-assignment` from
+    `expect.objectContaining`).
+  - Final `pnpm check` — passed formatting, lint, both strict TypeScript
+    projects, 75 Vitest files with 405 tests, 40/40 Node contract tests,
+    version synchronization, production renderer build, and bundle secret
+    scanning; Vite retained the existing non-blocking large-chunk warning.
+  - `cargo check --locked --manifest-path src-tauri/Cargo.toml` — passed.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are
+    absent.
+  - Follow-up `codesign --verify --deep --strict` — passed for the rebuilt
+    application.
+  - `git diff --check` — passed.
+- **Documentation updated:** Added
+  `docs/plans/0029-simpler-chat-and-reliable-voice-input.md`, updated
+  `docs/architecture.md` and the active v1 plan scope/checkboxes, and appended
+  this canonical progress entry.
+- **Known limitations:** Plan 0029's installed/manual acceptance remains open:
+  speaker-safe echo, full-volume non-call audio, muted/unmuted device switching,
+  two-client intelligibility, Windows absence of the macOS control, and
+  light/dark channel/chat inspection at 1280×800 and 1024×680. The production
+  updater-signed `pnpm tauri build` remains CI-only because release credentials
+  are not available locally.
+- **Next:** Run plan 0029's installed macOS and Windows two-client audio matrix
+  and the light/dark layout pass, then mark those acceptance items when the
+  checks succeed.

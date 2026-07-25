@@ -492,7 +492,7 @@ export default function App() {
   useEffect(() => {
     const enable = () => {
       void interfaceSoundController.activate();
-      if (voice.enhancedNoiseSuppression || voice.voiceEffect !== "none") {
+      if (voice.enhancedNoiseSuppression) {
         void prewarmMicrophoneProcessing();
       }
     };
@@ -502,7 +502,7 @@ export default function App() {
       window.removeEventListener("pointerdown", enable);
       window.removeEventListener("keydown", enable);
     };
-  }, [voice.enhancedNoiseSuppression, voice.voiceEffect]);
+  }, [voice.enhancedNoiseSuppression]);
 
   useEffect(() => {
     if (appConfig.dataMode !== "live") {
@@ -3326,7 +3326,8 @@ export default function App() {
           selectedCameraId={voice.selectedCameraId}
           soundboardVolume={voice.soundboardVolume}
           enhancedNoiseSuppression={voice.enhancedNoiseSuppression}
-          voiceEffect={voice.voiceEffect}
+          macosFullVolumeModeAvailable={voice.macosFullVolumeModeAvailable}
+          macosKeepOtherAudioFullVolume={voice.macosKeepOtherAudioFullVolume}
           microphoneProcessingSupported={voice.microphoneProcessingSupported}
           microphoneProcessingError={voice.microphoneProcessingError}
           interfaceSoundPreferences={interfaceSoundPreferences}
@@ -3340,7 +3341,9 @@ export default function App() {
           cameraError={voice.cameraDeviceError}
           outputSelectionSupported={voice.outputSelectionSupported}
           inputDisabled={
-            voice.status === "connecting" || voice.status === "reconnecting"
+            voice.status === "connecting" ||
+            voice.status === "reconnecting" ||
+            voice.inputDevicePending
           }
           voiceStatus={voice.status}
           voiceChannelName={voice.channel?.name ?? null}
@@ -3360,7 +3363,9 @@ export default function App() {
           onEnhancedNoiseSuppressionChange={(enabled) =>
             void voice.setEnhancedNoiseSuppression(enabled)
           }
-          onVoiceEffectChange={(effect) => void voice.setVoiceEffect(effect)}
+          onMacosKeepOtherAudioFullVolumeChange={(enabled) =>
+            void voice.setMacosKeepOtherAudioFullVolume(enabled)
+          }
           onInterfaceSoundPreferencesChange={
             handleInterfaceSoundPreferencesChange
           }

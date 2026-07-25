@@ -47,7 +47,7 @@ test("renderer validates native RGB, waits at most 250ms, and publishes the acce
   assert.match(accentService, /media\?\.addEventListener\("change"/);
 });
 
-test("dynamic accent reaches navigation, trails, controls, and calm glass surfaces", () => {
+test("dynamic accent reaches navigation, controls, and calm glass surfaces", () => {
   assert.match(styles, /--accent:\s*var\(--system-accent\)/);
   assert.match(styles, /--semantic-selected:\s*var\(--system-accent\)/);
   assert.match(
@@ -56,11 +56,7 @@ test("dynamic accent reaches navigation, trails, controls, and calm glass surfac
   );
   assert.match(
     styles,
-    /\.channel-row\.active\s*\{[\s\S]*?background:\s*var\(--accent-soft\)/,
-  );
-  assert.match(
-    styles,
-    /\.conversation-thread::before\s*\{[\s\S]*?var\(--semantic-selected\)/,
+    /\.channel-row\.active\s*\{[\s\S]*?background:\s*color-mix\([\s\S]*?var\(--semantic-selected-soft\)/,
   );
   assert.match(
     styles,
