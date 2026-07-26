@@ -5138,3 +5138,79 @@ docs/progress.md` corrected it. Final `pnpm format:check` and
 - **Next:** Run plan 0029's installed macOS and Windows two-client audio matrix
   and the light/dark layout pass, then mark those acceptance items when the
   checks succeed.
+
+## 2026-07-26 — Media and voice reliability
+
+- **Completed:** Implemented plan 0030 across renderer and native capture.
+  Remote speech, soundboard, and watched-share tracks now attach through one
+  owner/source-aware renderer that writes gain to the real HTML audio element;
+  participant cards use a separate focus control and continuous accessible
+  slider. Added explicit microphone processing states, RNNoise
+  ready/configuration acknowledgement, sender restoration and fallback-error
+  handling, plus a deterministic tested 128-to-480-sample bridge. Migrated
+  device preferences to v4 with the macOS full-volume mode default on and a
+  one-time v3 false-to-true migration. macOS 14.2+ capture now applies
+  fail-closed ScreenCaptureKit process-tree filters and refreshes them after
+  topology changes. Windows capture validates display loopback exclusion,
+  checks cursor inclusion, restores application focus best-effort, classifies
+  sustained black/cursor-only frames, and returns one-click Entire screen plus
+  Borderless Windowed recovery without game hooks. Added stable structured
+  failures and sanitized diagnostics. macOS call media now uses serialized,
+  timeout-bounded Tauri simple fullscreen with opaque staging and native-glass
+  restoration on every exit path; Windows retains native fullscreen.
+- **Decisions:** Kept all changes client/native-local with no Supabase, RLS,
+  token, or LiveKit server-contract change. The macOS audio transport remains
+  ScreenCaptureKit with proven include/exclude process filters rather than
+  adding a separate Core Audio process-tap transport; release acceptance still
+  requires the installed two-client isolation test. `Keep other audio at full
+volume` disables only macOS echo cancellation and retains browser noise
+  suppression, automatic gain control, RNNoise, and the headphone warning.
+  Valorant recovery deliberately uses Entire screen plus Borderless Windowed
+  rather than injection or anti-cheat-sensitive hooks.
+- **Validation:**
+  - Focused voice/settings suites during implementation — passed 131/131 tests
+    before the final recovery-button regression was added; the final full suite
+    below includes that additional test.
+  - Initial `pnpm check` — application tests passed 419/419, but one Node visual
+    contract rejected the slightly chromatic fullscreen stage color `#08090b`.
+    Changing it to neutral `#090909` fixed the contract.
+  - Final `pnpm format:check && pnpm lint && pnpm typecheck && pnpm test &&
+pnpm version:check && pnpm build && pnpm security:scan` — passed formatting,
+    lint, both strict TypeScript projects, 77 Vitest files with 420 tests, 40/40
+    Node contracts, synchronized version `1.1.0`, production renderer build,
+    and bundle secret scan. Vite retained the existing non-blocking large-chunk
+    warning.
+  - `cargo test --manifest-path src-tauri/Cargo.toml` — passed 17/17 macOS
+    native tests, including process policy, first-frame behavior, failure
+    structure, and sanitized diagnostics.
+  - `cargo fmt --manifest-path src-tauri/Cargo.toml --check` — passed.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are absent.
+  - `codesign --verify --deep --strict
+src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
+  - `pnpm tauri build` — failed after compiling the release binary and
+    rebuilding/signing `Bakbak.app`; Tauri's local `bundle_dmg.sh` failed while
+    creating `Bakbak_1.1.0_aarch64.dmg`. The dedicated local app bundle above
+    remains successful.
+  - `cargo check --target x86_64-pc-windows-msvc` — skipped as a code verdict:
+    cross-compilation stopped in `ring` before Bakbak's Windows source because
+    this Mac lacks the Windows CRT/MSVC header `assert.h`. Windows CI was not
+    triggered because no branch was pushed.
+  - Final `pnpm security:scan`, `git diff --check`, Cargo formatting check, and
+    strict app signature verification — passed.
+- **Documentation updated:** Added
+  `docs/plans/0030-media-and-voice-reliability.md`, updated the architecture's
+  voice, capture, fullscreen, diagnostic, and v4 preference contracts, updated
+  Phase 5 acceptance criteria in the active v1 plan, and appended this canonical
+  progress entry.
+- **Known limitations:** Installed/macOS and Windows friend tests remain open:
+  two-client call-audio exclusion, actual 100/50/0 speech/soundboard/share
+  listening, fan/keyboard RNNoise A/B, Valorant Application fallback and Entire
+  screen cursor/game pixels in Borderless Windowed, and ten-cycle macOS
+  fullscreen plus Escape/Back/loss/disconnect. The Windows native code still
+  requires a real Windows CI/build runner, the local production DMG packager
+  failed as recorded above, and a dedicated Core Audio process-tap backend was
+  not introduced.
+- **Next:** Run Windows CI and the installed macOS/Windows Plan 0030 matrix,
+  investigate the local DMG packaging failure separately, and close acceptance
+  items only from observed audio/video/fullscreen results.

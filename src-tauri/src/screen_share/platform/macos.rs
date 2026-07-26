@@ -37,7 +37,7 @@ const BAKBAK_BUNDLE_IDENTIFIER: &str = "com.bakbak.desktop";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum AudioIsolationPolicy {
-    ExcludeCurrentProcess,
+    ScreenCaptureProcessTreeFilter,
 }
 
 pub struct PreparedCapture {
@@ -52,6 +52,7 @@ pub struct PreparedCapture {
     filter: SCContentFilter,
     termination_sender: mpsc::UnboundedSender<String>,
     pause_sender: mpsc::UnboundedSender<bool>,
+    source_id: String,
 }
 
 impl PreparedCapture {
@@ -67,6 +68,7 @@ pub struct CaptureSession {
     source_width: u32,
     source_height: u32,
     capture_audio: bool,
+    topology_task: Option<JoinHandle<()>>,
 }
 
 impl CaptureSession {
@@ -74,6 +76,9 @@ impl CaptureSession {
         let _ = self.stream.stop_capture();
         self.pause_task.abort();
         if let Some(task) = self.audio_task.take() {
+            task.abort();
+        }
+        if let Some(task) = self.topology_task.take() {
             task.abort();
         }
     }
@@ -90,12 +95,12 @@ impl CaptureSession {
 }
 
 pub fn capabilities() -> ScreenShareCapabilities {
-    let supports_picker =
-        matches!(os_info::get().version(), os_info::Version::Semantic(major, _, _) if *major >= 14);
+    let supports_picker = macos_version_at_least(14, 0);
+    let supports_isolated_audio = macos_version_at_least(14, 2);
     ScreenShareCapabilities {
         available: true,
         native_capture: supports_picker,
-        system_audio: supports_picker,
+        system_audio: supports_isolated_audio,
         source_kinds: vec![
             ScreenShareSourceKind::Display,
             ScreenShareSourceKind::Application,
@@ -104,16 +109,27 @@ pub fn capabilities() -> ScreenShareCapabilities {
         frame_rates: SCREEN_SHARE_FRAME_RATES.to_vec(),
         dynamic_settings: supports_picker,
         custom_picker: supports_picker,
-        reason: (!supports_picker).then(|| {
-            "Matched system audio requires macOS 14 or later; Bakbak will use video-only sharing."
-                .to_string()
-        }),
+        reason: if !supports_picker {
+            Some(
+                "Native screen sharing requires macOS 14 or later; older systems remain video-only."
+                    .to_string(),
+            )
+        } else if !supports_isolated_audio {
+            Some(
+                "Isolated system audio requires macOS 14.2 or later; video sharing still works."
+                    .to_string(),
+            )
+        } else {
+            None
+        },
     }
 }
 
 pub async fn sources() -> Result<Vec<ScreenShareSource>, String> {
     let content = shareable_content().await?;
     let windows = content.windows();
+    let supports_isolated_audio = macos_version_at_least(14, 2);
+    let bakbak_tree_is_visible = content.applications().iter().any(is_bakbak_application);
     let mut result = content
         .displays()
         .into_iter()
@@ -123,8 +139,13 @@ pub async fn sources() -> Result<Vec<ScreenShareSource>, String> {
             kind: ScreenShareSourceKind::Display,
             label: format!("Screen {}", index + 1),
             application_label: None,
-            audio_available: true,
-            audio_unavailable_reason: None,
+            audio_available: supports_isolated_audio && bakbak_tree_is_visible,
+            audio_unavailable_reason: (!(supports_isolated_audio
+                && bakbak_tree_is_visible))
+                .then(|| {
+                    "Bakbak could not prove its process-tree audio exclusion, so this source is video-only."
+                        .to_string()
+                }),
             thumbnail_data_url: None,
         })
         .collect::<Vec<_>>();
@@ -139,8 +160,11 @@ pub async fn sources() -> Result<Vec<ScreenShareSource>, String> {
             label: application.application_name(),
             application_label: Some(application.bundle_identifier())
                 .filter(|value| !value.trim().is_empty()),
-            audio_available: true,
-            audio_unavailable_reason: None,
+            audio_available: supports_isolated_audio,
+            audio_unavailable_reason: (!supports_isolated_audio).then(|| {
+                "Application audio isolation requires macOS 14.2 or later; video sharing still works."
+                    .to_string()
+            }),
             thumbnail_data_url: None,
         })
         .collect::<Vec<_>>();
@@ -160,8 +184,9 @@ pub async fn pick_source(
     let content = shareable_content().await?;
     let displays = content.displays();
     let windows = content.windows();
+    let applications = content.applications();
     let (source_label, source_kind, source_width, source_height, filter) =
-        resolve_source(source_id, &displays, &windows, &content.applications())?;
+        resolve_source(source_id, &displays, &windows, &applications)?;
     let (width, height) = fit_to_resolution(source_width, source_height, settings.resolution);
 
     Ok(PreparedCapture {
@@ -169,18 +194,32 @@ pub async fn pick_source(
         source_kind,
         width,
         height,
-        audio_isolation: audio_isolation_policy(include_audio),
+        audio_isolation: audio_isolation_policy(
+            include_audio,
+            macos_version_at_least(14, 2),
+            source_kind,
+            source_audio_isolation_is_proven(source_kind, &applications),
+        ),
         settings,
         source_width,
         source_height,
         filter,
         termination_sender,
         pause_sender,
+        source_id: source_id.to_string(),
     })
 }
 
-fn audio_isolation_policy(include_audio: bool) -> Option<AudioIsolationPolicy> {
-    include_audio.then_some(AudioIsolationPolicy::ExcludeCurrentProcess)
+fn audio_isolation_policy(
+    include_audio: bool,
+    supported: bool,
+    source_kind: ScreenShareSourceKind,
+    process_tree_verified: bool,
+) -> Option<AudioIsolationPolicy> {
+    (include_audio
+        && supported
+        && (source_kind == ScreenShareSourceKind::Application || process_tree_verified))
+        .then_some(AudioIsolationPolicy::ScreenCaptureProcessTreeFilter)
 }
 
 fn resolve_source(
@@ -199,10 +238,21 @@ fn resolve_source(
             .ok_or_else(|| "The selected screen is no longer available.".to_string())?;
         let source_width = display.width().max(2);
         let source_height = display.height().max(2);
-        let filter = SCContentFilter::create()
-            .with_display(display)
-            .with_excluding_windows(&[])
-            .build();
+        let excluded = applications
+            .iter()
+            .filter(|application| is_bakbak_application(application))
+            .collect::<Vec<_>>();
+        let filter = if excluded.is_empty() {
+            SCContentFilter::create()
+                .with_display(display)
+                .with_excluding_windows(&[])
+                .build()
+        } else {
+            SCContentFilter::create()
+                .with_display(display)
+                .with_excluding_applications(&excluded, &[])
+                .build()
+        };
         let (source_width, source_height) =
             filter_pixel_size(&filter, (source_width, source_height));
         return Ok((
@@ -228,9 +278,15 @@ fn resolve_source(
         let display = application_display(application, displays, windows).ok_or_else(|| {
             "macOS could not find a display for the selected application.".to_string()
         })?;
+        let included = applications
+            .iter()
+            .filter(|candidate| {
+                process_is_proven_in_tree(candidate.process_id(), application.process_id())
+            })
+            .collect::<Vec<_>>();
         let filter = SCContentFilter::create()
             .with_display(display)
-            .with_including_applications(&[application], &[])
+            .with_including_applications(&included, &[])
             .build();
         let (source_width, source_height) =
             filter_pixel_size(&filter, (display.width(), display.height()));
@@ -264,6 +320,26 @@ fn is_shareable_application(application: &SCRunningApplication, windows: &[SCWin
     })
 }
 
+fn is_bakbak_application(application: &SCRunningApplication) -> bool {
+    application.bundle_identifier() == BAKBAK_BUNDLE_IDENTIFIER
+        || process_is_in_current_tree(application.process_id())
+}
+
+fn source_audio_isolation_is_proven(
+    source_kind: ScreenShareSourceKind,
+    applications: &[SCRunningApplication],
+) -> bool {
+    source_kind == ScreenShareSourceKind::Application
+        || applications.iter().any(|application| {
+            application.process_id() == std::process::id() as i32
+                || application.bundle_identifier() == BAKBAK_BUNDLE_IDENTIFIER
+        })
+}
+
+fn process_is_proven_in_tree(process_id: i32, root_process_id: i32) -> bool {
+    process_is_in_tree_with_policy(process_id, root_process_id, parent_process_id, false)
+}
+
 fn process_is_in_current_tree(process_id: i32) -> bool {
     process_is_in_tree_with(process_id, std::process::id() as i32, parent_process_id)
 }
@@ -272,6 +348,15 @@ fn process_is_in_tree_with(
     process_id: i32,
     root_process_id: i32,
     mut parent_of: impl FnMut(i32) -> Option<i32>,
+) -> bool {
+    process_is_in_tree_with_policy(process_id, root_process_id, &mut parent_of, true)
+}
+
+fn process_is_in_tree_with_policy(
+    process_id: i32,
+    root_process_id: i32,
+    mut parent_of: impl FnMut(i32) -> Option<i32>,
+    unknown_is_in_tree: bool,
 ) -> bool {
     if process_id <= 0 || root_process_id <= 0 {
         return true;
@@ -286,7 +371,7 @@ fn process_is_in_tree_with(
             return false;
         }
         let Some(parent) = parent_of(current) else {
-            return true;
+            return unknown_is_in_tree;
         };
         if parent <= 0 || parent == current {
             return false;
@@ -294,6 +379,15 @@ fn process_is_in_tree_with(
         current = parent;
     }
     true
+}
+
+fn macos_version_at_least(required_major: u64, required_minor: u64) -> bool {
+    matches!(
+        os_info::get().version(),
+        os_info::Version::Semantic(major, minor, _)
+            if *major > required_major
+                || (*major == required_major && *minor >= required_minor)
+    )
 }
 
 fn parent_process_id(process_id: i32) -> Option<i32> {
@@ -498,6 +592,13 @@ async fn start_capture_attempt(
     }
 
     let audio_active = capture_audio && audio_task.is_some();
+    let topology_task = audio_active.then(|| {
+        start_topology_watchdog(
+            stream.clone(),
+            prepared.source_id.clone(),
+            prepared.termination_sender.clone(),
+        )
+    });
     Ok(CaptureSession {
         stream,
         audio_task,
@@ -505,6 +606,58 @@ async fn start_capture_attempt(
         source_width: prepared.source_width,
         source_height: prepared.source_height,
         capture_audio: audio_active,
+        topology_task,
+    })
+}
+
+fn start_topology_watchdog(
+    stream: SCStream,
+    source_id: String,
+    termination_sender: mpsc::UnboundedSender<String>,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(1));
+        let mut previous_processes = HashSet::new();
+        loop {
+            interval.tick().await;
+            let Ok(content) = AsyncSCShareableContent::get().await else {
+                let _ = termination_sender.send(
+                    "[audio-isolation-unavailable] macOS could not refresh the process audio isolation filter."
+                        .to_string(),
+                );
+                break;
+            };
+            let current_processes = content
+                .applications()
+                .iter()
+                .map(|application| application.process_id())
+                .collect::<HashSet<_>>();
+            if current_processes == previous_processes {
+                continue;
+            }
+            previous_processes = current_processes;
+            let displays = content.displays();
+            let windows = content.windows();
+            let applications = content.applications();
+            let Ok((_, source_kind, _, _, filter)) =
+                resolve_source(&source_id, &displays, &windows, &applications)
+            else {
+                let _ = termination_sender.send(
+                    "[audio-isolation-unavailable] The selected macOS process tree changed before Bakbak could verify audio isolation."
+                        .to_string(),
+                );
+                break;
+            };
+            if !source_audio_isolation_is_proven(source_kind, &applications)
+                || stream.update_content_filter(&filter).is_err()
+            {
+                let _ = termination_sender.send(
+                    "[audio-isolation-unavailable] macOS could not safely rebuild the process audio isolation filter."
+                        .to_string(),
+                );
+                break;
+            }
+        }
     })
 }
 
@@ -749,10 +902,21 @@ mod tests {
 
     #[test]
     fn excludes_bakbak_audio_only_when_source_audio_is_requested() {
-        assert_eq!(audio_isolation_policy(false), None);
         assert_eq!(
-            audio_isolation_policy(true),
-            Some(AudioIsolationPolicy::ExcludeCurrentProcess)
+            audio_isolation_policy(false, true, ScreenShareSourceKind::Display, true),
+            None
+        );
+        assert_eq!(
+            audio_isolation_policy(true, true, ScreenShareSourceKind::Display, true),
+            Some(AudioIsolationPolicy::ScreenCaptureProcessTreeFilter)
+        );
+        assert_eq!(
+            audio_isolation_policy(true, true, ScreenShareSourceKind::Display, false),
+            None
+        );
+        assert_eq!(
+            audio_isolation_policy(true, true, ScreenShareSourceKind::Application, false),
+            Some(AudioIsolationPolicy::ScreenCaptureProcessTreeFilter)
         );
     }
 
@@ -766,6 +930,18 @@ mod tests {
         assert!(process_is_in_tree_with(12, 10, lookup));
         assert!(!process_is_in_tree_with(20, 10, lookup));
         assert!(process_is_in_tree_with(30, 10, lookup));
+    }
+
+    #[test]
+    fn includes_only_proven_application_descendants() {
+        let parents = [(11, 10), (12, 11), (20, 1)]
+            .into_iter()
+            .collect::<std::collections::HashMap<_, _>>();
+        let lookup = |process_id| parents.get(&process_id).copied();
+        assert!(process_is_in_tree_with_policy(10, 10, lookup, false));
+        assert!(process_is_in_tree_with_policy(12, 10, lookup, false));
+        assert!(!process_is_in_tree_with_policy(20, 10, lookup, false));
+        assert!(!process_is_in_tree_with_policy(30, 10, lookup, false));
     }
 
     #[test]

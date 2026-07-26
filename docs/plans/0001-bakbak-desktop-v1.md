@@ -265,6 +265,9 @@ installed-macOS full-volume capture mode are approved under
 0013's Voice Lab effects, plan 0025's conversation trail, and plan 0027's
 neutral-only selected-room treatment while preserving RNNoise cleanup, the
 connector tree, and speaker-safe echo cancellation by default.
+Plan 0030 supersedes only that preference default: installed macOS now defaults
+the full-volume mode on, keeps RNNoise/noise suppression/automatic gain
+control, and disables echo cancellation with an explicit headphone warning.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -369,6 +372,13 @@ connector tree, and speaker-safe echo cancellation by default.
 - [ ] Complete plan 0029's macOS and Windows installed two-client audio checks,
       including speaker-safe echo, full-volume mode, muted/unmuted device
       switching, and RNNoise intelligibility.
+- [x] Implement plan 0030's owned remote-audio gain path, RNNoise runtime
+      handshake/fallback state, v4 default-on full-volume migration,
+      process-tree capture isolation, Windows cursor/black-frame recovery, and
+      serialized macOS simple fullscreen.
+- [ ] Complete plan 0030's installed macOS/Windows isolation, participant-gain,
+      RNNoise, Valorant Borderless Windowed, and ten-cycle macOS fullscreen
+      acceptance matrix.
 - [x] Add the Bakbak Signature preset, fixed destination rail, and
       accessible persisted side-panel resizing under plan 0014.
 - [x] Reset every v5-or-older installation once to Classic System + Flat +
@@ -385,7 +395,8 @@ connector tree, and speaker-safe echo cancellation by default.
       media-first reversible focus with watched grid playback, fullscreen
       reconciliation, and room-level sidebar activity treatment.
 - [ ] Complete plan 0015's installed macOS/Windows isolation, fullscreen, and
-      visual acceptance matrices.
+      visual acceptance matrices, including plan 0030's safe capture recovery
+      and macOS simple-fullscreen rollback.
 - [x] Replace selectable appearances and their persistence with plan 0016's
       flat grayscale system-following CSS, local Roundo v2.0 family, and
       read-only Appearance summary.

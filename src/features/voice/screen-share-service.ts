@@ -21,6 +21,27 @@ export type ScreenShareLifecycleState =
   | "error";
 
 export type ScreenShareSourceKind = "display" | "window" | "application";
+export type ScreenShareFailureCode =
+  | "capture-black"
+  | "cursor-unavailable"
+  | "audio-isolation-unavailable"
+  | "capture-failed";
+
+export interface ScreenShareFailure {
+  code: ScreenShareFailureCode;
+  message: string;
+  recommendedRetrySource: "display" | null;
+}
+
+export interface ScreenShareDiagnostics {
+  os: string;
+  osBuild: string;
+  sourceKind: ScreenShareSourceKind;
+  captureBackend: string;
+  cursorCapability: string;
+  audioIsolationMode: string;
+  failureCode: ScreenShareFailureCode | null;
+}
 
 export interface ScreenShareCapabilities {
   available: boolean;
@@ -58,6 +79,7 @@ export interface ScreenShareSession {
   sourceKind: ScreenShareSourceKind;
   audioPublished: boolean;
   settings: ScreenShareSettings;
+  diagnostics?: ScreenShareDiagnostics;
 }
 
 export interface ScreenShareLifecycleEvent {
@@ -68,6 +90,15 @@ export interface ScreenShareLifecycleEvent {
   audioPublished: boolean;
   settings: ScreenShareSettings | null;
   message: string | null;
+  failure?: ScreenShareFailure | null;
+  diagnostics?: ScreenShareDiagnostics | null;
+}
+
+export class ScreenShareCaptureError extends Error {
+  constructor(readonly failure: ScreenShareFailure) {
+    super(failure.message);
+    this.name = "ScreenShareCaptureError";
+  }
 }
 
 export function isDesktopApp(): boolean {
@@ -117,12 +148,15 @@ export async function startScreenShare(
   }
 
   try {
-    return await invoke<ScreenShareSession>("start_screen_share", {
+    const session = await invoke<ScreenShareSession>("start_screen_share", {
       request: input,
     });
+    if (session.diagnostics) logDiagnostics(session.diagnostics);
+    return session;
   } catch (caught) {
-    console.error(`[Bakbak screen share] ${describeNativeError(caught)}`);
-    throw caught;
+    const failure = parseScreenShareFailure(caught);
+    console.error(`[Bakbak screen share] ${failure.code}: ${failure.message}`);
+    throw new ScreenShareCaptureError(failure);
   }
 }
 
@@ -158,12 +192,21 @@ export async function listenForScreenShareLifecycle(
     "screen-share-lifecycle",
     ({ payload }) => {
       if (payload.state === "error") {
+        const failure =
+          payload.failure ??
+          parseScreenShareFailure(payload.message ?? "Capture failed.");
         console.error(
-          `[Bakbak screen share] ${payload.message ?? "Native screen sharing stopped unexpectedly."}`,
+          `[Bakbak screen share] ${failure.code}: ${failure.message}`,
         );
       }
+      if (payload.diagnostics) logDiagnostics(payload.diagnostics);
       onEvent({
         ...payload,
+        failure:
+          payload.failure ??
+          (payload.state === "error"
+            ? parseScreenShareFailure(payload.message ?? "Capture failed.")
+            : null),
         sourceKind: payload.sourceKind ?? null,
         settings: payload.settings
           ? parseScreenShareSettings(payload.settings)
@@ -191,8 +234,42 @@ export function defaultScreenShareSettings(): ScreenShareSettings {
   return { ...DEFAULT_SCREEN_SHARE_SETTINGS };
 }
 
-function describeNativeError(caught: unknown): string {
-  if (caught instanceof Error) return caught.message;
-  if (typeof caught === "string" && caught.trim()) return caught;
-  return "Native screen sharing failed without an error message.";
+export function parseScreenShareFailure(caught: unknown): ScreenShareFailure {
+  if (isFailureRecord(caught)) return caught;
+  const raw =
+    caught instanceof Error
+      ? caught.message
+      : typeof caught === "string" && caught.trim()
+        ? caught
+        : "Native screen sharing failed without an error message.";
+  const match = raw.match(
+    /^\[(capture-black|cursor-unavailable|audio-isolation-unavailable|capture-failed)\]\s*(.*)$/s,
+  );
+  const code = (match?.[1] ?? "capture-failed") as ScreenShareFailureCode;
+  return {
+    code,
+    message: match?.[2]?.trim() || raw,
+    recommendedRetrySource: code === "capture-black" ? "display" : null,
+  };
+}
+
+function isFailureRecord(value: unknown): value is ScreenShareFailure {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "code" in value &&
+    (value.code === "capture-black" ||
+      value.code === "cursor-unavailable" ||
+      value.code === "audio-isolation-unavailable" ||
+      value.code === "capture-failed") &&
+    "message" in value &&
+    typeof value.message === "string" &&
+    "recommendedRetrySource" in value &&
+    (value.recommendedRetrySource === "display" ||
+      value.recommendedRetrySource === null)
+  );
+}
+
+function logDiagnostics(diagnostics: ScreenShareDiagnostics): void {
+  console.info("[Bakbak screen share diagnostics]", diagnostics);
 }

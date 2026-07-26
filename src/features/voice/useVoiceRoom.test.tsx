@@ -91,6 +91,7 @@ const supabaseState = vi.hoisted(() => ({
 const screenShareState = vi.hoisted(() => ({
   desktop: false,
   getCapabilities: vi.fn(),
+  listSources: vi.fn(),
   start: vi.fn(),
   update: vi.fn(),
   stop: vi.fn(),
@@ -352,8 +353,20 @@ vi.mock("../../lib/supabase", () => ({
 }));
 
 vi.mock("./screen-share-service", () => ({
+  ScreenShareCaptureError: class ScreenShareCaptureError extends Error {
+    constructor(
+      readonly failure: {
+        code: string;
+        message: string;
+        recommendedRetrySource: "display" | null;
+      },
+    ) {
+      super(failure.message);
+    }
+  },
   isDesktopApp: () => screenShareState.desktop,
   getScreenShareCapabilities: screenShareState.getCapabilities,
+  listScreenShareSources: screenShareState.listSources,
   startScreenShare: screenShareState.start,
   updateScreenShareSettings: screenShareState.update,
   stopScreenShare: screenShareState.stop,
@@ -433,6 +446,8 @@ describe("useVoiceRoom join lifecycle", () => {
     supabaseState.invoke.mockReset();
     screenShareState.desktop = false;
     screenShareState.getCapabilities.mockReset();
+    screenShareState.listSources.mockReset();
+    screenShareState.listSources.mockResolvedValue([]);
     screenShareState.getCapabilities.mockResolvedValue({
       available: false,
       nativeCapture: false,
@@ -598,6 +613,10 @@ describe("useVoiceRoom join lifecycle", () => {
   });
 
   it("mutes a remote participant locally and restores their last audible volume", async () => {
+    const setParticipantGain = vi.spyOn(
+      RemoteAudioRenderer.prototype,
+      "setParticipantGain",
+    );
     const connection = deferred<void>();
     liveKitState.connectResults.push(connection.promise);
     supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
@@ -617,7 +636,7 @@ describe("useVoiceRoom join lifecycle", () => {
     });
 
     act(() => result.current.setParticipantVolume("mira", 0.35));
-    expect(mira.setVolume).toHaveBeenLastCalledWith(0.35);
+    expect(setParticipantGain).toHaveBeenLastCalledWith("mira", 0.35);
     expect(
       result.current.participants.find(
         (participant) => participant.id === "mira",
@@ -625,7 +644,7 @@ describe("useVoiceRoom join lifecycle", () => {
     ).toBe(0.35);
 
     act(() => result.current.toggleParticipantMute("mira"));
-    expect(mira.setVolume).toHaveBeenLastCalledWith(0);
+    expect(setParticipantGain).toHaveBeenLastCalledWith("mira", 0);
     expect(
       result.current.participants.find(
         (participant) => participant.id === "mira",
@@ -633,7 +652,7 @@ describe("useVoiceRoom join lifecycle", () => {
     ).toBe(0);
 
     act(() => result.current.toggleParticipantMute("mira"));
-    expect(mira.setVolume).toHaveBeenLastCalledWith(0.35);
+    expect(setParticipantGain).toHaveBeenLastCalledWith("mira", 0.35);
     expect(
       result.current.participants.find(
         (participant) => participant.id === "mira",

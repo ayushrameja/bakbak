@@ -12,7 +12,7 @@ import {
   Volume2,
   X,
 } from "lucide-react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { Effect, EffectState, getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauri } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Avatar } from "../../components/Avatar";
@@ -25,11 +25,20 @@ import type { OpenUserContextMenu } from "../../components/UserContextMenu";
 import type { AppUser, Channel, ServerMember } from "../../lib/types";
 import { ParticipantVideo } from "./ParticipantVideo";
 import { ScreenShareStage } from "./ScreenShareStage";
+import {
+  enqueueFullscreenTransition,
+  isMacosVoiceFullscreen,
+  setMacosMediaFullscreen,
+} from "./voice-fullscreen";
 import type { useVoiceRoom } from "./useVoiceRoom";
 import type { VoiceParticipant, VoiceScreenShare } from "./useVoiceRoom";
 
 const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
 const ignoreProfileOpen: OpenProfile = () => undefined;
+const MACOS_GLASS_EFFECTS = {
+  effects: [Effect.UnderWindowBackground],
+  state: EffectState.FollowsWindowActiveState,
+};
 
 type MediaTarget =
   { kind: "participant"; id: string } | { kind: "screen"; id: string };
@@ -80,6 +89,7 @@ export function VoiceRoom({
   const [fullscreenControlsVisible, setFullscreenControlsVisible] =
     useState(true);
   const fullscreenRef = useRef(false);
+  const fullscreenTransitionRef = useRef({ current: Promise.resolve() });
   const fullscreenControlsTimerRef = useRef<number | null>(null);
   const handledStreamWatchRef = useRef<number | null>(null);
   const {
@@ -87,6 +97,9 @@ export function VoiceRoom({
     screenShares,
     stopWatchingScreenShare,
   } = voice;
+  const macosSimpleFullscreen = isMacosVoiceFullscreen(
+    typeof navigator === "undefined" ? "" : navigator.userAgent,
+  );
 
   const applyFullscreenState = useCallback((next: boolean) => {
     if (next) {
@@ -104,6 +117,7 @@ export function VoiceRoom({
       applyFullscreenState(false);
       return false;
     }
+    if (macosSimpleFullscreen) return fullscreenRef.current;
     try {
       const actual = await getCurrentWindow().isFullscreen();
       applyFullscreenState(actual);
@@ -112,25 +126,47 @@ export function VoiceRoom({
       applyFullscreenState(false);
       return false;
     }
-  }, [applyFullscreenState]);
+  }, [applyFullscreenState, macosSimpleFullscreen]);
 
   const requestFullscreen = useCallback(
     async (next: boolean) => {
       if (!isTauri() || (next && !focusedTarget)) return;
       setFullscreenError(null);
       try {
-        await getCurrentWindow().setFullscreen(next);
+        await enqueueFullscreenTransition(
+          fullscreenTransitionRef.current,
+          async () => {
+            const currentWindow = getCurrentWindow();
+            if (macosSimpleFullscreen) {
+              await setMacosMediaFullscreen(
+                currentWindow,
+                document.documentElement,
+                next,
+                MACOS_GLASS_EFFECTS,
+              );
+              applyFullscreenState(next);
+              return;
+            }
+            await currentWindow.setFullscreen(next);
+          },
+        );
       } catch {
+        if (macosSimpleFullscreen) applyFullscreenState(false);
         setFullscreenError(
           next
             ? "Bakbak could not enter fullscreen."
             : "Bakbak could not exit fullscreen.",
         );
       } finally {
-        await reconcileFullscreen();
+        if (!macosSimpleFullscreen) await reconcileFullscreen();
       }
     },
-    [focusedTarget, reconcileFullscreen],
+    [
+      applyFullscreenState,
+      focusedTarget,
+      macosSimpleFullscreen,
+      reconcileFullscreen,
+    ],
   );
 
   const revealFullscreenControls = useCallback(() => {
@@ -283,12 +319,20 @@ export function VoiceRoom({
         window.clearTimeout(fullscreenControlsTimerRef.current);
       }
       if (isTauri()) {
-        void getCurrentWindow()
-          .setFullscreen(false)
-          .catch(() => undefined);
+        const currentWindow = getCurrentWindow();
+        void enqueueFullscreenTransition(fullscreenTransitionRef.current, () =>
+          macosSimpleFullscreen
+            ? setMacosMediaFullscreen(
+                currentWindow,
+                document.documentElement,
+                false,
+                MACOS_GLASS_EFFECTS,
+              )
+            : currentWindow.setFullscreen(false),
+        ).catch(() => undefined);
       }
     },
-    [],
+    [macosSimpleFullscreen],
   );
 
   const returnToGallery = useCallback(() => {
@@ -450,6 +494,15 @@ export function VoiceRoom({
             <div className="voice-device-error" role="alert">
               <CircleAlert size={16} />
               <span>{voice.screenShareError}</span>
+              {voice.screenShareFailure?.recommendedRetrySource ===
+              "display" ? (
+                <button
+                  type="button"
+                  onClick={() => void voice.retryScreenShareWithEntireScreen()}
+                >
+                  Retry Entire screen
+                </button>
+              ) : null}
             </div>
           ) : null}
           {focusedTarget ? (
@@ -605,36 +658,6 @@ function ParticipantCard({
   return (
     <article
       className={`participant-card ${focused ? "is-focused" : ""} ${participant.isSpeaking || soundActive ? "is-speaking" : ""} ${soundActive ? "is-soundboard-active" : ""}`}
-      onClick={(event) => {
-        if (
-          onFocus &&
-          !(event.target as HTMLElement).closest("button,input,label")
-        ) {
-          onFocus();
-        }
-      }}
-      onKeyDown={(event) => {
-        if (
-          profileMember &&
-          onOpenUserContextMenu &&
-          (event.key === "ContextMenu" ||
-            (event.shiftKey && event.key === "F10"))
-        ) {
-          event.preventDefault();
-          const rect = event.currentTarget.getBoundingClientRect();
-          onOpenUserContextMenu(profileMember, event.currentTarget, {
-            clientX: rect.left,
-            clientY: rect.bottom,
-          });
-          return;
-        }
-        if (onFocus && (event.key === "Enter" || event.key === " ")) {
-          event.preventDefault();
-          onFocus();
-        }
-      }}
-      role={onFocus ? "button" : undefined}
-      tabIndex={onFocus ? 0 : undefined}
       onContextMenu={(event) => {
         if (
           event.defaultPrevented ||
@@ -650,6 +673,29 @@ function ParticipantCard({
         });
       }}
     >
+      {onFocus ? (
+        <button
+          className="participant-card__focus-control"
+          type="button"
+          aria-label={`${focused ? "Return from" : "Focus"} ${displayName}`}
+          onClick={onFocus}
+          onKeyDown={(event) => {
+            if (
+              profileMember &&
+              onOpenUserContextMenu &&
+              (event.key === "ContextMenu" ||
+                (event.shiftKey && event.key === "F10"))
+            ) {
+              event.preventDefault();
+              const rect = event.currentTarget.getBoundingClientRect();
+              onOpenUserContextMenu(profileMember, event.currentTarget, {
+                clientX: rect.left,
+                clientY: rect.bottom,
+              });
+            }
+          }}
+        />
+      ) : null}
       <div className="participant-card__media">
         {participant.cameraEnabled && participant.cameraTrack ? (
           <>
@@ -749,12 +795,26 @@ function ParticipantCard({
             max="1"
             step="0.05"
             value={participant.volume}
-            onChange={(event) =>
+            onInput={(event) =>
               voice.setParticipantVolume(
                 participant.id,
-                Number(event.target.value),
+                Number(event.currentTarget.value),
               )
             }
+            onKeyDown={(event) => {
+              const direction =
+                event.key === "ArrowLeft" || event.key === "ArrowDown"
+                  ? -1
+                  : event.key === "ArrowRight" || event.key === "ArrowUp"
+                    ? 1
+                    : 0;
+              if (direction === 0) return;
+              event.preventDefault();
+              voice.setParticipantVolume(
+                participant.id,
+                Math.max(0, Math.min(1, participant.volume + direction * 0.05)),
+              );
+            }}
           />
         </label>
       ) : null}

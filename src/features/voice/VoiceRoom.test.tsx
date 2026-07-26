@@ -1,4 +1,10 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppUser, Channel, ServerMember } from "../../lib/types";
@@ -16,6 +22,12 @@ const tauriWindow = vi.hoisted(() => {
       fullscreen = next;
       return Promise.resolve();
     }),
+    setSimpleFullscreen: vi.fn((next: boolean) => {
+      fullscreen = next;
+      return Promise.resolve();
+    }),
+    clearEffects: vi.fn().mockResolvedValue(undefined),
+    setEffects: vi.fn().mockResolvedValue(undefined),
     onResized: vi.fn((handler: () => void) => {
       resized = handler;
       return Promise.resolve(() => {
@@ -37,6 +49,9 @@ const tauriWindow = vi.hoisted(() => {
       fullscreen = false;
       resized = null;
       focusChanged = null;
+      vi.mocked(this.clearEffects).mockClear();
+      vi.mocked(this.setEffects).mockClear();
+      vi.mocked(this.setSimpleFullscreen).mockClear();
     },
   };
 });
@@ -46,6 +61,8 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 vi.mock("@tauri-apps/api/window", () => ({
+  Effect: { UnderWindowBackground: "underWindowBackground" },
+  EffectState: { FollowsWindowActiveState: "followsWindowActiveState" },
   getCurrentWindow: () => tauriWindow,
 }));
 
@@ -99,6 +116,7 @@ function createVoice(
     error: null,
     inputDeviceError: null,
     microphoneProcessingError: null,
+    microphoneProcessingState: "active",
     outputDeviceError: null,
     cameraDeviceError: null,
     inputDevices: [],
@@ -130,6 +148,7 @@ function createVoice(
     screenShareSettings: { resolution: 1080, frameRate: 60 },
     screenShareSettingsPending: false,
     screenShareError: null,
+    screenShareFailure: null,
     soundboard: mockSoundboardController,
     soundboardVolume: 0.7,
     activeLocalSoundCount: 0,
@@ -153,6 +172,7 @@ function createVoice(
     startScreenShare: vi.fn().mockResolvedValue(undefined),
     updateScreenShareSettings: vi.fn().mockResolvedValue(undefined),
     stopScreenShare: vi.fn().mockResolvedValue(undefined),
+    retryScreenShareWithEntireScreen: vi.fn().mockResolvedValue(undefined),
     watchScreenShare: vi.fn(),
     stopWatchingScreenShare: vi.fn(),
     dispatchSound: vi.fn().mockResolvedValue(undefined),
@@ -493,21 +513,69 @@ describe("VoiceRoom", () => {
       />,
     );
 
-    const card = container.querySelector<HTMLElement>(".participant-card");
-    expect(card).not.toBeNull();
-    card?.focus();
+    const focusControl = screen.getByRole("button", { name: "Focus Mira" });
+    focusControl.focus();
     await userEvent.keyboard("{Enter}");
     expect(
       screen.getByLabelText(`${friend.displayName} focused`),
     ).toBeVisible();
 
-    const focusedCard = container.querySelector<HTMLElement>(
-      ".voice-participant-stage .participant-card",
+    const focusedControl = container.querySelector<HTMLElement>(
+      ".voice-participant-stage .participant-card__focus-control",
     );
-    expect(focusedCard).not.toBeNull();
-    focusedCard?.focus();
+    expect(focusedControl).not.toBeNull();
+    focusedControl?.focus();
     await userEvent.keyboard("{Enter}");
     expect(container.querySelector(".voice-media-gallery")).toBeVisible();
+  });
+
+  it("adjusts participant volume continuously without focusing the card", async () => {
+    const participant = {
+      id: friend.id,
+      displayName: friend.displayName,
+      isLocal: false,
+      isSpeaking: false,
+      isMuted: false,
+      volume: 1,
+      joinedAt: null,
+      cameraEnabled: false,
+      cameraTrack: null,
+      activeSounds: [],
+    };
+    const voice = createVoice({ participants: [participant] });
+    const { container, rerender } = render(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={voice}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+    const slider = screen.getByRole("slider", { name: "Mira volume" });
+
+    fireEvent.input(slider, { target: { value: "0.5" } });
+    expect(voice.setParticipantVolume).toHaveBeenLastCalledWith("user-2", 0.5);
+    participant.volume = 0.5;
+    rerender(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={createVoice({
+          participants: [participant],
+          setParticipantVolume: voice.setParticipantVolume,
+        })}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+    const updatedSlider = screen.getByRole("slider", { name: "Mira volume" });
+    updatedSlider.focus();
+    await userEvent.keyboard("{ArrowLeft}");
+
+    expect(voice.setParticipantVolume).toHaveBeenLastCalledWith("user-2", 0.45);
+    expect(container.querySelector(".voice-media-gallery")).toBeVisible();
+    expect(
+      container.querySelector(".voice-participant-stage"),
+    ).not.toBeInTheDocument();
   });
 
   it("retains the last share frame under a paused-source label", () => {
@@ -537,6 +605,35 @@ describe("VoiceRoom", () => {
       screen.getAllByLabelText(`${friend.displayName} screen`)[0],
     ).toBeVisible();
     expect(screen.getByText("Source minimized or paused")).toBeVisible();
+  });
+
+  it("offers one-click Entire screen recovery for black application capture", async () => {
+    const retryScreenShareWithEntireScreen = vi
+      .fn()
+      .mockResolvedValue(undefined);
+    render(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={createVoice({
+          screenShareError:
+            "Windows is receiving only black or cursor-only application frames.",
+          screenShareFailure: {
+            code: "capture-black",
+            message:
+              "Windows is receiving only black or cursor-only application frames.",
+            recommendedRetrySource: "display",
+          },
+          retryScreenShareWithEntireScreen,
+        })}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Retry Entire screen" }),
+    );
+    expect(retryScreenShareWithEntireScreen).toHaveBeenCalledOnce();
   });
 
   it("does not render a manual pre-join or initial connection surface", () => {

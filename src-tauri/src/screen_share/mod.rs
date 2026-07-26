@@ -126,6 +126,27 @@ pub struct ScreenShareSessionResponse {
     source_kind: ScreenShareSourceKind,
     audio_published: bool,
     settings: ScreenShareSettings,
+    diagnostics: ScreenShareDiagnostics,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ScreenShareFailure {
+    code: &'static str,
+    message: String,
+    recommended_retry_source: Option<ScreenShareSourceKind>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ScreenShareDiagnostics {
+    os: &'static str,
+    os_build: String,
+    source_kind: ScreenShareSourceKind,
+    capture_backend: &'static str,
+    cursor_capability: &'static str,
+    audio_isolation_mode: &'static str,
+    failure_code: Option<&'static str>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -139,6 +160,8 @@ struct ScreenShareLifecycleEvent {
     audio_published: bool,
     settings: Option<ScreenShareSettings>,
     message: Option<String>,
+    failure: Option<ScreenShareFailure>,
+    diagnostics: Option<ScreenShareDiagnostics>,
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -337,6 +360,7 @@ pub async fn start_screen_share(
         source_kind,
         audio_published,
         settings,
+        diagnostics: capture_diagnostics(source_kind, audio_published, None),
     })
 }
 
@@ -685,6 +709,14 @@ fn emit(
     if let Some(message) = message.as_deref() {
         eprintln!("Bakbak screen share error: {message}");
     }
+    let failure = message.as_deref().map(parse_capture_failure);
+    let diagnostics = source_kind.map(|kind| {
+        capture_diagnostics(
+            kind,
+            audio_published,
+            failure.as_ref().map(|value| value.code),
+        )
+    });
     let _ = app.emit(
         SCREEN_SHARE_EVENT,
         ScreenShareLifecycleEvent {
@@ -695,8 +727,71 @@ fn emit(
             audio_published,
             settings,
             message,
+            failure,
+            diagnostics,
         },
     );
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn parse_capture_failure(message: &str) -> ScreenShareFailure {
+    let known = [
+        "capture-black",
+        "cursor-unavailable",
+        "audio-isolation-unavailable",
+        "capture-failed",
+    ];
+    let (code, clean_message) = known
+        .iter()
+        .find_map(|code| {
+            message
+                .strip_prefix(&format!("[{code}]"))
+                .map(|clean| (*code, clean.trim().to_string()))
+        })
+        .unwrap_or(("capture-failed", message.to_string()));
+    ScreenShareFailure {
+        code,
+        message: clean_message,
+        recommended_retry_source: (code == "capture-black")
+            .then_some(ScreenShareSourceKind::Display),
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn capture_diagnostics(
+    source_kind: ScreenShareSourceKind,
+    audio_published: bool,
+    failure_code: Option<&'static str>,
+) -> ScreenShareDiagnostics {
+    #[cfg(target_os = "macos")]
+    let (os_build, capture_backend, cursor_capability) = (
+        os_info::get().version().to_string(),
+        "screen-capture-kit",
+        "included",
+    );
+    #[cfg(target_os = "windows")]
+    let (os_build, capture_backend, cursor_capability) = (
+        windows_version::OsVersion::current().build.to_string(),
+        "windows-graphics-capture",
+        "included",
+    );
+    ScreenShareDiagnostics {
+        os: std::env::consts::OS,
+        os_build,
+        source_kind,
+        capture_backend,
+        cursor_capability,
+        audio_isolation_mode: if audio_published {
+            match source_kind {
+                ScreenShareSourceKind::Application => "include-process-tree",
+                ScreenShareSourceKind::Display => "exclude-bakbak-process-tree",
+                ScreenShareSourceKind::Window => "source-filtered",
+            }
+        } else {
+            "video-only"
+        },
+        failure_code,
+    }
 }
 
 #[cfg(test)]
@@ -768,5 +863,29 @@ mod tests {
             .validate()
             .is_err()
         );
+    }
+
+    #[test]
+    fn emits_structured_failures_and_sanitized_diagnostics() {
+        let failure = parse_capture_failure(
+            "[capture-black] Retry with Entire screen and Borderless Windowed mode.",
+        );
+        assert_eq!(failure.code, "capture-black");
+        assert_eq!(
+            failure.recommended_retry_source,
+            Some(ScreenShareSourceKind::Display)
+        );
+
+        let serialized = serde_json::to_string(&capture_diagnostics(
+            ScreenShareSourceKind::Application,
+            true,
+            Some(failure.code),
+        ))
+        .expect("diagnostics should serialize");
+        assert!(serialized.contains("\"captureBackend\""));
+        assert!(serialized.contains("\"failureCode\":\"capture-black\""));
+        assert!(!serialized.contains("sourceLabel"));
+        assert!(!serialized.contains("token"));
+        assert!(!serialized.contains("audioContent"));
     }
 }

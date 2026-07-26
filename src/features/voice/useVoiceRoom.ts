@@ -73,6 +73,7 @@ import {
   isMicrophoneProcessingSupported,
   microphoneCaptureOptions,
   needsMicrophoneProcessor,
+  prewarmMicrophoneProcessing,
 } from "./microphone-processing";
 import { RemoteAudioRenderer } from "./remote-audio";
 import { enumerateMediaDeviceGroups } from "./media-devices";
@@ -89,11 +90,14 @@ import {
 import {
   getScreenShareCapabilities,
   isDesktopApp,
+  listScreenShareSources,
   listenForScreenShareLifecycle,
+  ScreenShareCaptureError,
   startScreenShare as startNativeScreenShare,
   stopScreenShare as stopNativeScreenShare,
   updateScreenShareSettings as updateNativeScreenShareSettings,
   type ScreenShareCapabilities,
+  type ScreenShareFailure,
   type ScreenShareLifecycleState,
   type ScreenShareSourceKind,
 } from "./screen-share-service";
@@ -113,6 +117,9 @@ export type VoiceConnectionQuality = "unknown" | "excellent" | "good" | "poor";
 
 export type VoiceJoinStage =
   "authorizing" | "connecting" | "microphone" | "soundboard";
+
+export type MicrophoneProcessingState =
+  "off" | "starting" | "active" | "fallback-error";
 
 export const VOICE_PREPARE_DEBOUNCE_MS = 75;
 export const VOICE_TOKEN_EXPIRY_BUFFER_MS = 30_000;
@@ -206,6 +213,7 @@ interface VoiceRoomState {
   error: string | null;
   inputDeviceError: string | null;
   microphoneProcessingError: string | null;
+  microphoneProcessingState: MicrophoneProcessingState;
   outputDeviceError: string | null;
   cameraDeviceError: string | null;
   inputDevices: MediaDeviceInfo[];
@@ -237,6 +245,7 @@ interface VoiceRoomState {
   screenShareSettings: ScreenShareSettings;
   screenShareSettingsPending: boolean;
   screenShareError: string | null;
+  screenShareFailure: ScreenShareFailure | null;
   soundboard: SoundboardCatalogController;
   soundboardVolume: number;
   activeLocalSoundCount: number;
@@ -264,6 +273,7 @@ interface VoiceRoomState {
   ) => Promise<void>;
   updateScreenShareSettings: (settings: ScreenShareSettings) => Promise<void>;
   stopScreenShare: () => Promise<void>;
+  retryScreenShareWithEntireScreen: () => Promise<void>;
   watchScreenShare: (shareId: string) => void;
   stopWatchingScreenShare: () => void;
   dispatchSound: (soundId: string) => Promise<void>;
@@ -296,6 +306,10 @@ export function useVoiceRoom(
   const [microphoneProcessingError, setMicrophoneProcessingError] = useState<
     string | null
   >(null);
+  const [microphoneProcessingState, setMicrophoneProcessingState] =
+    useState<MicrophoneProcessingState>(
+      initialPreferences.enhancedNoiseSuppression ? "starting" : "off",
+    );
   const [outputDeviceError, setOutputDeviceError] = useState<string | null>(
     null,
   );
@@ -353,6 +367,8 @@ export function useVoiceRoom(
   const [screenShareSettingsPending, setScreenShareSettingsPending] =
     useState(false);
   const [screenShareError, setScreenShareError] = useState<string | null>(null);
+  const [screenShareFailure, setScreenShareFailure] =
+    useState<ScreenShareFailure | null>(null);
   const [soundboardVolume, setSoundboardVolumeState] = useState(
     initialPreferences.soundboardVolume,
   );
@@ -374,6 +390,7 @@ export function useVoiceRoom(
   const prepareOperationRef = useRef(0);
   const joiningMicrophoneRef = useRef<LocalAudioTrack | null>(null);
   const inputRestartPendingRef = useRef(false);
+  const microphoneProcessingOperationRef = useRef(0);
   const outputDeviceErrorTimerRef = useRef<number | null>(null);
   const relayPreferredUntilRef = useRef(
     loadRelayPreference(appConfig.livekitUrl),
@@ -386,11 +403,14 @@ export function useVoiceRoom(
   const cameraOperationRef = useRef(0);
   const screenShareOperationRef = useRef(0);
   const screenShareSessionRef = useRef<string | null>(null);
+  const lastScreenShareAttemptRef = useRef<{
+    includeAudio: boolean;
+    settings: ScreenShareSettings;
+  } | null>(null);
   const seenSoundEvents = useRef(new Set<string>());
   const soundActivities = useRef(new Map<string, SoundboardActivity[]>());
   const soundActivityTimers = useRef(new Map<string, number>());
   const soundboardTracks = useRef(new Map<string, RemoteAudioTrack>());
-  const screenShareTracks = useRef(new Map<string, RemoteAudioTrack>());
   const participantVolumes = useRef(new Map<string, number>());
   const audibleParticipantVolumes = useRef(new Map<string, number>());
   const soundboardVolumeRef = useRef(soundboardVolume);
@@ -456,6 +476,35 @@ export function useVoiceRoom(
     emitCommunicationEffect({ type: "screen-share-stopped", actor: "self" });
   }, [emitCommunicationEffect]);
 
+  const handleMicrophoneProcessorError = useCallback(
+    (track: LocalAudioTrack) => {
+      void (async () => {
+        let rollbackFailed = false;
+        try {
+          await track.stopProcessor();
+        } catch {
+          rollbackFailed = true;
+        }
+        if (
+          track !== readLocalMicrophoneTrack(roomRef.current) &&
+          track !== joiningMicrophoneRef.current
+        ) {
+          return;
+        }
+        const fallbackPreferences = { enhancedNoiseSuppression: false };
+        microphoneProcessingPreferencesRef.current = fallbackPreferences;
+        setEnhancedNoiseSuppressionState(false);
+        setMicrophoneProcessingState("fallback-error");
+        setMicrophoneProcessingError(
+          rollbackFailed
+            ? "RNNoise stopped, and Bakbak could not restore the original microphone sender. Rejoin voice to recover safely."
+            : MICROPHONE_PROCESSING_UNAVAILABLE,
+        );
+      })();
+    },
+    [],
+  );
+
   const refreshParticipants = useCallback(
     (room: Room) => {
       const next: VoiceParticipant[] = [];
@@ -475,6 +524,9 @@ export function useVoiceRoom(
             participant,
             local,
             soundActivities.current.get(participant.identity) ?? [],
+            local
+              ? 1
+              : (participantVolumes.current.get(participant.identity) ?? 1),
           ),
         );
         if (desktopApp) {
@@ -496,11 +548,6 @@ export function useVoiceRoom(
             .getTrackPublication(Track.Source.ScreenShareAudio)
             ?.setSubscribed(false);
         }
-        const companion = readScreenShareCompanion(participant);
-        const volume = participantVolumes.current.get(
-          companion?.ownerUserId ?? participant.identity,
-        );
-        if (volume !== undefined) participant.setVolume(volume);
         addParticipant(participant, false);
       });
       setParticipants(next);
@@ -564,12 +611,7 @@ export function useVoiceRoom(
   useEffect(() => {
     soundboardVolumeRef.current = soundboardVolume;
     soundboardAudio.setVolume(soundboardVolume);
-    soundboardTracks.current.forEach((track, participantId) => {
-      remoteAudio.setVolume(
-        track,
-        soundboardVolume * (participantVolumes.current.get(participantId) ?? 1),
-      );
-    });
+    remoteAudio.setGlobalGain("soundboard", soundboardVolume);
   }, [remoteAudio, soundboardAudio, soundboardVolume]);
 
   useEffect(() => {
@@ -726,8 +768,11 @@ export function useVoiceRoom(
         setScreenShareSourceLabel(null);
         setScreenShareSourceKind(null);
         setScreenShareError(
-          event.message ?? "Bakbak could not continue the screen share.",
+          event.failure?.message ??
+            event.message ??
+            "Bakbak could not continue the screen share.",
         );
+        setScreenShareFailure(event.failure ?? null);
       }
       if (event.state === "idle") {
         markLocalScreenShareStopped();
@@ -735,6 +780,7 @@ export function useVoiceRoom(
         setScreenShareAudioPublished(false);
         setScreenShareSourceLabel(null);
         setScreenShareSourceKind(null);
+        setScreenShareFailure(null);
       }
     }).then((dispose) => {
       if (disposed) dispose();
@@ -857,12 +903,16 @@ export function useVoiceRoom(
       );
       soundActivityTimers.current.clear();
       soundboardTracks.current.clear();
-      screenShareTracks.current.clear();
       setActiveLocalSoundCount(0);
       seenSoundEvents.current.clear();
       setParticipants([]);
       setConnectionQuality("unknown");
       setJoinStage(null);
+      setMicrophoneProcessingState(
+        microphoneProcessingPreferencesRef.current.enhancedNoiseSuppression
+          ? "starting"
+          : "off",
+      );
       if (!preserveLocalControls) {
         mutedRef.current = false;
         deafenedRef.current = false;
@@ -881,6 +931,7 @@ export function useVoiceRoom(
       setScreenShareSourceKind(null);
       setScreenShareSettingsPending(false);
       setScreenShareError(null);
+      setScreenShareFailure(null);
       return screenStop;
     },
     [audioOutput, remoteAudio, soundboardAudio],
@@ -1123,16 +1174,19 @@ export function useVoiceRoom(
             const screenOwnerId = companion?.ownerUserId;
             const isScreenShareAudio =
               publication.source === Track.Source.ScreenShareAudio;
-            const participantVolume =
-              participantVolumes.current.get(
-                screenOwnerId ?? participant.identity,
-              ) ?? 1;
-            const volume = isSoundboardTrack
-              ? soundboardVolumeRef.current * participantVolume
-              : isScreenShareAudio
-                ? participantVolume
-                : undefined;
-            remoteAudio.attach(track, volume);
+            const ownerId = screenOwnerId ?? participant.identity;
+            remoteAudio.setParticipantGain(
+              ownerId,
+              participantVolumes.current.get(ownerId) ?? 1,
+            );
+            remoteAudio.attach(track, {
+              ownerId,
+              sourceKind: isSoundboardTrack
+                ? "soundboard"
+                : isScreenShareAudio
+                  ? "screen-share"
+                  : "speech",
+            });
             if (isSoundboardTrack && track.kind === Track.Kind.Audio) {
               const soundboardTrack = track as RemoteAudioTrack;
               soundboardTracks.current.set(
@@ -1140,16 +1194,6 @@ export function useVoiceRoom(
                 soundboardTrack,
               );
               remoteAudio.setTrackMuted(soundboardTrack, publication.isMuted);
-            }
-            if (
-              isScreenShareAudio &&
-              screenOwnerId &&
-              track.kind === Track.Kind.Audio
-            ) {
-              screenShareTracks.current.set(
-                screenOwnerId,
-                track as RemoteAudioTrack,
-              );
             }
             sync();
           },
@@ -1160,10 +1204,6 @@ export function useVoiceRoom(
           soundboardTracks.current.forEach((candidate, participantId) => {
             if (candidate === track)
               soundboardTracks.current.delete(participantId);
-          });
-          screenShareTracks.current.forEach((candidate, participantId) => {
-            if (candidate === track)
-              screenShareTracks.current.delete(participantId);
           });
           sync();
         })
@@ -1272,6 +1312,11 @@ export function useVoiceRoom(
       setError(null);
       setInputDeviceError(null);
       setMicrophoneProcessingError(null);
+      setMicrophoneProcessingState(
+        microphoneProcessingPreferencesRef.current.enhancedNoiseSuppression
+          ? "starting"
+          : "off",
+      );
       dismissOutputDeviceError();
       setCameraDeviceError(null);
       await screenStop;
@@ -1416,6 +1461,7 @@ export function useVoiceRoom(
                 macosKeepOtherAudioFullVolumeRef.current,
               ),
               microphoneProcessingPreferencesRef.current,
+              handleMicrophoneProcessorError,
               isCurrentJoin,
               joiningMicrophoneRef,
               timing.mark,
@@ -1476,6 +1522,7 @@ export function useVoiceRoom(
             macosKeepOtherAudioFullVolumeRef.current,
           ),
           microphoneProcessingPreferencesRef.current,
+          handleMicrophoneProcessorError,
           isCurrentJoin,
           joiningMicrophoneRef,
           timing.mark,
@@ -1547,6 +1594,19 @@ export function useVoiceRoom(
           const result = await microphonePromise;
           if (!result.track) throw result.error;
           setMicrophoneProcessingError(result.processingError);
+          if (result.processingError) {
+            microphoneProcessingPreferencesRef.current = {
+              enhancedNoiseSuppression: false,
+            };
+            setEnhancedNoiseSuppressionState(false);
+            setMicrophoneProcessingState("fallback-error");
+          } else {
+            setMicrophoneProcessingState(
+              isBakbakMicrophoneProcessor(result.track.getProcessor())
+                ? "active"
+                : "off",
+            );
+          }
           if (!isCurrentJoin() || roomRef.current !== room) {
             result.track.stop();
             return;
@@ -1654,6 +1714,7 @@ export function useVoiceRoom(
       disconnectCurrentRoom,
       dismissOutputDeviceError,
       emitCommunicationEffect,
+      handleMicrophoneProcessorError,
       macosFullVolumeModeAvailable,
       mode,
       remoteAudio,
@@ -1790,20 +1851,7 @@ export function useVoiceRoom(
       if (safeVolume > 0) {
         audibleParticipantVolumes.current.set(participantId, safeVolume);
       }
-      roomRef.current?.remoteParticipants
-        .get(participantId)
-        ?.setVolume(safeVolume);
-      const soundboardTrack = soundboardTracks.current.get(participantId);
-      if (soundboardTrack) {
-        remoteAudio.setVolume(
-          soundboardTrack,
-          soundboardVolumeRef.current * safeVolume,
-        );
-      }
-      const screenShareTrack = screenShareTracks.current.get(participantId);
-      if (screenShareTrack) {
-        remoteAudio.setVolume(screenShareTrack, safeVolume);
-      }
+      remoteAudio.setParticipantGain(participantId, safeVolume);
       setParticipants((current) =>
         current.map((participant) =>
           participant.id === participantId
@@ -1923,38 +1971,94 @@ export function useVoiceRoom(
 
   const updateMicrophoneProcessing = useCallback(
     async (preferences: MicrophoneProcessingPreferences) => {
-      microphoneProcessingPreferencesRef.current = preferences;
-      setEnhancedNoiseSuppressionState(preferences.enhancedNoiseSuppression);
+      const operation = microphoneProcessingOperationRef.current + 1;
+      microphoneProcessingOperationRef.current = operation;
       setMicrophoneProcessingError(null);
+      setMicrophoneProcessingState("starting");
 
       const track =
         readLocalMicrophoneTrack(roomRef.current) ??
         joiningMicrophoneRef.current;
-      if (!track || mode === "mock") return;
+      if (mode === "mock") {
+        microphoneProcessingPreferencesRef.current = preferences;
+        setEnhancedNoiseSuppressionState(preferences.enhancedNoiseSuppression);
+        setMicrophoneProcessingState(
+          preferences.enhancedNoiseSuppression ? "active" : "off",
+        );
+        return;
+      }
 
-      const existingProcessor = track.getProcessor();
-      if (isBakbakMicrophoneProcessor(existingProcessor)) {
-        existingProcessor.setPreferences(preferences);
+      if (!needsMicrophoneProcessor(preferences)) {
+        if (track && isBakbakMicrophoneProcessor(track.getProcessor())) {
+          try {
+            await track.stopProcessor();
+          } catch {
+            if (microphoneProcessingOperationRef.current === operation) {
+              setMicrophoneProcessingState("active");
+              setMicrophoneProcessingError(
+                "Bakbak could not remove RNNoise or restore the original microphone sender. Rejoin voice before trying again.",
+              );
+            }
+            return;
+          }
+        }
+        if (microphoneProcessingOperationRef.current !== operation) return;
+        microphoneProcessingPreferencesRef.current = preferences;
+        setEnhancedNoiseSuppressionState(false);
+        setMicrophoneProcessingState("off");
         return;
       }
-      if (!needsMicrophoneProcessor(preferences)) return;
+
       if (!isMicrophoneProcessingSupported()) {
-        setMicrophoneProcessingError(MICROPHONE_PROCESSING_UNAVAILABLE);
+        if (microphoneProcessingOperationRef.current === operation) {
+          setEnhancedNoiseSuppressionState(false);
+          setMicrophoneProcessingState("fallback-error");
+          setMicrophoneProcessingError(MICROPHONE_PROCESSING_UNAVAILABLE);
+        }
         return;
       }
+
       try {
-        const processor = await attachMicrophoneProcessor(track, preferences);
-        processor?.setPreferences(microphoneProcessingPreferencesRef.current);
+        if (!track) {
+          const ready = await prewarmMicrophoneProcessing();
+          if (!ready) throw new Error("RNNoise did not become ready.");
+        } else {
+          if (isBakbakMicrophoneProcessor(track.getProcessor())) {
+            await track.stopProcessor();
+          }
+          await attachMicrophoneProcessor(track, preferences, () =>
+            handleMicrophoneProcessorError(track),
+          );
+        }
+        if (microphoneProcessingOperationRef.current !== operation) return;
+        microphoneProcessingPreferencesRef.current = preferences;
+        setEnhancedNoiseSuppressionState(true);
+        setMicrophoneProcessingState("active");
       } catch {
-        if (
-          track === readLocalMicrophoneTrack(roomRef.current) ||
-          track === joiningMicrophoneRef.current
-        ) {
+        let rollbackFailed = false;
+        if (track && isBakbakMicrophoneProcessor(track.getProcessor())) {
+          try {
+            await track.stopProcessor();
+          } catch {
+            rollbackFailed = true;
+          }
+        }
+        if (microphoneProcessingOperationRef.current === operation) {
+          microphoneProcessingPreferencesRef.current = {
+            enhancedNoiseSuppression: false,
+          };
+          setEnhancedNoiseSuppressionState(false);
+          setMicrophoneProcessingState("fallback-error");
           setMicrophoneProcessingError(MICROPHONE_PROCESSING_UNAVAILABLE);
+          if (rollbackFailed) {
+            setMicrophoneProcessingError(
+              "RNNoise could not start, and Bakbak could not restore the original microphone sender. Rejoin voice to recover safely.",
+            );
+          }
         }
       }
     },
-    [mode],
+    [handleMicrophoneProcessorError, mode],
   );
 
   const setEnhancedNoiseSuppression = useCallback(
@@ -2105,10 +2209,15 @@ export function useVoiceRoom(
       screenShareOperationRef.current = operationId;
       setScreenShareState("selecting");
       setScreenShareError(null);
+      setScreenShareFailure(null);
       setScreenShareAudioPublished(false);
       setScreenShareSourceLabel(null);
       setScreenShareSourceKind(null);
       setScreenShareSettingsPending(false);
+      lastScreenShareAttemptRef.current = {
+        includeAudio,
+        settings: requestedSettings,
+      };
 
       try {
         if (screenShareCapabilities.nativeCapture) {
@@ -2197,6 +2306,9 @@ export function useVoiceRoom(
         }
         setScreenShareState("error");
         setScreenShareError(describeScreenShareError(caught));
+        setScreenShareFailure(
+          caught instanceof ScreenShareCaptureError ? caught.failure : null,
+        );
         emitCommunicationEffect({ type: "signal-interrupted" });
       }
     },
@@ -2252,6 +2364,7 @@ export function useVoiceRoom(
     screenShareOperationRef.current = operationId;
     setScreenShareState("stopping");
     setScreenShareError(null);
+    setScreenShareFailure(null);
     const sessionId = screenShareSessionRef.current;
     screenShareSessionRef.current = null;
     try {
@@ -2277,6 +2390,30 @@ export function useVoiceRoom(
       }
     }
   }, [markLocalScreenShareStopped, refreshParticipants, screenShareState]);
+
+  const retryScreenShareWithEntireScreen = useCallback(async () => {
+    const attempt = lastScreenShareAttemptRef.current;
+    if (!attempt || screenShareFailure?.recommendedRetrySource !== "display") {
+      return;
+    }
+    try {
+      const sources = await listScreenShareSources();
+      const display = sources.find((source) => source.kind === "display");
+      if (!display) {
+        setScreenShareError(
+          "No entire screen is available. Reopen the picker and try again.",
+        );
+        return;
+      }
+      await startScreenShare(
+        attempt.includeAudio,
+        attempt.settings,
+        display.id,
+      );
+    } catch (caught) {
+      setScreenShareError(describeScreenShareError(caught));
+    }
+  }, [screenShareFailure, startScreenShare]);
 
   const dispatchSound = useCallback(
     async (soundId: string) => {
@@ -2465,6 +2602,7 @@ export function useVoiceRoom(
     error,
     inputDeviceError,
     microphoneProcessingError,
+    microphoneProcessingState,
     outputDeviceError,
     cameraDeviceError,
     inputDevices,
@@ -2501,6 +2639,7 @@ export function useVoiceRoom(
     screenShareSettings,
     screenShareSettingsPending,
     screenShareError,
+    screenShareFailure,
     soundboard,
     soundboardVolume,
     activeLocalSoundCount,
@@ -2524,6 +2663,7 @@ export function useVoiceRoom(
     startScreenShare,
     updateScreenShareSettings,
     stopScreenShare,
+    retryScreenShareWithEntireScreen,
     watchScreenShare,
     stopWatchingScreenShare,
     dispatchSound,
@@ -2564,6 +2704,7 @@ function acquireMicrophoneTrack(
   deviceId: string,
   echoCancellation: boolean,
   preferences: MicrophoneProcessingPreferences,
+  onProcessorError: (track: LocalAudioTrack) => void,
   isCurrentJoin: () => boolean,
   joiningTrackRef: { current: LocalAudioTrack | null },
   onStage: (stage: string) => void = () => undefined,
@@ -2592,7 +2733,9 @@ function acquireMicrophoneTrack(
         isMicrophoneProcessingSupported()
       ) {
         try {
-          await attachMicrophoneProcessor(track, preferences);
+          await attachMicrophoneProcessor(track, preferences, () =>
+            onProcessorError(track),
+          );
         } catch {
           processingError = MICROPHONE_PROCESSING_UNAVAILABLE;
         }
@@ -2712,6 +2855,7 @@ async function requestLiveKitToken(
 }
 
 function describeScreenShareError(error: unknown): string {
+  if (error instanceof ScreenShareCaptureError) return error.failure.message;
   if (
     error instanceof DOMException &&
     (error.name === "NotAllowedError" || error.name === "AbortError")
@@ -2802,6 +2946,7 @@ function participantToView(
   participant: Participant,
   isLocal: boolean,
   activeSounds: SoundboardActivity[],
+  listenerVolume: number,
 ): VoiceParticipant {
   const cameraPublication = participant.getTrackPublication(
     Track.Source.Camera,
@@ -2815,7 +2960,7 @@ function participantToView(
     isLocal,
     isSpeaking: participant.isSpeaking,
     isMuted: microphonePublication?.isMuted ?? true,
-    volume: isLocal ? 1 : ((participant as RemoteParticipant).getVolume() ?? 1),
+    volume: isLocal ? 1 : listenerVolume,
     joinedAt: participant.joinedAt?.toISOString() ?? null,
     cameraEnabled: participant.isCameraEnabled,
     cameraTrack:

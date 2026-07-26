@@ -15,11 +15,12 @@ export const DEFAULT_DEVICE_PREFERENCES: DevicePreferences = {
   cameraDeviceId: "default",
   soundboardVolume: 0.7,
   ...DEFAULT_MICROPHONE_PROCESSING_PREFERENCES,
-  macosKeepOtherAudioFullVolume: false,
+  macosKeepOtherAudioFullVolume: true,
 };
 
-const DEVICE_PREFERENCES_KEY = "bakbak.devicePreferences.v3";
+const DEVICE_PREFERENCES_KEY = "bakbak.devicePreferences.v4";
 const LEGACY_DEVICE_PREFERENCES_KEYS = [
+  "bakbak.devicePreferences.v3",
   "bakbak.devicePreferences.v2",
   "bakbak.devicePreferences.v1",
 ] as const;
@@ -28,11 +29,15 @@ export function loadDevicePreferences(
   storage: Pick<Storage, "getItem"> = window.localStorage,
 ): DevicePreferences {
   try {
-    const raw =
-      storage.getItem(DEVICE_PREFERENCES_KEY) ??
-      LEGACY_DEVICE_PREFERENCES_KEYS.map((key) => storage.getItem(key)).find(
-        (value) => value !== null,
-      );
+    const current = storage.getItem(DEVICE_PREFERENCES_KEY);
+    const legacy =
+      current === null
+        ? LEGACY_DEVICE_PREFERENCES_KEYS.map((key) => ({
+            key,
+            value: storage.getItem(key),
+          })).find((candidate) => candidate.value !== null)
+        : undefined;
+    const raw = current ?? legacy?.value;
     if (!raw) return { ...DEFAULT_DEVICE_PREFERENCES };
     const parsed: unknown = JSON.parse(raw);
     if (!isRecord(parsed)) return { ...DEFAULT_DEVICE_PREFERENCES };
@@ -46,6 +51,7 @@ export function loadDevicePreferences(
           ? parsed.enhancedNoiseSuppression
           : DEFAULT_DEVICE_PREFERENCES.enhancedNoiseSuppression,
       macosKeepOtherAudioFullVolume:
+        legacy === undefined &&
         typeof parsed.macosKeepOtherAudioFullVolume === "boolean"
           ? parsed.macosKeepOtherAudioFullVolume
           : DEFAULT_DEVICE_PREFERENCES.macosKeepOtherAudioFullVolume,

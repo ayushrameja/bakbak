@@ -54,6 +54,7 @@ import {
   createMicrophonePreview,
   microphoneCaptureOptions,
 } from "../voice/microphone-processing";
+import type { MicrophoneProcessingState } from "../voice/useVoiceRoom";
 import { setAudioElementOutput } from "../voice/media-devices";
 
 const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
@@ -86,6 +87,7 @@ interface SettingsPageProps {
   macosKeepOtherAudioFullVolume: boolean;
   microphoneProcessingSupported: boolean;
   microphoneProcessingError: string | null;
+  microphoneProcessingState: MicrophoneProcessingState;
   interfaceSoundPreferences: InterfaceSoundPreferences;
   appearancePreference: AppearancePreference;
   systemAccent: AppliedSystemAccent;
@@ -1298,7 +1300,9 @@ function AudioSettings(props: SettingsPageProps) {
                   aria-label="Bakbak noise cleanup"
                   aria-checked={props.enhancedNoiseSuppression}
                   disabled={
-                    props.inputDisabled || !props.microphoneProcessingSupported
+                    props.inputDisabled ||
+                    !props.microphoneProcessingSupported ||
+                    props.microphoneProcessingState === "starting"
                   }
                   onClick={() =>
                     props.onEnhancedNoiseSuppressionChange(
@@ -1306,7 +1310,13 @@ function AudioSettings(props: SettingsPageProps) {
                     )
                   }
                 >
-                  {props.enhancedNoiseSuppression ? "On" : "Off"}
+                  {props.microphoneProcessingState === "starting"
+                    ? "Starting…"
+                    : props.microphoneProcessingState === "fallback-error"
+                      ? "Fallback"
+                      : props.enhancedNoiseSuppression
+                        ? "On"
+                        : "Off"}
                 </button>
               </div>
               {props.macosFullVolumeModeAvailable ? (

@@ -68,9 +68,52 @@ describe("device preferences", () => {
       macosKeepOtherAudioFullVolume: false,
     });
     expect(setItem).toHaveBeenCalledWith(
-      "bakbak.devicePreferences.v3",
+      "bakbak.devicePreferences.v4",
       expect.any(String),
     );
+  });
+
+  it("migrates every v3 false value to the new default once", () => {
+    const storage = {
+      getItem: vi.fn((key: string) =>
+        key === "bakbak.devicePreferences.v3"
+          ? JSON.stringify({
+              inputDeviceId: "legacy-mic",
+              outputDeviceId: "default",
+              cameraDeviceId: "default",
+              soundboardVolume: 0.5,
+              enhancedNoiseSuppression: true,
+              macosKeepOtherAudioFullVolume: false,
+            })
+          : null,
+      ),
+    };
+
+    expect(loadDevicePreferences(storage)).toMatchObject({
+      inputDeviceId: "legacy-mic",
+      macosKeepOtherAudioFullVolume: true,
+    });
+  });
+
+  it("preserves an intentional v4 false value", () => {
+    const storage = {
+      getItem: vi.fn((key: string) =>
+        key === "bakbak.devicePreferences.v4"
+          ? JSON.stringify({
+              inputDeviceId: "mic",
+              outputDeviceId: "default",
+              cameraDeviceId: "default",
+              soundboardVolume: 0.5,
+              enhancedNoiseSuppression: true,
+              macosKeepOtherAudioFullVolume: false,
+            })
+          : null,
+      ),
+    };
+
+    expect(loadDevicePreferences(storage)).toMatchObject({
+      macosKeepOtherAudioFullVolume: false,
+    });
   });
 
   it("migrates v2 values while discarding the removed voice effect", () => {
@@ -95,7 +138,7 @@ describe("device preferences", () => {
       cameraDeviceId: "default",
       soundboardVolume: 0.5,
       enhancedNoiseSuppression: false,
-      macosKeepOtherAudioFullVolume: false,
+      macosKeepOtherAudioFullVolume: true,
     });
   });
 
@@ -119,7 +162,7 @@ describe("device preferences", () => {
       cameraDeviceId: "default",
       soundboardVolume: 0.5,
       enhancedNoiseSuppression: true,
-      macosKeepOtherAudioFullVolume: false,
+      macosKeepOtherAudioFullVolume: true,
     });
   });
 });

@@ -2099,14 +2099,40 @@ button:active:not(:disabled) {
   color: var(--faint);
   opacity: 0;
   transition: opacity 150ms ease;
+  z-index: 4;
 }
 .participant-card:hover .participant-volume {
   opacity: 1;
 }
 .participant-volume input {
   width: 100%;
-  height: 3px;
+  height: 24px;
+  cursor: pointer;
   accent-color: var(--accent);
+}
+
+.participant-card__focus-control {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.participant-card__focus-control:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.participant-card__profile-avatar,
+.participant-card__profile-name {
+  position: relative;
+  z-index: 3;
 }
 .voice-main-controls {
   display: flex;
@@ -8111,6 +8137,13 @@ button:active:not(:disabled) {
 :root[data-voice-fullscreen="true"] .screen-share-stage,
 :root[data-voice-fullscreen="true"] .voice-participant-stage {
   border-radius: 0;
+}
+
+:root[data-voice-media-stage="opaque"],
+:root[data-voice-media-stage="opaque"] body,
+:root[data-voice-media-stage="opaque"] #root,
+:root[data-voice-media-stage="opaque"] .app-frame {
+  background: #090909;
 }
 
 @media (prefers-reduced-motion: reduce) {

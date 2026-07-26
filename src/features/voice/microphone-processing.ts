@@ -9,11 +9,14 @@ import microphoneWorkletUrl from "./microphone-worklet.ts?worker&url";
 
 const PROCESSOR_NAME = "bakbak-microphone-processor";
 const REQUIRED_SAMPLE_RATE = 48_000;
+const WORKLET_HANDSHAKE_TIMEOUT_MS = 3_000;
+let workletRequestId = 0;
 
 export const MICROPHONE_PROCESSING_UNAVAILABLE =
   "Enhanced cleanup is unavailable in this runtime. Bakbak kept the built-in microphone cleanup active.";
 
 const loadedWorklets = new WeakMap<AudioContext, Promise<void>>();
+const verifiedWorklets = new WeakMap<AudioContext, Promise<void>>();
 let sharedAudioContext: AudioContext | null = null;
 
 function getSharedAudioContext(): AudioContext {
@@ -40,6 +43,7 @@ export async function prewarmMicrophoneProcessing(): Promise<boolean> {
     const context = getSharedAudioContext();
     await context.resume();
     await loadMicrophoneWorklet(context);
+    await verifyMicrophoneWorklet(context);
     return true;
   } catch {
     return false;
@@ -65,6 +69,7 @@ export class BakbakMicrophoneProcessor implements TrackProcessor<
   private node: AudioWorkletNode | null = null;
   private destination: MediaStreamAudioDestinationNode | null = null;
   private destroyed = false;
+  private processorErrorHandler: (() => void) | null = null;
 
   constructor(preferences: MicrophoneProcessingPreferences) {
     this.preferences = preferences;
@@ -86,6 +91,11 @@ export class BakbakMicrophoneProcessor implements TrackProcessor<
       channelCountMode: "explicit",
       processorOptions: this.preferences,
     });
+    this.node.onprocessorerror = () => {
+      this.processorErrorHandler?.();
+    };
+    await initializeMicrophoneWorklet(this.node, this.preferences);
+    if (this.destroyed) return;
     this.destination = this.audioContext.createMediaStreamDestination();
     this.node.connect(this.destination);
     this.connectSource(options.track);
@@ -103,6 +113,7 @@ export class BakbakMicrophoneProcessor implements TrackProcessor<
     if (this.destroyed) return;
     this.connectSource(options.track);
     this.node?.port.postMessage({ type: "reset" });
+    await this.setPreferences(this.preferences);
     await this.audioContext.resume();
   }
 
@@ -120,9 +131,17 @@ export class BakbakMicrophoneProcessor implements TrackProcessor<
     return Promise.resolve();
   }
 
-  setPreferences(preferences: MicrophoneProcessingPreferences): void {
+  setProcessorErrorHandler(handler: (() => void) | null): void {
+    this.processorErrorHandler = handler;
+  }
+
+  async setPreferences(
+    preferences: MicrophoneProcessingPreferences,
+  ): Promise<void> {
     this.preferences = preferences;
-    this.node?.port.postMessage({ type: "configure", preferences });
+    const node = this.node;
+    if (!node) throw new Error("The microphone worklet is not ready.");
+    await configureMicrophoneWorklet(node, preferences);
   }
 
   private connectSource(track: MediaStreamTrack): void {
@@ -168,6 +187,7 @@ export function microphoneCaptureOptions(
 export async function attachMicrophoneProcessor(
   track: LocalAudioTrack,
   preferences: MicrophoneProcessingPreferences,
+  onProcessorError?: () => void,
 ): Promise<BakbakMicrophoneProcessor | null> {
   if (
     !needsMicrophoneProcessor(preferences) ||
@@ -176,6 +196,7 @@ export async function attachMicrophoneProcessor(
     return null;
   }
   const processor = new BakbakMicrophoneProcessor(preferences);
+  processor.setProcessorErrorHandler(onProcessorError ?? null);
   try {
     track.setAudioContext(processor.audioContext);
     await track.setProcessor(processor);
@@ -242,4 +263,119 @@ async function loadMicrophoneWorklet(context: AudioContext): Promise<void> {
     loadedWorklets.delete(context);
     throw error;
   }
+}
+
+async function verifyMicrophoneWorklet(context: AudioContext): Promise<void> {
+  const existing = verifiedWorklets.get(context);
+  if (existing) return existing;
+  const verification = (async () => {
+    const node = new AudioWorkletNode(context, PROCESSOR_NAME, {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      outputChannelCount: [1],
+      channelCount: 1,
+      processorOptions: { enhancedNoiseSuppression: true },
+    });
+    try {
+      await initializeMicrophoneWorklet(node, {
+        enhancedNoiseSuppression: true,
+      });
+    } finally {
+      node.port.postMessage({ type: "destroy" });
+      node.disconnect();
+    }
+  })();
+  verifiedWorklets.set(context, verification);
+  try {
+    await verification;
+  } catch (error) {
+    verifiedWorklets.delete(context);
+    throw error;
+  }
+}
+
+interface MicrophoneWorkletResponse {
+  type: "ready" | "configured";
+  requestId?: number;
+}
+
+export async function initializeMicrophoneWorklet(
+  node: AudioWorkletNode,
+  preferences: MicrophoneProcessingPreferences,
+  timeoutMs = WORKLET_HANDSHAKE_TIMEOUT_MS,
+): Promise<void> {
+  node.port.start();
+  await waitForWorkletResponse(
+    node,
+    (response) => response.type === "ready",
+    undefined,
+    timeoutMs,
+  );
+  await configureMicrophoneWorklet(node, preferences, timeoutMs);
+}
+
+async function configureMicrophoneWorklet(
+  node: AudioWorkletNode,
+  preferences: MicrophoneProcessingPreferences,
+  timeoutMs = WORKLET_HANDSHAKE_TIMEOUT_MS,
+): Promise<void> {
+  const requestId = (workletRequestId += 1);
+  await waitForWorkletResponse(
+    node,
+    (response) =>
+      response.type === "configured" && response.requestId === requestId,
+    () =>
+      node.port.postMessage({
+        type: "configure",
+        preferences,
+        requestId,
+      }),
+    timeoutMs,
+  );
+}
+
+function waitForWorkletResponse(
+  node: AudioWorkletNode,
+  matches: (response: MicrophoneWorkletResponse) => boolean,
+  send: (() => void) | undefined,
+  timeoutMs: number,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      globalThis.clearTimeout(timer);
+      node.port.removeEventListener("message", onMessage);
+      node.removeEventListener("processorerror", onProcessorError);
+    };
+    const onMessage = (event: MessageEvent<unknown>) => {
+      const response = readWorkletResponse(event.data);
+      if (!response || !matches(response)) return;
+      cleanup();
+      resolve();
+    };
+    const onProcessorError = () => {
+      cleanup();
+      reject(new Error("The RNNoise audio processor stopped unexpectedly."));
+    };
+    const timer = globalThis.setTimeout(() => {
+      cleanup();
+      reject(new Error("The RNNoise audio processor did not become ready."));
+    }, timeoutMs);
+    node.port.addEventListener("message", onMessage);
+    node.addEventListener("processorerror", onProcessorError);
+    send?.();
+  });
+}
+
+function readWorkletResponse(value: unknown): MicrophoneWorkletResponse | null {
+  if (typeof value !== "object" || value === null || !("type" in value)) {
+    return null;
+  }
+  const type = value.type;
+  if (type !== "ready" && type !== "configured") return null;
+  return {
+    type,
+    ...("requestId" in value && typeof value.requestId === "number"
+      ? { requestId: value.requestId }
+      : {}),
+  };
 }

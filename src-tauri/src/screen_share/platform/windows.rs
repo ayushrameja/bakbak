@@ -60,7 +60,7 @@ use windows::{
         },
         UI::WindowsAndMessaging::{
             EnumWindows, GW_OWNER, GWL_EXSTYLE, GetWindow, GetWindowLongW, GetWindowTextW,
-            GetWindowThreadProcessId, IsWindowVisible, WS_EX_TOOLWINDOW,
+            GetWindowThreadProcessId, IsWindowVisible, SetForegroundWindow, WS_EX_TOOLWINDOW,
         },
     },
     core::{BOOL, IInspectable, Interface, PWSTR, factory},
@@ -73,6 +73,7 @@ use super::super::{
 
 const FIRST_FRAME_TIMEOUT: Duration = Duration::from_secs(5);
 const PAUSED_SOURCE_TIMEOUT: Duration = Duration::from_secs(2);
+const BLACK_FRAME_TIMEOUT: Duration = Duration::from_secs(2);
 const PROCESS_LOOPBACK_MINIMUM_BUILD: u32 = 20_348;
 const AUDIO_SAMPLE_RATE: u32 = 48_000;
 const AUDIO_CHANNELS: u32 = 2;
@@ -100,6 +101,7 @@ pub struct PreparedCapture {
     settings: ScreenShareSettings,
     item: GraphicsCaptureItem,
     audio_target: Option<ProcessLoopbackTarget>,
+    focus_window: Option<HWND>,
     termination_sender: mpsc::UnboundedSender<String>,
     pause_sender: mpsc::UnboundedSender<bool>,
 }
@@ -257,15 +259,20 @@ pub async fn pick_source(
     if size.Width <= 0 || size.Height <= 0 {
         return Err("The selected Windows source has no visible capture area.".to_string());
     }
-    let source_kind = match target {
+    let source_kind = match &target {
         CaptureTarget::Window(_) => ScreenShareSourceKind::Application,
         CaptureTarget::Display(_) => ScreenShareSourceKind::Display,
     };
     let source_label = source_label(&target);
     let audio_target = (include_audio && process_loopback_supported())
         .then(|| process_loopback_target(&target))
-        .transpose()?
+        .transpose()
+        .unwrap_or(None)
         .flatten();
+    let focus_window = match &target {
+        CaptureTarget::Window(hwnd) => Some(*hwnd),
+        CaptureTarget::Display(_) => None,
+    };
     let (width, height) =
         fit_to_resolution(size.Width as u32, size.Height as u32, settings.resolution);
 
@@ -277,6 +284,7 @@ pub async fn pick_source(
         settings,
         item,
         audio_target,
+        focus_window,
         termination_sender,
         pause_sender,
     })
@@ -304,7 +312,11 @@ pub async fn start_capture(
     let session = frame_pool
         .CreateCaptureSession(&prepared.item)
         .map_err(|error| format!("Windows could not create the screen capture session: {error}"))?;
-    let _ = session.SetIsCursorCaptureEnabled(true);
+    session.SetIsCursorCaptureEnabled(true).map_err(|error| {
+        format!(
+            "[cursor-unavailable] Windows could not include the cursor in this capture: {error}"
+        )
+    })?;
 
     let settings = Arc::new(StdMutex::new(prepared.settings));
     let current_size = Arc::new(StdMutex::new(size));
@@ -312,6 +324,8 @@ pub async fn start_capture(
     let last_forwarded_frame = Arc::new(StdMutex::new(None::<Instant>));
     let first_frame_seen = Arc::new(AtomicBool::new(false));
     let paused = Arc::new(AtomicBool::new(false));
+    let black_since = Arc::new(StdMutex::new(None::<Instant>));
+    let black_reported = Arc::new(AtomicBool::new(false));
     let (first_frame_sender, mut first_frame_receiver) = mpsc::unbounded_channel();
 
     let handler_settings = settings.clone();
@@ -325,6 +339,10 @@ pub async fn start_capture(
     let handler_context = context.clone();
     let handler_direct3d = direct3d_device.clone();
     let handler_source = video_source.clone();
+    let handler_black_since = black_since;
+    let handler_black_reported = black_reported;
+    let handler_detect_black = prepared.source_kind == ScreenShareSourceKind::Application;
+    let handler_termination = prepared.termination_sender.clone();
     let frame_token = frame_pool
         .FrameArrived(
             &TypedEventHandler::<Direct3D11CaptureFramePool, IInspectable>::new(
@@ -354,12 +372,30 @@ pub async fn start_capture(
                         return Ok(());
                     }
                     let surface = frame.Surface()?;
-                    if let Ok(video_frame) = surface_to_i420_frame(
+                    if let Ok((video_frame, effectively_black)) = surface_to_i420_frame(
                         &surface,
                         &handler_device,
                         &handler_context,
                         selected_settings,
                     ) {
+                        if handler_detect_black {
+                            let now = Instant::now();
+                            if effectively_black {
+                                if let Ok(mut since) = handler_black_since.lock() {
+                                    let started = *since.get_or_insert(now);
+                                    if now.duration_since(started) >= BLACK_FRAME_TIMEOUT
+                                        && !handler_black_reported.swap(true, Ordering::AcqRel)
+                                    {
+                                        let _ = handler_termination.send(
+                                            "[capture-black] Windows is receiving only black or cursor-only application frames. Retry with Entire screen and run Valorant in Borderless Windowed mode."
+                                                .to_string(),
+                                        );
+                                    }
+                                }
+                            } else if let Ok(mut since) = handler_black_since.lock() {
+                                *since = None;
+                            }
+                        }
                         handler_source.capture_frame(&video_frame);
                         if let Ok(mut last) = handler_last_complete.lock() {
                             *last = Instant::now();
@@ -395,6 +431,11 @@ pub async fn start_capture(
     session
         .StartCapture()
         .map_err(|error| format!("Windows could not start screen capture: {error}"))?;
+    if let Some(hwnd) = prepared.focus_window {
+        // Best effort only: Windows may reject foreground activation based on
+        // its user-input rules, but capture remains active either way.
+        let _ = unsafe { SetForegroundWindow(hwnd) };
+    }
     if timeout(FIRST_FRAME_TIMEOUT, first_frame_receiver.recv())
         .await
         .ok()
@@ -405,7 +446,8 @@ pub async fn start_capture(
         let _ = session.Close();
         let _ = frame_pool.Close();
         return Err(
-            "Windows started screen capture but did not deliver a video frame.".to_string(),
+            "[capture-failed] Windows started screen capture but did not deliver a video frame."
+                .to_string(),
         );
     }
 
@@ -448,7 +490,10 @@ fn process_loopback_target(
             let mut process_id = 0;
             unsafe { GetWindowThreadProcessId(*hwnd, Some(&mut process_id)) };
             if process_id == 0 {
-                return Ok(None);
+                return Err(
+                    "[audio-isolation-unavailable] Windows could not identify the selected application's process tree."
+                        .to_string(),
+                );
             }
             let parents = process_parent_map()?;
             if process_is_in_tree(process_id, unsafe { GetCurrentProcessId() }, &parents) {
@@ -456,9 +501,19 @@ fn process_loopback_target(
             }
             Ok(Some(ProcessLoopbackTarget::IncludeProcessTree(process_id)))
         }
-        CaptureTarget::Display(_) => Ok(Some(ProcessLoopbackTarget::ExcludeProcessTree(unsafe {
-            GetCurrentProcessId()
-        }))),
+        CaptureTarget::Display(_) => {
+            let current_process_id = unsafe { GetCurrentProcessId() };
+            let parents = process_parent_map()?;
+            if !process_tree_exclusion_is_proven(current_process_id, &parents) {
+                return Err(
+                    "[audio-isolation-unavailable] Windows could not verify Bakbak's WebView2 process tree, so display audio is disabled."
+                        .to_string(),
+                );
+            }
+            Ok(Some(ProcessLoopbackTarget::ExcludeProcessTree(
+                current_process_id,
+            )))
+        }
     }
 }
 
@@ -1023,6 +1078,13 @@ fn process_is_in_tree(
     false
 }
 
+fn process_tree_exclusion_is_proven(
+    root_process_id: u32,
+    process_parents: &HashMap<u32, u32>,
+) -> bool {
+    root_process_id != 0 && process_parents.contains_key(&root_process_id)
+}
+
 fn process_loopback_unavailable_reason(supported: bool) -> Option<String> {
     (!supported).then(|| {
         format!(
@@ -1108,7 +1170,7 @@ fn surface_to_i420_frame(
     device: &ID3D11Device,
     context: &ID3D11DeviceContext,
     settings: ScreenShareSettings,
-) -> windows::core::Result<VideoFrame<I420Buffer>> {
+) -> windows::core::Result<(VideoFrame<I420Buffer>, bool)> {
     let access: IDirect3DDxgiInterfaceAccess = surface.cast()?;
     let texture: ID3D11Texture2D = unsafe { access.GetInterface()? };
     let mut source_desc = D3D11_TEXTURE2D_DESC::default();
@@ -1141,6 +1203,8 @@ fn surface_to_i420_frame(
             row_pitch * source_desc.Height as usize,
         )
     };
+    let effectively_black =
+        bgra_frame_is_effectively_black(bytes, row_pitch, source_desc.Width, source_desc.Height);
     let (output_width, output_height) =
         fit_to_resolution(source_desc.Width, source_desc.Height, settings.resolution);
     let buffer = bgra_to_i420(
@@ -1152,7 +1216,38 @@ fn surface_to_i420_frame(
         output_height,
     );
     unsafe { context.Unmap(&staging, 0) };
-    Ok(VideoFrame::new(VideoRotation::VideoRotation0, buffer))
+    Ok((
+        VideoFrame::new(VideoRotation::VideoRotation0, buffer),
+        effectively_black,
+    ))
+}
+
+fn bgra_frame_is_effectively_black(
+    source: &[u8],
+    row_pitch: usize,
+    width: u32,
+    height: u32,
+) -> bool {
+    if width == 0 || height == 0 || source.len() < row_pitch * height as usize {
+        return true;
+    }
+    let step_x = (width as usize / 64).max(1);
+    let step_y = (height as usize / 36).max(1);
+    let mut sampled = 0usize;
+    let mut visible = 0usize;
+    for y in (0..height as usize).step_by(step_y) {
+        for x in (0..width as usize).step_by(step_x) {
+            let offset = y * row_pitch + x * 4;
+            let Some(pixel) = source.get(offset..offset + 3) else {
+                continue;
+            };
+            sampled += 1;
+            if pixel.iter().copied().max().unwrap_or(0) > 16 {
+                visible += 1;
+            }
+        }
+    }
+    sampled == 0 || visible * 200 < sampled
 }
 
 fn bgra_to_i420(
@@ -1371,6 +1466,34 @@ mod tests {
     fn process_tree_walk_fails_closed_on_cycles() {
         let parents = HashMap::from([(11, 12), (12, 11)]);
         assert!(!process_is_in_tree(11, 10, &parents));
+    }
+
+    #[test]
+    fn display_audio_requires_a_verified_bakbak_process_tree() {
+        let parents = HashMap::from([(10, 1), (11, 10)]);
+        assert!(process_tree_exclusion_is_proven(10, &parents));
+        assert!(!process_tree_exclusion_is_proven(12, &parents));
+        assert!(!process_tree_exclusion_is_proven(0, &parents));
+    }
+
+    #[test]
+    fn classifies_black_and_cursor_only_frames_without_rejecting_game_pixels() {
+        let mut black = vec![0u8; 100 * 100 * 4];
+        for pixel in black.chunks_exact_mut(4) {
+            pixel[3] = 255;
+        }
+        assert!(bgra_frame_is_effectively_black(&black, 400, 100, 100));
+
+        for y in 48..52 {
+            for x in 48..52 {
+                let offset = y * 400 + x * 4;
+                black[offset..offset + 3].fill(255);
+            }
+        }
+        assert!(bgra_frame_is_effectively_black(&black, 400, 100, 100));
+
+        let visible = vec![120u8; 100 * 100 * 4];
+        assert!(!bgra_frame_is_effectively_black(&visible, 400, 100, 100));
     }
 
     #[test]
