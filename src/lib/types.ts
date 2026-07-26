@@ -11,10 +11,12 @@ export interface AppUser {
   avatarAnimationUrl: string | null;
   avatarPath: string | null;
   avatarAnimationPath: string | null;
+  avatarGiphyId: string | null;
   coverUrl: string | null;
   coverAnimationUrl: string | null;
   coverPath: string | null;
   coverAnimationPath: string | null;
+  coverGiphyId: string | null;
   coverPositionX: number;
   coverPositionY: number;
   description: string;

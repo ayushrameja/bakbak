@@ -31,6 +31,8 @@ import { Avatar } from "../../components/Avatar";
 import type { LoadProfileMedia } from "../../components/ProfileTrigger";
 import type { AppUser } from "../../lib/types";
 import type { CacheStats, DataFreshness } from "../../lib/local-cache";
+import { registerGiphyAction, type GiphyAsset } from "../../lib/giphy-service";
+import { resolveGiphyProfileMedia } from "../../lib/profile-giphy-media";
 import type { AppearancePreference } from "./appearance-preferences";
 import type { AppliedSystemAccent } from "./system-accent";
 import {
@@ -56,6 +58,7 @@ import {
 } from "../voice/microphone-processing";
 import type { MicrophoneProcessingState } from "../voice/useVoiceRoom";
 import { setAudioElementOutput } from "../voice/media-devices";
+import { GiphyPicker } from "../chat/GiphyPicker";
 
 const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
 
@@ -66,6 +69,8 @@ export interface ProfileSaveInput {
   description: string;
   avatarFile: File | null;
   coverFile: File | null;
+  avatarGiphyId: string | null;
+  coverGiphyId: string | null;
   removeAvatar: boolean;
   removeCover: boolean;
   coverPositionX: number;
@@ -566,6 +571,15 @@ function ProfileSettings({
   const [description, setDescription] = useState(user.description);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [avatarGiphyAsset, setAvatarGiphyAsset] = useState<GiphyAsset | null>(
+    null,
+  );
+  const [coverGiphyAsset, setCoverGiphyAsset] = useState<GiphyAsset | null>(
+    null,
+  );
+  const [giphyTarget, setGiphyTarget] = useState<"avatar" | "cover" | null>(
+    null,
+  );
   const [removeAvatar, setRemoveAvatar] = useState(false);
   const [removeCover, setRemoveCover] = useState(false);
   const [coverPositionX, setCoverPositionX] = useState(user.coverPositionX);
@@ -581,6 +595,9 @@ function ProfileSettings({
   const [currentAvatarAnimationUrl, setCurrentAvatarAnimationUrl] = useState<
     string | null
   >(user.avatarAnimationUrl);
+  const [currentAvatarUrl, setCurrentAvatarUrl] = useState<string | null>(
+    user.avatarUrl,
+  );
   const [currentCoverUrl, setCurrentCoverUrl] = useState<string | null>(
     user.coverUrl,
   );
@@ -616,6 +633,7 @@ function ProfileSettings({
 
   useEffect(() => {
     let current = true;
+    setCurrentAvatarUrl(user.avatarUrl);
     setCurrentAvatarAnimationUrl(user.avatarAnimationUrl);
     setCurrentCoverUrl(user.coverUrl);
     setCurrentCoverAnimationUrl(user.coverAnimationUrl);
@@ -629,12 +647,32 @@ function ProfileSettings({
       !reducedMotion && !user.coverAnimationUrl
         ? loadMedia(COVER_BUCKET, user.coverAnimationPath)
         : Promise.resolve(user.coverAnimationUrl),
+      resolveGiphyProfileMedia(user, {
+        includeAvatarAnimation: !reducedMotion,
+        includeCover: true,
+        includeCoverAnimation: !reducedMotion,
+      }).catch(() => null),
     ])
-      .then(([avatarAnimation, cover, coverAnimation]) => {
+      .then(([avatarAnimation, cover, coverAnimation, giphy]) => {
         if (!current) return;
-        setCurrentAvatarAnimationUrl(avatarAnimation);
-        setCurrentCoverUrl(cover);
-        setCurrentCoverAnimationUrl(coverAnimation);
+        setCurrentAvatarUrl(
+          user.avatarGiphyId
+            ? (giphy?.avatarPosterUrl ?? null)
+            : user.avatarUrl,
+        );
+        setCurrentAvatarAnimationUrl(
+          user.avatarGiphyId
+            ? (giphy?.avatarAnimationUrl ?? null)
+            : avatarAnimation,
+        );
+        setCurrentCoverUrl(
+          user.coverGiphyId ? (giphy?.coverPosterUrl ?? null) : cover,
+        );
+        setCurrentCoverAnimationUrl(
+          user.coverGiphyId
+            ? (giphy?.coverAnimationUrl ?? null)
+            : coverAnimation,
+        );
       })
       .catch(() => undefined);
     return () => {
@@ -643,13 +681,26 @@ function ProfileSettings({
   }, [
     loadMedia,
     reducedMotion,
+    user,
     user.avatarAnimationPath,
     user.avatarAnimationUrl,
+    user.avatarGiphyId,
+    user.avatarUrl,
     user.coverAnimationPath,
     user.coverAnimationUrl,
+    user.coverGiphyId,
     user.coverPath,
     user.coverUrl,
   ]);
+
+  const avatarGiphyId =
+    removeAvatar || avatarFile
+      ? null
+      : (avatarGiphyAsset?.id ?? user.avatarGiphyId);
+  const coverGiphyId =
+    removeCover || coverFile
+      ? null
+      : (coverGiphyAsset?.id ?? user.coverGiphyId);
 
   async function chooseImage(
     event: ChangeEvent<HTMLInputElement>,
@@ -674,11 +725,13 @@ function ProfileSettings({
         setAvatarPreviewUrl(posterUrl);
         setAvatarAnimationPreviewUrl(animationUrl);
         setAvatarFile(file);
+        setAvatarGiphyAsset(null);
         setRemoveAvatar(false);
       } else {
         setCoverPreviewUrl(posterUrl);
         setCoverAnimationPreviewUrl(animationUrl);
         setCoverFile(file);
+        setCoverGiphyAsset(null);
         setRemoveCover(false);
         setCoverPositionX(50);
         setCoverPositionY(50);
@@ -691,6 +744,27 @@ function ProfileSettings({
       if (request === mediaRequestRef.current) setPreparingMedia(null);
       event.target.value = "";
     }
+  }
+
+  function stageGiphy(asset: GiphyAsset, target: "avatar" | "cover") {
+    setError(null);
+    setNotice(null);
+    if (target === "avatar") {
+      setAvatarFile(null);
+      setAvatarPreviewUrl(null);
+      setAvatarAnimationPreviewUrl(null);
+      setAvatarGiphyAsset(asset);
+      setRemoveAvatar(false);
+    } else {
+      setCoverFile(null);
+      setCoverPreviewUrl(null);
+      setCoverAnimationPreviewUrl(null);
+      setCoverGiphyAsset(asset);
+      setRemoveCover(false);
+      setCoverPositionX(50);
+      setCoverPositionY(50);
+    }
+    setGiphyTarget(null);
   }
 
   async function submit(event: FormEvent) {
@@ -706,13 +780,23 @@ function ProfileSettings({
         description: normalizedDescription,
         avatarFile,
         coverFile,
+        avatarGiphyId,
+        coverGiphyId,
         removeAvatar,
         removeCover,
         coverPositionX: validateCoverPosition(coverPositionX),
         coverPositionY: validateCoverPosition(coverPositionY),
       });
+      if (avatarGiphyAsset) {
+        registerGiphyAction(avatarGiphyAsset, "onsent");
+      }
+      if (coverGiphyAsset) {
+        registerGiphyAction(coverGiphyAsset, "onsent");
+      }
       setAvatarFile(null);
       setCoverFile(null);
+      setAvatarGiphyAsset(null);
+      setCoverGiphyAsset(null);
       setRemoveAvatar(false);
       setRemoveCover(false);
       setAvatarPreviewUrl(null);
@@ -738,28 +822,38 @@ function ProfileSettings({
       ? null
       : avatarFile
         ? avatarPreviewUrl
-        : user.avatarUrl,
+        : avatarGiphyAsset
+          ? avatarGiphyAsset.stillUrl
+          : currentAvatarUrl,
   };
   const avatarAnimationUrl = reducedMotion
     ? null
     : avatarFile
       ? avatarAnimationPreviewUrl
-      : currentAvatarAnimationUrl;
+      : avatarGiphyAsset
+        ? avatarGiphyAsset.previewImageUrl
+        : currentAvatarAnimationUrl;
   const coverUrl = removeCover
     ? null
     : coverFile
       ? coverPreviewUrl
-      : currentCoverUrl;
+      : coverGiphyAsset
+        ? coverGiphyAsset.originalStillUrl
+        : currentCoverUrl;
   const coverAnimationUrl = reducedMotion
     ? null
     : coverFile
       ? coverAnimationPreviewUrl
-      : currentCoverAnimationUrl;
+      : coverGiphyAsset
+        ? coverGiphyAsset.originalImageUrl
+        : currentCoverAnimationUrl;
   const dirty =
     displayName !== user.displayName ||
     description !== user.description ||
     avatarFile !== null ||
     coverFile !== null ||
+    avatarGiphyId !== user.avatarGiphyId ||
+    coverGiphyId !== user.coverGiphyId ||
     removeAvatar ||
     removeCover ||
     coverPositionX !== user.coverPositionX ||
@@ -890,13 +984,27 @@ function ProfileSettings({
                 onChange={(event) => void chooseImage(event, "avatar")}
               />
             </label>
-            {(user.avatarPath || user.avatarUrl || avatarPreviewUrl) &&
+            <button
+              className="secondary-button"
+              type="button"
+              aria-label="Browse GIFs for avatar"
+              disabled={preparingMedia !== null || saving}
+              onClick={() => setGiphyTarget("avatar")}
+            >
+              Browse GIFs
+            </button>
+            {(user.avatarPath ||
+              user.avatarUrl ||
+              user.avatarGiphyId ||
+              avatarPreviewUrl ||
+              avatarGiphyAsset) &&
             !removeAvatar ? (
               <button
                 className="text-button"
                 type="button"
                 onClick={() => {
                   setAvatarFile(null);
+                  setAvatarGiphyAsset(null);
                   setRemoveAvatar(true);
                   setAvatarPreviewUrl(null);
                   setAvatarAnimationPreviewUrl(null);
@@ -920,13 +1028,27 @@ function ProfileSettings({
                 onChange={(event) => void chooseImage(event, "cover")}
               />
             </label>
-            {(user.coverPath || user.coverUrl || coverPreviewUrl) &&
+            <button
+              className="secondary-button"
+              type="button"
+              aria-label="Browse GIFs for cover"
+              disabled={preparingMedia !== null || saving}
+              onClick={() => setGiphyTarget("cover")}
+            >
+              Browse GIFs
+            </button>
+            {(user.coverPath ||
+              user.coverUrl ||
+              user.coverGiphyId ||
+              coverPreviewUrl ||
+              coverGiphyAsset) &&
             !removeCover ? (
               <button
                 className="text-button"
                 type="button"
                 onClick={() => {
                   setCoverFile(null);
+                  setCoverGiphyAsset(null);
                   setRemoveCover(true);
                   setCoverPreviewUrl(null);
                   setCoverAnimationPreviewUrl(null);
@@ -1010,6 +1132,24 @@ function ProfileSettings({
           </p>
         ) : null}
       </div>
+      {giphyTarget ? (
+        <div
+          className="profile-giphy-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) setGiphyTarget(null);
+          }}
+        >
+          <GiphyPicker
+            key={giphyTarget}
+            fixedKind="gif"
+            target={giphyTarget}
+            className="media-picker--profile"
+            onClose={() => setGiphyTarget(null)}
+            onSelect={(asset) => stageGiphy(asset, giphyTarget)}
+          />
+        </div>
+      ) : null}
     </form>
   );
 }

@@ -1,4 +1,5 @@
 import { AVATAR_BUCKET } from "../../lib/profile-service";
+import { hydrateGiphyAvatarPosters } from "../../lib/profile-giphy-media";
 import type { DirectConversation, ServerMember } from "../../lib/types";
 
 type LoadAvatar = (
@@ -13,13 +14,14 @@ export async function hydrateDirectConversationAvatars(
 ): Promise<DirectConversation[]> {
   const memberById = new Map(members.map((member) => [member.id, member]));
 
-  return Promise.all(
+  const localHydrated = await Promise.all(
     conversations.map(async (conversation) => {
       const member = conversation.otherMember;
       const workspaceMember = memberById.get(member.id);
       const knownAvatarUrl =
         member.avatarUrl ??
-        (workspaceMember?.avatarPath === member.avatarPath
+        (workspaceMember?.avatarPath === member.avatarPath &&
+        workspaceMember.avatarGiphyId === member.avatarGiphyId
           ? workspaceMember.avatarUrl
           : null);
 
@@ -33,7 +35,7 @@ export async function hydrateDirectConversationAvatars(
           },
         };
       }
-      if (!member.avatarPath) return conversation;
+      if (!member.avatarPath || member.avatarGiphyId) return conversation;
 
       try {
         const avatarUrl = await loadAvatar(AVATAR_BUCKET, member.avatarPath);
@@ -50,4 +52,35 @@ export async function hydrateDirectConversationAvatars(
       }
     }),
   );
+
+  if (
+    !localHydrated.some(
+      (conversation) => conversation.otherMember.avatarGiphyId,
+    )
+  ) {
+    return localHydrated;
+  }
+
+  try {
+    const hydratedMembers = await hydrateGiphyAvatarPosters(
+      localHydrated.map((conversation) => conversation.otherMember),
+    );
+    return localHydrated.map((conversation, index) => ({
+      ...conversation,
+      otherMember: hydratedMembers[index] ?? conversation.otherMember,
+    }));
+  } catch {
+    return localHydrated.map((conversation) =>
+      conversation.otherMember.avatarGiphyId
+        ? {
+            ...conversation,
+            otherMember: {
+              ...conversation.otherMember,
+              avatarUrl: null,
+              avatarAnimationUrl: null,
+            },
+          }
+        : conversation,
+    );
+  }
 }

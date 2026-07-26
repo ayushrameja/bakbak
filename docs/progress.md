@@ -5253,3 +5253,83 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
   failure.
 - **Next:** Rerun the Windows Tauri release job after publication and confirm it
   advances past Rust compilation into NSIS bundling.
+
+## 2026-07-26 — GIPHY profile avatars and covers
+
+- **Completed:** Added separate target-aware GIF-only GIPHY pickers for Avatar
+  and Cover settings while preserving local PNG/JPEG/WebP/GIF uploads. Provider
+  selections now stage in the existing preview, replace the other field source,
+  keep cover focal controls, survive failed saves, and emit selection analytics
+  only after a successful profile commit. Added image-compatible avatar and
+  cover renditions, batched static avatar resolution, attention-driven
+  animation/cover loading, reduced-motion fallbacks, broken-media initials/no
+  cover behavior, signed-in/workspace/DM/Realtime reconciliation with stale
+  guards, and v2 cache normalization that retains provider IDs while removing
+  every provider URL. Added the nullable bounded `avatar_giphy_id` and
+  `cover_giphy_id` columns, mutually exclusive upload/provider constraints,
+  owner update grants, and both fields in the participant-authorized
+  `get_direct_conversations()` result. Deployed migration
+  `202607260001_giphy_profile_media.sql` to the linked hosted project.
+- **Decisions:** Kept chat's GIF/sticker defaults, rating `r`, attribution,
+  analytics, and rate-limit behavior unchanged by making target and GIF-only
+  mode optional picker inputs. Stored GIPHY IDs only; Supabase, Storage, and
+  IndexedDB never receive provider files or URLs. Static avatar posters resolve
+  in deduplicated batches, while animations and covers resolve only for
+  hover/focus, opened profile surfaces, or the editor. Provider resolution
+  failure intentionally falls back to initials for avatars and no cover.
+  Uploaded private objects are deleted only after the profile row successfully
+  switches to GIPHY.
+- **Validation:**
+  - Initial `pnpm lint` — failed on one test `require-await` error and three
+    exhaustive-dependency warnings; the test and effect dependencies were
+    corrected. Final lint is included in `pnpm check`.
+  - `pnpm test` — passed 80 Vitest files with 431/431 tests and 40/40 Node
+    contract tests.
+  - `CI=true pnpm dlx supabase@latest db reset` — applied every migration
+    through `202607260001` and seeded the clean local database, then exited 1
+    because the Storage readiness check timed out; subsequent Docker status
+    reported the database, Storage, Auth, Realtime, and API containers healthy.
+  - `CI=true pnpm dlx supabase@latest db lint --local --schema public,private
+--level warning` — passed with no schema errors.
+  - Initial `CI=true pnpm dlx supabase@latest test db` — 383/384 assertions
+    passed; the new anonymous-RPC assertion had reset to the test superuser
+    instead of the `anon` role. After correcting the test role, one transient
+    connection timeout occurred and the final retry passed all 15 files and
+    384/384 pgTAP assertions.
+  - `CI=true pnpm dlx supabase@latest db push --dry-run` — passed and listed
+    only `202607260001_giphy_profile_media.sql`.
+  - `CI=true pnpm dlx supabase@latest db push` — passed and deployed the single
+    GIPHY profile-media migration.
+  - `CI=true pnpm dlx supabase@latest db lint --linked --schema public,private
+--level warning` — passed with no hosted schema errors.
+  - `CI=true pnpm dlx supabase@latest migration list` — passed and confirmed
+    local/remote parity through `202607260001`.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects,
+    80 Vitest files with 431 tests, 40/40 Node contracts, synchronized version
+    `1.2.0`, production renderer build, and bundle secret scan. Vite retained
+    the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are absent.
+  - `pnpm tauri build` — produced `Bakbak.app`, the ARM64 DMG, and the updater
+    archive, then exited 1 because this workstation has the public updater key
+    but no `TAURI_SIGNING_PRIVATE_KEY`.
+  - Mock browser acceptance at 1280×800 and 1024×680 — passed in Light and Dark.
+    Both target pickers opened centered with GIPHY attribution, live `hello`
+    search returned GIFs, avatar and cover selections staged in the preview,
+    cover selection exposed a 50/50 focal point, and no browser console errors
+    were recorded.
+  - `git diff --check` and the aggregate bundle secret scan — passed.
+- **Documentation updated:** Added
+  `docs/plans/0031-giphy-profile-avatars-and-covers.md`, updated the current
+  profile/storage/data-flow contract in `docs/architecture.md`, marked the
+  implementation and hosted migration in the active v1 plan, and appended this
+  canonical progress entry.
+- **Known limitations:** The installed macOS/Windows Light/Dark and
+  reduced-motion matrix, live two-account Realtime check, and offline provider
+  fallback check remain open. Reduced motion, missing-key, rate-limit,
+  failed-save retry, cache URL removal, and stale-request behavior are covered
+  by automated tests but were not all repeated manually. Full updater packaging
+  still requires the protected private signing key in release CI.
+- **Next:** Run the installed two-account macOS/Windows matrix for Realtime
+  avatar/cover changes, hover/focus animations, reduced motion, provider outage
+  and offline fallbacks, then close the remaining plan 0031 acceptance items.

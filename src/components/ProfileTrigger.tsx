@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { AVATAR_BUCKET } from "../lib/profile-service";
+import { resolveGiphyProfileMedia } from "../lib/profile-giphy-media";
 import type { ServerMember } from "../lib/types";
 import { useReducedMotion } from "../lib/use-reduced-motion";
 import type { OpenUserContextMenu } from "./UserContextMenu";
@@ -22,6 +23,7 @@ export type OpenProfile = (member: ServerMember, anchor: HTMLElement) => void;
 interface ProfileTriggerRenderState {
   animationUrl: string | null;
   animated: boolean;
+  engaged: boolean;
 }
 
 interface ProfileTriggerProps extends Omit<
@@ -60,12 +62,17 @@ export function ProfileTrigger({
       !engaged ||
       reducedMotion ||
       member.avatarAnimationUrl ||
-      !member.avatarAnimationPath
+      (!member.avatarAnimationPath && !member.avatarGiphyId)
     ) {
       return;
     }
     let current = true;
-    void loadMedia(AVATAR_BUCKET, member.avatarAnimationPath)
+    const animation = member.avatarGiphyId
+      ? resolveGiphyProfileMedia(member, {
+          includeAvatarAnimation: true,
+        }).then((media) => media.avatarAnimationUrl)
+      : loadMedia(AVATAR_BUCKET, member.avatarAnimationPath);
+    void animation
       .then((url) => {
         if (current) setAnimationUrl(url);
       })
@@ -76,12 +83,17 @@ export function ProfileTrigger({
   }, [
     engaged,
     loadMedia,
+    member,
     member.avatarAnimationPath,
     member.avatarAnimationUrl,
+    member.avatarGiphyId,
     reducedMotion,
   ]);
 
-  useEffect(() => setAnimationUrl(null), [member.avatarAnimationPath]);
+  useEffect(
+    () => setAnimationUrl(null),
+    [member.avatarAnimationPath, member.avatarGiphyId],
+  );
 
   return (
     <button
@@ -138,6 +150,7 @@ export function ProfileTrigger({
       {children({
         animationUrl: member.avatarAnimationUrl ?? animationUrl,
         animated: engaged && !reducedMotion,
+        engaged,
       })}
     </button>
   );

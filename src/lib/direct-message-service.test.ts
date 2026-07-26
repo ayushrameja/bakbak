@@ -31,10 +31,12 @@ const conversationRow = {
   other_user_id: "friend-1",
   display_name: "Mira",
   avatar_url: null,
-  avatar_path: "friend-1/avatar",
+  avatar_path: null,
   avatar_animation_path: null,
-  cover_path: "friend-1/cover",
+  avatar_giphy_id: "avatar-gif",
+  cover_path: null,
   cover_animation_path: null,
+  cover_giphy_id: "cover-gif",
   cover_position_x: 50,
   cover_position_y: 35,
   description: "Makes things",
@@ -74,6 +76,8 @@ describe("direct message service", () => {
       displayName: "Mira",
       description: "Makes things",
       coverPositionY: 35,
+      avatarGiphyId: "avatar-gif",
+      coverGiphyId: "cover-gif",
     });
     expect(directState.rpc).toHaveBeenCalledWith("get_direct_conversations");
   });

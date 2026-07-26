@@ -23,7 +23,7 @@ export type CachedDestination =
 
 export interface CachedAccountState {
   key: string;
-  schemaVersion: 1;
+  schemaVersion: 2;
   userId: string;
   workspace: WorkspaceSnapshot | null;
   directConversations: DirectConversation[];
@@ -132,8 +132,11 @@ function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   });
 }
 
-function safeAvatarUrl(url: string | null): string | null {
-  return url?.startsWith("blob:") ? null : url;
+function safeAvatarUrl(
+  url: string | null,
+  avatarGiphyId: string | null,
+): string | null {
+  return avatarGiphyId || url?.startsWith("blob:") ? null : url;
 }
 
 export function normalizeWorkspaceForCache(
@@ -143,7 +146,9 @@ export function normalizeWorkspaceForCache(
     ...workspace,
     members: workspace.members.map((member) => ({
       ...member,
-      avatarUrl: safeAvatarUrl(member.avatarUrl),
+      avatarGiphyId: member.avatarGiphyId ?? null,
+      coverGiphyId: member.coverGiphyId ?? null,
+      avatarUrl: safeAvatarUrl(member.avatarUrl, member.avatarGiphyId ?? null),
       avatarAnimationUrl: null,
       coverUrl: null,
       coverAnimationUrl: null,
@@ -159,7 +164,12 @@ export function normalizeDirectConversationsForCache(
     ...conversation,
     otherMember: {
       ...conversation.otherMember,
-      avatarUrl: safeAvatarUrl(conversation.otherMember.avatarUrl),
+      avatarGiphyId: conversation.otherMember.avatarGiphyId ?? null,
+      coverGiphyId: conversation.otherMember.coverGiphyId ?? null,
+      avatarUrl: safeAvatarUrl(
+        conversation.otherMember.avatarUrl,
+        conversation.otherMember.avatarGiphyId ?? null,
+      ),
       avatarAnimationUrl: null,
       coverUrl: null,
       coverAnimationUrl: null,
@@ -227,10 +237,19 @@ export class BakbakCache {
         .transaction(ACCOUNT_STORE)
         .objectStore(ACCOUNT_STORE)
         .get(accountKey(userId));
-      return (
-        ((await requestResult(request)) as CachedAccountState | undefined) ??
-        null
-      );
+      const cached = (await requestResult(request)) as
+        CachedAccountState | undefined;
+      if (!cached) return null;
+      return {
+        ...cached,
+        schemaVersion: 2,
+        workspace: cached.workspace
+          ? normalizeWorkspaceForCache(cached.workspace)
+          : null,
+        directConversations: normalizeDirectConversationsForCache(
+          cached.directConversations,
+        ),
+      };
     }, null);
   }
 
@@ -242,7 +261,7 @@ export class BakbakCache {
       transaction.objectStore(ACCOUNT_STORE).put({
         ...input,
         key: accountKey(input.userId),
-        schemaVersion: 1,
+        schemaVersion: 2,
         workspace: input.workspace
           ? normalizeWorkspaceForCache(input.workspace)
           : null,

@@ -9,6 +9,7 @@ import {
 } from "../../components/ProfileTrigger";
 import type { OpenUserContextMenu } from "../../components/UserContextMenu";
 import { COVER_BUCKET } from "../../lib/profile-service";
+import { resolveGiphyProfileMedia } from "../../lib/profile-giphy-media";
 import type { ServerMember } from "../../lib/types";
 
 const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
@@ -138,11 +139,12 @@ function MemberGroup({
             expanded={openProfileId === member.id}
             aria-label={`View ${member.displayName}'s profile`}
           >
-            {({ animationUrl, animated }) => (
+            {({ animationUrl, animated, engaged }) => (
               <>
                 <MemberCoverPoster
                   member={member}
                   loadProfileMedia={loadProfileMedia}
+                  engaged={engaged}
                 />
                 <Avatar
                   user={member}
@@ -206,9 +208,11 @@ function MemberGroup({
 function MemberCoverPoster({
   member,
   loadProfileMedia,
+  engaged,
 }: {
   member: ServerMember;
   loadProfileMedia: LoadProfileMedia;
+  engaged: boolean;
 }) {
   const markerRef = useRef<HTMLSpanElement>(null);
   const [requested, setRequested] = useState(Boolean(member.coverUrl));
@@ -217,10 +221,19 @@ function MemberCoverPoster({
   useEffect(() => {
     setRequested(Boolean(member.coverUrl));
     setCoverUrl(member.coverUrl);
-  }, [member.coverPath, member.coverUrl, member.id]);
+  }, [member.coverGiphyId, member.coverPath, member.coverUrl, member.id]);
 
   useEffect(() => {
-    if (requested || member.coverUrl || !member.coverPath) return;
+    if (
+      requested ||
+      member.coverUrl ||
+      (!member.coverPath && !member.coverGiphyId)
+    )
+      return;
+    if (member.coverGiphyId) {
+      if (engaged) setRequested(true);
+      return;
+    }
     const marker = markerRef.current;
     if (!marker || typeof IntersectionObserver !== "function") {
       setRequested(true);
@@ -236,12 +249,32 @@ function MemberCoverPoster({
     );
     observer.observe(marker);
     return () => observer.disconnect();
-  }, [member.coverPath, member.coverUrl, requested]);
+  }, [
+    engaged,
+    member.coverGiphyId,
+    member.coverPath,
+    member.coverUrl,
+    requested,
+  ]);
 
   useEffect(() => {
-    if (!requested || member.coverUrl || !member.coverPath) return;
+    if (
+      !requested ||
+      member.coverUrl ||
+      (!member.coverPath && !member.coverGiphyId)
+    )
+      return;
     let current = true;
-    void loadProfileMedia(COVER_BUCKET, member.coverPath)
+    const poster = member.coverGiphyId
+      ? resolveGiphyProfileMedia(
+          {
+            avatarGiphyId: member.avatarGiphyId,
+            coverGiphyId: member.coverGiphyId,
+          },
+          { includeCover: true },
+        ).then((media) => media.coverPosterUrl)
+      : loadProfileMedia(COVER_BUCKET, member.coverPath);
+    void poster
       .then((url) => {
         if (current) setCoverUrl(url);
       })
@@ -249,7 +282,14 @@ function MemberCoverPoster({
     return () => {
       current = false;
     };
-  }, [loadProfileMedia, member.coverPath, member.coverUrl, requested]);
+  }, [
+    loadProfileMedia,
+    member.avatarGiphyId,
+    member.coverGiphyId,
+    member.coverPath,
+    member.coverUrl,
+    requested,
+  ]);
 
   return (
     <span

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { AppUser } from "../lib/types";
 
 interface AvatarProps {
@@ -24,19 +25,32 @@ export function Avatar({
   animationUrl = null,
   animated = false,
 }: AvatarProps) {
+  const [failedPoster, setFailedPoster] = useState<string | null>(null);
+  const [failedAnimation, setFailedAnimation] = useState<string | null>(null);
+  const posterUrl =
+    user.avatarUrl && failedPoster !== user.avatarUrl ? user.avatarUrl : null;
+  const activeAnimationUrl =
+    animationUrl && failedAnimation !== animationUrl ? animationUrl : null;
+
   return (
     <span
       className={`avatar avatar--${size}`}
       aria-label={`${user.displayName}, ${user.status}`}
     >
-      {user.avatarUrl ? (
+      {posterUrl ? (
         <>
-          <img className="avatar__poster" src={user.avatarUrl} alt="" />
-          {animationUrl ? (
+          <img
+            className="avatar__poster"
+            src={posterUrl}
+            alt=""
+            onError={() => setFailedPoster(posterUrl)}
+          />
+          {activeAnimationUrl ? (
             <img
               className={`avatar__animation ${animated ? "is-visible" : ""}`}
-              src={animationUrl}
+              src={activeAnimationUrl}
               alt=""
+              onError={() => setFailedAnimation(activeAnimationUrl)}
             />
           ) : null}
         </>

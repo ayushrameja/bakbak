@@ -59,8 +59,10 @@ interface ProfileRow {
   avatar_url: string | null;
   avatar_path: string | null;
   avatar_animation_path: string | null;
+  avatar_giphy_id: string | null;
   cover_path: string | null;
   cover_animation_path: string | null;
+  cover_giphy_id: string | null;
   cover_position_x: number;
   cover_position_y: number;
   description: string;
@@ -158,7 +160,7 @@ export async function loadLiveWorkspace(
   const { data: profiles, error: profileError } = await supabase
     .from("profiles")
     .select(
-      "id,display_name,avatar_url,avatar_path,avatar_animation_path,cover_path,cover_animation_path,cover_position_x,cover_position_y,description",
+      "id,display_name,avatar_url,avatar_path,avatar_animation_path,avatar_giphy_id,cover_path,cover_animation_path,cover_giphy_id,cover_position_x,cover_position_y,description",
     )
     .in("id", userIds)
     .returns<ProfileRow[]>();
@@ -178,10 +180,12 @@ export async function loadLiveWorkspace(
       avatarAnimationUrl: null,
       avatarPath: profile?.avatar_path ?? null,
       avatarAnimationPath: profile?.avatar_animation_path ?? null,
+      avatarGiphyId: profile?.avatar_giphy_id ?? null,
       coverUrl: null,
       coverAnimationUrl: null,
       coverPath: profile?.cover_path ?? null,
       coverAnimationPath: profile?.cover_animation_path ?? null,
+      coverGiphyId: profile?.cover_giphy_id ?? null,
       coverPositionX: profile?.cover_position_x ?? 50,
       coverPositionY: profile?.cover_position_y ?? 50,
       description: profile?.description ?? "",

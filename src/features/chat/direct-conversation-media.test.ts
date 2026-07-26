@@ -1,7 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AVATAR_BUCKET } from "../../lib/profile-service";
 import type { DirectConversation, ServerMember } from "../../lib/types";
 import { hydrateDirectConversationAvatars } from "./direct-conversation-media";
+
+const giphyState = vi.hoisted(() => ({ hydrate: vi.fn() }));
+
+vi.mock("../../lib/profile-giphy-media", () => ({
+  hydrateGiphyAvatarPosters: giphyState.hydrate,
+}));
 
 const member: ServerMember = {
   id: "friend-1",
@@ -11,10 +17,12 @@ const member: ServerMember = {
   avatarAnimationUrl: null,
   avatarPath: "friend-1/avatar-poster.webp",
   avatarAnimationPath: null,
+  avatarGiphyId: null,
   coverUrl: null,
   coverAnimationUrl: null,
   coverPath: null,
   coverAnimationPath: null,
+  coverGiphyId: null,
   coverPositionX: 50,
   coverPositionY: 50,
   description: "",
@@ -35,6 +43,12 @@ const conversation: DirectConversation = {
 };
 
 describe("hydrateDirectConversationAvatars", () => {
+  beforeEach(() => {
+    giphyState.hydrate.mockImplementation((members: ServerMember[]) =>
+      Promise.resolve(members),
+    );
+  });
+
   it("downloads a private poster for direct-message chrome", async () => {
     const loadAvatar = vi.fn().mockResolvedValue("blob:friend-avatar");
 
@@ -70,5 +84,31 @@ describe("hydrateDirectConversationAvatars", () => {
     );
 
     expect(hydrated).toBe(conversation);
+  });
+
+  it("hydrates provider-linked posters without calling private storage", async () => {
+    const loadAvatar = vi.fn();
+    const giphyMember = {
+      ...member,
+      avatarPath: null,
+      avatarGiphyId: "avatar-gif",
+    };
+    giphyState.hydrate.mockResolvedValue([
+      {
+        ...giphyMember,
+        avatarUrl: "https://media.giphy.com/avatar-still.webp",
+      },
+    ]);
+
+    const [hydrated] = await hydrateDirectConversationAvatars(
+      [{ ...conversation, otherMember: giphyMember }],
+      [],
+      loadAvatar,
+    );
+
+    expect(loadAvatar).not.toHaveBeenCalled();
+    expect(hydrated?.otherMember.avatarUrl).toBe(
+      "https://media.giphy.com/avatar-still.webp",
+    );
   });
 });

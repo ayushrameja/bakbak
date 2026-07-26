@@ -268,6 +268,9 @@ connector tree, and speaker-safe echo cancellation by default.
 Plan 0030 supersedes only that preference default: installed macOS now defaults
 the full-volume mode on, keeps RNNoise/noise suppression/automatic gain
 control, and disables echo cancellation with an explicit headphone warning.
+Plan 0031 adds target-specific GIPHY profile avatar/cover selection, provider-ID
+profile sources, memory-only rendition resolution, and offline-safe fallbacks
+without changing uploaded profile media or persisting provider files/URLs.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -427,6 +430,12 @@ control, and disables echo cancellation with an explicit headphone warning.
 - [x] Implement plan 0022's compatible v2 channel/DM contracts, resumable
       private media pipeline, Bakbak sticker catalog/reactions, GIPHY picker,
       quoted replies, author deletion, Realtime hydration, and cache v2.
+- [x] Implement plan 0031's GIF-only profile pickers, provider-ID profile/DM
+      contracts, lazy rendition resolution, Realtime reconciliation, and
+      persistent-cache URL stripping.
+- [x] Deploy plan 0031's additive migration.
+- [ ] Complete plan 0031's live two-account, offline, reduced-motion, and
+      installed layout acceptance matrix.
 - [ ] Deploy plan 0022 in compatibility order and complete its hosted
       two-account plus installed macOS/Windows media/GIPHY/reply/reaction/cache
       acceptance matrix.

@@ -19,6 +19,7 @@ const giphyObjectSchema = z.object({
     fixed_width: renditionSchema,
     fixed_width_still: renditionSchema.optional(),
     original: renditionSchema,
+    original_still: renditionSchema.optional(),
   }),
   analytics: z
     .object({
@@ -37,8 +38,11 @@ export interface GiphyAsset {
   width: number;
   height: number;
   previewUrl: string;
+  previewImageUrl: string;
   stillUrl: string;
   originalUrl: string;
+  originalImageUrl: string;
+  originalStillUrl: string;
   analytics: {
     onload?: string;
     onclick?: string;
@@ -198,11 +202,17 @@ function toAsset(
       kind === "sticker"
         ? (preview.webp ?? preview.url)
         : (preview.mp4 ?? preview.webp ?? preview.url),
+    previewImageUrl: preview.webp ?? preview.url,
     stillUrl: input.images.fixed_width_still?.url ?? preview.url,
     originalUrl:
       kind === "sticker"
         ? (original.webp ?? original.url)
         : (original.mp4 ?? original.webp ?? original.url),
+    originalImageUrl: original.webp ?? original.url,
+    originalStillUrl:
+      input.images.original_still?.url ??
+      input.images.fixed_width_still?.url ??
+      preview.url,
     analytics: {
       ...(input.analytics?.onload?.url
         ? { onload: input.analytics.onload.url }

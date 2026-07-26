@@ -148,6 +148,10 @@ import {
 } from "../lib/profile-service";
 import { ProfileMediaCache } from "../lib/profile-media-cache";
 import {
+  hydrateGiphyAvatarPosters,
+  resolveGiphyProfileMedia,
+} from "../lib/profile-giphy-media";
+import {
   archiveSticker,
   downloadStickerMedia,
   loadStickers,
@@ -526,10 +530,12 @@ export default function App() {
               avatarAnimationUrl: current.avatarAnimationUrl,
               avatarPath: current.avatarPath,
               avatarAnimationPath: current.avatarAnimationPath,
+              avatarGiphyId: current.avatarGiphyId,
               coverUrl: current.coverUrl,
               coverAnimationUrl: current.coverAnimationUrl,
               coverPath: current.coverPath,
               coverAnimationPath: current.coverAnimationPath,
+              coverGiphyId: current.coverGiphyId,
               coverPositionX: current.coverPositionX,
               coverPositionY: current.coverPositionY,
               description: current.description,
@@ -612,8 +618,10 @@ export default function App() {
               avatarUrl: currentMember.avatarUrl,
               avatarPath: currentMember.avatarPath,
               avatarAnimationPath: currentMember.avatarAnimationPath,
+              avatarGiphyId: currentMember.avatarGiphyId,
               coverPath: currentMember.coverPath,
               coverAnimationPath: currentMember.coverAnimationPath,
+              coverGiphyId: currentMember.coverGiphyId,
               coverPositionX: currentMember.coverPositionX,
               coverPositionY: currentMember.coverPositionY,
               description: currentMember.description,
@@ -651,6 +659,38 @@ export default function App() {
           })
           .catch(() => undefined);
       });
+      void hydrateGiphyAvatarPosters(snapshot.members)
+        .then((hydrated) => {
+          if (cancelled) return;
+          const byId = new Map(hydrated.map((member) => [member.id, member]));
+          setWorkspace((current) =>
+            current?.server.id === snapshot.server.id
+              ? {
+                  ...current,
+                  members: current.members.map((member) => {
+                    if (!member.avatarGiphyId) return member;
+                    const resolved = byId.get(member.id);
+                    return resolved?.avatarGiphyId === member.avatarGiphyId
+                      ? { ...member, avatarUrl: resolved.avatarUrl }
+                      : member;
+                  }),
+                }
+              : current,
+          );
+          const currentMember = hydrated.find(
+            (member) =>
+              member.id === signedInUserId && Boolean(member.avatarGiphyId),
+          );
+          if (currentMember) {
+            setUser((current) =>
+              current?.id === currentMember.id &&
+              current.avatarGiphyId === currentMember.avatarGiphyId
+                ? { ...current, avatarUrl: currentMember.avatarUrl }
+                : current,
+            );
+          }
+        })
+        .catch(() => undefined);
     };
 
     const load = async () => {
@@ -953,13 +993,25 @@ export default function App() {
       void (async () => {
         let avatarUrl = profile.avatar_url;
         let avatarResolved = true;
-        try {
-          avatarUrl = profile.avatar_path
-            ? await loadProfileMedia(AVATAR_BUCKET, profile.avatar_path)
-            : profile.avatar_url;
-        } catch {
-          // Keep the last usable avatar if a transient Storage read fails.
-          avatarResolved = false;
+        if (profile.avatar_giphy_id) {
+          try {
+            const media = await resolveGiphyProfileMedia({
+              avatarGiphyId: profile.avatar_giphy_id,
+              coverGiphyId: profile.cover_giphy_id,
+            });
+            avatarUrl = media.avatarPosterUrl;
+          } catch {
+            avatarUrl = null;
+          }
+        } else {
+          try {
+            avatarUrl = profile.avatar_path
+              ? await loadProfileMedia(AVATAR_BUCKET, profile.avatar_path)
+              : profile.avatar_url;
+          } catch {
+            // Keep the last usable private avatar on a transient Storage read.
+            avatarResolved = false;
+          }
         }
         if (
           cancelled ||
@@ -983,6 +1035,24 @@ export default function App() {
               }
             : current,
         );
+        setDirectConversations((current) =>
+          current.map((conversation) =>
+            conversation.otherMember.id === profile.id
+              ? {
+                  ...conversation,
+                  otherMember: richMemberFromProfile(
+                    conversation.otherMember,
+                    profile,
+                    {
+                      avatarUrl,
+                      avatarResolved,
+                      mediaCache: profileMediaCacheRef.current,
+                    },
+                  ),
+                }
+              : conversation,
+          ),
+        );
         setUser((current) =>
           current?.id === profile.id
             ? {
@@ -990,18 +1060,24 @@ export default function App() {
                 displayName: profile.display_name,
                 avatarPath: profile.avatar_path,
                 avatarAnimationPath: profile.avatar_animation_path,
+                avatarGiphyId: profile.avatar_giphy_id,
                 avatarAnimationUrl:
-                  current.avatarAnimationPath === profile.avatar_animation_path
+                  current.avatarAnimationPath ===
+                    profile.avatar_animation_path &&
+                  current.avatarGiphyId === profile.avatar_giphy_id
                     ? current.avatarAnimationUrl
                     : null,
                 coverPath: profile.cover_path,
                 coverUrl:
-                  current.coverPath === profile.cover_path
+                  current.coverPath === profile.cover_path &&
+                  current.coverGiphyId === profile.cover_giphy_id
                     ? current.coverUrl
                     : null,
                 coverAnimationPath: profile.cover_animation_path,
+                coverGiphyId: profile.cover_giphy_id,
                 coverAnimationUrl:
-                  current.coverAnimationPath === profile.cover_animation_path
+                  current.coverAnimationPath === profile.cover_animation_path &&
+                  current.coverGiphyId === profile.cover_giphy_id
                     ? current.coverAnimationUrl
                     : null,
                 coverPositionX: profile.cover_position_x,
@@ -2375,10 +2451,12 @@ export default function App() {
     let description = input.description.trim();
     let avatarPath = user.avatarPath;
     let avatarAnimationPath = user.avatarAnimationPath;
+    let avatarGiphyId = user.avatarGiphyId;
     let avatarUrl = user.avatarUrl;
     let avatarAnimationUrl = user.avatarAnimationUrl;
     let coverPath = user.coverPath;
     let coverAnimationPath = user.coverAnimationPath;
+    let coverGiphyId = user.coverGiphyId;
     let coverUrl = user.coverUrl;
     let coverAnimationUrl = user.coverAnimationUrl;
     let coverPositionX = input.coverPositionX;
@@ -2397,6 +2475,8 @@ export default function App() {
         currentCoverAnimationPath: coverAnimationPath,
         avatarFile: input.avatarFile,
         coverFile: input.coverFile,
+        avatarGiphyId: input.avatarGiphyId,
+        coverGiphyId: input.coverGiphyId,
         removeAvatar: input.removeAvatar,
         removeCover: input.removeCover,
         coverPositionX,
@@ -2415,10 +2495,12 @@ export default function App() {
       description = saved.description;
       avatarPath = saved.avatarPath;
       avatarAnimationPath = saved.avatarAnimationPath;
+      avatarGiphyId = saved.avatarGiphyId;
       avatarUrl = saved.avatarUrl;
       avatarAnimationUrl = null;
       coverPath = saved.coverPath;
       coverAnimationPath = saved.coverAnimationPath;
+      coverGiphyId = saved.coverGiphyId;
       coverUrl = null;
       coverAnimationUrl = null;
       coverPositionX = saved.coverPositionX;
@@ -2428,6 +2510,7 @@ export default function App() {
       if (input.removeAvatar) {
         avatarPath = null;
         avatarAnimationPath = null;
+        avatarGiphyId = null;
         avatarUrl = null;
         avatarAnimationUrl = null;
       } else if (input.avatarFile) {
@@ -2436,14 +2519,22 @@ export default function App() {
         avatarAnimationPath = prepared.animation
           ? `mock/${crypto.randomUUID()}`
           : null;
+        avatarGiphyId = null;
         avatarUrl = await fileToDataUrl(prepared.poster);
         avatarAnimationUrl = prepared.animation
           ? await fileToDataUrl(prepared.animation)
           : null;
+      } else if (input.avatarGiphyId !== avatarGiphyId) {
+        avatarPath = null;
+        avatarAnimationPath = null;
+        avatarGiphyId = input.avatarGiphyId;
+        avatarAnimationUrl = null;
+        avatarUrl = null;
       }
       if (input.removeCover) {
         coverPath = null;
         coverAnimationPath = null;
+        coverGiphyId = null;
         coverUrl = null;
         coverAnimationUrl = null;
         coverPositionX = 50;
@@ -2454,10 +2545,29 @@ export default function App() {
         coverAnimationPath = prepared.animation
           ? `mock/${crypto.randomUUID()}`
           : null;
+        coverGiphyId = null;
         coverUrl = await fileToDataUrl(prepared.poster);
         coverAnimationUrl = prepared.animation
           ? await fileToDataUrl(prepared.animation)
           : null;
+      } else if (input.coverGiphyId !== coverGiphyId) {
+        coverPath = null;
+        coverAnimationPath = null;
+        coverGiphyId = input.coverGiphyId;
+        coverUrl = null;
+        coverAnimationUrl = null;
+      }
+    }
+
+    if (avatarGiphyId || coverGiphyId) {
+      try {
+        const media = await resolveGiphyProfileMedia(
+          { avatarGiphyId, coverGiphyId },
+          { includeCover: false },
+        );
+        if (avatarGiphyId) avatarUrl = media.avatarPosterUrl;
+      } catch {
+        if (avatarGiphyId) avatarUrl = null;
       }
     }
 
@@ -2467,10 +2577,12 @@ export default function App() {
       description,
       avatarPath,
       avatarAnimationPath,
+      avatarGiphyId,
       avatarUrl,
       avatarAnimationUrl,
       coverPath,
       coverAnimationPath,
+      coverGiphyId,
       coverUrl,
       coverAnimationUrl,
       coverPositionX,
@@ -3428,6 +3540,12 @@ function richMemberFromProfile(
     mediaCache: ProfileMediaCache;
   },
 ): ServerMember {
+  const sameAvatarSource =
+    member.avatarPath === profile.avatar_path &&
+    member.avatarGiphyId === profile.avatar_giphy_id;
+  const sameCoverSource =
+    member.coverPath === profile.cover_path &&
+    member.coverGiphyId === profile.cover_giphy_id;
   if (member.avatarAnimationPath !== profile.avatar_animation_path) {
     options.mediaCache.evict(AVATAR_BUCKET, member.avatarAnimationPath);
   }
@@ -3443,16 +3561,24 @@ function richMemberFromProfile(
     description: profile.description,
     avatarPath: profile.avatar_path,
     avatarAnimationPath: profile.avatar_animation_path,
+    avatarGiphyId: profile.avatar_giphy_id,
     avatarAnimationUrl:
-      member.avatarAnimationPath === profile.avatar_animation_path
+      member.avatarAnimationPath === profile.avatar_animation_path &&
+      member.avatarGiphyId === profile.avatar_giphy_id
         ? member.avatarAnimationUrl
         : null,
-    avatarUrl: options.avatarResolved ? options.avatarUrl : member.avatarUrl,
+    avatarUrl: options.avatarResolved
+      ? options.avatarUrl
+      : sameAvatarSource
+        ? member.avatarUrl
+        : null,
     coverPath: profile.cover_path,
-    coverUrl: member.coverPath === profile.cover_path ? member.coverUrl : null,
+    coverGiphyId: profile.cover_giphy_id,
+    coverUrl: sameCoverSource ? member.coverUrl : null,
     coverAnimationPath: profile.cover_animation_path,
     coverAnimationUrl:
-      member.coverAnimationPath === profile.cover_animation_path
+      member.coverAnimationPath === profile.cover_animation_path &&
+      member.coverGiphyId === profile.cover_giphy_id
         ? member.coverAnimationUrl
         : null,
     coverPositionX: profile.cover_position_x,

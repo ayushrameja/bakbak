@@ -11,11 +11,17 @@ import type { GiphyAssetKind } from "../../lib/types";
 export function GiphyPicker({
   onSelect,
   onClose,
+  fixedKind,
+  target = "message",
+  className = "",
 }: {
   onSelect: (asset: GiphyAsset) => void;
   onClose: () => void;
+  fixedKind?: GiphyAssetKind;
+  target?: "message" | "avatar" | "cover";
+  className?: string;
 }) {
-  const [kind, setKind] = useState<GiphyAssetKind>("gif");
+  const [kind, setKind] = useState<GiphyAssetKind>(fixedKind ?? "gif");
   const [query, setQuery] = useState("");
   const [assets, setAssets] = useState<GiphyAsset[]>([]);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
@@ -68,25 +74,36 @@ export function GiphyPicker({
 
   return (
     <div
-      className="media-picker media-picker--giphy"
+      className={`media-picker media-picker--giphy ${className}`.trim()}
       role="dialog"
-      aria-label="GIPHY picker"
+      aria-label={
+        target === "message" ? "GIPHY picker" : `GIPHY ${target} picker`
+      }
+      onKeyDown={(event) => {
+        if (event.key !== "Escape") return;
+        event.stopPropagation();
+        onClose();
+      }}
     >
       <header>
-        <div className="media-picker__tabs" role="tablist">
-          {(["gif", "sticker"] as const).map((nextKind) => (
-            <button
-              type="button"
-              role="tab"
-              aria-selected={kind === nextKind}
-              className={kind === nextKind ? "is-active" : ""}
-              onClick={() => setKind(nextKind)}
-              key={nextKind}
-            >
-              {nextKind === "gif" ? "GIFs" : "Stickers"}
-            </button>
-          ))}
-        </div>
+        {fixedKind ? (
+          <strong>{`Choose ${target === "avatar" ? "an" : "a"} ${target} GIF`}</strong>
+        ) : (
+          <div className="media-picker__tabs" role="tablist">
+            {(["gif", "sticker"] as const).map((nextKind) => (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={kind === nextKind}
+                className={kind === nextKind ? "is-active" : ""}
+                onClick={() => setKind(nextKind)}
+                key={nextKind}
+              >
+                {nextKind === "gif" ? "GIFs" : "Stickers"}
+              </button>
+            ))}
+          </div>
+        )}
         <button type="button" onClick={onClose} aria-label="Close GIPHY picker">
           ×
         </button>
@@ -97,6 +114,9 @@ export function GiphyPicker({
             autoFocus
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.preventDefault();
+            }}
             placeholder={`Search GIPHY ${kind === "gif" ? "GIFs" : "stickers"}`}
             aria-label={`Search GIPHY ${kind === "gif" ? "GIFs" : "stickers"}`}
             maxLength={50}
@@ -117,7 +137,11 @@ export function GiphyPicker({
               <button
                 type="button"
                 key={asset.id}
-                aria-label={`Add ${asset.altText} to message`}
+                aria-label={
+                  target === "message"
+                    ? `Add ${asset.altText} to message`
+                    : `Use ${asset.altText} as ${target}`
+                }
                 onMouseEnter={() => registerLoadOnce(asset)}
                 onFocus={() => registerLoadOnce(asset)}
                 onClick={() => {
