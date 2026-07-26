@@ -2,7 +2,19 @@ export interface RemoteAudioTrackLike {
   readonly kind: string;
   attach(element: HTMLMediaElement): HTMLMediaElement;
   detach(element: HTMLMediaElement): HTMLMediaElement;
-  setVolume?: (volume: number) => void;
+}
+
+export type RemoteAudioSourceKind = "speech" | "soundboard" | "screen-share";
+
+export interface RemoteAudioAttachment {
+  ownerId: string;
+  sourceKind: RemoteAudioSourceKind;
+  baseGain?: number;
+}
+
+interface OwnedRemoteAudio {
+  element: HTMLAudioElement;
+  metadata: Required<RemoteAudioAttachment>;
 }
 
 /**
@@ -10,8 +22,14 @@ export interface RemoteAudioTrackLike {
  * Keeping this boundary explicit makes teardown reliable when rooms change.
  */
 export class RemoteAudioRenderer {
-  private readonly elements = new Map<RemoteAudioTrackLike, HTMLAudioElement>();
+  private readonly elements = new Map<RemoteAudioTrackLike, OwnedRemoteAudio>();
   private readonly mutedTracks = new Set<RemoteAudioTrackLike>();
+  private readonly participantGains = new Map<string, number>();
+  private readonly globalGains = new Map<RemoteAudioSourceKind, number>([
+    ["speech", 1],
+    ["soundboard", 1],
+    ["screen-share", 1],
+  ]);
   private muted = false;
   private selectedDeviceId = "default";
 
@@ -21,12 +39,12 @@ export class RemoteAudioRenderer {
 
   attach(
     track: RemoteAudioTrackLike,
-    volume?: number,
+    metadata: RemoteAudioAttachment,
   ): HTMLAudioElement | null {
     if (track.kind !== "audio") return null;
 
     const existing = this.elements.get(track);
-    if (existing) return existing;
+    if (existing) return existing.element;
 
     const element = document.createElement("audio");
     element.autoplay = true;
@@ -41,25 +59,41 @@ export class RemoteAudioRenderer {
     }
 
     track.attach(element);
-    if (volume !== undefined) track.setVolume?.(volume);
+    const owned = {
+      element,
+      metadata: {
+        ...metadata,
+        baseGain: clampGain(metadata.baseGain ?? 1),
+      },
+    };
+    this.applyGain(owned);
     this.getHost().append(element);
-    this.elements.set(track, element);
+    this.elements.set(track, owned);
     return element;
   }
 
-  setVolume(track: RemoteAudioTrackLike, volume: number): void {
-    if (!this.elements.has(track)) return;
-    track.setVolume?.(Math.max(0, Math.min(1, volume)));
+  setParticipantGain(ownerId: string, gain: number): void {
+    this.participantGains.set(ownerId, clampGain(gain));
+    this.elements.forEach((owned) => {
+      if (owned.metadata.ownerId === ownerId) this.applyGain(owned);
+    });
+  }
+
+  setGlobalGain(sourceKind: RemoteAudioSourceKind, gain: number): void {
+    this.globalGains.set(sourceKind, clampGain(gain));
+    this.elements.forEach((owned) => {
+      if (owned.metadata.sourceKind === sourceKind) this.applyGain(owned);
+    });
   }
 
   detach(track: RemoteAudioTrackLike): void {
-    const element = this.elements.get(track);
-    if (!element) return;
+    const owned = this.elements.get(track);
+    if (!owned) return;
 
     try {
-      track.detach(element);
+      track.detach(owned.element);
     } finally {
-      element.remove();
+      owned.element.remove();
       this.elements.delete(track);
       this.mutedTracks.delete(track);
     }
@@ -67,21 +101,21 @@ export class RemoteAudioRenderer {
 
   setMuted(muted: boolean): void {
     this.muted = muted;
-    this.elements.forEach((element, track) => {
-      element.muted = muted || this.mutedTracks.has(track);
+    this.elements.forEach((owned, track) => {
+      owned.element.muted = muted || this.mutedTracks.has(track);
     });
   }
 
   setTrackMuted(track: RemoteAudioTrackLike, muted: boolean): void {
     if (muted) this.mutedTracks.add(track);
     else this.mutedTracks.delete(track);
-    const element = this.elements.get(track);
-    if (element) element.muted = this.muted || muted;
+    const owned = this.elements.get(track);
+    if (owned) owned.element.muted = this.muted || muted;
   }
 
   async setDevice(deviceId: string): Promise<void> {
     await Promise.all(
-      [...this.elements.values()].map(async (element) => {
+      [...this.elements.values()].map(async ({ element }) => {
         if (typeof element.setSinkId !== "function") {
           if (deviceId !== "default") {
             throw new Error("Audio output selection is not supported.");
@@ -105,4 +139,17 @@ export class RemoteAudioRenderer {
     this.mutedTracks.clear();
     this.muted = false;
   }
+
+  private applyGain(owned: OwnedRemoteAudio): void {
+    const participantGain =
+      this.participantGains.get(owned.metadata.ownerId) ?? 1;
+    const globalGain = this.globalGains.get(owned.metadata.sourceKind) ?? 1;
+    owned.element.volume = clampGain(
+      participantGain * globalGain * owned.metadata.baseGain,
+    );
+  }
+}
+
+function clampGain(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 1;
 }

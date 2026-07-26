@@ -3330,6 +3330,7 @@ export default function App() {
           macosKeepOtherAudioFullVolume={voice.macosKeepOtherAudioFullVolume}
           microphoneProcessingSupported={voice.microphoneProcessingSupported}
           microphoneProcessingError={voice.microphoneProcessingError}
+          microphoneProcessingState={voice.microphoneProcessingState}
           interfaceSoundPreferences={interfaceSoundPreferences}
           appearancePreference={appearancePreference}
           systemAccent={systemAccent}

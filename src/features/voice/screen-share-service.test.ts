@@ -119,10 +119,10 @@ describe("screen-share-service", () => {
         includeAudio: false,
         settings: { resolution: 1080, frameRate: 60 },
       }),
-    ).rejects.toBe("macOS did not deliver a video frame.");
+    ).rejects.toThrow("macOS did not deliver a video frame.");
 
     expect(consoleError).toHaveBeenCalledWith(
-      "[Bakbak screen share] macOS did not deliver a video frame.",
+      "[Bakbak screen share] capture-failed: macOS did not deliver a video frame.",
     );
     expect(consoleError.mock.calls.flat().join(" ")).not.toContain(
       "must-not-appear-in-console",
@@ -158,9 +158,16 @@ describe("screen-share-service", () => {
     await listenForScreenShareLifecycle(onEvent);
 
     expect(consoleError).toHaveBeenCalledWith(
-      "[Bakbak screen share] The selected source stopped before its first frame.",
+      "[Bakbak screen share] capture-failed: The selected source stopped before its first frame.",
     );
-    expect(onEvent).toHaveBeenCalledWith(payload);
+    expect(onEvent).toHaveBeenCalledWith({
+      ...payload,
+      failure: {
+        code: "capture-failed",
+        message: "The selected source stopped before its first frame.",
+        recommendedRetrySource: null,
+      },
+    });
     consoleError.mockRestore();
   });
 });

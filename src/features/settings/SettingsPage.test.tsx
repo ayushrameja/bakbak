@@ -55,6 +55,7 @@ function renderSettings(
     macosKeepOtherAudioFullVolume: false,
     microphoneProcessingSupported: true,
     microphoneProcessingError: null,
+    microphoneProcessingState: "active",
     interfaceSoundPreferences: {
       enabled: true,
       volume: 0.55,

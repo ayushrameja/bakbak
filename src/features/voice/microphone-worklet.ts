@@ -1,5 +1,10 @@
 import createRNNWasmModuleSync from "@jitsi/rnnoise-wasm/dist/rnnoise-sync.js";
 import type { MicrophoneProcessingPreferences } from "../settings/microphone-preferences";
+import {
+  AUDIO_WORKLET_BLOCK_SIZE,
+  RNNOISE_FRAME_SIZE,
+  RnnoiseFrameBridge,
+} from "./rnnoise-frame-bridge";
 
 declare abstract class AudioWorkletProcessor {
   readonly port: MessagePort;
@@ -27,15 +32,13 @@ interface RnnoiseModule {
 interface WorkletMessage {
   type: "configure" | "reset" | "destroy";
   preferences?: MicrophoneProcessingPreferences;
+  requestId?: number;
 }
 
 const PROCESSOR_NAME = "bakbak-microphone-processor";
-const RNNOISE_FRAME_SIZE = 480;
 const RNNOISE_BUFFER_BYTES =
   RNNOISE_FRAME_SIZE * Float32Array.BYTES_PER_ELEMENT;
 const PCM_SCALE = 32_768;
-const WORKLET_BLOCK_SIZE = 128;
-const CIRCULAR_BUFFER_SIZE = 1_920;
 
 const rnnoiseModule = createRNNWasmModuleSync() as RnnoiseModule;
 
@@ -89,11 +92,9 @@ class RnnoiseDenoiser {
 class BakbakMicrophoneWorklet extends AudioWorkletProcessor {
   private denoiser = new RnnoiseDenoiser();
   private preferences: MicrophoneProcessingPreferences;
-  private circularBuffer = new Float32Array(CIRCULAR_BUFFER_SIZE);
-  private inputLength = 0;
-  private denoisedLength = 0;
-  private outputIndex = 0;
-  private outputStarted = false;
+  private bridge = new RnnoiseFrameBridge((frame) => {
+    this.denoiser.process(frame);
+  });
   private running = true;
 
   constructor(options?: AudioWorkletNodeOptions) {
@@ -105,15 +106,20 @@ class BakbakMicrophoneWorklet extends AudioWorkletProcessor {
         const previousSuppression = this.preferences.enhancedNoiseSuppression;
         this.preferences = readPreferences(message.preferences);
         if (previousSuppression !== this.preferences.enhancedNoiseSuppression) {
-          this.resetBuffers();
+          this.bridge.reset();
         }
+        this.port.postMessage({
+          type: "configured",
+          requestId: message.requestId,
+        });
       } else if (message.type === "reset") {
-        this.resetBuffers();
+        this.bridge.reset();
       } else if (message.type === "destroy") {
         this.running = false;
         this.denoiser.destroy();
       }
     };
+    this.port.postMessage({ type: "ready" });
   }
 
   process(inputs: Float32Array[][], outputs: Float32Array[][]): boolean {
@@ -123,8 +129,8 @@ class BakbakMicrophoneWorklet extends AudioWorkletProcessor {
     if (!input || !output) return true;
 
     if (
-      input.length !== WORKLET_BLOCK_SIZE ||
-      output.length !== WORKLET_BLOCK_SIZE
+      input.length !== AUDIO_WORKLET_BLOCK_SIZE ||
+      output.length !== AUDIO_WORKLET_BLOCK_SIZE
     ) {
       output.fill(0);
       output.set(input.subarray(0, output.length));
@@ -132,69 +138,11 @@ class BakbakMicrophoneWorklet extends AudioWorkletProcessor {
     }
 
     if (this.preferences.enhancedNoiseSuppression) {
-      this.readDenoisedBlock(input, output);
+      this.bridge.process(input, output);
     } else {
       output.set(input);
     }
     return true;
-  }
-
-  private readDenoisedBlock(input: Float32Array, output: Float32Array): void {
-    this.circularBuffer.set(input, this.inputLength);
-    this.inputLength += input.length;
-
-    while (this.denoisedLength + RNNOISE_FRAME_SIZE <= this.inputLength) {
-      this.denoiser.process(
-        this.circularBuffer.subarray(
-          this.denoisedLength,
-          this.denoisedLength + RNNOISE_FRAME_SIZE,
-        ),
-      );
-      this.denoisedLength += RNNOISE_FRAME_SIZE;
-    }
-
-    // RNNoise produces 480 samples at a time while an AudioWorklet consumes
-    // 128. Hold one render quantum after the first frame so the bursty frame
-    // cadence cannot briefly starve the output between RNNoise calls.
-    if (!this.outputStarted) {
-      output.fill(0);
-      if (this.denoisedLength >= RNNOISE_FRAME_SIZE) {
-        this.outputStarted = true;
-      }
-      return;
-    }
-
-    const readySamples =
-      this.outputIndex > this.denoisedLength
-        ? CIRCULAR_BUFFER_SIZE - this.outputIndex
-        : this.denoisedLength - this.outputIndex;
-    if (readySamples >= output.length) {
-      output.set(
-        this.circularBuffer.subarray(
-          this.outputIndex,
-          this.outputIndex + output.length,
-        ),
-      );
-      this.outputIndex += output.length;
-    } else {
-      output.fill(0);
-    }
-
-    if (this.outputIndex === CIRCULAR_BUFFER_SIZE) {
-      this.outputIndex = 0;
-    }
-    if (this.inputLength === CIRCULAR_BUFFER_SIZE) {
-      this.inputLength = 0;
-      this.denoisedLength = 0;
-    }
-  }
-
-  private resetBuffers(): void {
-    this.circularBuffer.fill(0);
-    this.inputLength = 0;
-    this.denoisedLength = 0;
-    this.outputIndex = 0;
-    this.outputStarted = false;
   }
 }
 

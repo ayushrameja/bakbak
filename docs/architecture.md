@@ -160,14 +160,17 @@ Voice rooms retain locally persisted microphone/speaker/camera selection,
 opt-in 720p camera calls, sidebar occupancy with elapsed timers, mute/deafen,
 per-participant volume, remote-track audio/video rendering, autoplay recovery,
 reconnect/error states, and a unified participant/screen-share media gallery.
-Microphone capture keeps WebRTC noise suppression and automatic gain control,
-uses speaker-safe echo cancellation by default, and then defaults to a second
-device-local RNNoise stage in a 48 kHz AudioWorklet before LiveKit publication.
+Microphone capture keeps WebRTC noise suppression and automatic gain control
+and defaults to a second device-local RNNoise stage in a 48 kHz AudioWorklet
+before LiveKit publication.
 Audio settings expose only the Bakbak noise-cleanup switch; the former Natural,
 Child, Robot, and Walkie-talkie Voice Lab effects no longer exist. Unsupported
-or failed RNNoise processing falls back to the built-in WebRTC cleanup without
-blocking the call. Installed macOS additionally offers a default-off `Keep
-other audio at full volume` switch. It sets `echoCancellation: false` to avoid
+or failed RNNoise processing enters an explicit built-in-WebRTC fallback state
+without blocking the call. The switch commits On only after the worklet reports
+ready and acknowledges its configuration. Runtime processor failure restores
+the original sender track or reports that the call must be rejoined. Installed
+macOS additionally offers a default-on `Keep other audio at full volume`
+switch. It sets `echoCancellation: false` to avoid
 WebKit/macOS voice-processing attenuation while retaining WebRTC noise
 suppression, automatic gain control, and RNNoise, and warns the user to wear
 headphones because RNNoise is not acoustic echo cancellation. Browser/mock,
@@ -190,7 +193,10 @@ message, and user-ID copy actions, omits self messaging, and keeps existing DMs
 available offline while disabling offline creation. Remote participants in the
 active call additionally expose a local mute toggle. Participant volume zero
 is applied across speech, soundboard, and share audio; unmute restores the last
-non-zero level or 100%.
+non-zero level or 100%. One remote-audio renderer owns every hidden speech,
+soundboard, and watched-share element with owner/source/base-gain metadata and
+writes gain to the actual HTML audio element. Listener-owned session state,
+not LiveKit's track volume, drives both current and future attachments.
 Selecting a voice channel immediately joins it; selecting another voice channel switches
 the active call without a pre-join or initial connection surface. An active call
 adds a sidebar control block with room, backend latency, normalized local
@@ -443,15 +449,22 @@ a process from a window title. A separate least-privilege LiveKit room publishes
 H.264 video with presenter-selected 480p/720p/1080p and 15/30/60-fps ceilings.
 The default is 1080p/60, the last successful quality is device-local, and source
 audio defaults on whenever matched audio is available for the selected source
-(not persisted). macOS captures optional 48 kHz stereo matched source audio
-while excluding Bakbak and retries video-only if audio fails. Windows has direct
+(not persisted). On macOS 14.2+, ScreenCaptureKit captures optional 48 kHz
+stereo audio from the selected application's proven process tree or a display
+filter that excludes Bakbak's proven process tree. A topology watchdog rebuilds
+the filter, and unsupported or unproven isolation remains video-only. Windows
+has direct
 free-threaded
 `Windows.Graphics.Capture`, D3D11 frame delivery and staging readback,
 resize/quality frame-pool reconfiguration, time-bounded in-memory picker
 previews, and CPU BGRA scaling/color conversion to I420 for LiveKit. On Windows
 build 20348 or newer, WASAPI process loopback includes the selected
 application's process tree or excludes Bakbak's process tree for a display;
-older builds keep video enabled and report why audio is unavailable.
+older builds or an unverified Bakbak/WebView2 tree keep video enabled and report
+why audio is unavailable. Cursor inclusion is checked as an independent capture
+capability. Sustained black/cursor-only application frames stop with a
+structured Entire screen retry and Borderless Windowed guidance; Bakbak never
+injects into or hooks a game.
 Source termination, terminal LiveKit disconnect, voice leave, explicit stop,
 and main-window close tear down capture and the companion.
 Linking ScreenCaptureKit directly makes macOS 12.3 the desktop bundle minimum;
@@ -761,7 +774,13 @@ active only after capture registration succeeds and the first usable video
 frame arrives. If no frame arrives within five seconds, native capture is
 stopped and the renderer receives a retryable error while voice remains
 connected. Sanitized lifecycle states and failures are printed to the Tauri
-terminal and DevTools without tokens or captured-source labels.
+terminal and DevTools without tokens or captured-source labels. Media
+diagnostics contain only OS/build, source kind, capture backend, cursor
+capability, audio-isolation mode, and stable failure code.
+On macOS, focused-call fullscreen clears native glass, enters an opaque media
+stage, and uses Tauri simple fullscreen instead of creating a new macOS Space.
+Transitions are serialized and timeout with rollback; every exit path restores
+the under-window glass effect in cleanup. Windows retains native fullscreen.
 The native Rust LiveKit/WebRTC dependencies are macOS and Windows target
 dependencies. ScreenCaptureKit remains macOS-only; Windows links
 Windows.Graphics.Capture, D3D11, and WASAPI process-loopback support.
@@ -1182,13 +1201,15 @@ An invite-management UI is deferred until post-v1.
    text-channel, and non-member responses.
 4. Microphone capture requests mono 48 kHz input with WebRTC echo
    cancellation, noise suppression, and automatic gain control. When enhanced
-   cleanup or a voice effect is selected, a LiveKit `TrackProcessor` routes
+   cleanup is selected, a LiveKit `TrackProcessor` routes
    capture through a shared 48 kHz AudioContext and AudioWorklet. After the
    first trusted gesture, Bakbak loads that worklet without requesting a
    microphone, then reuses the context for preview and voice. The worklet
-   bridges 128-sample render quanta into 480-sample RNNoise frames, then applies
-   the selected sender-side effect. Unsupported initialization keeps the raw
-   capture track and records a non-fatal Settings warning.
+   uses a deterministic ring bridge from 128-sample render quanta to 480-sample
+   RNNoise frames. A `ready` plus request-ID configuration handshake must finish
+   before cleanup becomes active. Unsupported initialization or processor error
+   restores the unprocessed sender, keeps built-in WebRTC cleanup, and records
+   a non-fatal explicit fallback warning.
 5. After LiveKit connects, the processed or fallback speech track publishes as
    `bakbak-microphone` while output preparation and the existing
    soundboard-track preparation run concurrently. Bakbak still awaits
@@ -1268,19 +1289,25 @@ An invite-management UI is deferred until post-v1.
    follow-up. The presenter ceiling uses 0.8–8 Mbps H.264
    encoding limits across the nine quality combinations; LiveKit adaptive
    layers may deliver less to a viewer.
-5. macOS application filters contain only the selected application; Entire
-   screen keeps Bakbak visually present when selected but both modes apply
-   ScreenCaptureKit current-process audio exclusion. Windows build 20348 or
-   newer includes only the selected application process tree or excludes
-   Bakbak's process tree for Entire screen. Enumeration and start-time
+5. On macOS 14.2+, application filters include only the selected application's
+   proven process tree and display filters exclude Bakbak's process tree.
+   ScreenCaptureKit supplies the matched audio for that same filter, and the
+   filter is rebuilt after relevant process-topology changes. macOS 14.0–14.1
+   and any unproven isolation are video-only. Windows build 20348 or newer
+   includes only the selected application process tree or excludes a verified
+   Bakbak/WebView2 tree for Entire screen. Enumeration and start-time
    validation reject Bakbak and descendant application processes. Older
    Windows builds and any isolated-audio startup failure keep video available,
-   disable audio with a source-specific explanation/warning, and never broaden
-   capture to unrelated output. `screen_share_audio` publication starts only
-   after isolated capture succeeds.
+   disable audio, and never broaden capture to unrelated output.
+   `screen_share_audio` publication starts only after isolated capture succeeds.
 6. A two-second gap without a complete frame mutes the publication, keeps the
    viewer's last frame visible, and reports “Source minimized or paused.”
    Capture automatically unmutes when a complete frame returns.
+   Windows application capture separately classifies sustained black or
+   cursor-only frames, stops with `capture-black`, and offers one-click retry
+   with Entire screen plus Borderless Windowed instructions. Cursor API failure
+   returns `cursor-unavailable`; isolation failure uses
+   `audio-isolation-unavailable`.
 7. Companion participants are merged into their owner's UI state and omitted
    from ordinary participant cards. Every remote screen video/audio publication
    is immediately unsubscribed. `watchedScreenShareId` is the sole subscription
@@ -1308,9 +1335,12 @@ An invite-management UI is deferred until post-v1.
 9. Focused people and shares use one `minmax(0, 1fr)` media stage without a
    metadata header or people filmstrip. Shared media uses `object-fit: contain`
    against a black canvas, while Back to grid and fullscreen sit above its
-   bottom corners; local quality controls share that overlay. Fullscreen is a
-   fixed `100dvh` overlay reconciled with Tauri's actual `isFullscreen()` after
-   requests, resize/focus events, Escape, target loss, disconnect, and teardown.
+   bottom corners; local quality controls share that overlay. On macOS,
+   fullscreen is an opaque stage plus Tauri simple fullscreen with serialized,
+   time-bounded transitions and native-glass restoration in every cleanup path.
+   Windows keeps the native fullscreen operation and reconciles it with
+   Tauri's actual `isFullscreen()` after requests, resize/focus events, Escape,
+   target loss, disconnect, and teardown.
    Exit fullscreen stays pinned at the bottom while secondary controls hide
    after 2.5 seconds idle. Escape retains focus; active media or Back to grid
    exits fullscreen and clears focus without interrupting a watched share.
@@ -1396,20 +1426,23 @@ An invite-management UI is deferred until post-v1.
    soundboard audio.
 
 Unknown message types, stale duplicates, and unknown sound IDs are ignored
-safely. Built-in capture constraints plus RNNoise target echo, keyboard, and
-steady background noise, but RNNoise is not speaker separation and cannot
-guarantee acoustic isolation on every device. The laptop-speaker two-client
-check therefore remains required.
+safely. Built-in suppression plus RNNoise target keyboard and steady background
+noise. Echo cancellation applies only when the macOS full-volume option is off;
+RNNoise is not speaker separation and cannot guarantee acoustic isolation on
+every device. The laptop-speaker two-client check therefore remains required.
 
 ### Local preferences
 
 The renderer validates and stores only `{ inputDeviceId, outputDeviceId,
 cameraDeviceId, soundboardVolume, enhancedNoiseSuppression,
 macosKeepOtherAudioFullVolume }` under the versioned local-storage key
-`bakbak.devicePreferences.v3`. Valid v1/v2 device, volume, and cleanup values
+`bakbak.devicePreferences.v4`. Valid v1/v2 device, volume, and cleanup values
 migrate; the old v2 `voiceEffect` is ignored and the macOS full-volume mode
-defaults off. These preferences never sync to Supabase. If a remembered device
-is absent, the selector returns to the runtime's default device.
+defaults on. Because v3 cannot distinguish its automatically saved false from
+an intentional choice, every v3 false migrates to true once; subsequent v4
+choices persist normally. These preferences never sync to Supabase. If a
+remembered device is absent, the selector returns to the runtime's default
+device.
 Interface cues deliberately bypass the selected call output.
 Soundboard section collapse state is stored independently per server under
 `bakbak.soundboardSections.v1:<server ID>` and never syncs; favorite rows sync
