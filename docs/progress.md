@@ -5214,3 +5214,42 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
 - **Next:** Run Windows CI and the installed macOS/Windows Plan 0030 matrix,
   investigate the local DMG packaging failure separately, and close acceptance
   items only from observed audio/video/fullscreen results.
+
+## 2026-07-26 — Restore the Windows Tauri Send boundary
+
+- **Completed:** Fixed the Windows release compile failure introduced by
+  best-effort application focus restoration. `PreparedCapture` now stores the
+  selected window handle as a pointer-width integer rather than a non-`Send`
+  `HWND`; native `HWND` reconstruction is limited to the immediate synchronous
+  `SetForegroundWindow` call before the next await. Added a Windows compile-time
+  assertion that `PreparedCapture` implements `Send`.
+- **Decisions:** Preserved focus restoration without an unsafe `Send`
+  implementation. The scalar handle representation carries the same opaque
+  platform value across the async boundary while ensuring no raw pointer is
+  retained in the Tauri command future.
+- **Validation:**
+  - Attached Windows release log — confirmed `PreparedCapture` retained
+    `*mut c_void` across the `start_publisher(...).await`, making
+    `start_screen_share` fail Tauri's required `Future + Send` bound.
+  - `cargo fmt --manifest-path src-tauri/Cargo.toml --check` — passed.
+  - `cargo test --manifest-path src-tauri/Cargo.toml` — passed 17/17 available
+    macOS native tests.
+  - `pnpm check` — passed formatting, lint, both strict TypeScript projects, 77
+    Vitest files with 420 tests, 40/40 Node contracts, version synchronization,
+    production renderer build, and bundle secret scan. Vite retained the
+    existing non-blocking large-chunk warning.
+  - Windows `x86_64-pc-windows-msvc` Cargo cross-check — could not reach Bakbak
+    source on this Mac because the Windows MSVC toolchain/CRT is absent
+    (`lib.exe` and `assert.h`).
+  - GitHub workflow recheck — deferred until the focused branch is published;
+    the supplied Actions log was used for diagnosis, and CLI authentication was
+    later restored for publication.
+- **Documentation updated:** Appended this canonical progress entry.
+  Architecture and active plan are unchanged because capture behavior and scope
+  did not change.
+- **Known limitations:** The new `PreparedCapture: Send` assertion is
+  Windows-only and therefore requires the Windows runner to compile it. The
+  release workflow remains the authoritative verification for the original
+  failure.
+- **Next:** Rerun the Windows Tauri release job after publication and confirm it
+  advances past Rust compilation into NSIS bundling.

@@ -101,7 +101,7 @@ pub struct PreparedCapture {
     settings: ScreenShareSettings,
     item: GraphicsCaptureItem,
     audio_target: Option<ProcessLoopbackTarget>,
-    focus_window: Option<HWND>,
+    focus_window: Option<isize>,
     termination_sender: mpsc::UnboundedSender<String>,
     pause_sender: mpsc::UnboundedSender<bool>,
 }
@@ -270,7 +270,7 @@ pub async fn pick_source(
         .unwrap_or(None)
         .flatten();
     let focus_window = match &target {
-        CaptureTarget::Window(hwnd) => Some(*hwnd),
+        CaptureTarget::Window(hwnd) => Some(hwnd.0 as isize),
         CaptureTarget::Display(_) => None,
     };
     let (width, height) =
@@ -434,7 +434,7 @@ pub async fn start_capture(
     if let Some(hwnd) = prepared.focus_window {
         // Best effort only: Windows may reject foreground activation based on
         // its user-input rules, but capture remains active either way.
-        let _ = unsafe { SetForegroundWindow(hwnd) };
+        let _ = unsafe { SetForegroundWindow(HWND(hwnd as *mut std::ffi::c_void)) };
     }
     if timeout(FIRST_FRAME_TIMEOUT, first_frame_receiver.recv())
         .await
@@ -1355,6 +1355,13 @@ fn fit_to_resolution(width: u32, height: u32, resolution: u32) -> (u32, u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prepared_capture_can_cross_the_tauri_async_boundary() {
+        fn assert_send<T: Send>() {}
+
+        assert_send::<PreparedCapture>();
+    }
 
     #[test]
     fn parses_only_supported_source_identifiers() {
