@@ -119,6 +119,8 @@ describe("profile validation", () => {
         currentAvatarAnimationPath: null,
         currentCoverPath: null,
         currentCoverAnimationPath: null,
+        avatarGiphyId: null,
+        coverGiphyId: null,
         coverPositionX: 50,
         coverPositionY: 50,
         avatarFile: avatar,
@@ -141,8 +143,10 @@ describe("profile validation", () => {
         avatar_url: null,
         avatar_path: null,
         avatar_animation_path: null,
+        avatar_giphy_id: null,
         cover_path: null,
         cover_animation_path: null,
+        cover_giphy_id: null,
         cover_position_x: 50,
         cover_position_y: 50,
         description: "",
@@ -161,6 +165,8 @@ describe("profile validation", () => {
         currentAvatarUrl: "https://legacy.example/avatar.png",
         currentCoverPath: null,
         currentCoverAnimationPath: null,
+        avatarGiphyId: null,
+        coverGiphyId: null,
         coverPositionX: 50,
         coverPositionY: 50,
         removeAvatar: true,
@@ -174,8 +180,10 @@ describe("profile validation", () => {
       description: "",
       avatar_path: null,
       avatar_animation_path: null,
+      avatar_giphy_id: null,
       cover_path: null,
       cover_animation_path: null,
+      cover_giphy_id: null,
       cover_position_x: 50,
       cover_position_y: 50,
       avatar_url: null,
@@ -183,6 +191,65 @@ describe("profile validation", () => {
     expect(profileState.remove).toHaveBeenCalledWith([
       "50000000-0000-4000-8000-000000000002/50000000-0000-4000-8000-00000000a001",
     ]);
+  });
+
+  it("stores only GIPHY ids and removes replaced private profile objects", async () => {
+    profileState.single.mockImplementation(() => {
+      const update = profileState.update.mock.calls.at(-1)?.[0] as Omit<
+        ProfileRow,
+        "id"
+      >;
+      return Promise.resolve({
+        data: {
+          id: "50000000-0000-4000-8000-000000000002",
+          ...update,
+        },
+        error: null,
+      });
+    });
+
+    const saved = await saveLiveProfile({
+      userId: "50000000-0000-4000-8000-000000000002",
+      displayName: "Mira",
+      description: "",
+      currentAvatarPath: "owner/avatar-poster",
+      currentAvatarAnimationPath: "owner/avatar-animation",
+      currentAvatarUrl: "blob:private-avatar",
+      currentCoverPath: "owner/cover-poster",
+      currentCoverAnimationPath: "owner/cover-animation",
+      avatarGiphyId: "avatar-GIF_123",
+      coverGiphyId: "cover-GIF_456",
+      coverPositionX: 50,
+      coverPositionY: 50,
+    });
+
+    expect(profileState.upload).not.toHaveBeenCalled();
+    expect(profileState.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        avatar_url: null,
+        avatar_path: null,
+        avatar_animation_path: null,
+        avatar_giphy_id: "avatar-GIF_123",
+        cover_path: null,
+        cover_animation_path: null,
+        cover_giphy_id: "cover-GIF_456",
+      }),
+    );
+    expect(profileState.remove).toHaveBeenCalledWith([
+      "owner/avatar-poster",
+      "owner/avatar-animation",
+    ]);
+    expect(profileState.remove).toHaveBeenCalledWith([
+      "owner/cover-poster",
+      "owner/cover-animation",
+    ]);
+    expect(saved).toEqual(
+      expect.objectContaining({
+        avatarGiphyId: "avatar-GIF_123",
+        coverGiphyId: "cover-GIF_456",
+        avatarUrl: null,
+      }),
+    );
   });
 
   it("stores static posters beside original GIF avatar and cover animations", async () => {
@@ -209,6 +276,8 @@ describe("profile validation", () => {
       currentAvatarAnimationPath: null,
       currentCoverPath: null,
       currentCoverAnimationPath: null,
+      avatarGiphyId: null,
+      coverGiphyId: null,
       avatarFile: new File(["gif"], "avatar.gif", { type: "image/gif" }),
       coverFile: new File(["gif"], "cover.gif", { type: "image/gif" }),
       coverPositionX: 64,
@@ -243,8 +312,10 @@ describe("profile validation", () => {
             avatar_url: null;
             avatar_path: null;
             avatar_animation_path: null;
+            avatar_giphy_id: null;
             cover_path: null;
             cover_animation_path: null;
+            cover_giphy_id: null;
             cover_position_x: number;
             cover_position_y: number;
             description: string;
@@ -273,8 +344,10 @@ describe("profile validation", () => {
             avatar_url: null;
             avatar_path: null;
             avatar_animation_path: null;
+            avatar_giphy_id: null;
             cover_path: null;
             cover_animation_path: null;
+            cover_giphy_id: null;
             cover_position_x: number;
             cover_position_y: number;
             description: string;
@@ -287,8 +360,10 @@ describe("profile validation", () => {
       avatar_url: null,
       avatar_path: null,
       avatar_animation_path: null,
+      avatar_giphy_id: null,
       cover_path: null,
       cover_animation_path: null,
+      cover_giphy_id: null,
       cover_position_x: 50,
       cover_position_y: 50,
       description: "",

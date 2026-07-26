@@ -49,7 +49,13 @@ describe("GIPHY messaging adapter", () => {
                   },
                   original: {
                     url: "https://media.giphy.com/original.gif",
+                    webp: "https://media.giphy.com/original.webp",
                     mp4: "https://media.giphy.com/original.mp4",
+                    width: "600",
+                    height: "360",
+                  },
+                  original_still: {
+                    url: "https://media.giphy.com/original-still.webp",
                     width: "600",
                     height: "360",
                   },
@@ -78,6 +84,11 @@ describe("GIPHY messaging adapter", () => {
     expect(requestUrl.searchParams.get("rating")).toBe("r");
     expect(requestUrl.searchParams.get("bundle")).toBe("messaging_non_clips");
     expect(requestUrl.searchParams.get("limit")).toBe("20");
+    expect(result.assets[0]).toMatchObject({
+      previewImageUrl: "https://media.giphy.com/preview.gif",
+      originalImageUrl: "https://media.giphy.com/original.webp",
+      originalStillUrl: "https://media.giphy.com/original-still.webp",
+    });
     expect(toGiphyPresentation(result.assets[0]!)).toEqual({
       kind: "giphy",
       assetId: "gif-1",
@@ -122,8 +133,11 @@ describe("GIPHY messaging adapter", () => {
       width: 120,
       height: 120,
       previewUrl: "https://media.giphy.com/preview.webp",
+      previewImageUrl: "https://media.giphy.com/preview.webp",
       stillUrl: "https://media.giphy.com/still.webp",
       originalUrl: "https://media.giphy.com/original.webp",
+      originalImageUrl: "https://media.giphy.com/original.webp",
+      originalStillUrl: "https://media.giphy.com/original-still.webp",
       analytics: {},
     };
     expect(JSON.stringify(toGiphyPresentation(asset))).not.toContain(

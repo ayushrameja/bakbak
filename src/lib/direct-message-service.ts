@@ -28,8 +28,10 @@ interface DirectConversationRow {
   avatar_url: string | null;
   avatar_path: string | null;
   avatar_animation_path: string | null;
+  avatar_giphy_id: string | null;
   cover_path: string | null;
   cover_animation_path: string | null;
+  cover_giphy_id: string | null;
   cover_position_x: number;
   cover_position_y: number;
   description: string;
@@ -87,10 +89,12 @@ function memberFromConversationRow(row: DirectConversationRow): ServerMember {
     avatarAnimationUrl: null,
     avatarPath: row.avatar_path,
     avatarAnimationPath: row.avatar_animation_path,
+    avatarGiphyId: row.avatar_giphy_id,
     coverUrl: null,
     coverAnimationUrl: null,
     coverPath: row.cover_path,
     coverAnimationPath: row.cover_animation_path,
+    coverGiphyId: row.cover_giphy_id,
     coverPositionX: row.cover_position_x,
     coverPositionY: row.cover_position_y,
     description: row.description,

@@ -18,7 +18,7 @@ export const ALLOWED_PROFILE_IMAGE_TYPES = [
   "image/gif",
 ] as const;
 export const PROFILE_ROW_SELECT =
-  "id,display_name,avatar_url,avatar_path,avatar_animation_path,cover_path,cover_animation_path,cover_position_x,cover_position_y,description";
+  "id,display_name,avatar_url,avatar_path,avatar_animation_path,avatar_giphy_id,cover_path,cover_animation_path,cover_giphy_id,cover_position_x,cover_position_y,description";
 
 export type ProfileMediaKind = "avatar" | "cover";
 
@@ -28,8 +28,10 @@ export interface ProfileRow {
   avatar_url: string | null;
   avatar_path: string | null;
   avatar_animation_path: string | null;
+  avatar_giphy_id: string | null;
   cover_path: string | null;
   cover_animation_path: string | null;
+  cover_giphy_id: string | null;
   cover_position_x: number;
   cover_position_y: number;
   description: string;
@@ -44,6 +46,8 @@ export interface ProfileUpdateInput {
   currentAvatarUrl?: string | null;
   currentCoverPath: string | null;
   currentCoverAnimationPath: string | null;
+  avatarGiphyId: string | null;
+  coverGiphyId: string | null;
   avatarFile?: File | null;
   coverFile?: File | null;
   removeAvatar?: boolean;
@@ -58,9 +62,11 @@ export interface SavedProfile {
   description: string;
   avatarPath: string | null;
   avatarAnimationPath: string | null;
+  avatarGiphyId: string | null;
   avatarUrl: string | null;
   coverPath: string | null;
   coverAnimationPath: string | null;
+  coverGiphyId: string | null;
   coverPositionX: number;
   coverPositionY: number;
   metadataWarning: string | null;
@@ -236,16 +242,24 @@ export async function saveLiveProfile(
   const coverPositionY = validateCoverPosition(input.coverPositionY);
   const avatarFile = input.removeAvatar ? null : input.avatarFile;
   const coverFile = input.removeCover ? null : input.coverFile;
+  if (avatarFile && input.avatarGiphyId) {
+    throw new Error("Choose either an uploaded avatar or a GIPHY avatar.");
+  }
+  if (coverFile && input.coverGiphyId) {
+    throw new Error("Choose either an uploaded cover or a GIPHY cover.");
+  }
   const uploaded: UploadedObject[] = [];
 
   let nextAvatarPath = input.removeAvatar ? null : input.currentAvatarPath;
   let nextAvatarAnimationPath = input.removeAvatar
     ? null
     : input.currentAvatarAnimationPath;
+  let nextAvatarGiphyId = input.removeAvatar ? null : input.avatarGiphyId;
   let nextCoverPath = input.removeCover ? null : input.currentCoverPath;
   let nextCoverAnimationPath = input.removeCover
     ? null
     : input.currentCoverAnimationPath;
+  let nextCoverGiphyId = input.removeCover ? null : input.coverGiphyId;
 
   try {
     if (avatarFile) {
@@ -264,6 +278,10 @@ export async function saveLiveProfile(
             uploaded,
           )
         : null;
+      nextAvatarGiphyId = null;
+    } else if (nextAvatarGiphyId) {
+      nextAvatarPath = null;
+      nextAvatarAnimationPath = null;
     }
     if (coverFile) {
       const prepared = await prepareProfileImage(coverFile, "cover");
@@ -281,6 +299,10 @@ export async function saveLiveProfile(
             uploaded,
           )
         : null;
+      nextCoverGiphyId = null;
+    } else if (nextCoverGiphyId) {
+      nextCoverPath = null;
+      nextCoverAnimationPath = null;
     }
 
     const profileUpdate = {
@@ -288,11 +310,15 @@ export async function saveLiveProfile(
       description,
       avatar_path: nextAvatarPath,
       avatar_animation_path: nextAvatarAnimationPath,
+      avatar_giphy_id: nextAvatarGiphyId,
       cover_path: nextCoverPath,
       cover_animation_path: nextCoverAnimationPath,
+      cover_giphy_id: nextCoverGiphyId,
       cover_position_x: input.removeCover ? 50 : coverPositionX,
       cover_position_y: input.removeCover ? 50 : coverPositionY,
-      ...((input.removeAvatar || avatarFile) && { avatar_url: null }),
+      ...((input.removeAvatar || avatarFile || nextAvatarGiphyId) && {
+        avatar_url: null,
+      }),
     };
     const { data, error } = await supabase
       .from("profiles")
@@ -312,7 +338,7 @@ export async function saveLiveProfile(
     }
 
     let avatarUrl =
-      input.removeAvatar || avatarFile
+      input.removeAvatar || avatarFile || data.avatar_giphy_id
         ? null
         : (input.currentAvatarUrl ?? data.avatar_url);
     if (data.avatar_path) {
@@ -418,9 +444,11 @@ function profileFromRow(
     description: row.description,
     avatarPath: row.avatar_path,
     avatarAnimationPath: row.avatar_animation_path,
+    avatarGiphyId: row.avatar_giphy_id,
     avatarUrl,
     coverPath: row.cover_path,
     coverAnimationPath: row.cover_animation_path,
+    coverGiphyId: row.cover_giphy_id,
     coverPositionX: row.cover_position_x,
     coverPositionY: row.cover_position_y,
     metadataWarning,

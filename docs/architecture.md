@@ -7,7 +7,7 @@ and phase completion belong in the numbered files under `docs/plans`.
 
 ## Current implementation state
 
-As of 2026-07-25, Bakbak has a complete local/mock product path and production
+As of 2026-07-26, Bakbak has a complete local/mock product path and production
 Supabase and LiveKit adapters. The renderer provides the invite-only welcome
 flow and one shared neutral glass shell with scoped semantic control colors. An
 always-present 48 px titlebar
@@ -72,8 +72,11 @@ glyphs; product UI uses only 500, 600, and 700, never renders below 11 px, and
 gives chat/composer text a 15 px weight-500 baseline. Profiles
 support validated display names, 190-character plain-text
 descriptions, static or GIF avatars, 3:1 static or GIF covers, integer cover
-focal points, lazy static member-row cover accents, and an accessible
-Discord-style anchored card. Admin-only
+focal points, target-specific GIPHY GIF selection, lazy static member-row cover
+accents, and an accessible Discord-style anchored card. Uploaded profile media
+keeps its private poster/animation objects; GIPHY profiles store only bounded
+provider IDs and resolve memory-only renditions with initials/no-cover
+fallbacks. Admin-only
 controls create or rename text and voice channels, while Realtime reconciles
 changes for every member. Category Realtime follows the same
 subscribe-before-snapshot catch-up path, so an already-open client discovers
@@ -321,6 +324,12 @@ clients. Hosted schema lint passes through the deployed rich-profile
 migration. The local pgTAP suite passes; the live two-account media/Realtime
 acceptance remains open.
 
+The additive `202607260001_giphy_profile_media.sql` migration is implemented,
+validated locally, and deployed to the hosted project. It adds mutually
+exclusive bounded `avatar_giphy_id` and `cover_giphy_id` profile sources and
+extends the participant-authorized direct-conversation summary RPC with those
+identifiers. Provider files and URLs never enter Postgres or Storage.
+
 The additive
 `202607190001_signature_personal_dms_and_live_presence.sql` migration is
 implemented, validated locally, and deployed to the hosted project. It adds canonical
@@ -550,7 +559,9 @@ bakbak/
 │       ├── 0026-system-adaptive-unified-accent.md
 │       ├── 0027-system-channels-link-previews-and-deafen-audio.md
 │       ├── 0028-bakbak-1-0-interaction-and-loading-polish.md
-│       └── 0029-simpler-chat-and-reliable-voice-input.md
+│       ├── 0029-simpler-chat-and-reliable-voice-input.md
+│       ├── 0030-media-and-voice-reliability.md
+│       └── 0031-giphy-profile-avatars-and-covers.md
 ├── public/
 │   ├── bakbak.svg                 # canonical favicon/native-icon source
 │   ├── fonts/roundo/              # pinned Roundo v2.0 variable WOFF2
@@ -836,27 +847,27 @@ soundboard volume multiplied by the existing participant volume.
 All identifiers are UUIDs unless noted otherwise. Exact migrations become
 authoritative once Phase 2 starts.
 
-| Entity                      | Key fields and constraints                                                                                                                                                                            | Access intent                                                                                              |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `profiles`                  | `id` references `auth.users`; 1–50 character display name; 0–190 character description; legacy `avatar_url`; owner-prefixed avatar/cover poster and GIF paths; integer 0–100 cover focal coordinates  | User updates their row; shared-server members read member-facing fields                                    |
-| `servers`                   | owner/admin reference, name, timestamps                                                                                                                                                               | Members of the server can read it                                                                          |
-| `memberships`               | unique `(server_id, user_id)`; v1 admin/member role                                                                                                                                                   | A user can read memberships for servers they belong to                                                     |
-| `channel_categories`        | `server_id`, trimmed 1–80 character name, unique ordered position                                                                                                                                     | Members read their server categories; trusted migrations manage them                                       |
-| `channels`                  | `server_id`, optional category ID, trimmed name, ordered position, immutable `text`/`voice` kind, `chat`/`system-releases`/`system-general` purpose; one System purpose/server                        | Members read; admins manage only ordinary chat rooms through RPCs                                          |
-| `messages`                  | channel/nullable author, compatibility body/content, member/system kind, typed System event, automation key, reply/media/reaction/deletion metadata, optional text-only preview and attempt timestamp | Members read accessible channels; member writes require ordinary chat purpose; trusted code inserts System |
-| `channel_read_states`       | private user/channel key, monotonic last-read message pointer and timestamp                                                                                                                           | The owner reads through RLS; membership-checked RPCs advance/query state                                   |
-| `direct_conversations`      | canonical ordered participant pair, unique pair, creation/activity timestamps                                                                                                                         | Only either established participant can select; creation uses a shared-membership RPC                      |
-| `direct_messages`           | conversation/author, compatibility body, structured content, reply/notify metadata, presentation, soft-delete timestamp, optional text-only preview and attempt timestamp                             | Established participants read; validated legacy/v2 RPCs write; trusted preview function updates metadata   |
-| `direct_read_states`        | private user/conversation key, monotonic last-read message pointer and timestamp                                                                                                                      | Only the owner selects; participant-checked RPC advances                                                   |
-| `message_attachments`       | private reservation target, uploader, kind/limits, original/poster paths, optional channel/DM message link, lifecycle timestamps                                                                      | RLS permits current channel members or established DM participants; trusted functions reserve/delete       |
-| `stickers`                  | server/uploader, label, poster/optional animation paths, dimensions, active/archive lifecycle                                                                                                         | Current members see the catalog; referenced history stays readable; renderer has no mutation grants        |
-| `message_sticker_reactions` | exactly one channel/DM message, server sticker, reactor, timestamp; partial uniqueness indexes                                                                                                        | Authorized viewers select; the cap-enforcing toggle RPC alone mutates                                      |
-| `invite_codes`              | server ID, one-way code digest, creator, expiry, redemption fields                                                                                                                                    | No broad client read policy; redeemed atomically through a controlled function                             |
-| `presence_heartbeats`       | unique server/user row, last seen, nullable voice channel/join time, LIVE boolean constrained to voice occupancy                                                                                      | Members can read server rows; only security-definer heartbeat RPCs can write                               |
-| `soundboard_categories`     | server ID, name, ordered position, sole upload-target flag                                                                                                                                            | Members read; trusted server setup manages categories                                                      |
-| `soundboard_sounds`         | server/category, label, emoji, Storage path, duration, order, revision, nullable creator, created time                                                                                                | Members read; uploader/admin label and emoji updates only                                                  |
-| `soundboard_favorites`      | private user/server/sound key and created time; cascading server/sound/owner references                                                                                                               | The signed-in owner alone selects, inserts, or deletes                                                     |
-| `storage.objects`           | private sound/profile objects plus `message-media/<uploader>/<uuid>/{original,poster}` and server sticker paths                                                                                       | Trusted functions write message/sticker media; RLS authorizes current channel or retained DM/history reads |
+| Entity                      | Key fields and constraints                                                                                                                                                                                                               | Access intent                                                                                              |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `profiles`                  | `id` references `auth.users`; 1–50 character display name; 0–190 character description; legacy `avatar_url`; mutually exclusive owner-prefixed upload paths or bounded GIPHY IDs per avatar/cover; integer 0–100 cover focal coordinates | User updates their row; shared-server members and established DM participants read member-facing fields    |
+| `servers`                   | owner/admin reference, name, timestamps                                                                                                                                                                                                  | Members of the server can read it                                                                          |
+| `memberships`               | unique `(server_id, user_id)`; v1 admin/member role                                                                                                                                                                                      | A user can read memberships for servers they belong to                                                     |
+| `channel_categories`        | `server_id`, trimmed 1–80 character name, unique ordered position                                                                                                                                                                        | Members read their server categories; trusted migrations manage them                                       |
+| `channels`                  | `server_id`, optional category ID, trimmed name, ordered position, immutable `text`/`voice` kind, `chat`/`system-releases`/`system-general` purpose; one System purpose/server                                                           | Members read; admins manage only ordinary chat rooms through RPCs                                          |
+| `messages`                  | channel/nullable author, compatibility body/content, member/system kind, typed System event, automation key, reply/media/reaction/deletion metadata, optional text-only preview and attempt timestamp                                    | Members read accessible channels; member writes require ordinary chat purpose; trusted code inserts System |
+| `channel_read_states`       | private user/channel key, monotonic last-read message pointer and timestamp                                                                                                                                                              | The owner reads through RLS; membership-checked RPCs advance/query state                                   |
+| `direct_conversations`      | canonical ordered participant pair, unique pair, creation/activity timestamps                                                                                                                                                            | Only either established participant can select; creation uses a shared-membership RPC                      |
+| `direct_messages`           | conversation/author, compatibility body, structured content, reply/notify metadata, presentation, soft-delete timestamp, optional text-only preview and attempt timestamp                                                                | Established participants read; validated legacy/v2 RPCs write; trusted preview function updates metadata   |
+| `direct_read_states`        | private user/conversation key, monotonic last-read message pointer and timestamp                                                                                                                                                         | Only the owner selects; participant-checked RPC advances                                                   |
+| `message_attachments`       | private reservation target, uploader, kind/limits, original/poster paths, optional channel/DM message link, lifecycle timestamps                                                                                                         | RLS permits current channel members or established DM participants; trusted functions reserve/delete       |
+| `stickers`                  | server/uploader, label, poster/optional animation paths, dimensions, active/archive lifecycle                                                                                                                                            | Current members see the catalog; referenced history stays readable; renderer has no mutation grants        |
+| `message_sticker_reactions` | exactly one channel/DM message, server sticker, reactor, timestamp; partial uniqueness indexes                                                                                                                                           | Authorized viewers select; the cap-enforcing toggle RPC alone mutates                                      |
+| `invite_codes`              | server ID, one-way code digest, creator, expiry, redemption fields                                                                                                                                                                       | No broad client read policy; redeemed atomically through a controlled function                             |
+| `presence_heartbeats`       | unique server/user row, last seen, nullable voice channel/join time, LIVE boolean constrained to voice occupancy                                                                                                                         | Members can read server rows; only security-definer heartbeat RPCs can write                               |
+| `soundboard_categories`     | server ID, name, ordered position, sole upload-target flag                                                                                                                                                                               | Members read; trusted server setup manages categories                                                      |
+| `soundboard_sounds`         | server/category, label, emoji, Storage path, duration, order, revision, nullable creator, created time                                                                                                                                   | Members read; uploader/admin label and emoji updates only                                                  |
+| `soundboard_favorites`      | private user/server/sound key and created time; cascading server/sound/owner references                                                                                                                                                  | The signed-in owner alone selects, inserts, or deletes                                                     |
+| `storage.objects`           | private sound/profile objects plus `message-media/<uploader>/<uuid>/{original,poster}` and server sticker paths                                                                                                                          | Trusted functions write message/sticker media; RLS authorizes current channel or retained DM/history reads |
 
 Initial admin membership and initial invite codes are managed with reviewed SQL.
 An invite-management UI is deferred until post-v1.
@@ -910,8 +921,9 @@ An invite-management UI is deferred until post-v1.
   unexpired code, create the membership, and consume the code in one
   transaction.
 - The client cannot list or inspect valid invite codes.
-- Profile display names, descriptions, media paths, and cover focal points
-  remain canonical in `public.profiles`. Avatar and cover objects must use
+- Profile display names, descriptions, upload paths or bounded GIPHY IDs, and
+  cover focal points remain canonical in `public.profiles`. Avatar and cover
+  sources are mutually exclusive. Private objects must use
   `<auth.uid()>/<generated UUID>`; only the owner writes or deletes, and reads
   require ownership, shared server membership, or an established direct
   conversation with that profile.
@@ -1039,6 +1051,8 @@ An invite-management UI is deferred until post-v1.
    190-character plain-text description, integer 0–100 cover coordinates, and
    optional PNG/JPEG/WebP/GIF media. Avatars are limited to 5 MiB, covers to 10
    MiB, and every decoded image to 16 megapixels and 8192 px on either side.
+   Separate Avatar and Cover actions open the existing attributed GIPHY search
+   in GIF-only, target-aware mode.
 3. The renderer decodes each upload before storage and paints a bounded static
    poster: at most 512 px on the avatar long edge or 1600 px on the cover long
    edge, encoded as WebP with PNG fallback. GIF uploads retain the original
@@ -1046,7 +1060,10 @@ An invite-management UI is deferred until post-v1.
 4. Changed poster/animation objects upload to
    `<user UUID>/<generated UUID>` before one profile-row update. Any failure
    removes every newly uploaded object. Success mirrors the display name into
-   Auth metadata and best-effort deletes replaced/removed objects.
+   Auth metadata and best-effort deletes replaced/removed objects. Choosing
+   GIPHY instead writes only its bounded asset ID, clears the field's upload
+   paths/legacy URL, and then removes replaced private objects; choosing an
+   upload or removal clears the corresponding provider ID.
 5. A memory plus user-scoped IndexedDB bucket/path cache deduplicates
    authenticated downloads and revokes object URLs on replacement, account
    change, clearing, and teardown. Workspace metadata publishes before avatar
@@ -1061,7 +1078,11 @@ An invite-management UI is deferred until post-v1.
    account/bucket/path entry, retries authenticated Storage once, and otherwise
    keeps the neutral fallback instead of exposing a native broken-image icon.
    Realtime generation guards stop stale downloads from replacing newer
-   profile state.
+   profile state. GIPHY IDs persist in account/DM snapshots, but normalization
+   strips all resolved provider URLs. Online clients batch-resolve static avatar
+   posters, use the session-deduplicated provider adapter for attention-driven
+   animation and cover loads, and fall back to initials/no cover on API or
+   rendition failure.
 6. Cover framing uses a fixed 3:1 preview. Pointer drag or keyboard arrows
    update integer focal coordinates; Shift moves by a larger step and Reset
    returns to 50/50.

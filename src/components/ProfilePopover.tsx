@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import { AVATAR_BUCKET, COVER_BUCKET } from "../lib/profile-service";
 import type { ServerMember } from "../lib/types";
 import { useReducedMotion } from "../lib/use-reduced-motion";
+import { resolveGiphyProfileMedia } from "../lib/profile-giphy-media";
 import { Avatar } from "./Avatar";
 import { ProfileMediaImage } from "./ProfileMediaImage";
 import type { LoadProfileMedia } from "./ProfileTrigger";
@@ -58,7 +59,7 @@ export function ProfilePopover({
   useEffect(() => {
     let current = true;
     const load = async () => {
-      const [cover, animatedCover, animatedAvatar] = await Promise.all([
+      const [cover, animatedCover, animatedAvatar, giphy] = await Promise.all([
         member.coverUrl
           ? Promise.resolve(member.coverUrl)
           : loadMedia(COVER_BUCKET, member.coverPath),
@@ -72,11 +73,26 @@ export function ProfilePopover({
           : member.avatarAnimationUrl
             ? Promise.resolve(member.avatarAnimationUrl)
             : loadMedia(AVATAR_BUCKET, member.avatarAnimationPath),
+        resolveGiphyProfileMedia(member, {
+          includeAvatarAnimation: !reducedMotion,
+          includeCover: true,
+          includeCoverAnimation: !reducedMotion,
+        }).catch(() => null),
       ]);
       if (!current) return;
-      setCoverUrl(cover);
-      setCoverAnimationUrl(animatedCover);
-      setAvatarAnimationUrl(animatedAvatar);
+      setCoverUrl(
+        member.coverGiphyId ? (giphy?.coverPosterUrl ?? null) : cover,
+      );
+      setCoverAnimationUrl(
+        member.coverGiphyId
+          ? (giphy?.coverAnimationUrl ?? null)
+          : animatedCover,
+      );
+      setAvatarAnimationUrl(
+        member.avatarGiphyId
+          ? (giphy?.avatarAnimationUrl ?? null)
+          : animatedAvatar,
+      );
     };
     void load().catch(() => undefined);
     return () => {
@@ -84,10 +100,13 @@ export function ProfilePopover({
     };
   }, [
     loadMedia,
+    member,
     member.avatarAnimationPath,
     member.avatarAnimationUrl,
+    member.avatarGiphyId,
     member.coverAnimationPath,
     member.coverAnimationUrl,
+    member.coverGiphyId,
     member.coverPath,
     member.coverUrl,
     reducedMotion,

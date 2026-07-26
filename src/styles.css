@@ -4128,6 +4128,24 @@ body {
   outline-offset: 2px;
 }
 
+.profile-giphy-backdrop {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.media-picker.media-picker--profile {
+  width: min(680px, calc(100vw - 40px));
+  max-height: min(720px, calc(100vh - 80px));
+  position: relative;
+  right: auto;
+  bottom: auto;
+}
+
 .settings-field {
   display: flex;
   flex-direction: column;

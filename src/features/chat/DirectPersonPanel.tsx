@@ -10,6 +10,7 @@ import { ProfileMediaImage } from "../../components/ProfileMediaImage";
 import type { LoadProfileMedia } from "../../components/ProfileTrigger";
 import type { OpenUserContextMenu } from "../../components/UserContextMenu";
 import { AVATAR_BUCKET, COVER_BUCKET } from "../../lib/profile-service";
+import { resolveGiphyProfileMedia } from "../../lib/profile-giphy-media";
 import type { ServerMember } from "../../lib/types";
 import { useReducedMotion } from "../../lib/use-reduced-motion";
 
@@ -62,12 +63,29 @@ export function DirectPersonPanel({
         : member.avatarAnimationUrl
           ? Promise.resolve(member.avatarAnimationUrl)
           : loadProfileMedia(AVATAR_BUCKET, member.avatarAnimationPath),
-    ]).then(([cover, avatar, animatedCover, animatedAvatar]) => {
+      resolveGiphyProfileMedia(member, {
+        includeAvatarAnimation: !reducedMotion,
+        includeCover: true,
+        includeCoverAnimation: !reducedMotion,
+      }).catch(() => null),
+    ]).then(([cover, avatar, animatedCover, animatedAvatar, giphy]) => {
       if (!cancelled) {
-        setCoverUrl(cover);
-        setCoverAnimationUrl(animatedCover);
-        setAvatarUrl(avatar);
-        setAvatarAnimationUrl(animatedAvatar);
+        setCoverUrl(
+          member.coverGiphyId ? (giphy?.coverPosterUrl ?? null) : cover,
+        );
+        setCoverAnimationUrl(
+          member.coverGiphyId
+            ? (giphy?.coverAnimationUrl ?? null)
+            : animatedCover,
+        );
+        setAvatarUrl(
+          member.avatarGiphyId ? (giphy?.avatarPosterUrl ?? null) : avatar,
+        );
+        setAvatarAnimationUrl(
+          member.avatarGiphyId
+            ? (giphy?.avatarAnimationUrl ?? null)
+            : animatedAvatar,
+        );
       }
     });
     return () => {

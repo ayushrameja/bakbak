@@ -1,8 +1,41 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppUser } from "../../lib/types";
 import { SettingsPage, type SettingsSection } from "./SettingsPage";
+
+const giphyState = vi.hoisted(() => ({
+  search: vi.fn(),
+  register: vi.fn(),
+  resolveProfile: vi.fn(),
+}));
+
+vi.mock("../../lib/giphy-service", () => ({
+  GiphyRateLimitError: class GiphyRateLimitError extends Error {},
+  isGiphyConfigured: () => true,
+  registerGiphyAction: giphyState.register,
+  searchGiphy: giphyState.search,
+}));
+
+vi.mock("../../lib/profile-giphy-media", () => ({
+  resolveGiphyProfileMedia: giphyState.resolveProfile,
+}));
+
+const giphyAsset = {
+  id: "profile-gif",
+  kind: "gif" as const,
+  title: "Excellent profile",
+  altText: "An excellent reaction",
+  width: 640,
+  height: 360,
+  previewUrl: "https://media.giphy.com/profile-preview.mp4",
+  previewImageUrl: "https://media.giphy.com/profile-preview.webp",
+  stillUrl: "https://media.giphy.com/profile-still.webp",
+  originalUrl: "https://media.giphy.com/profile.mp4",
+  originalImageUrl: "https://media.giphy.com/profile.webp",
+  originalStillUrl: "https://media.giphy.com/profile-original-still.webp",
+  analytics: {},
+};
 
 const user: AppUser = {
   id: "user-1",
@@ -12,10 +45,12 @@ const user: AppUser = {
   avatarAnimationUrl: null,
   avatarPath: null,
   avatarAnimationPath: null,
+  avatarGiphyId: null,
   coverUrl: null,
   coverAnimationUrl: null,
   coverPath: null,
   coverAnimationPath: null,
+  coverGiphyId: null,
   coverPositionX: 50,
   coverPositionY: 50,
   description: "",
@@ -109,6 +144,20 @@ function renderSettings(
 }
 
 describe("SettingsPage", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    giphyState.search.mockResolvedValue({
+      assets: [giphyAsset],
+      nextOffset: null,
+    });
+    giphyState.resolveProfile.mockResolvedValue({
+      avatarPosterUrl: null,
+      avatarAnimationUrl: null,
+      coverPosterUrl: null,
+      coverAnimationUrl: null,
+    });
+  });
+
   it("reports account cache usage and confirms local clearing", async () => {
     const onClearCachedData = vi.fn().mockResolvedValue(undefined);
     renderSettings("storage", {
@@ -151,11 +200,84 @@ describe("SettingsPage", () => {
       description: "",
       avatarFile: null,
       coverFile: null,
+      avatarGiphyId: null,
+      coverGiphyId: null,
       removeAvatar: false,
       removeCover: false,
       coverPositionX: 50,
       coverPositionY: 50,
     });
+  });
+
+  it("stages and commits a GIPHY avatar without turning it into an upload", async () => {
+    const onSaveProfile = vi.fn().mockResolvedValue({});
+    renderSettings("profile", { onSaveProfile });
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Browse GIFs for avatar" }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "GIPHY avatar picker" }),
+    ).toBeVisible();
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Use An excellent reaction as avatar",
+      }),
+    );
+
+    expect(
+      document.querySelector(
+        'img[src="https://media.giphy.com/profile-preview.webp"]',
+      ),
+    ).not.toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Save profile" }));
+
+    expect(onSaveProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        avatarFile: null,
+        avatarGiphyId: "profile-gif",
+        coverGiphyId: null,
+      }),
+    );
+    expect(giphyState.register).toHaveBeenCalledWith(giphyAsset, "onclick");
+    expect(giphyState.register).toHaveBeenCalledWith(giphyAsset, "onsent");
+  });
+
+  it("keeps a failed GIPHY cover draft and reports it only after a successful save", async () => {
+    const onSaveProfile = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Profile save failed."))
+      .mockResolvedValueOnce({});
+    renderSettings("profile", { onSaveProfile });
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Browse GIFs for cover" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Use An excellent reaction as cover",
+      }),
+    );
+    const save = screen.getByRole("button", { name: "Save profile" });
+    await userEvent.click(save);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Profile save failed.",
+    );
+    expect(giphyState.register).not.toHaveBeenCalledWith(giphyAsset, "onsent");
+    expect(save).toBeEnabled();
+
+    await userEvent.click(save);
+    expect(onSaveProfile).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        avatarGiphyId: null,
+        coverFile: null,
+        coverGiphyId: "profile-gif",
+        coverPositionX: 50,
+        coverPositionY: 50,
+      }),
+    );
+    expect(giphyState.register).toHaveBeenCalledWith(giphyAsset, "onsent");
   });
 
   it("keeps the display-name field focused across parent rerenders", async () => {

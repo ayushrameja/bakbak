@@ -39,6 +39,36 @@ describe("BakbakCache", () => {
     await expect(cache.readAccountState("someone-else")).resolves.toBeNull();
   });
 
+  it("persists provider ids while stripping every resolved GIPHY URL", () => {
+    const normalized = normalizeWorkspaceForCache({
+      ...mockWorkspace,
+      members: mockWorkspace.members.map((member, index) =>
+        index === 0
+          ? {
+              ...member,
+              avatarGiphyId: "avatar-gif",
+              coverGiphyId: "cover-gif",
+              avatarUrl: "https://media.giphy.com/avatar-still.webp",
+              avatarAnimationUrl:
+                "https://media.giphy.com/avatar-animation.webp",
+              coverUrl: "https://media.giphy.com/cover-still.webp",
+              coverAnimationUrl: "https://media.giphy.com/cover-animation.webp",
+            }
+          : member,
+      ),
+    });
+
+    expect(normalized.members[0]).toMatchObject({
+      avatarGiphyId: "avatar-gif",
+      coverGiphyId: "cover-gif",
+      avatarUrl: null,
+      avatarAnimationUrl: null,
+      coverUrl: null,
+      coverAnimationUrl: null,
+    });
+    expect(JSON.stringify(normalized)).not.toContain("giphy.com");
+  });
+
   it("retains only confirmed newest messages and merges by stable ID", async () => {
     const cache = new BakbakCache(new IDBFactory());
     const channelId = mockWorkspace.channels[0]!.id;
