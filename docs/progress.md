@@ -5333,3 +5333,65 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
 - **Next:** Run the installed two-account macOS/Windows matrix for Realtime
   avatar/cover changes, hover/focus animations, reduced motion, provider outage
   and offline fallbacks, then close the remaining plan 0031 acceptance items.
+
+## 2026-07-26 — Windows screen-share audio isolation
+
+- **Completed:** Replaced Entire screen's Windows Tauri-host PID exclusion with
+  a native WebView2 process-group tracker. Startup now reads
+  `GetProcessInfos` from Tauri's native webview, requires one browser root,
+  proves every reported helper is its descendant, and refreshes the snapshot
+  through `ProcessInfosChanged` without exposing or logging PIDs. Display
+  WASAPI now excludes that browser tree; Application sharing still includes
+  only the selected process tree and rejects both Tauri-host and WebView2
+  descendants. Display audio remains unavailable below Windows build 20348 or
+  without current proof. The exact topology is rechecked before and after
+  WASAPI activation and watched during sharing. Proof loss stops native audio
+  frames before unpublishing only the audio track, keeps video live, and emits
+  `audio-isolation-unavailable`. Extended native and renderer lifecycle
+  contracts with `audioUnavailableReason`, updated live warning/audio state,
+  changed display diagnostics to `exclude-webview2-process-tree`, and added a
+  Windows pull-request Cargo check/test job.
+- **Decisions:** Isolation remains fail-closed: no failure retries unrestricted
+  system loopback. Any WebView2 topology change invalidates the active audio
+  snapshot even if its browser PID is unchanged; a later share must establish a
+  fresh proof. Application capture received rejection/regression coverage but
+  no redesign. No Supabase, RLS, token, or LiveKit server contract changed.
+  Tauri is pinned to the already-locked 2.11.5 release so the native
+  `with_webview` handle and WebView2 COM dependency remain version-aligned.
+- **Validation:**
+  - Focused renderer suites — passed 2 files and 47/47 tests, including startup
+    and live audio-isolation warnings with video retained.
+  - `cargo test --locked --manifest-path src-tauri/Cargo.toml` — passed all
+    17/17 native tests available on macOS. Windows policy tests are
+    target-gated for the new Windows CI job.
+  - Initial `pnpm check` — stopped at lint because a new test used an async
+    callback without `await`; the callback was corrected. Final `pnpm check` —
+    passed formatting, zero-warning lint, both strict TypeScript projects, 80
+    Vitest files with 434/434 tests, 40/40 Node contracts, synchronized version
+    `1.2.0`, production renderer build, and secret scan. Vite retained the
+    existing non-blocking large-chunk warning.
+  - `cargo fmt --manifest-path src-tauri/Cargo.toml --check` — passed.
+  - `cargo check --locked --manifest-path src-tauri/Cargo.toml` — passed on the
+    macOS host.
+  - `cargo check --locked --target x86_64-pc-windows-msvc --manifest-path
+src-tauri/Cargo.toml` — could not reach Bakbak's Windows source because this
+    Mac lacks the MSVC librarian/CRT (`lib.exe` and `assert.h`); the new
+    `windows-latest` CI job is the authoritative compile/test gate.
+  - `pnpm tauri:build:local` — passed and rebuilt the ad-hoc-signed ARM64
+    `Bakbak.app`; notarization was skipped because Apple credentials are absent.
+  - Post-bundle `pnpm security:scan`,
+    `codesign --verify --deep --strict
+src-tauri/target/release/bundle/macos/Bakbak.app`, and `git diff --check` —
+    passed.
+- **Documentation updated:** Added plan 0032, updated the screen-share and CI
+  contracts in `docs/architecture.md`, updated Phase 5 status and acceptance in
+  the active v1 plan, and appended this canonical progress entry.
+- **Known limitations:** The Windows-native source and tests cannot compile on
+  this macOS host and still require the new Windows PR runner. A Windows x64
+  Tauri bundle, bundle secret scan, and the installed three-client Entire
+  screen/Application matrix remain open. The full cross-platform `pnpm tauri
+build` was not rerun because this host cannot produce the required Windows
+  bundle; the applicable local macOS app bundle passed.
+- **Next:** Run the Windows PR job and x64 release bundle, then complete plan
+  0032's muted-presenter three-client isolation matrix on default/selected
+  outputs, stop/restart, source switching, and Application sharing.

@@ -1,4 +1,6 @@
 mod platform;
+#[cfg(target_os = "windows")]
+mod windows_process;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -16,9 +18,9 @@ use livekit::{
     },
 };
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, WebviewWindow};
+use tauri::{AppHandle, State, WebviewWindow};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-use tauri::{Emitter, Manager, State};
+use tauri::{Emitter, Manager};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use tokio::sync::{Mutex, mpsc};
 
@@ -125,6 +127,7 @@ pub struct ScreenShareSessionResponse {
     source_label: String,
     source_kind: ScreenShareSourceKind,
     audio_published: bool,
+    audio_unavailable_reason: Option<String>,
     settings: ScreenShareSettings,
     diagnostics: ScreenShareDiagnostics,
 }
@@ -158,6 +161,7 @@ struct ScreenShareLifecycleEvent {
     source_label: Option<String>,
     source_kind: Option<ScreenShareSourceKind>,
     audio_published: bool,
+    audio_unavailable_reason: Option<String>,
     settings: Option<ScreenShareSettings>,
     message: Option<String>,
     failure: Option<ScreenShareFailure>,
@@ -167,6 +171,8 @@ struct ScreenShareLifecycleEvent {
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub struct ScreenShareManager {
     active: Mutex<Option<ActiveScreenShare>>,
+    #[cfg(target_os = "windows")]
+    webview_processes: windows_process::WebViewProcessTracker,
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -174,8 +180,18 @@ impl Default for ScreenShareManager {
     fn default() -> Self {
         Self {
             active: Mutex::new(None),
+            #[cfg(target_os = "windows")]
+            webview_processes: windows_process::WebViewProcessTracker::default(),
         }
     }
+}
+
+#[cfg(target_os = "windows")]
+pub fn register_windows_webview_process_tracker(
+    window: &WebviewWindow,
+    manager: &ScreenShareManager,
+) -> Result<(), String> {
+    windows_process::register_webview_process_tracker(window, manager.webview_processes.clone())
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -189,9 +205,11 @@ struct ActiveScreenShare {
     capture: platform::CaptureSession,
     video_track: LocalVideoTrack,
     video_track_sid: TrackSid,
+    audio_track_sid: Option<TrackSid>,
     source_label: String,
     source_kind: ScreenShareSourceKind,
-    audio_published: bool,
+    audio_unavailable_reason: Option<String>,
+    paused: bool,
     settings: ScreenShareSettings,
 }
 
@@ -227,6 +245,7 @@ pub fn open_screen_recording_settings(window: WebviewWindow) -> Result<(), Strin
 #[tauri::command]
 pub async fn list_screen_share_sources(
     window: WebviewWindow,
+    _manager: State<'_, ScreenShareManager>,
 ) -> Result<Vec<ScreenShareSource>, String> {
     ensure_main_window(&window)?;
     #[cfg(target_os = "macos")]
@@ -235,7 +254,8 @@ pub async fn list_screen_share_sources(
     }
     #[cfg(target_os = "windows")]
     {
-        tauri::async_runtime::spawn_blocking(platform::sources)
+        let webview_proof = _manager.webview_processes.current_proof();
+        tauri::async_runtime::spawn_blocking(move || platform::sources(webview_proof))
             .await
             .map_err(|error| format!("Windows source enumeration stopped unexpectedly: {error}"))?
     }
@@ -268,11 +288,15 @@ pub async fn start_screen_share(
         None,
         None,
         false,
+        None,
         Some(settings),
         None,
     );
     let (termination_sender, mut termination_receiver) = mpsc::unbounded_channel();
     let (pause_sender, mut pause_receiver) = mpsc::unbounded_channel();
+    #[cfg(target_os = "windows")]
+    let (audio_failure_sender, mut audio_failure_receiver) = mpsc::unbounded_channel();
+    #[cfg(target_os = "macos")]
     let prepared = match platform::pick_source(
         request.include_audio,
         settings,
@@ -284,7 +308,25 @@ pub async fn start_screen_share(
     {
         Ok(prepared) => prepared,
         Err(error) => {
-            emit(&app, "idle", None, None, None, false, None, None);
+            emit(&app, "idle", None, None, None, false, None, None, None);
+            return Err(error);
+        }
+    };
+    #[cfg(target_os = "windows")]
+    let prepared = match platform::pick_source(
+        request.include_audio,
+        settings,
+        request.source_id.as_deref(),
+        manager.webview_processes.clone(),
+        audio_failure_sender,
+        termination_sender.clone(),
+        pause_sender,
+    )
+    .await
+    {
+        Ok(prepared) => prepared,
+        Err(error) => {
+            emit(&app, "idle", None, None, None, false, None, None, None);
             return Err(error);
         }
     };
@@ -295,39 +337,50 @@ pub async fn start_screen_share(
         Some(prepared.source_label.clone()),
         Some(prepared.source_kind),
         false,
+        None,
         Some(settings),
         None,
     );
 
     let session_id = format!("screen-{}", SESSION_COUNTER.fetch_add(1, Ordering::Relaxed));
     let result = start_publisher(&request, prepared, termination_sender).await;
-    let (room, capture, video_track, video_track_sid, source_label, source_kind, audio_published) =
-        match result {
-            Ok(value) => value,
-            Err(error) => {
-                emit(
-                    &app,
-                    "error",
-                    Some(session_id),
-                    None,
-                    None,
-                    false,
-                    Some(settings),
-                    Some(error.clone()),
-                );
-                return Err(error);
-            }
-        };
+    let started = match result {
+        Ok(value) => value,
+        Err(error) => {
+            emit(
+                &app,
+                "error",
+                Some(session_id),
+                None,
+                None,
+                false,
+                None,
+                Some(settings),
+                Some(error.clone()),
+            );
+            return Err(error);
+        }
+    };
 
+    let source_label = started.source_label.clone();
+    let source_kind = started.source_kind;
+    let audio_published = started.audio_track_sid.is_some();
+    let audio_unavailable_reason = started.audio_unavailable_reason.clone();
+    let audio_isolation_failure = audio_unavailable_reason
+        .as_deref()
+        .filter(|reason| reason.contains("WebView2"))
+        .map(|reason| format!("[audio-isolation-unavailable] {reason}"));
     *active = Some(ActiveScreenShare {
         session_id: session_id.clone(),
-        room,
-        capture,
-        video_track,
-        video_track_sid,
-        source_label: source_label.clone(),
-        source_kind,
-        audio_published,
+        room: started.room,
+        capture: started.capture,
+        video_track: started.video_track,
+        video_track_sid: started.video_track_sid,
+        audio_track_sid: started.audio_track_sid,
+        source_label: started.source_label.clone(),
+        source_kind: started.source_kind,
+        audio_unavailable_reason: started.audio_unavailable_reason.clone(),
+        paused: false,
         settings,
     });
     let app_for_termination = app.clone();
@@ -344,6 +397,16 @@ pub async fn start_screen_share(
             set_active_share_paused(app_for_pause.clone(), session_for_pause.clone(), paused).await;
         }
     });
+    #[cfg(target_os = "windows")]
+    {
+        let app_for_audio = app.clone();
+        let session_for_audio = session_id.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Some(message) = audio_failure_receiver.recv().await {
+                downgrade_active_share_audio(app_for_audio, session_for_audio, message).await;
+            }
+        });
+    }
     emit(
         &app,
         "sharing",
@@ -351,16 +414,24 @@ pub async fn start_screen_share(
         Some(source_label.clone()),
         Some(source_kind),
         audio_published,
+        audio_unavailable_reason.clone(),
         Some(settings),
-        None,
+        audio_isolation_failure.clone(),
     );
     Ok(ScreenShareSessionResponse {
         session_id,
         source_label,
         source_kind,
         audio_published,
+        audio_unavailable_reason,
         settings,
-        diagnostics: capture_diagnostics(source_kind, audio_published, None),
+        diagnostics: capture_diagnostics(
+            source_kind,
+            audio_published,
+            audio_isolation_failure
+                .as_ref()
+                .map(|_| "audio-isolation-unavailable"),
+        ),
     })
 }
 
@@ -386,7 +457,7 @@ pub async fn stop_screen_share(
     ensure_main_window(&window)?;
     let mut active = manager.active.lock().await;
     let Some(current) = active.take() else {
-        emit(&app, "idle", None, None, None, false, None, None);
+        emit(&app, "idle", None, None, None, false, None, None, None);
         return Ok(());
     };
     if current.session_id != session_id {
@@ -400,7 +471,8 @@ pub async fn stop_screen_share(
         Some(session_id),
         Some(current.source_label.clone()),
         Some(current.source_kind),
-        current.audio_published,
+        current.audio_track_sid.is_some(),
+        current.audio_unavailable_reason.clone(),
         Some(current.settings),
         None,
     );
@@ -410,7 +482,7 @@ pub async fn stop_screen_share(
         .close()
         .await
         .map_err(|error| error.to_string())?;
-    emit(&app, "idle", None, None, None, false, None, None);
+    emit(&app, "idle", None, None, None, false, None, None, None);
     Ok(())
 }
 
@@ -454,7 +526,8 @@ pub async fn update_screen_share_settings(
                 Some(current.session_id.clone()),
                 Some(current.source_label.clone()),
                 Some(current.source_kind),
-                current.audio_published,
+                current.audio_track_sid.is_some(),
+                current.audio_unavailable_reason.clone(),
                 Some(settings),
                 None,
             );
@@ -485,22 +558,23 @@ pub async fn update_screen_share_settings(
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+struct StartedPublisher {
+    room: Room,
+    capture: platform::CaptureSession,
+    video_track: LocalVideoTrack,
+    video_track_sid: TrackSid,
+    audio_track_sid: Option<TrackSid>,
+    source_label: String,
+    source_kind: ScreenShareSourceKind,
+    audio_unavailable_reason: Option<String>,
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 async fn start_publisher(
     request: &StartScreenShareRequest,
     prepared: platform::PreparedCapture,
     termination_sender: mpsc::UnboundedSender<String>,
-) -> Result<
-    (
-        Room,
-        platform::CaptureSession,
-        LocalVideoTrack,
-        TrackSid,
-        String,
-        ScreenShareSourceKind,
-        bool,
-    ),
-    String,
-> {
+) -> Result<StartedPublisher, String> {
     let (room, mut events) =
         Room::connect(&request.server_url, &request.token, RoomOptions::default())
             .await
@@ -527,12 +601,16 @@ async fn start_publisher(
     let video_track_sid =
         publish_video(&room, video_track.clone(), request.settings.validate()?).await?;
 
-    let requested_audio_source = prepared
-        .includes_audio()
+    let isolated_audio_requested = prepared.includes_audio();
+    #[cfg(target_os = "windows")]
+    let initial_audio_unavailable_reason = prepared.audio_unavailable_reason().map(str::to_string);
+    #[cfg(target_os = "macos")]
+    let initial_audio_unavailable_reason = None;
+    let requested_audio_source = isolated_audio_requested
         .then(|| NativeAudioSource::new(AudioSourceOptions::default(), 48_000, 2, 200));
     let source_label = prepared.source_label.clone();
     let source_kind = prepared.source_kind;
-    let (capture, audio_captured) =
+    let (capture, audio_captured, capture_audio_unavailable_reason) =
         match platform::start_capture(prepared, video_source, requested_audio_source.clone()).await
         {
             Ok(value) => value,
@@ -542,13 +620,18 @@ async fn start_publisher(
             }
         };
 
-    let mut audio_published = false;
+    let mut audio_track_sid = None;
+    let mut audio_unavailable_reason = request
+        .include_audio
+        .then_some(initial_audio_unavailable_reason)
+        .flatten()
+        .or(capture_audio_unavailable_reason);
     if audio_captured && let Some(source) = requested_audio_source {
         let track = LocalAudioTrack::create_audio_track(
             "bakbak-screen-audio",
             RtcAudioSource::Native(source.clone()),
         );
-        if room
+        match room
             .local_participant()
             .publish_track(
                 LocalTrack::Audio(track),
@@ -562,20 +645,33 @@ async fn start_publisher(
                 },
             )
             .await
-            .is_ok()
         {
-            audio_published = true;
+            Ok(publication) => {
+                audio_track_sid = Some(publication.sid());
+                audio_unavailable_reason = None;
+            }
+            Err(_) => {
+                audio_unavailable_reason = Some(
+                    "Bakbak could not publish the isolated screen-audio track; video is still sharing."
+                        .to_string(),
+                );
+            }
         }
+    } else if request.include_audio && isolated_audio_requested {
+        audio_unavailable_reason = Some(
+            "Bakbak could not start isolated screen audio; video is still sharing.".to_string(),
+        );
     }
-    Ok((
+    Ok(StartedPublisher {
         room,
         capture,
         video_track,
         video_track_sid,
+        audio_track_sid,
         source_label,
         source_kind,
-        audio_published,
-    ))
+        audio_unavailable_reason,
+    })
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -636,19 +732,55 @@ async fn terminate_active_share(app: AppHandle, session_id: String, message: Str
             Some(session_id),
             Some(current.source_label),
             Some(current.source_kind),
-            current.audio_published,
+            current.audio_track_sid.is_some(),
+            current.audio_unavailable_reason,
             Some(current.settings),
             Some(message),
         );
     }
 }
 
+#[cfg(target_os = "windows")]
+async fn downgrade_active_share_audio(app: AppHandle, session_id: String, message: String) {
+    let manager = app.state::<ScreenShareManager>();
+    let mut active = manager.active.lock().await;
+    let Some(current) = active
+        .as_mut()
+        .filter(|share| share.session_id == session_id)
+    else {
+        return;
+    };
+
+    // Stop native frames before unpublishing so no unrestricted or stale
+    // loopback sample can leave Bakbak after the proof changes.
+    current.capture.stop_audio().await;
+    if let Some(track_sid) = current.audio_track_sid.take() {
+        let _ = current
+            .room
+            .local_participant()
+            .unpublish_track(&track_sid)
+            .await;
+    }
+    current.audio_unavailable_reason = Some(parse_capture_failure(&message).message);
+    emit(
+        &app,
+        if current.paused { "paused" } else { "sharing" },
+        Some(current.session_id.clone()),
+        Some(current.source_label.clone()),
+        Some(current.source_kind),
+        false,
+        current.audio_unavailable_reason.clone(),
+        Some(current.settings),
+        Some(message),
+    );
+}
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 async fn set_active_share_paused(app: AppHandle, session_id: String, paused: bool) {
     let manager = app.state::<ScreenShareManager>();
-    let active = manager.active.lock().await;
+    let mut active = manager.active.lock().await;
     let Some(current) = active
-        .as_ref()
+        .as_mut()
         .filter(|share| share.session_id == session_id)
     else {
         return;
@@ -658,13 +790,15 @@ async fn set_active_share_paused(app: AppHandle, session_id: String, paused: boo
     } else {
         current.video_track.unmute();
     }
+    current.paused = paused;
     emit(
         &app,
         if paused { "paused" } else { "sharing" },
         Some(current.session_id.clone()),
         Some(current.source_label.clone()),
         Some(current.source_kind),
-        current.audio_published,
+        current.audio_track_sid.is_some(),
+        current.audio_unavailable_reason.clone(),
         Some(current.settings),
         None,
     );
@@ -702,6 +836,7 @@ fn emit(
     source_label: Option<String>,
     source_kind: Option<ScreenShareSourceKind>,
     audio_published: bool,
+    audio_unavailable_reason: Option<String>,
     settings: Option<ScreenShareSettings>,
     message: Option<String>,
 ) {
@@ -725,6 +860,7 @@ fn emit(
             source_label,
             source_kind,
             audio_published,
+            audio_unavailable_reason,
             settings,
             message,
             failure,
@@ -784,7 +920,7 @@ fn capture_diagnostics(
         audio_isolation_mode: if audio_published {
             match source_kind {
                 ScreenShareSourceKind::Application => "include-process-tree",
-                ScreenShareSourceKind::Display => "exclude-bakbak-process-tree",
+                ScreenShareSourceKind::Display => "exclude-webview2-process-tree",
                 ScreenShareSourceKind::Window => "source-filtered",
             }
         } else {

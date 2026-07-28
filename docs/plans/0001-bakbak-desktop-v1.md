@@ -271,13 +271,16 @@ control, and disables echo cancellation with an explicit headphone warning.
 Plan 0031 adds target-specific GIPHY profile avatar/cover selection, provider-ID
 profile sources, memory-only rendition resolution, and offline-safe fallbacks
 without changing uploaded profile media or persisting provider files/URLs.
+Plan 0032 replaces Windows Entire screen's Tauri-host exclusion with a proven,
+live-tracked WebView2 browser-process exclusion and fails audio closed while
+preserving video whenever that proof is unavailable or changes.
 
 ### Phase 5 — Post-v1 improvements
 
 - [ ] Complete desktop screen sharing with matched system audio on macOS and
       Windows under plans `0003-screen-sharing.md` and
-      `0010-cross-platform-screen-share-and-focus.md`; plan 0015's installed
-      isolation matrix remains the release gate.
+      `0010-cross-platform-screen-share-and-focus.md`; plans 0015 and 0032's
+      installed isolation matrices remain the release gate.
 - [ ] Add invite management UI.
 - [ ] Add desktop notifications and tray controls.
 - [x] Add locally persisted microphone, speaker, and camera preferences.
@@ -379,9 +382,14 @@ without changing uploaded profile media or persisting provider files/URLs.
       handshake/fallback state, v4 default-on full-volume migration,
       process-tree capture isolation, Windows cursor/black-frame recovery, and
       serialized macOS simple fullscreen.
+- [x] Implement plan 0032's native WebView2 process-group tracking, fail-closed
+      Entire screen WASAPI exclusion, live audio-only downgrade, renderer
+      warning contract, and Windows pull-request CI.
 - [ ] Complete plan 0030's installed macOS/Windows isolation, participant-gain,
       RNNoise, Valorant Borderless Windowed, and ten-cycle macOS fullscreen
       acceptance matrix.
+- [ ] Complete plan 0032's installed three-client Windows Entire screen and
+      Application audio-isolation matrix.
 - [x] Add the Bakbak Signature preset, fixed destination rail, and
       accessible persisted side-panel resizing under plan 0014.
 - [x] Reset every v5-or-older installation once to Classic System + Flat +
@@ -449,8 +457,8 @@ without changing uploaded profile media or persisting provider files/URLs.
 - [ ] Complete plan 0019's light/dark three-resolution and 200/240/360 px panel
       visual matrix plus installed macOS/Windows control/member observation.
 - [ ] Evaluate optional global push-to-talk.
-- [x] Implement Windows process/display-matched audio with build gating and
-      video-only fallback.
+- [x] Implement Windows process/display-matched audio with WebView2 browser-tree
+      exclusion, build/proof gating, and video-only fallback.
 - [ ] Complete the cross-platform installed-client acceptance matrix.
 - [x] Update architecture, plan status, and the append-only progress log for
       plan 0014.

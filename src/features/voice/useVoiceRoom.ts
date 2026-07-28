@@ -760,6 +760,14 @@ export function useVoiceRoom(
       setScreenShareSourceKind(event.sourceKind);
       if (event.settings) setScreenShareSettings(event.settings);
       if (event.state === "sharing") markLocalScreenShareStarted();
+      if (
+        (event.state === "sharing" || event.state === "paused") &&
+        !event.audioPublished &&
+        event.audioUnavailableReason
+      ) {
+        setScreenShareError(event.audioUnavailableReason);
+        setScreenShareFailure(event.failure ?? null);
+      }
       if (event.state === "error") {
         markLocalScreenShareStopped();
         emitCommunicationEffect({ type: "signal-interrupted" });
@@ -2255,7 +2263,8 @@ export function useVoiceRoom(
           markLocalScreenShareStarted();
           if (includeAudio && !session.audioPublished) {
             setScreenShareError(
-              "The screen is live without audio because the selected source or system did not provide it.",
+              session.audioUnavailableReason ??
+                "The screen is live without audio because the selected source or system did not provide it.",
             );
           }
           return;

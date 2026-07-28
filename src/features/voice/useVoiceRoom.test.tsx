@@ -26,6 +26,7 @@ import {
 import { AudioOutputRouter } from "./audio-output-router";
 import { SPEECH_MICROPHONE_TRACK_NAME } from "./microphone-publication";
 import { RemoteAudioRenderer } from "./remote-audio";
+import type { ScreenShareLifecycleEvent } from "./screen-share-service";
 import {
   OUTPUT_DEVICE_NOTICE_DURATION_MS,
   RELAY_PREFERENCE_DURATION_MS,
@@ -924,6 +925,7 @@ describe("useVoiceRoom join lifecycle", () => {
       sourceLabel: "Demo window",
       sourceKind: "window",
       audioPublished: true,
+      audioUnavailableReason: null,
       settings: { resolution: 1080, frameRate: 60 },
     });
     supabaseState.invoke
@@ -975,6 +977,112 @@ describe("useVoiceRoom join lifecycle", () => {
     expect(screenShareState.stop.mock.invocationCallOrder[0]).toBeLessThan(
       liveKitState.rooms[0]!.disconnect.mock.invocationCallOrder[0]!,
     );
+  });
+
+  it("keeps native video live when Windows isolation downgrades audio", async () => {
+    let onLifecycle: ((event: ScreenShareLifecycleEvent) => void) | undefined;
+    screenShareState.desktop = true;
+    screenShareState.getCapabilities.mockResolvedValue({
+      available: true,
+      nativeCapture: true,
+      systemAudio: true,
+      reason: null,
+    });
+    screenShareState.listen.mockImplementation(
+      (callback: (event: ScreenShareLifecycleEvent) => void) => {
+        onLifecycle = callback;
+        return Promise.resolve(() => undefined);
+      },
+    );
+    screenShareState.start.mockResolvedValue({
+      sessionId: "native-share-1",
+      sourceLabel: "Screen 1",
+      sourceKind: "display",
+      audioPublished: true,
+      audioUnavailableReason: null,
+      settings: { resolution: 1080, frameRate: 60 },
+    });
+    supabaseState.invoke
+      .mockResolvedValueOnce(tokenResponse)
+      .mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    await waitFor(() => expect(onLifecycle).toBeDefined());
+    await act(async () => {
+      await result.current.startScreenShare(true, {
+        resolution: 1080,
+        frameRate: 60,
+      });
+    });
+
+    const reason =
+      "Bakbak's WebView2 audio process tree changed, so screen audio was stopped; video is still sharing.";
+    act(() => {
+      onLifecycle?.({
+        state: "sharing",
+        sessionId: "native-share-1",
+        sourceLabel: "Screen 1",
+        sourceKind: "display",
+        audioPublished: false,
+        audioUnavailableReason: reason,
+        settings: { resolution: 1080, frameRate: 60 },
+        message: `[audio-isolation-unavailable] ${reason}`,
+        failure: {
+          code: "audio-isolation-unavailable",
+          message: reason,
+          recommendedRetrySource: null,
+        },
+      });
+    });
+
+    expect(result.current.screenShareEnabled).toBe(true);
+    expect(result.current.screenShareAudioPublished).toBe(false);
+    expect(result.current.screenShareError).toBe(reason);
+    expect(result.current.screenShareFailure?.code).toBe(
+      "audio-isolation-unavailable",
+    );
+  });
+
+  it("shows the native isolation reason when a share starts video-only", async () => {
+    const reason =
+      "Bakbak could not verify its WebView2 audio process tree, so Entire screen audio is disabled; video sharing still works.";
+    screenShareState.desktop = true;
+    screenShareState.getCapabilities.mockResolvedValue({
+      available: true,
+      nativeCapture: true,
+      systemAudio: true,
+      reason: null,
+    });
+    screenShareState.start.mockResolvedValue({
+      sessionId: "native-share-1",
+      sourceLabel: "Screen 1",
+      sourceKind: "display",
+      audioPublished: false,
+      audioUnavailableReason: reason,
+      settings: { resolution: 1080, frameRate: 60 },
+    });
+    supabaseState.invoke
+      .mockResolvedValueOnce(tokenResponse)
+      .mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    await waitFor(() => expect(result.current.screenShareAvailable).toBe(true));
+    await act(async () => {
+      await result.current.startScreenShare(true, {
+        resolution: 1080,
+        frameRate: 60,
+      });
+    });
+
+    expect(result.current.screenShareEnabled).toBe(true);
+    expect(result.current.screenShareAudioPublished).toBe(false);
+    expect(result.current.screenShareError).toBe(reason);
   });
 
   it("keeps voice alive and exposes a retryable native screen-share failure", async () => {

@@ -496,13 +496,22 @@ pub async fn start_capture(
     prepared: PreparedCapture,
     video_source: NativeVideoSource,
     audio_source: Option<NativeAudioSource>,
-) -> Result<(CaptureSession, bool), String> {
+) -> Result<(CaptureSession, bool, Option<String>), String> {
     match start_capture_attempt(&prepared, video_source.clone(), audio_source, true).await {
-        Ok(session) => Ok((session, prepared.includes_audio())),
+        Ok(session) => Ok((session, prepared.includes_audio(), None)),
         Err(_) if prepared.includes_audio() => {
             start_capture_attempt(&prepared, video_source, None, false)
                 .await
-                .map(|session| (session, false))
+                .map(|session| {
+                    (
+                        session,
+                        false,
+                        Some(
+                            "Bakbak could not start isolated screen audio; video is still sharing."
+                                .to_string(),
+                        ),
+                    )
+                })
         }
         Err(error) => Err(error),
     }
