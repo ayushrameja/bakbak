@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RemoteAudioRenderer, type RemoteAudioTrackLike } from "./remote-audio";
 
 function createTrack(kind = "audio") {
@@ -9,6 +9,11 @@ function createTrack(kind = "audio") {
 }
 
 describe("RemoteAudioRenderer", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
   it("attaches each subscribed audio track to one hidden element", () => {
     const host = document.createElement("div");
     const renderer = new RemoteAudioRenderer(() => host);
@@ -215,5 +220,125 @@ describe("RemoteAudioRenderer", () => {
         Reflect.deleteProperty(HTMLMediaElement.prototype, "setSinkId");
       }
     }
+  });
+
+  it("recovers a stalled element without attaching a duplicate", async () => {
+    const host = document.createElement("div");
+    const health = vi.fn();
+    const renderer = new RemoteAudioRenderer(() => host);
+    renderer.setHealthListener(health);
+    const { attach, track } = createTrack();
+    const play = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockResolvedValue(undefined);
+    const element = renderer.attach(track, {
+      ownerId: "mira",
+      sourceKind: "speech",
+      participantSid: "PA_mira",
+      publicationSid: "TR_speech",
+    })!;
+
+    element.dispatchEvent(new Event("stalled"));
+    await vi.waitFor(() => expect(play).toHaveBeenCalledOnce());
+
+    expect(attach).toHaveBeenCalledOnce();
+    expect(host.childElementCount).toBe(1);
+    expect(renderer.diagnostics()).toEqual([
+      expect.objectContaining({
+        publicationSid: "TR_speech",
+        playbackState: "playing",
+        recoveryAttempts: 0,
+      }),
+    ]);
+    expect(health).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "playback-restored", terminal: false }),
+    );
+  });
+
+  it("stops after two failed playback recovery attempts", async () => {
+    vi.useFakeTimers();
+    const health = vi.fn();
+    const renderer = new RemoteAudioRenderer();
+    renderer.setHealthListener(health);
+    const play = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockRejectedValue(new Error("output unavailable"));
+    const { track } = createTrack();
+    const element = renderer.attach(track, {
+      ownerId: "mira",
+      sourceKind: "speech",
+      participantSid: "PA_mira",
+      publicationSid: "TR_speech",
+    })!;
+
+    element.dispatchEvent(new Event("error"));
+    await vi.runAllTimersAsync();
+
+    expect(play).toHaveBeenCalledTimes(2);
+    expect(renderer.diagnostics()[0]).toEqual(
+      expect.objectContaining({
+        playbackState: "failed",
+        recoveryAttempts: 2,
+      }),
+    );
+    expect(health).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "playback-failed",
+        attempt: 2,
+        terminal: true,
+      }),
+    );
+  });
+
+  it("reports autoplay blocking without entering a retry loop", async () => {
+    vi.useFakeTimers();
+    const health = vi.fn();
+    const renderer = new RemoteAudioRenderer();
+    renderer.setHealthListener(health);
+    const play = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockRejectedValue(
+        new DOMException("gesture required", "NotAllowedError"),
+      );
+    const { track } = createTrack();
+    const element = renderer.attach(track, {
+      ownerId: "mira",
+      sourceKind: "speech",
+      publicationSid: "TR_speech",
+    })!;
+
+    element.dispatchEvent(new Event("pause"));
+    await Promise.resolve();
+    await vi.runAllTimersAsync();
+
+    expect(play).toHaveBeenCalledOnce();
+    expect(renderer.diagnostics()[0]?.playbackState).toBe("blocked");
+    expect(health).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "playback-blocked",
+        terminal: false,
+      }),
+    );
+  });
+
+  it("detaches tracks that are no longer present during reconciliation", () => {
+    const host = document.createElement("div");
+    const renderer = new RemoteAudioRenderer(() => host);
+    const retained = createTrack();
+    const stale = createTrack();
+    renderer.attach(retained.track, {
+      ownerId: "mira",
+      sourceKind: "speech",
+    });
+    renderer.attach(stale.track, {
+      ownerId: "theo",
+      sourceKind: "speech",
+    });
+
+    renderer.detachExcept(new Set([retained.track]));
+
+    expect(retained.detach).not.toHaveBeenCalled();
+    expect(stale.detach).toHaveBeenCalledOnce();
+    expect(host.childElementCount).toBe(1);
   });
 });

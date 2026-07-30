@@ -3462,9 +3462,11 @@ export default function App() {
           voiceChannelName={voice.channel?.name ?? null}
           voiceMuted={voice.muted}
           voiceDeafened={voice.deafened}
+          voiceDiagnosticsAvailable={voice.voiceDiagnosticsAvailable}
           onToggleMute={voice.toggleMute}
           onToggleDeafen={voice.toggleDeafen}
           onLeaveVoice={() => void voice.leave()}
+          onCopyVoiceDiagnostics={voice.copyVoiceDiagnostics}
           onSectionChange={setSettingsSection}
           onSaveProfile={handleSaveProfile}
           loadProfileMedia={loadProfileMedia}

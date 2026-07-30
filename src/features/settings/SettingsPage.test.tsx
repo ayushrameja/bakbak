@@ -120,6 +120,7 @@ function renderSettings(
     voiceChannelName: null,
     voiceMuted: false,
     voiceDeafened: false,
+    voiceDiagnosticsAvailable: false,
     onSectionChange: vi.fn(),
     onSaveProfile: vi.fn().mockResolvedValue({}),
     onInputChange: vi.fn(),
@@ -135,6 +136,7 @@ function renderSettings(
     onToggleMute: vi.fn(),
     onToggleDeafen: vi.fn(),
     onLeaveVoice: vi.fn(),
+    onCopyVoiceDiagnostics: vi.fn().mockResolvedValue(true),
     onSignOut: vi.fn().mockResolvedValue(undefined),
     onClose: vi.fn(),
     ...overrides,
@@ -521,6 +523,31 @@ describe("SettingsPage", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
     expect(onRefreshDevices).toHaveBeenCalledOnce();
+  });
+
+  it("copies voice diagnostics only after call data is available", async () => {
+    const onCopyVoiceDiagnostics = vi.fn().mockResolvedValue(true);
+    const { rerender, props } = renderSettings("audio", {
+      voiceDiagnosticsAvailable: false,
+      onCopyVoiceDiagnostics,
+    });
+    expect(
+      screen.getByRole("button", { name: "Copy diagnostics" }),
+    ).toBeDisabled();
+
+    rerender(
+      <SettingsPage
+        {...props}
+        voiceDiagnosticsAvailable
+        onCopyVoiceDiagnostics={onCopyVoiceDiagnostics}
+      />,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Copy diagnostics" }),
+    );
+
+    expect(onCopyVoiceDiagnostics).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
   });
 
   it("keeps one cleanup toggle and exposes the macOS full-volume mode", async () => {

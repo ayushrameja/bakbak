@@ -10,12 +10,65 @@ export interface RemoteAudioAttachment {
   ownerId: string;
   sourceKind: RemoteAudioSourceKind;
   baseGain?: number;
+  participantSid?: string;
+  publicationSid?: string;
+}
+
+export type RemoteAudioPlaybackState =
+  | "attached"
+  | "playing"
+  | "recovering"
+  | "blocked"
+  | "failed"
+  | "stream-paused";
+
+export type RemoteAudioHealthCode =
+  | "playback-recovering"
+  | "playback-restored"
+  | "playback-blocked"
+  | "playback-failed"
+  | "stream-paused"
+  | "stream-resumed";
+
+export interface RemoteAudioHealthEvent {
+  code: RemoteAudioHealthCode;
+  participantSid: string | null;
+  publicationSid: string | null;
+  attempt: number;
+  terminal: boolean;
+}
+
+export interface RemoteAudioDiagnostic {
+  participantSid: string | null;
+  publicationSid: string | null;
+  sourceKind: RemoteAudioSourceKind;
+  playbackState: RemoteAudioPlaybackState;
+  mediaPaused: boolean;
+  mediaEnded: boolean;
+  mediaReadyState: number;
+  recoveryAttempts: number;
+  lastEvent: string;
 }
 
 interface OwnedRemoteAudio {
   element: HTMLAudioElement;
-  metadata: Required<RemoteAudioAttachment>;
+  metadata: {
+    ownerId: string;
+    sourceKind: RemoteAudioSourceKind;
+    baseGain: number;
+    participantSid: string | null;
+    publicationSid: string | null;
+  };
+  playbackState: RemoteAudioPlaybackState;
+  recoveryAttempts: number;
+  recoveryTimer: ReturnType<typeof setTimeout> | null;
+  recoveryPending: Promise<boolean> | null;
+  lastEvent: string;
+  removeHealthListeners: () => void;
 }
+
+const MAX_PLAYBACK_RECOVERY_ATTEMPTS = 2;
+const PLAYBACK_RECOVERY_DELAY_MS = 250;
 
 /**
  * Owns the DOM elements used to render subscribed LiveKit audio tracks.
@@ -32,10 +85,18 @@ export class RemoteAudioRenderer {
   ]);
   private muted = false;
   private selectedDeviceId = "default";
+  private healthListener: ((event: RemoteAudioHealthEvent) => void) | null =
+    null;
 
   constructor(
     private readonly getHost: () => HTMLElement = () => document.body,
   ) {}
+
+  setHealthListener(
+    listener: ((event: RemoteAudioHealthEvent) => void) | null,
+  ): void {
+    this.healthListener = listener;
+  }
 
   attach(
     track: RemoteAudioTrackLike,
@@ -44,7 +105,12 @@ export class RemoteAudioRenderer {
     if (track.kind !== "audio") return null;
 
     const existing = this.elements.get(track);
-    if (existing) return existing.element;
+    if (existing) {
+      existing.metadata = normalizeMetadata(metadata);
+      this.applyGain(existing);
+      if (!existing.element.parentNode) this.getHost().append(existing.element);
+      return existing.element;
+    }
 
     const element = document.createElement("audio");
     element.autoplay = true;
@@ -58,17 +124,27 @@ export class RemoteAudioRenderer {
       void element.setSinkId(this.selectedDeviceId).catch(() => undefined);
     }
 
-    track.attach(element);
-    const owned = {
+    const owned: OwnedRemoteAudio = {
       element,
-      metadata: {
-        ...metadata,
-        baseGain: clampGain(metadata.baseGain ?? 1),
-      },
+      metadata: normalizeMetadata(metadata),
+      playbackState: "attached",
+      recoveryAttempts: 0,
+      recoveryTimer: null,
+      recoveryPending: null,
+      lastEvent: "attached",
+      removeHealthListeners: () => undefined,
     };
+    owned.removeHealthListeners = this.addHealthListeners(track, owned);
     this.applyGain(owned);
     this.getHost().append(element);
     this.elements.set(track, owned);
+    try {
+      track.attach(element);
+    } catch {
+      this.emitHealth(owned, "playback-failed", true);
+      this.detach(track);
+      return null;
+    }
     return element;
   }
 
@@ -90,6 +166,8 @@ export class RemoteAudioRenderer {
     const owned = this.elements.get(track);
     if (!owned) return;
 
+    if (owned.recoveryTimer !== null) clearTimeout(owned.recoveryTimer);
+    owned.removeHealthListeners();
     try {
       track.detach(owned.element);
     } finally {
@@ -128,6 +206,77 @@ export class RemoteAudioRenderer {
     this.selectedDeviceId = deviceId;
   }
 
+  detachExcept(tracks: ReadonlySet<RemoteAudioTrackLike>): void {
+    [...this.elements.keys()].forEach((track) => {
+      if (!tracks.has(track)) this.detach(track);
+    });
+  }
+
+  detachByPublicationSid(publicationSid: string): void {
+    [...this.elements.entries()].forEach(([track, owned]) => {
+      if (owned.metadata.publicationSid === publicationSid) this.detach(track);
+    });
+  }
+
+  setStreamState(track: RemoteAudioTrackLike, state: string): void {
+    const owned = this.elements.get(track);
+    if (!owned) return;
+    owned.lastEvent = `stream-${state}`;
+    if (state === "paused") {
+      owned.playbackState = "stream-paused";
+      this.emitHealth(owned, "stream-paused", false);
+      return;
+    }
+    if (state === "active") {
+      this.emitHealth(owned, "stream-resumed", false);
+      void this.recover(track, "stream-resumed");
+    }
+  }
+
+  async recover(
+    track: RemoteAudioTrackLike,
+    trigger = "manual",
+  ): Promise<boolean> {
+    const owned = this.elements.get(track);
+    if (!owned) return false;
+    if (owned.recoveryPending) return owned.recoveryPending;
+
+    owned.recoveryPending = this.attemptPlayback(track, owned, trigger).finally(
+      () => {
+        const current = this.elements.get(track);
+        if (current === owned) current.recoveryPending = null;
+      },
+    );
+    return owned.recoveryPending;
+  }
+
+  async recoverAll(trigger = "manual"): Promise<boolean> {
+    const results = await Promise.all(
+      [...this.elements.keys()].map((track) => this.recover(track, trigger)),
+    );
+    return results.every(Boolean);
+  }
+
+  hasPlaybackFailures(): boolean {
+    return [...this.elements.values()].some(
+      ({ playbackState }) => playbackState === "failed",
+    );
+  }
+
+  diagnostics(): RemoteAudioDiagnostic[] {
+    return [...this.elements.values()].map((owned) => ({
+      participantSid: owned.metadata.participantSid,
+      publicationSid: owned.metadata.publicationSid,
+      sourceKind: owned.metadata.sourceKind,
+      playbackState: owned.playbackState,
+      mediaPaused: owned.element.paused,
+      mediaEnded: owned.element.ended,
+      mediaReadyState: owned.element.readyState,
+      recoveryAttempts: owned.recoveryAttempts,
+      lastEvent: owned.lastEvent,
+    }));
+  }
+
   cleanup(): void {
     [...this.elements.keys()].forEach((track) => {
       try {
@@ -140,6 +289,121 @@ export class RemoteAudioRenderer {
     this.muted = false;
   }
 
+  private addHealthListeners(
+    track: RemoteAudioTrackLike,
+    owned: OwnedRemoteAudio,
+  ): () => void {
+    const onPlaying = () => {
+      const wasRecovering =
+        owned.playbackState !== "playing" && owned.playbackState !== "attached";
+      owned.playbackState = "playing";
+      owned.recoveryAttempts = 0;
+      owned.lastEvent = "playing";
+      if (owned.recoveryTimer !== null) {
+        clearTimeout(owned.recoveryTimer);
+        owned.recoveryTimer = null;
+      }
+      if (wasRecovering) {
+        this.emitHealth(owned, "playback-restored", false);
+      }
+    };
+    const recover = (event: string) => {
+      if (!this.elements.has(track)) return;
+      owned.lastEvent = event;
+      void this.recover(track, event);
+    };
+    const onPause = () => recover("pause");
+    const onStalled = () => recover("stalled");
+    const onError = () => recover("error");
+    const onEnded = () => recover("ended");
+
+    owned.element.addEventListener("playing", onPlaying);
+    owned.element.addEventListener("pause", onPause);
+    owned.element.addEventListener("stalled", onStalled);
+    owned.element.addEventListener("error", onError);
+    owned.element.addEventListener("ended", onEnded);
+    return () => {
+      owned.element.removeEventListener("playing", onPlaying);
+      owned.element.removeEventListener("pause", onPause);
+      owned.element.removeEventListener("stalled", onStalled);
+      owned.element.removeEventListener("error", onError);
+      owned.element.removeEventListener("ended", onEnded);
+    };
+  }
+
+  private async attemptPlayback(
+    track: RemoteAudioTrackLike,
+    owned: OwnedRemoteAudio,
+    trigger: string,
+  ): Promise<boolean> {
+    if (this.elements.get(track) !== owned) return false;
+    if (owned.recoveryAttempts >= MAX_PLAYBACK_RECOVERY_ATTEMPTS) {
+      owned.playbackState = "failed";
+      owned.lastEvent = `${trigger}-exhausted`;
+      this.emitHealth(owned, "playback-failed", true);
+      return false;
+    }
+
+    owned.recoveryAttempts += 1;
+    owned.playbackState = "recovering";
+    owned.lastEvent = trigger;
+    this.emitHealth(owned, "playback-recovering", false);
+
+    try {
+      if (
+        trigger === "error" ||
+        trigger === "ended" ||
+        Boolean(owned.element.error)
+      ) {
+        track.detach(owned.element);
+        track.attach(owned.element);
+      }
+      await Promise.resolve(owned.element.play());
+      if (this.elements.get(track) !== owned) return false;
+      const alreadyReportedPlaying = owned.lastEvent === "playing";
+      owned.playbackState = "playing";
+      owned.recoveryAttempts = 0;
+      owned.lastEvent = "play-resolved";
+      if (!alreadyReportedPlaying) {
+        this.emitHealth(owned, "playback-restored", false);
+      }
+      return true;
+    } catch (error) {
+      if (this.elements.get(track) !== owned) return false;
+      if (isAutoplayBlock(error)) {
+        owned.playbackState = "blocked";
+        owned.lastEvent = "autoplay-blocked";
+        this.emitHealth(owned, "playback-blocked", false);
+        return false;
+      }
+      if (owned.recoveryAttempts < MAX_PLAYBACK_RECOVERY_ATTEMPTS) {
+        owned.recoveryTimer = setTimeout(() => {
+          owned.recoveryTimer = null;
+          void this.recover(track, `${trigger}-retry`);
+        }, PLAYBACK_RECOVERY_DELAY_MS);
+        return false;
+      }
+      owned.playbackState = "failed";
+      owned.lastEvent = `${trigger}-failed`;
+      this.emitHealth(owned, "playback-failed", true);
+      return false;
+    }
+  }
+
+  private emitHealth(
+    owned: OwnedRemoteAudio,
+    code: RemoteAudioHealthCode,
+    terminal: boolean,
+  ): void {
+    this.healthListener?.({
+      code,
+      participantSid: owned.metadata.participantSid,
+      publicationSid: owned.metadata.publicationSid,
+      attempt: owned.recoveryAttempts,
+      terminal,
+    });
+  }
+
   private applyGain(owned: OwnedRemoteAudio): void {
     const participantGain =
       this.participantGains.get(owned.metadata.ownerId) ?? 1;
@@ -148,6 +412,22 @@ export class RemoteAudioRenderer {
       participantGain * globalGain * owned.metadata.baseGain,
     );
   }
+}
+
+function normalizeMetadata(metadata: RemoteAudioAttachment) {
+  return {
+    ownerId: metadata.ownerId,
+    sourceKind: metadata.sourceKind,
+    baseGain: clampGain(metadata.baseGain ?? 1),
+    participantSid: metadata.participantSid ?? null,
+    publicationSid: metadata.publicationSid ?? null,
+  };
+}
+
+function isAutoplayBlock(error: unknown): boolean {
+  return error instanceof DOMException
+    ? error.name === "NotAllowedError"
+    : error instanceof Error && error.name === "NotAllowedError";
 }
 
 function clampGain(value: number): number {

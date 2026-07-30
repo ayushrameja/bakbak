@@ -4441,6 +4441,40 @@ body {
   margin: 10px 0 0;
 }
 
+.voice-diagnostics-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--panel-soft);
+}
+
+.voice-diagnostics-card strong,
+.voice-diagnostics-card small {
+  display: block;
+}
+
+.voice-diagnostics-card strong {
+  font-size: 12px;
+}
+
+.voice-diagnostics-card small {
+  max-width: 430px;
+  margin-top: 4px;
+  color: var(--faint);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.voice-diagnostics-card .secondary-button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .audio-app-sounds {
   display: grid;
   gap: 12px;

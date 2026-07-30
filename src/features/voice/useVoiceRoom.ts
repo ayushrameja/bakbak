@@ -6,6 +6,7 @@ import {
   Room,
   RoomEvent,
   Track,
+  TrackPublication,
   VideoQuality,
   VideoPresets,
   createLocalAudioTrack,
@@ -75,7 +76,10 @@ import {
   needsMicrophoneProcessor,
   prewarmMicrophoneProcessing,
 } from "./microphone-processing";
-import { RemoteAudioRenderer } from "./remote-audio";
+import {
+  RemoteAudioRenderer,
+  type RemoteAudioHealthEvent,
+} from "./remote-audio";
 import { enumerateMediaDeviceGroups } from "./media-devices";
 import {
   buildLiveKitTokenRequest,
@@ -109,6 +113,10 @@ import {
 } from "./screen-share-preferences";
 import { chooseFeaturedScreenShare } from "./screen-share-selection";
 import { screenShareSubscriptionPolicy } from "./screen-share-subscription";
+import {
+  VoiceDiagnosticsRecorder,
+  copyVoiceDiagnostics as writeVoiceDiagnosticsToClipboard,
+} from "./voice-diagnostics";
 
 export type VoiceConnectionStatus =
   "disconnected" | "connecting" | "connected" | "reconnecting" | "error";
@@ -125,6 +133,8 @@ export const VOICE_PREPARE_DEBOUNCE_MS = 75;
 export const VOICE_TOKEN_EXPIRY_BUFFER_MS = 30_000;
 export const RELAY_PREFERENCE_DURATION_MS = 10 * 60_000;
 export const OUTPUT_DEVICE_NOTICE_DURATION_MS = 8_000;
+export const SUBSCRIPTION_RECOVERY_DELAY_MS = 250;
+export const MAX_SUBSCRIPTION_RECOVERY_ATTEMPTS = 2;
 
 export function supportsMacosFullVolumeMode(
   desktopApp: boolean,
@@ -210,6 +220,8 @@ interface VoiceRoomState {
   muted: boolean;
   deafened: boolean;
   audioPlaybackBlocked: boolean;
+  voiceContinuityWarning: string | null;
+  voiceDiagnosticsAvailable: boolean;
   error: string | null;
   inputDeviceError: string | null;
   microphoneProcessingError: string | null;
@@ -256,6 +268,7 @@ interface VoiceRoomState {
   toggleMute: () => Promise<void>;
   toggleDeafen: () => Promise<void>;
   resumeAudio: () => Promise<void>;
+  copyVoiceDiagnostics: () => Promise<boolean>;
   setParticipantVolume: (participantId: string, volume: number) => void;
   toggleParticipantMute: (participantId: string) => void;
   refreshDevices: () => Promise<void>;
@@ -301,6 +314,11 @@ export function useVoiceRoom(
   const [muted, setMuted] = useState(false);
   const [deafened, setDeafened] = useState(false);
   const [audioPlaybackBlocked, setAudioPlaybackBlocked] = useState(false);
+  const [voiceContinuityWarning, setVoiceContinuityWarning] = useState<
+    string | null
+  >(null);
+  const [voiceDiagnosticsAvailable, setVoiceDiagnosticsAvailable] =
+    useState(false);
   const [error, setError] = useState<string | null>(null);
   const [inputDeviceError, setInputDeviceError] = useState<string | null>(null);
   const [microphoneProcessingError, setMicrophoneProcessingError] = useState<
@@ -374,6 +392,7 @@ export function useVoiceRoom(
   );
   const [activeLocalSoundCount, setActiveLocalSoundCount] = useState(0);
   const [remoteAudio] = useState(() => new RemoteAudioRenderer());
+  const [voiceDiagnostics] = useState(() => new VoiceDiagnosticsRecorder());
   const [audioOutput] = useState(() => new AudioOutputRouter());
   const [soundboardAudio] = useState(
     () =>
@@ -411,6 +430,8 @@ export function useVoiceRoom(
   const soundActivities = useRef(new Map<string, SoundboardActivity[]>());
   const soundActivityTimers = useRef(new Map<string, number>());
   const soundboardTracks = useRef(new Map<string, RemoteAudioTrack>());
+  const failedSubscriptionSidsRef = useRef(new Set<string>());
+  const subscriptionRecoveryAttemptsRef = useRef(new Map<string, number>());
   const participantVolumes = useRef(new Map<string, number>());
   const audibleParticipantVolumes = useRef(new Map<string, number>());
   const soundboardVolumeRef = useRef(soundboardVolume);
@@ -428,6 +449,78 @@ export function useVoiceRoom(
   );
 
   const desktopApp = isDesktopApp();
+
+  const recordVoiceDiagnostic = useCallback(
+    (
+      code: string,
+      {
+        participantSid,
+        publicationSid,
+        detail,
+      }: {
+        participantSid?: string | null;
+        publicationSid?: string | null;
+        detail?: string | null;
+      } = {},
+    ) => {
+      voiceDiagnostics.record({
+        code,
+        connectionState: roomRef.current?.state ?? status,
+        participantSid,
+        publicationSid,
+        detail,
+      });
+      setVoiceDiagnosticsAvailable(true);
+    },
+    [status, voiceDiagnostics],
+  );
+
+  const handleRemoteAudioHealth = useCallback(
+    (event: RemoteAudioHealthEvent) => {
+      recordVoiceDiagnostic(event.code, {
+        participantSid: event.participantSid,
+        publicationSid: event.publicationSid,
+        detail: `attempt-${event.attempt}`,
+      });
+      if (event.code === "playback-blocked") {
+        setAudioPlaybackBlocked(true);
+      }
+      if (event.terminal) {
+        setVoiceContinuityWarning(
+          "Bakbak could not restore one incoming voice track. Copy voice diagnostics, then rejoin if that friend stays silent.",
+        );
+      } else if (
+        event.code === "playback-restored" &&
+        !remoteAudio.hasPlaybackFailures() &&
+        failedSubscriptionSidsRef.current.size === 0
+      ) {
+        setVoiceContinuityWarning(null);
+      }
+      if (event.terminal || event.code === "playback-blocked") {
+        void voiceDiagnostics.capture(roomRef.current, remoteAudio, event.code);
+      }
+    },
+    [recordVoiceDiagnostic, remoteAudio, voiceDiagnostics],
+  );
+
+  useEffect(() => {
+    remoteAudio.setHealthListener(handleRemoteAudioHealth);
+    return () => remoteAudio.setHealthListener(null);
+  }, [handleRemoteAudioHealth, remoteAudio]);
+
+  const copyVoiceDiagnostics = useCallback(async () => {
+    try {
+      const snapshot = await voiceDiagnostics.capture(
+        roomRef.current,
+        remoteAudio,
+        "manual-copy",
+      );
+      setVoiceDiagnosticsAvailable(true);
+      return writeVoiceDiagnosticsToClipboard(snapshot);
+    } catch {
+      return false;
+    }
+  }, [remoteAudio, voiceDiagnostics]);
   const macosFullVolumeModeAvailable = supportsMacosFullVolumeMode(
     desktopApp,
     typeof navigator === "undefined" ? "" : navigator.userAgent,
@@ -911,6 +1004,8 @@ export function useVoiceRoom(
       );
       soundActivityTimers.current.clear();
       soundboardTracks.current.clear();
+      failedSubscriptionSidsRef.current.clear();
+      subscriptionRecoveryAttemptsRef.current.clear();
       setActiveLocalSoundCount(0);
       seenSoundEvents.current.clear();
       setParticipants([]);
@@ -928,6 +1023,7 @@ export function useVoiceRoom(
         setDeafened(false);
       }
       setAudioPlaybackBlocked(false);
+      setVoiceContinuityWarning(null);
       setCameraEnabled(false);
       setCameraPending(false);
       setScreenShares([]);
@@ -1031,6 +1127,211 @@ export function useVoiceRoom(
     [clearParticipantSounds, refreshParticipants, user.id],
   );
 
+  const shouldRenderRemoteAudio = useCallback(
+    (
+      participant: RemoteParticipant,
+      publication: RemoteTrackPublication,
+    ): boolean => {
+      if (publication.kind !== Track.Kind.Audio) return false;
+      if (publication.source !== Track.Source.ScreenShareAudio) return true;
+      const companion = readScreenShareCompanion(participant);
+      if (companion?.ownerUserId === user.id) return false;
+      const shareId = companion
+        ? participant.identity
+        : `${participant.identity}:screen`;
+      return shareId === watchedScreenShareIdRef.current;
+    },
+    [user.id],
+  );
+
+  const markRemoteSubscriptionRecovered = useCallback(
+    (publicationSid: string | undefined) => {
+      if (!publicationSid) return;
+      failedSubscriptionSidsRef.current.delete(publicationSid);
+      subscriptionRecoveryAttemptsRef.current.delete(publicationSid);
+      if (
+        failedSubscriptionSidsRef.current.size === 0 &&
+        !remoteAudio.hasPlaybackFailures()
+      ) {
+        setVoiceContinuityWarning(null);
+      }
+    },
+    [remoteAudio],
+  );
+
+  const attachRemoteAudioPublication = useCallback(
+    (
+      room: Room,
+      track: RemoteAudioTrack,
+      publication: RemoteTrackPublication,
+      participant: RemoteParticipant,
+    ): boolean => {
+      if (roomRef.current !== room) return false;
+      const knownPublications = participant.getTrackPublications();
+      if (!knownPublications.includes(publication)) {
+        return false;
+      }
+      if (publication.track && publication.track !== track) return false;
+      if (publication.isSubscribed === false) return false;
+      if (!shouldRenderRemoteAudio(participant, publication)) return false;
+
+      const isSoundboardTrack = publication.trackName === SOUNDBOARD_TRACK_NAME;
+      const companion = readScreenShareCompanion(participant);
+      const ownerId = companion?.ownerUserId ?? participant.identity;
+      remoteAudio.setParticipantGain(
+        ownerId,
+        participantVolumes.current.get(ownerId) ?? 1,
+      );
+      const element = remoteAudio.attach(track, {
+        ownerId,
+        sourceKind: isSoundboardTrack
+          ? "soundboard"
+          : publication.source === Track.Source.ScreenShareAudio
+            ? "screen-share"
+            : "speech",
+        participantSid: participant.sid,
+        publicationSid: publication.trackSid,
+      });
+      if (!element) return false;
+
+      if (isSoundboardTrack) {
+        soundboardTracks.current.set(participant.identity, track);
+        remoteAudio.setTrackMuted(track, publication.isMuted);
+      }
+      if (track.streamState === Track.StreamState.Paused) {
+        remoteAudio.setStreamState(track, Track.StreamState.Paused);
+      }
+      markRemoteSubscriptionRecovered(publication.trackSid);
+      recordVoiceDiagnostic("track-attached", {
+        participantSid: participant.sid,
+        publicationSid: publication.trackSid,
+        detail: publication.source,
+      });
+      return true;
+    },
+    [
+      markRemoteSubscriptionRecovered,
+      recordVoiceDiagnostic,
+      remoteAudio,
+      shouldRenderRemoteAudio,
+    ],
+  );
+
+  const reconcileRemoteAudio = useCallback(
+    async (
+      room: Room,
+      trigger: string,
+      recoverPlayback = false,
+    ): Promise<boolean> => {
+      if (roomRef.current !== room) return false;
+      const expectedTracks = new Set<RemoteAudioTrack>();
+      room.remoteParticipants.forEach((participant) => {
+        participant.getTrackPublications().forEach((publication) => {
+          const remotePublication = publication as RemoteTrackPublication;
+          if (!shouldRenderRemoteAudio(participant, remotePublication)) return;
+          const track = remotePublication.track;
+          if (
+            remotePublication.isSubscribed &&
+            track?.kind === Track.Kind.Audio
+          ) {
+            const audioTrack = track as RemoteAudioTrack;
+            expectedTracks.add(audioTrack);
+            attachRemoteAudioPublication(
+              room,
+              audioTrack,
+              remotePublication,
+              participant,
+            );
+          }
+        });
+      });
+      remoteAudio.detachExcept(expectedTracks);
+      soundboardTracks.current.forEach((track, participantId) => {
+        if (!expectedTracks.has(track)) {
+          soundboardTracks.current.delete(participantId);
+        }
+      });
+      recordVoiceDiagnostic("audio-reconciled", { detail: trigger });
+      refreshParticipants(room);
+      let playbackRecovered = true;
+      if (recoverPlayback) {
+        playbackRecovered = await remoteAudio.recoverAll(trigger);
+      }
+      if (roomRef.current === room) {
+        await voiceDiagnostics.capture(room, remoteAudio, trigger);
+      }
+      return roomRef.current === room && playbackRecovered;
+    },
+    [
+      attachRemoteAudioPublication,
+      recordVoiceDiagnostic,
+      refreshParticipants,
+      remoteAudio,
+      shouldRenderRemoteAudio,
+      voiceDiagnostics,
+    ],
+  );
+
+  const recoverRemoteSubscription = useCallback(
+    (
+      room: Room,
+      trackSid: string,
+      participant: RemoteParticipant,
+      reason: unknown,
+    ) => {
+      if (roomRef.current !== room) return;
+      failedSubscriptionSidsRef.current.add(trackSid);
+      setVoiceContinuityWarning(
+        "Bakbak is repairing one incoming voice track. If that friend stays silent, copy voice diagnostics and rejoin.",
+      );
+      const attempts =
+        (subscriptionRecoveryAttemptsRef.current.get(trackSid) ?? 0) + 1;
+      subscriptionRecoveryAttemptsRef.current.set(trackSid, attempts);
+      recordVoiceDiagnostic("subscription-failed", {
+        participantSid: participant.sid,
+        publicationSid: trackSid,
+        detail: subscriptionFailureCode(reason),
+      });
+      void voiceDiagnostics.capture(room, remoteAudio, "subscription-failed");
+      if (attempts > MAX_SUBSCRIPTION_RECOVERY_ATTEMPTS) {
+        setVoiceContinuityWarning(
+          "Bakbak could not restore one incoming voice track. Copy voice diagnostics, then rejoin if that friend stays silent.",
+        );
+        return;
+      }
+
+      const publication = participant
+        .getTrackPublications()
+        .find((candidate) => candidate.trackSid === trackSid) as
+        RemoteTrackPublication | undefined;
+      if (!publication || !shouldRenderRemoteAudio(participant, publication)) {
+        return;
+      }
+      publication.setSubscribed(false);
+      window.setTimeout(() => {
+        if (
+          roomRef.current !== room ||
+          !participant.getTrackPublications().includes(publication) ||
+          !shouldRenderRemoteAudio(participant, publication)
+        ) {
+          return;
+        }
+        publication.setSubscribed(true);
+        recordVoiceDiagnostic("subscription-retry", {
+          participantSid: participant.sid,
+          publicationSid: trackSid,
+          detail: `attempt-${attempts}`,
+        });
+      }, SUBSCRIPTION_RECOVERY_DELAY_MS);
+    },
+    [
+      recordVoiceDiagnostic,
+      remoteAudio,
+      shouldRenderRemoteAudio,
+      voiceDiagnostics,
+    ],
+  );
+
   const bindRoomEvents = useCallback(
     (room: Room) => {
       const isCurrentRoom = () => roomRef.current === room;
@@ -1064,6 +1365,11 @@ export function useVoiceRoom(
         });
       };
       room
+        .on(RoomEvent.Connected, () => {
+          if (!isCurrentRoom()) return;
+          recordVoiceDiagnostic("connected");
+          void reconcileRemoteAudio(room, "connected");
+        })
         .on(RoomEvent.ParticipantConnected, (participant) => {
           sync();
           if (!effectsReady()) return;
@@ -1078,7 +1384,7 @@ export function useVoiceRoom(
           });
         })
         .on(RoomEvent.ParticipantDisconnected, (participant) => {
-          sync();
+          void reconcileRemoteAudio(room, "participant-disconnected");
           if (!effectsReady()) return;
           if (readScreenShareCompanion(participant)) {
             emitRemoteShare(participant, false);
@@ -1143,10 +1449,15 @@ export function useVoiceRoom(
             publication: RemoteTrackPublication,
             participant: RemoteParticipant,
           ) => {
+            remoteAudio.detachByPublicationSid(publication.trackSid);
+            failedSubscriptionSidsRef.current.delete(publication.trackSid);
+            subscriptionRecoveryAttemptsRef.current.delete(
+              publication.trackSid,
+            );
             if (publication.source === Track.Source.ScreenShare) {
               emitRemoteShare(participant, false);
             }
-            sync();
+            void reconcileRemoteAudio(room, "track-unpublished");
           },
         )
         .on(RoomEvent.LocalTrackPublished, sync)
@@ -1176,38 +1487,23 @@ export function useVoiceRoom(
                 return;
               }
             }
-            const isSoundboardTrack =
-              publication.trackName === SOUNDBOARD_TRACK_NAME;
-            const companion = readScreenShareCompanion(participant);
-            const screenOwnerId = companion?.ownerUserId;
-            const isScreenShareAudio =
-              publication.source === Track.Source.ScreenShareAudio;
-            const ownerId = screenOwnerId ?? participant.identity;
-            remoteAudio.setParticipantGain(
-              ownerId,
-              participantVolumes.current.get(ownerId) ?? 1,
-            );
-            remoteAudio.attach(track, {
-              ownerId,
-              sourceKind: isSoundboardTrack
-                ? "soundboard"
-                : isScreenShareAudio
-                  ? "screen-share"
-                  : "speech",
-            });
-            if (isSoundboardTrack && track.kind === Track.Kind.Audio) {
-              const soundboardTrack = track as RemoteAudioTrack;
-              soundboardTracks.current.set(
-                participant.identity,
-                soundboardTrack,
+            if (track.kind === Track.Kind.Audio) {
+              attachRemoteAudioPublication(
+                room,
+                track as RemoteAudioTrack,
+                publication,
+                participant,
               );
-              remoteAudio.setTrackMuted(soundboardTrack, publication.isMuted);
             }
             sync();
           },
         )
-        .on(RoomEvent.TrackUnsubscribed, (track) => {
+        .on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
           if (!isCurrentRoom()) return;
+          recordVoiceDiagnostic("track-unsubscribed", {
+            participantSid: participant.sid,
+            publicationSid: publication.trackSid,
+          });
           remoteAudio.detach(track);
           soundboardTracks.current.forEach((candidate, participantId) => {
             if (candidate === track)
@@ -1215,8 +1511,88 @@ export function useVoiceRoom(
           });
           sync();
         })
+        .on(
+          RoomEvent.TrackSubscriptionFailed,
+          (trackSid, participant, reason) => {
+            recoverRemoteSubscription(room, trackSid, participant, reason);
+          },
+        )
+        .on(
+          RoomEvent.TrackSubscriptionStatusChanged,
+          (publication, subscriptionStatus, participant) => {
+            if (!isCurrentRoom()) return;
+            recordVoiceDiagnostic("subscription-status", {
+              participantSid: participant.sid,
+              publicationSid: publication.trackSid,
+              detail: subscriptionStatus,
+            });
+            if (
+              subscriptionStatus ===
+              TrackPublication.SubscriptionStatus.Subscribed
+            ) {
+              markRemoteSubscriptionRecovered(publication.trackSid);
+              void reconcileRemoteAudio(room, "subscription-restored", true);
+              return;
+            }
+            if (
+              subscriptionStatus ===
+              TrackPublication.SubscriptionStatus.Unsubscribed
+            ) {
+              remoteAudio.detachByPublicationSid(publication.trackSid);
+              if (
+                shouldRenderRemoteAudio(participant, publication) &&
+                room.remoteParticipants.has(participant.identity) &&
+                !failedSubscriptionSidsRef.current.has(publication.trackSid)
+              ) {
+                recoverRemoteSubscription(
+                  room,
+                  publication.trackSid,
+                  participant,
+                  "status-unsubscribed",
+                );
+              }
+            }
+          },
+        )
+        .on(
+          RoomEvent.TrackStreamStateChanged,
+          (publication, streamState, participant) => {
+            if (!isCurrentRoom()) return;
+            recordVoiceDiagnostic("stream-state", {
+              participantSid: participant.sid,
+              publicationSid: publication.trackSid,
+              detail: streamState,
+            });
+            const track = publication.track;
+            if (track?.kind === Track.Kind.Audio) {
+              remoteAudio.setStreamState(track, streamState);
+            }
+          },
+        )
+        .on(RoomEvent.SignalReconnecting, () => {
+          if (!isCurrentRoom()) return;
+          recordVoiceDiagnostic("signal-reconnecting");
+          void voiceDiagnostics.capture(
+            room,
+            remoteAudio,
+            "signal-reconnecting",
+          );
+        })
+        .on(RoomEvent.ConnectionStateChanged, (connectionState) => {
+          if (isCurrentRoom()) {
+            recordVoiceDiagnostic("connection-state", {
+              detail: connectionState,
+            });
+          }
+        })
         .on(RoomEvent.Reconnecting, () => {
           if (isCurrentRoom()) {
+            recordVoiceDiagnostic("transport-reconnecting");
+            void voiceDiagnostics.capture(
+              room,
+              remoteAudio,
+              "transport-reconnecting",
+            );
             setStatus("reconnecting");
             if (effectsReady()) {
               emitCommunicationEffect({ type: "signal-interrupted" });
@@ -1225,6 +1601,8 @@ export function useVoiceRoom(
         })
         .on(RoomEvent.Reconnected, () => {
           if (isCurrentRoom()) {
+            recordVoiceDiagnostic("signal-restored");
+            void reconcileRemoteAudio(room, "reconnected", true);
             setStatus("connected");
             if (effectsReady()) {
               emitCommunicationEffect({ type: "signal-restored" });
@@ -1232,7 +1610,21 @@ export function useVoiceRoom(
           }
         })
         .on(RoomEvent.AudioPlaybackStatusChanged, (playing) => {
-          if (isCurrentRoom()) setAudioPlaybackBlocked(!playing);
+          if (isCurrentRoom()) {
+            recordVoiceDiagnostic(
+              playing ? "room-playback-active" : "room-playback-blocked",
+            );
+            setAudioPlaybackBlocked(!playing);
+            if (playing) {
+              void remoteAudio.recoverAll("room-playback-restored");
+            } else {
+              void voiceDiagnostics.capture(
+                room,
+                remoteAudio,
+                "room-playback-blocked",
+              );
+            }
+          }
         })
         .on(RoomEvent.MediaDevicesChanged, () => {
           if (isCurrentRoom()) void refreshDevices();
@@ -1278,6 +1670,8 @@ export function useVoiceRoom(
         })
         .on(RoomEvent.Disconnected, () => {
           if (roomRef.current !== room) return;
+          recordVoiceDiagnostic("disconnected");
+          void voiceDiagnostics.capture(room, remoteAudio, "disconnected");
           if (effectReadyRoomsRef.current.has(room)) {
             emitCommunicationEffect({ type: "signal-interrupted" });
           }
@@ -1289,14 +1683,21 @@ export function useVoiceRoom(
         });
     },
     [
+      addParticipantSound,
+      attachRemoteAudioPublication,
+      clearParticipantSounds,
+      emitCommunicationEffect,
+      markRemoteSubscriptionRecovered,
+      reconcileRemoteAudio,
+      recordVoiceDiagnostic,
+      recoverRemoteSubscription,
       refreshDevices,
       refreshParticipants,
       remoteAudio,
       resetVoiceMedia,
-      addParticipantSound,
-      clearParticipantSounds,
-      emitCommunicationEffect,
+      shouldRenderRemoteAudio,
       user.id,
+      voiceDiagnostics,
     ],
   );
 
@@ -1309,6 +1710,10 @@ export function useVoiceRoom(
       preserveLocalControls?: boolean;
     } = {}) => {
       const room = roomRef.current;
+      if (room) {
+        recordVoiceDiagnostic("leaving");
+        void voiceDiagnostics.capture(room, remoteAudio, "leaving");
+      }
       roomRef.current = null;
       remoteShareKeysRef.current.clear();
       localScreenShareLiveRef.current = false;
@@ -1330,7 +1735,13 @@ export function useVoiceRoom(
       await screenStop;
       if (room) await room.disconnect();
     },
-    [dismissOutputDeviceError, resetVoiceMedia],
+    [
+      dismissOutputDeviceError,
+      recordVoiceDiagnostic,
+      remoteAudio,
+      resetVoiceMedia,
+      voiceDiagnostics,
+    ],
   );
 
   const leave = useCallback(
@@ -1668,7 +2079,12 @@ export function useVoiceRoom(
 
         remoteAudio.setMuted(deafenedRef.current);
         soundboardAudio.setDeafened(deafenedRef.current);
-        refreshParticipants(room);
+        const remotePlaybackReady = await reconcileRemoteAudio(
+          room,
+          "initial",
+          true,
+        );
+        if (!isCurrentJoin() || roomRef.current !== room) return;
         remoteShareKeysRef.current.clear();
         room.remoteParticipants.forEach((participant) => {
           const companion = readScreenShareCompanion(participant);
@@ -1690,7 +2106,8 @@ export function useVoiceRoom(
         );
         setStatus("connected");
         setJoinStage(null);
-        setAudioPlaybackBlocked(!room.canPlaybackAudio);
+        setAudioPlaybackBlocked(!room.canPlaybackAudio || !remotePlaybackReady);
+        recordVoiceDiagnostic("join-ready");
         emitCommunicationEffect({
           type: "voice-self-joined",
           channelName: nextChannel.name,
@@ -1705,6 +2122,10 @@ export function useVoiceRoom(
         }
 
         const room = joiningRoom;
+        if (room) {
+          recordVoiceDiagnostic("join-failed");
+          void voiceDiagnostics.capture(room, remoteAudio, "join-failed");
+        }
         if (roomRef.current === room) roomRef.current = null;
         void resetVoiceMedia();
         void room?.disconnect();
@@ -1726,8 +2147,9 @@ export function useVoiceRoom(
       macosFullVolumeModeAvailable,
       mode,
       remoteAudio,
+      reconcileRemoteAudio,
+      recordVoiceDiagnostic,
       refreshDevices,
-      refreshParticipants,
       resetVoiceMedia,
       outputSelectionSupported,
       selectedInputId,
@@ -1736,6 +2158,7 @@ export function useVoiceRoom(
       soundboardAudio,
       user.displayName,
       user.id,
+      voiceDiagnostics,
     ],
   );
 
@@ -1836,20 +2259,27 @@ export function useVoiceRoom(
     const operationId = playbackOperationRef.current + 1;
     playbackOperationRef.current = operationId;
     const result = await resumeAudioPlayback(room);
+    const remotePlaybackRecovered = result.ok
+      ? await remoteAudio.recoverAll("manual-enable-audio")
+      : false;
     if (
       playbackOperationRef.current !== operationId ||
       roomRef.current !== room
     )
       return;
     remoteAudio.setMuted(deafenedRef.current);
-    if (result.ok) {
+    if (result.ok && remotePlaybackRecovered) {
       setAudioPlaybackBlocked(false);
       setError(null);
       return;
     }
 
     setAudioPlaybackBlocked(true);
-    setError(result.message);
+    setError(
+      result.ok
+        ? "Bakbak still couldn't restore one incoming voice track. Copy voice diagnostics, then rejoin voice."
+        : result.message,
+    );
   }, [remoteAudio, status]);
 
   const setParticipantVolume = useCallback(
@@ -2095,6 +2525,9 @@ export function useVoiceRoom(
         if (room) {
           const result = await switchAudioOutput(room, deviceId);
           if (!result.ok) throw new Error(result.message);
+          await reconcileRemoteAudio(room, "output-device-change", true);
+        } else {
+          await remoteAudio.recoverAll("output-device-change");
         }
       } catch {
         await audioOutput.setDevice(previousId).catch(() => undefined);
@@ -2113,6 +2546,7 @@ export function useVoiceRoom(
       audioOutput,
       dismissOutputDeviceError,
       outputSelectionSupported,
+      reconcileRemoteAudio,
       remoteAudio,
       selectedOutputId,
       showOutputDeviceError,
@@ -2608,6 +3042,8 @@ export function useVoiceRoom(
     muted,
     deafened,
     audioPlaybackBlocked,
+    voiceContinuityWarning,
+    voiceDiagnosticsAvailable,
     error,
     inputDeviceError,
     microphoneProcessingError,
@@ -2659,6 +3095,7 @@ export function useVoiceRoom(
     toggleMute,
     toggleDeafen,
     resumeAudio,
+    copyVoiceDiagnostics,
     setParticipantVolume,
     toggleParticipantMute,
     refreshDevices,
@@ -2949,6 +3386,12 @@ function isScreenShareSource(source: Track.Source): boolean {
     source === Track.Source.ScreenShare ||
     source === Track.Source.ScreenShareAudio
   );
+}
+
+function subscriptionFailureCode(reason: unknown): string {
+  return typeof reason === "number" && Number.isFinite(reason)
+    ? `reason-${reason}`
+    : "reported";
 }
 
 function participantToView(

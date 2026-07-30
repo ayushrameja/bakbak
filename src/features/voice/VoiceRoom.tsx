@@ -86,6 +86,9 @@ export function VoiceRoom({
   const [focusedTarget, setFocusedTarget] = useState<MediaTarget | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenError, setFullscreenError] = useState<string | null>(null);
+  const [diagnosticsCopyState, setDiagnosticsCopyState] = useState<
+    "idle" | "copied" | "failed"
+  >("idle");
   const [fullscreenControlsVisible, setFullscreenControlsVisible] =
     useState(true);
   const fullscreenRef = useRef(false);
@@ -100,6 +103,10 @@ export function VoiceRoom({
   const macosSimpleFullscreen = isMacosVoiceFullscreen(
     typeof navigator === "undefined" ? "" : navigator.userAgent,
   );
+
+  useEffect(() => {
+    setDiagnosticsCopyState("idle");
+  }, [voice.voiceContinuityWarning]);
 
   const applyFullscreenState = useCallback((next: boolean) => {
     if (next) {
@@ -451,6 +458,28 @@ export function VoiceRoom({
                   Enable audio
                 </button>
               ) : null}
+            </div>
+          ) : null}
+          {voice.voiceContinuityWarning ? (
+            <div className="voice-device-error" role="alert">
+              <CircleAlert size={16} />
+              <span>{voice.voiceContinuityWarning}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  void voice
+                    .copyVoiceDiagnostics()
+                    .then((copied) =>
+                      setDiagnosticsCopyState(copied ? "copied" : "failed"),
+                    );
+                }}
+              >
+                {diagnosticsCopyState === "copied"
+                  ? "Copied"
+                  : diagnosticsCopyState === "failed"
+                    ? "Copy failed"
+                    : "Copy diagnostics"}
+              </button>
             </div>
           ) : null}
           {voice.inputDeviceError ? (

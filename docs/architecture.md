@@ -198,8 +198,13 @@ active call additionally expose a local mute toggle. Participant volume zero
 is applied across speech, soundboard, and share audio; unmute restores the last
 non-zero level or 100%. One remote-audio renderer owns every hidden speech,
 soundboard, and watched-share element with owner/source/base-gain metadata and
-writes gain to the actual HTML audio element. Listener-owned session state,
-not LiveKit's track volume, drives both current and future attachments.
+writes gain to the actual HTML audio element. It reconciles LiveKit's current
+subscribed publications after initial connection, signal resume, full
+reconnect, and output changes instead of depending on a future subscription
+event. Publication ownership is idempotent, and paused, stalled, failed, or
+ended playback receives at most two local recovery attempts. Listener-owned
+session state, not LiveKit's track volume, drives both current and future
+attachments.
 Selecting a voice channel immediately joins it; selecting another voice channel switches
 the active call without a pre-join or initial connection surface. An active call
 adds a sidebar control block with room, backend latency, normalized local
@@ -827,7 +832,8 @@ authority.
 
 ### LiveKit
 
-LiveKit transports a named `bakbak-microphone` speech track, opt-in camera
+The renderer uses `livekit-client` 2.21.0, including its buffered resume-event
+fix. LiveKit transports a named `bakbak-microphone` speech track, opt-in camera
 tracks, at most one named soundboard audio track, desktop screen companions,
 participant/speaking state, and small soundboard control messages.
 Before publication, the renderer may replace the speech track's source with
@@ -1264,19 +1270,34 @@ An invite-management UI is deferred until post-v1.
    hidden remote-audio element. Unsupported runtimes keep the selector
    read-only and use system output. A genuinely missing remembered device
    falls back to default after specific devices become visible.
-10. Unsubscription, leaving, disconnecting, and unmounting detach remote audio
-    and video, invalidate pending camera/join work, stop active local sounds,
-    pause and detach the selected-speaker monitor, stop its MediaStream tracks,
-    close its Web Audio context, disconnect the room, and release local tracks.
-11. If direct WebRTC fails and relay succeeds, later joins prefer relay for ten
+10. Initial connection, signal resume, full reconnect, and output changes
+    reconcile every currently subscribed remote audio publication against the
+    active room. The renderer reuses the publication's existing audio element,
+    removes stale elements, rejects late events for removed publications, and
+    responds to subscription status, stream pause/resume, media
+    pause/stall/error/end, and autoplay rejection. Subscription and playback
+    recovery stop after two attempts and expose an actionable warning instead
+    of looping.
+11. Unsubscription, participant departure, leaving, disconnecting, and
+    unmounting detach remote audio and video, invalidate pending camera/join
+    work, stop active local sounds, pause and detach the selected-speaker
+    monitor, stop its MediaStream tracks, close its Web Audio context,
+    disconnect the room, and release local tracks.
+12. If direct WebRTC fails and relay succeeds, later joins prefer relay for ten
     minutes using only a non-sensitive LiveKit-host-scoped expiry. Relay-first
     failure retries direct; direct success or expiry clears the hint. A total
     failure is reported as a TURN/TLS or local network-policy problem rather
     than token/authentication failure.
-12. Development diagnostics record preparation, authorization, connection,
+13. Development diagnostics record preparation, authorization, connection,
     microphone capture/processing/publication, output routing, soundboard, and
-    total timing without identifiers or tokens.
-13. `CommunicationEffectEvent` is emitted only after lifecycle truth: self join
+    total timing without identifiers or tokens. The Settings voice diagnostic
+    additionally keeps the most recent bounded snapshot in memory until the
+    user explicitly copies it. It contains only ephemeral participant and
+    publication SIDs, connection/signal/subscription/stream/playback state, and
+    whitelisted inbound audio packet, byte, loss, jitter, and round-trip
+    metrics. It excludes names, message content, tokens, device labels, audio,
+    ICE candidates, and IP addresses, and is never transmitted automatically.
+14. `CommunicationEffectEvent` is emitted only after lifecycle truth: self join
     follows the complete connected gate; normal self leave requires an explicit
     user leave; switches emit only the destination join; sign-out, teardown,
     canceled joins, and unexpected disconnects never imitate a normal leave.
@@ -1936,7 +1957,7 @@ that it has passed.
   must complete the installed-client isolation matrix. Cross-platform
   two-account verification and before/after installer-size measurements remain
   required by plans 0003 and 0010.
-- The current production renderer is roughly 336 kB compressed; LiveKit and
+- The current production renderer is roughly 406 kB compressed; LiveKit and
   Supabase can be lazy-loaded in a later performance pass if startup profiling
   shows a meaningful benefit.
 - The macOS app uses an ad-hoc hardened-runtime signature with audio-input and

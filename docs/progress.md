@@ -5417,3 +5417,117 @@ build` was not rerun because this host cannot produce the required Windows
   the authoritative validation.
 - **Next:** Push the correction and rerun the Windows native capture job for PR
   #44.
+
+## 2026-07-30 — Plan friend-test core stabilization
+
+- **Completed:** Added plan 0033 to turn the six-person cross-region incident
+  into five gated work packets: LiveKit voice continuity and diagnostics,
+  authoritative/stable voice presence, Windows paste and private-image
+  reliability, measured 200% listener gain, and one integrated release gate.
+  Recorded dependencies, safe parallel-agent ownership, automated criteria,
+  installed macOS/Windows criteria, privacy boundaries, and the required agent
+  handoff fields. Linked the plan and its two open Phase 5 gates from the active
+  v1 plan.
+- **Decisions:** Kept the four failure boundaries separate during
+  implementation because voice, presence, private media, and loudness have
+  different authorities and regression risks. Approved Packets B and C for
+  parallel work, required Packet A before Packet D because both edit remote
+  playback, and required all packets to ship from one source revision only
+  after the six-person integrated matrix passes. Kept IndexedDB classified as
+  a possible amplifier of invalid poster data rather than a common root cause.
+  No runtime architecture, backend contract, schema, policy, or application
+  behavior changed in this documentation-only task.
+- **Validation:**
+  - `./node_modules/.bin/prettier --check
+docs/plans/0033-friend-test-voice-presence-and-media-stabilization.md
+docs/plans/0001-bakbak-desktop-v1.md` — passed after formatting the new
+    plan; both changed plan files use repository style.
+  - `git diff --check` — passed with no whitespace errors before the progress
+    entry.
+  - `pnpm format:check` — interrupted after 60 seconds with no output because
+    the Corepack-backed command did not start; the installed local Prettier
+    check above is the focused formatting result.
+  - `./node_modules/.bin/prettier --check
+docs/plans/0033-friend-test-voice-presence-and-media-stabilization.md
+docs/plans/0001-bakbak-desktop-v1.md docs/progress.md` and final
+    `git diff --check` — passed on the complete documentation change.
+- **Documentation updated:** Added
+  `docs/plans/0033-friend-test-voice-presence-and-media-stabilization.md`,
+  updated plan 0001's Phase 5 source of truth, and appended this canonical
+  progress entry. `docs/architecture.md` was not changed because no runtime
+  behavior or contract changed.
+- **Known limitations:** This task records the approved execution plan only.
+  No implementation, product tests, installed builds, or multi-client
+  acceptance items were completed. The canonical pnpm wrapper remains blocked
+  before execution in this environment.
+- **Next:** Assign Packet A for voice continuity first. Packets B and C may run
+  concurrently in isolated branches/worktrees, then Packet D follows the merged
+  Packet A audio lifecycle and Packet E validates one integrated source
+  revision.
+
+## 2026-07-30 — Stabilize remote voice continuity
+
+- **Completed:** Implemented plan 0033 Packet A. Upgraded `livekit-client` from
+  2.20.1 to resolved version 2.21.0, which contains the buffered resume-event
+  fix. Remote audio now reconciles the active room's current subscribed
+  publications after initial connection, signal resume, full reconnect, and
+  output-device changes. One publication reuses one hidden audio element;
+  stale/unsubscribed publications detach and late events cannot revive them.
+  Subscription failure/status, stream pause/resume, media
+  pause/stall/error/end, and autoplay rejection now feed bounded recovery and
+  an actionable continuity warning. Added a bounded in-memory diagnostic
+  recorder and explicit Copy controls in the call warning and Settings. The
+  snapshot preserves safe connection, publication, renderer, and inbound audio
+  health data across cleanup without automatic transmission.
+- **Decisions:** Limited subscription and playback recovery to two attempts so
+  a broken track cannot create an infinite resubscribe or playback loop.
+  Reconciliation reads current LiveKit room truth instead of treating events as
+  a complete ledger. Diagnostics whitelist ephemeral participant/publication
+  SIDs and numeric WebRTC health fields; they exclude identities, display
+  names, messages, tokens, device labels, audio, ICE candidates, and addresses.
+  Kept the existing 0–100% element gain path unchanged because 200% gain belongs
+  to Packet D after this lifecycle is integrated. No backend, schema, policy,
+  token grant, or presence contract changed.
+- **Validation:**
+  - `pnpm add livekit-client@2.21.0` — passed; the lockfile resolves
+    `livekit-client` 2.21.0 and `@livekit/protocol` 1.50.4.
+  - Focused Vitest run for `remote-audio`, `voice-diagnostics`,
+    `useVoiceRoom`, `VoiceRoom`, and `SettingsPage` — passed 5 files and
+    116/116 tests, including missed signal/full reconnect events, idempotent
+    attachment, stale-event rejection, bounded retry, autoplay, stream state,
+    diagnostic privacy, and copy controls.
+  - `pnpm check` — passed formatting, zero-warning lint, both strict TypeScript
+    projects, 81 Vitest files with 447/447 tests, 40/40 Node contracts,
+    synchronized version 1.4.0, production renderer build, and bundle secret
+    scan. The renderer built at 406.37 kB gzip and retained Vite's non-blocking
+    large-chunk warning.
+  - `./node_modules/.bin/tauri build --bundles app --config
+src-tauri/tauri.local.conf.json` — passed, including its `pnpm build`
+    prebuild, optimized Rust compile, and ad-hoc-signed Apple Silicon
+    `Bakbak.app`; notarization was skipped because Apple release credentials
+    are absent.
+  - Post-bundle `node scripts/check-bundle-secrets.mjs` and `codesign --verify
+--deep --strict --verbose=2
+src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
+  - Final `./node_modules/.bin/prettier --check .` and `git diff --check` —
+    passed on the complete implementation and documentation diff.
+- **Documentation updated:** Updated the LiveKit version, remote-audio
+  reconciliation/recovery contract, privacy-safe diagnostics flow, and current
+  bundle size in `docs/architecture.md`; marked Packet A's scope and automated
+  acceptance in plan 0033; split Packet A from the remaining plan 0033 Phase 5
+  implementation gate in plan 0001; and appended this canonical progress
+  entry.
+- **Known limitations:** Packet A's installed six-person, 60-minute
+  India/Canada macOS/Windows matrix remains open, including real network
+  interruption/interface handoff, game/background focus, mute/unmute, and
+  output-device switching. No Windows bundle or installed Windows behavior was
+  validated on this macOS host. The full updater build was not run because this
+  workstation lacks `TAURI_SIGNING_PRIVATE_KEY`; the applicable local macOS app
+  bundle passed. The production renderer is about 70 kB gzip larger than the
+  previously recorded baseline and should be startup-profiled before deciding
+  whether to lazy-load LiveKit.
+- **Next:** Install one shared Packet A source revision on the available macOS
+  and Windows clients and run its six-client cross-region matrix. If selective
+  silence recurs, copy diagnostics from one affected and one unaffected
+  listener before either rejoins. Packets B and C may proceed independently;
+  Packet D can start after Packet A is integrated.

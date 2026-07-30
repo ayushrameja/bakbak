@@ -29,7 +29,9 @@ import { RemoteAudioRenderer } from "./remote-audio";
 import type { ScreenShareLifecycleEvent } from "./screen-share-service";
 import {
   OUTPUT_DEVICE_NOTICE_DURATION_MS,
+  MAX_SUBSCRIPTION_RECOVERY_ATTEMPTS,
   RELAY_PREFERENCE_DURATION_MS,
+  SUBSCRIPTION_RECOVERY_DELAY_MS,
   VOICE_PREPARE_DEBOUNCE_MS,
   VOICE_TOKEN_EXPIRY_BUFFER_MS,
   echoCancellationForCapture,
@@ -123,6 +125,7 @@ vi.mock("livekit-client", () => {
     static getLocalDevices = vi.fn().mockResolvedValue([]);
 
     readonly canPlaybackAudio = true;
+    state = "connected";
     readonly remoteParticipants = new Map();
     private readonly handlers = new Map<
       string,
@@ -193,6 +196,7 @@ vi.mock("livekit-client", () => {
       this.options = options;
       liveKitState.instances.push(this);
       this.connect = vi.fn(() => {
+        this.state = "connected";
         if (!liveKitState.rooms.includes(this)) {
           liveKitState.rooms.push(this);
           liveKitState.roomOptions.push(this.options);
@@ -214,6 +218,7 @@ vi.mock("livekit-client", () => {
   }
 
   return {
+    version: "2.21.0",
     ConnectionQuality: {
       Excellent: "excellent",
       Good: "good",
@@ -233,6 +238,8 @@ vi.mock("livekit-client", () => {
     RoomEvent: {
       ActiveSpeakersChanged: "activeSpeakersChanged",
       ConnectionQualityChanged: "connectionQualityChanged",
+      Connected: "connected",
+      ConnectionStateChanged: "connectionStateChanged",
       AudioPlaybackStatusChanged: "audioPlaybackStatusChanged",
       DataReceived: "dataReceived",
       Disconnected: "disconnected",
@@ -242,22 +249,38 @@ vi.mock("livekit-client", () => {
       ParticipantDisconnected: "participantDisconnected",
       Reconnected: "reconnected",
       Reconnecting: "reconnecting",
+      SignalReconnecting: "signalReconnecting",
       LocalTrackPublished: "localTrackPublished",
       LocalTrackUnpublished: "localTrackUnpublished",
       TrackMuted: "trackMuted",
       TrackPublished: "trackPublished",
       TrackSubscribed: "trackSubscribed",
+      TrackSubscriptionFailed: "trackSubscriptionFailed",
+      TrackSubscriptionStatusChanged: "trackSubscriptionStatusChanged",
+      TrackStreamStateChanged: "trackStreamStateChanged",
       TrackUnmuted: "trackUnmuted",
       TrackUnpublished: "trackUnpublished",
       TrackUnsubscribed: "trackUnsubscribed",
     },
     Track: {
       Kind: { Audio: "audio" },
+      StreamState: {
+        Active: "active",
+        Paused: "paused",
+        Unknown: "unknown",
+      },
       Source: {
         Microphone: "microphone",
         Camera: "camera",
         ScreenShare: "screen_share",
         ScreenShareAudio: "screen_share_audio",
+      },
+    },
+    TrackPublication: {
+      SubscriptionStatus: {
+        Desired: "desired",
+        Subscribed: "subscribed",
+        Unsubscribed: "unsubscribed",
       },
     },
     VideoPresets: { h720: { resolution: { width: 1280, height: 720 } } },
@@ -416,7 +439,9 @@ function remoteParticipant(
   displayName: string,
   metadata: string | null = null,
 ) {
+  const testTrackPublications: Array<Record<string, unknown>> = [];
   return {
+    sid: `PA_${id}`,
     identity: id,
     name: displayName,
     metadata,
@@ -424,10 +449,38 @@ function remoteParticipant(
     isCameraEnabled: false,
     joinedAt: new Date("2026-07-17T12:00:00.000Z"),
     getTrackPublication: vi.fn(),
-    getTrackPublications: vi.fn(() => []),
+    getTrackPublications: vi.fn(() => testTrackPublications),
     getVolume: vi.fn(() => 1),
     setVolume: vi.fn(),
+    testTrackPublications,
   };
+}
+
+function remoteAudioPublication(trackSid = "TR_speech") {
+  const track = {
+    kind: "audio",
+    streamState: "active",
+    attach: vi.fn((element: HTMLMediaElement) => element),
+    detach: vi.fn((element: HTMLMediaElement) => element),
+    getRTCStatsReport: vi.fn().mockResolvedValue(new Map()),
+  };
+  const publication = {
+    kind: "audio",
+    source: "microphone",
+    trackSid,
+    trackName: SPEECH_MICROPHONE_TRACK_NAME,
+    track,
+    isSubscribed: true,
+    isMuted: false,
+    subscriptionStatus: "subscribed",
+    setSubscribed: vi.fn((subscribed: boolean) => {
+      publication.isSubscribed = subscribed;
+      publication.subscriptionStatus = subscribed
+        ? "subscribed"
+        : "unsubscribed";
+    }),
+  };
+  return { publication, track };
 }
 
 const tokenResponse = {
@@ -686,10 +739,17 @@ describe("useVoiceRoom join lifecycle", () => {
       setVolume: vi.fn(),
     };
     const publication = {
+      kind: "audio",
       isMuted: true,
+      isSubscribed: true,
       source: "microphone",
+      subscriptionStatus: "subscribed",
+      track,
+      trackSid: "TR_soundboard",
       trackName: SOUNDBOARD_TRACK_NAME,
+      setSubscribed: vi.fn(),
     };
+    participant.testTrackPublications.push(publication);
 
     act(() => room.emit("trackSubscribed", track, publication, participant));
     expect(setTrackMuted).toHaveBeenLastCalledWith(track, true);
@@ -714,6 +774,132 @@ describe("useVoiceRoom join lifecycle", () => {
       ),
     );
     expect(setTrackMuted).toHaveBeenLastCalledWith(track, true);
+  });
+
+  it("reconciles a missed subscribed track after signal-only and full reconnects without duplicates", async () => {
+    const recoverAll = vi
+      .spyOn(RemoteAudioRenderer.prototype, "recoverAll")
+      .mockResolvedValue(true);
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    recoverAll.mockClear();
+    const room = liveKitState.rooms[0]!;
+    const participant = remoteParticipant("mira", "Mira");
+    const { publication, track } = remoteAudioPublication();
+    participant.testTrackPublications.push(publication);
+    room.remoteParticipants.set("mira", participant);
+
+    act(() => room.emit("signalReconnecting"));
+    expect(result.current.status).toBe("connected");
+    expect(track.attach).not.toHaveBeenCalled();
+
+    await act(async () => {
+      room.emit("reconnected");
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(track.attach).toHaveBeenCalledOnce());
+    expect(recoverAll).toHaveBeenCalledWith("reconnected");
+
+    act(() => room.emit("reconnecting"));
+    expect(result.current.status).toBe("reconnecting");
+    await act(async () => {
+      room.emit("reconnected");
+      await Promise.resolve();
+    });
+
+    expect(result.current.status).toBe("connected");
+    expect(track.attach).toHaveBeenCalledOnce();
+    expect(recoverAll).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects a stale subscription event after its publication is gone", async () => {
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    const room = liveKitState.rooms[0]!;
+    const participant = remoteParticipant("mira", "Mira");
+    const { publication, track } = remoteAudioPublication();
+    room.remoteParticipants.set("mira", participant);
+
+    act(() => room.emit("trackSubscribed", track, publication, participant));
+
+    expect(track.attach).not.toHaveBeenCalled();
+  });
+
+  it("bounds failed subscription recovery and exposes diagnostics", async () => {
+    vi.useFakeTimers();
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    const room = liveKitState.rooms[0]!;
+    const participant = remoteParticipant("mira", "Mira");
+    const { publication } = remoteAudioPublication();
+    publication.isSubscribed = false;
+    publication.subscriptionStatus = "unsubscribed";
+    participant.testTrackPublications.push(publication);
+    room.remoteParticipants.set("mira", participant);
+
+    for (
+      let attempt = 0;
+      attempt <= MAX_SUBSCRIPTION_RECOVERY_ATTEMPTS;
+      attempt += 1
+    ) {
+      act(() =>
+        room.emit(
+          "trackSubscriptionFailed",
+          publication.trackSid,
+          participant,
+          1,
+        ),
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(SUBSCRIPTION_RECOVERY_DELAY_MS);
+      });
+    }
+
+    expect(publication.setSubscribed).toHaveBeenCalledTimes(
+      MAX_SUBSCRIPTION_RECOVERY_ATTEMPTS * 2,
+    );
+    expect(result.current.voiceContinuityWarning).toContain(
+      "could not restore",
+    );
+    expect(result.current.voiceDiagnosticsAvailable).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it("routes paused and resumed stream state into playback recovery", async () => {
+    const setStreamState = vi
+      .spyOn(RemoteAudioRenderer.prototype, "setStreamState")
+      .mockImplementation(() => undefined);
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    const room = liveKitState.rooms[0]!;
+    const participant = remoteParticipant("mira", "Mira");
+    const { publication, track } = remoteAudioPublication();
+    participant.testTrackPublications.push(publication);
+    room.remoteParticipants.set("mira", participant);
+    act(() => room.emit("trackSubscribed", track, publication, participant));
+
+    act(() =>
+      room.emit("trackStreamStateChanged", publication, "paused", participant),
+    );
+    act(() =>
+      room.emit("trackStreamStateChanged", publication, "active", participant),
+    );
+
+    expect(setStreamState).toHaveBeenNthCalledWith(1, track, "paused");
+    expect(setStreamState).toHaveBeenNthCalledWith(2, track, "active");
   });
 
   it("debounces preparation, prewarms without media, and consumes the cached room on click", async () => {
