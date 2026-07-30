@@ -30,7 +30,8 @@ not confused with ordinary speaker-to-microphone echo.
 - [x] Report successful display isolation as
       `exclude-webview2-process-tree`.
 - [x] Add a Windows pull-request CI job for locked Cargo checks and native
-      tests.
+      tests, gated to native/workflow changes with an unconditional manual
+      dispatch path.
 
 ## Decisions
 
@@ -51,7 +52,8 @@ not confused with ordinary speaker-to-microphone echo.
       process groups, topology invalidation, and fail-closed display audio.
 - [x] Renderer tests cover source availability, startup warning propagation,
       and a live audio downgrade that leaves video sharing.
-- [x] Pull requests run native Cargo check and tests on a Windows runner.
+- [x] Pull requests that change native code or the CI workflow run native Cargo
+      check and tests on a Windows runner; manual dispatch always runs them.
 - [ ] A Windows x64 Tauri bundle and forbidden-secret scan pass on the release
       runner.
 

@@ -1823,7 +1823,13 @@ and multi-zoom dark/light connector alignment observation.
 Screen-sharing work additionally runs the Deno token suite, focused Rust tests,
 `cargo check --locked`, macOS and Windows native builds, compiled secret scans,
 and the bidirectional installed-client matrix in plan 0003. Artifact sizes are
-recorded before and after the native LiveKit dependency is shipped.
+recorded before and after the native LiveKit dependency is shipped. Pull
+requests always run the Ubuntu validation job. A lightweight changed-file job
+runs in parallel and starts the Windows native Cargo check/test job only when
+`src-tauri/**` or `.github/workflows/ci.yml` changes; manual workflow dispatch
+always starts it. The Windows job remains conditionally present inside the
+always-triggered workflow so a skipped job completes successfully instead of
+leaving a future required workflow pending.
 
 GitHub release validation additionally requires successful Apple Silicon macOS
 and Windows x64 native builds, updater signatures for both targets, exactly one

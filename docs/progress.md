@@ -5531,3 +5531,47 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
   silence recurs, copy diagnostics from one affected and one unaffected
   listener before either rejoins. Packets B and C may proceed independently;
   Packet D can start after Packet A is integrated.
+
+## 2026-07-30 — Gate Windows native PR validation
+
+- **Completed:** Added an always-running lightweight `Detect native changes`
+  job to PR CI. It compares the pull request base/head revisions and starts the
+  Windows native capture job only when `src-tauri/**` or
+  `.github/workflows/ci.yml` changes. Manual `workflow_dispatch` runs always
+  select Windows validation. The ordinary Ubuntu `validate` job remains
+  unconditional for every pull request. Added a Node contract test that
+  protects the path list, manual path, job output, dependency, and conditional.
+- **Decisions:** Kept the Windows job inside the always-triggered CI workflow
+  and gated the job with `if` instead of filtering the whole workflow. A
+  conditionally skipped job reports success, whereas a path-filtered workflow
+  can remain pending if it later becomes a required check. Detection fails
+  toward running Windows: any non-zero `git diff --quiet` result selects the
+  native job. Kept `.github/workflows/ci.yml` in scope so changes to the gate
+  validate themselves. Retained the existing manual dispatch and Windows
+  renderer/Cargo commands.
+- **Validation:**
+  - `node --test scripts/ci-workflow.test.mjs` — passed 1/1 focused workflow
+    contract.
+  - `ruby -e 'require "yaml"; YAML.load_file(".github/workflows/ci.yml")'` —
+    passed; the workflow parses as YAML.
+  - Local gate probes — unchanged native paths produced `required=false`; the
+    known Windows-native implementation commit produced `required=true`.
+  - `pnpm check` — passed formatting, zero-warning lint, both strict TypeScript
+    projects, 81 Vitest files with 447/447 tests, 41/41 Node contracts,
+    synchronized version 1.4.0, production renderer build, and bundle secret
+    scan. Vite retained the existing non-blocking large-chunk warning.
+  - Final `./node_modules/.bin/prettier --check .` and `git diff --check` —
+    passed on the complete workflow, test, and documentation diff.
+- **Documentation updated:** Documented the conditional Windows PR contract in
+  `docs/architecture.md`, refined plan 0032's implemented and automated
+  acceptance wording, added `scripts/ci-workflow.test.mjs`, and appended this
+  canonical progress entry.
+- **Known limitations:** The new workflow revision has not been pushed, so a
+  GitHub-hosted non-native PR skip has not yet been observed. Because this
+  change edits `.github/workflows/ci.yml`, its first PR run intentionally
+  selects Windows validation; later renderer/docs-only PRs will show the job as
+  skipped. Release Windows builds remain unconditional.
+- **Next:** Push the current branch and confirm one successful
+  workflow-change-triggered Windows job. On the next non-native-only PR,
+  confirm `Detect native changes` succeeds and `Windows native capture` is
+  skipped while `validate` runs normally.
