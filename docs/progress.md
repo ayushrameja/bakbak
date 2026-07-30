@@ -5575,3 +5575,58 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
   workflow-change-triggered Windows job. On the next non-native-only PR,
   confirm `Detect native changes` succeeds and `Windows native capture` is
   skipped while `validate` runs normally.
+
+## 2026-07-30 — Make active voice presence authoritative
+
+- **Completed:** Implemented plan 0033 Packet B. Added one voice-occupancy
+  selector shared by the channel tree and member rail. It replaces the joined
+  room's heartbeat occupants with the current LiveKit participant IDs, retains
+  that confirmed roster through signal/full reconnect, continues using fresh
+  heartbeat sessions for other rooms, and lets an active participant override
+  a stale heartbeat in another room. Current server membership supplies profile
+  data and filters unknown identities; users deduplicate by ID. Every channel
+  now sorts occupants by NFKC-normalized lowercase display name and stable user
+  ID, including after rerender and category collapse. Presence refreshes now
+  queue one follow-up query while a query is in flight and discard the
+  superseded result.
+- **Decisions:** Kept LiveKit authoritative only for the room the local client
+  has actually joined; using it for other rooms would require subscriptions the
+  privacy/product model does not permit. Reused the existing retained
+  `useVoiceRoom` participant state during reconnect and verified it rather than
+  changing Packet A's room/audio lifecycle. Made `VoiceRoomOccupant.joinedAt`
+  nullable so an authenticated LiveKit participant without a usable timestamp
+  still appears instead of receiving a fabricated timer. Kept all heartbeat
+  reads behind the existing server-scoped RLS contract and made no schema,
+  policy, token, or IndexedDB changes.
+- **Validation:**
+  - Focused Vitest run for `voice-occupancy`, `presence-service`,
+    `ChannelSidebar`, and `useVoiceRoom` — passed 4 files and 72/72 tests.
+    Coverage includes active roster equality, heartbeat-expired participants,
+    active-room ghost removal, other-room heartbeats, membership filtering,
+    user-ID deduplication, deterministic input/profile ordering, category
+    collapse/expand, signal/full reconnect retention, and a delayed
+    superseded heartbeat response.
+  - Focused zero-warning ESLint and both strict TypeScript projects — passed.
+  - `pnpm check` — passed formatting, zero-warning lint, both strict TypeScript
+    projects, 82 Vitest files with 455/455 tests, 41/41 Node contracts,
+    synchronized version 1.4.0, production renderer build, and bundle secret
+    scan. The renderer built at 406.62 kB gzip and retained Vite's non-blocking
+    large-chunk warning.
+  - Final focused 4-file/72-test Vitest run,
+    `./node_modules/.bin/prettier --check .`, bundle secret scan, and
+    `git diff --check` — passed on the complete code and documentation diff.
+- **Documentation updated:** Updated the application-presence authority,
+  refresh serialization, identity resolution, and sorting contract in
+  `docs/architecture.md`; marked Packet B scope/automated acceptance complete
+  in plan 0033; split Packet B from the remaining Phase 5 implementation gate
+  in plan 0001; and appended this canonical progress entry.
+- **Known limitations:** Packet B's installed six-person macOS/Windows
+  acceptance remains open. Real clients still need gallery/sidebar comparison
+  during join, leave, signal/full reconnect, app backgrounding, game focus, and
+  channel switching without clearing local data. This renderer/service-only
+  change did not rerun a Tauri bundle or Windows installed build; the production
+  renderer and full automated suite passed.
+- **Next:** Run Packets A and B together during the integrated six-client
+  session. If the gallery and sidebar diverge, record their user IDs and
+  connection state before rejoining. Implement Packet C's Windows clipboard and
+  private-image recovery next; Packet D is unblocked by Packet A.

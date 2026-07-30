@@ -504,6 +504,47 @@ describe("ChannelSidebar room shelf", () => {
     expect(screen.getByText("Mira")).toBeVisible();
   });
 
+  it("keeps voice occupants sorted when input order and category collapse change", async () => {
+    const occupants = [
+      {
+        userId: "friend-z",
+        displayName: "Zed",
+        avatarUrl: null,
+        channelId: voiceChannel.id,
+        joinedAt: new Date().toISOString(),
+        isStreaming: false,
+      },
+      {
+        userId: "friend-a",
+        displayName: "Amy",
+        avatarUrl: null,
+        channelId: voiceChannel.id,
+        joinedAt: new Date().toISOString(),
+        isStreaming: false,
+      },
+    ];
+    const { container, props, rerender } = renderSidebar([voiceChannel], {
+      voiceOccupants: occupants,
+    });
+    const renderedNames = () =>
+      [
+        ...container.querySelectorAll(
+          ".channel-group__children:not([hidden]) .channel-voice-person b",
+        ),
+      ].map((name) => name.textContent);
+
+    expect(renderedNames()).toEqual(["Amy", "Zed"]);
+    rerender(
+      <ChannelSidebar {...props} voiceOccupants={[...occupants].reverse()} />,
+    );
+    expect(renderedNames()).toEqual(["Amy", "Zed"]);
+
+    await userEvent.click(screen.getByRole("button", { name: /Voice rooms/i }));
+    expect(renderedNames()).toEqual([]);
+    await userEvent.click(screen.getByRole("button", { name: /Voice rooms/i }));
+    expect(renderedNames()).toEqual(["Amy", "Zed"]);
+  });
+
   it("shows one room timer, omits personal timers and local labels, and rings speakers", () => {
     const roomStartedAt = "2026-07-20T12:00:00.000Z";
     const { container } = renderSidebar([voiceChannel], {

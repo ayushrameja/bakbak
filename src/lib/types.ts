@@ -261,6 +261,6 @@ export interface VoiceRoomOccupant {
   displayName: string;
   avatarUrl: string | null;
   channelId: string;
-  joinedAt: string;
+  joinedAt: string | null;
   isStreaming: boolean;
 }

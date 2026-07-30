@@ -816,6 +816,47 @@ describe("useVoiceRoom join lifecycle", () => {
     expect(recoverAll).toHaveBeenCalledTimes(2);
   });
 
+  it("retains the last confirmed participant roster through reconnect", async () => {
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    const room = liveKitState.rooms[0]!;
+    const participant = remoteParticipant("mira", "Mira");
+    room.remoteParticipants.set("mira", participant);
+    act(() => room.emit("participantConnected", participant));
+
+    expect(result.current.participants.map(({ id }) => id)).toEqual([
+      "user-1",
+      "mira",
+    ]);
+
+    act(() => room.emit("signalReconnecting"));
+    expect(result.current.status).toBe("connected");
+    expect(result.current.participants.map(({ id }) => id)).toEqual([
+      "user-1",
+      "mira",
+    ]);
+
+    act(() => room.emit("reconnecting"));
+    expect(result.current.status).toBe("reconnecting");
+    expect(result.current.participants.map(({ id }) => id)).toEqual([
+      "user-1",
+      "mira",
+    ]);
+
+    await act(async () => {
+      room.emit("reconnected");
+      await Promise.resolve();
+    });
+    expect(result.current.status).toBe("connected");
+    expect(result.current.participants.map(({ id }) => id)).toEqual([
+      "user-1",
+      "mira",
+    ]);
+  });
+
   it("rejects a stale subscription event after its publication is gone", async () => {
     supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
     const { result } = renderHook(() => useVoiceRoom(user, "live"));

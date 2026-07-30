@@ -3,7 +3,21 @@ import {
   presenceSnapshotFromHeartbeats,
   PRESENCE_EXPIRY_MS,
   subscribeToServerPresence,
+  type ServerPresenceSnapshot,
 } from "./presence-service";
+
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+}
 
 const presenceState = vi.hoisted(() => {
   const query = {
@@ -230,6 +244,98 @@ describe("server presence", () => {
         p_voice_channel_id: "voice-2",
       },
     );
+    subscription.stop();
+  });
+
+  it("queues a newer refresh and never emits the superseded response", async () => {
+    const first = deferred<{
+      data: Array<{
+        user_id: string;
+        last_seen_at: string;
+        voice_channel_id: string;
+        voice_joined_at: string;
+        is_streaming: boolean;
+      }>;
+      error: null;
+    }>();
+    const second = deferred<{
+      data: Array<{
+        user_id: string;
+        last_seen_at: string;
+        voice_channel_id: string;
+        voice_joined_at: string;
+        is_streaming: boolean;
+      }>;
+      error: null;
+    }>();
+    presenceState.query.returns
+      .mockReset()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const onSync = vi.fn();
+    const subscription = subscribeToServerPresence({
+      serverId: "server-1",
+      userId: "user-1",
+      onSync,
+    });
+
+    await vi.waitFor(() =>
+      expect(presenceState.query.returns).toHaveBeenCalledTimes(1),
+    );
+    const realtimeRefresh = presenceState.channel.on.mock.calls.find(
+      ([event]) => event === "postgres_changes",
+    )?.[2] as (() => void) | undefined;
+    expect(realtimeRefresh).toBeTypeOf("function");
+    realtimeRefresh?.();
+
+    first.resolve({
+      data: [
+        {
+          user_id: "superseded",
+          last_seen_at: new Date().toISOString(),
+          voice_channel_id: "voice-old",
+          voice_joined_at: "2026-07-30T12:00:00.000Z",
+          is_streaming: false,
+        },
+      ],
+      error: null,
+    });
+    await vi.waitFor(() =>
+      expect(presenceState.query.returns).toHaveBeenCalledTimes(2),
+    );
+    expect(
+      onSync.mock.calls.some((call) => {
+        const snapshot = call[0] as ServerPresenceSnapshot;
+        return snapshot.voiceSessions[0]?.userId === "superseded";
+      }),
+    ).toBe(false);
+
+    second.resolve({
+      data: [
+        {
+          user_id: "current",
+          last_seen_at: new Date().toISOString(),
+          voice_channel_id: "voice-new",
+          voice_joined_at: "2026-07-30T12:01:00.000Z",
+          is_streaming: true,
+        },
+      ],
+      error: null,
+    });
+    await vi.waitFor(() =>
+      expect(onSync).toHaveBeenLastCalledWith({
+        onlineUserIds: new Set(["current"]),
+        voiceSessions: [
+          {
+            userId: "current",
+            channelId: "voice-new",
+            joinedAt: "2026-07-30T12:01:00.000Z",
+            isStreaming: true,
+          },
+        ],
+      }),
+    );
+
     subscription.stop();
   });
 });

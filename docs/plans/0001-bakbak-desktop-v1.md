@@ -398,9 +398,10 @@ macOS/Windows acceptance run passes.
       Application audio-isolation matrix.
 - [x] Implement plan 0033 Packet A's voice continuity reconciliation, bounded
       recovery, and privacy-safe copyable diagnostics.
-- [ ] Implement plan 0033 Packets B–D: authoritative active-room presence,
-      private-image recovery, and safe 200% listener gain in their dependency
-      order.
+- [x] Implement plan 0033 Packet B's authoritative active-room presence,
+      deterministic occupant ordering, and queued heartbeat refresh.
+- [ ] Implement plan 0033 Packets C–D: private-image recovery and safe 200%
+      listener gain in their dependency order.
 - [ ] Complete plan 0033's six-person, 60-minute macOS/Windows cross-region
       stabilization matrix before the next friend release.
 - [x] Add the Bakbak Signature preset, fixed destination rail, and

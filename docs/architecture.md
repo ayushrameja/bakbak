@@ -1209,8 +1209,20 @@ An invite-management UI is deferred until post-v1.
    voice-session, and LIVE state for every server room they have not joined.
 5. Postgres Realtime refreshes the cached rows on every client. Clients expire
    rows older than 55 seconds and re-evaluate every five seconds, so a crashed
-   client disappears without a graceful leave.
-6. Presence is a UI hint only. The actual LiveKit screen publication is
+   client disappears without a graceful leave. Refresh requests are serialized;
+   an event received during an in-flight query queues another query and prevents
+   the superseded response from being emitted.
+6. One voice-occupancy selector resolves both the channel tree and member rail
+   through current server membership. For the room this client has joined,
+   LiveKit's current participant roster replaces heartbeat occupancy entirely;
+   the retained roster remains visible through signal or transport reconnect
+   and clears on terminal disconnect. Fresh heartbeat sessions remain the
+   authority for every other room. Active participants override a stale
+   heartbeat in another room, unknown identities are dropped, users are
+   deduplicated by ID, and each room sorts by NFKC-normalized lowercase display
+   name followed by stable user ID. The channel component applies the same
+   comparator defensively across rerenders and category collapse.
+7. Presence is a UI hint only. The actual LiveKit screen publication is
    authoritative for Watch; database RLS and Edge Function checks remain
    authoritative for access.
 

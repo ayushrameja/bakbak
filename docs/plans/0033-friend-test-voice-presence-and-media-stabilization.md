@@ -1,7 +1,7 @@
 # Plan 0033 — Friend-test voice, presence, and media stabilization
 
-- **Status:** Packet A code and automated acceptance complete; Packet A
-  installed acceptance and Packets B–E pending
+- **Status:** Packets A and B code/automated acceptance complete; their
+  installed acceptance and Packets C–E pending
 - **Approved:** 2026-07-30
 - **Trigger:** Six-person macOS/Windows friend session with participants in
   India and Canada
@@ -125,33 +125,33 @@ canonical progress entry before handoff.
 
 ### Scope
 
-- [ ] Introduce one selector/service contract for sidebar voice occupants.
-- [ ] While the local client is connected to a room, use the current LiveKit
+- [x] Introduce one selector/service contract for sidebar voice occupants.
+- [x] While the local client is connected to a room, use the current LiveKit
       roster as the authority for that active room. During a reconnect, retain
       the last confirmed roster until recovery or terminal disconnect.
-- [ ] Continue using fresh Supabase heartbeat presence for rooms the local
+- [x] Continue using fresh Supabase heartbeat presence for rooms the local
       client has not joined. Do not use IndexedDB as presence authority.
-- [ ] Resolve roster identities through current membership/profile data and
+- [x] Resolve roster identities through current membership/profile data and
       deduplicate by user ID.
-- [ ] Sort every room by normalized display name and then stable user ID so
+- [x] Sort every room by normalized display name and then stable user ID so
       refreshes cannot reshuffle unchanged occupants.
-- [ ] Serialize or queue overlapping heartbeat refreshes so an older response
+- [x] Serialize or queue overlapping heartbeat refreshes so an older response
       cannot replace newer state.
-- [ ] Keep the existing privacy boundary: members see only presence for servers
+- [x] Keep the existing privacy boundary: members see only presence for servers
       they can access.
 
 ### Automated acceptance
 
-- [ ] The active-room sidebar and LiveKit gallery expose the same connected
+- [x] The active-room sidebar and LiveKit gallery expose the same connected
       user IDs.
-- [ ] A heartbeat-expired but currently connected participant remains visible
+- [x] A heartbeat-expired but currently connected participant remains visible
       in the active room.
-- [ ] A stale heartbeat does not leave a ghost in the active room after
+- [x] A stale heartbeat does not leave a ghost in the active room after
       LiveKit confirms departure.
-- [ ] Other-room heartbeat occupants still render without joining those rooms.
-- [ ] Identical occupants keep identical order across refresh, Realtime,
+- [x] Other-room heartbeat occupants still render without joining those rooms.
+- [x] Identical occupants keep identical order across refresh, Realtime,
       reconnect, profile hydration, and category collapse/expand.
-- [ ] An older delayed refresh cannot overwrite a newer refresh.
+- [x] An older delayed refresh cannot overwrite a newer refresh.
 
 ### Installed acceptance
 
@@ -279,8 +279,8 @@ Each packet handoff appends one `docs/progress.md` entry containing:
 
 ## Next
 
-Run Packet A's installed six-client macOS/Windows network-handoff matrix and
-capture sanitized diagnostics before rejoining if selective silence recurs.
-Packets B and C can proceed independently. Packet D may begin after this Packet
-A change is integrated, then Packet E runs from one integrated source
-revision.
+Run Packets A and B's installed six-client macOS/Windows reconnect matrix
+together, comparing the active gallery and sidebar before copying diagnostics
+or rejoining if either diverges. Implement Packet C next; Packet D is now
+unblocked by the integrated Packet A lifecycle. Packet E runs from one
+integrated source revision.
