@@ -78,6 +78,7 @@ export interface ScreenShareSession {
   sourceLabel: string;
   sourceKind: ScreenShareSourceKind;
   audioPublished: boolean;
+  audioUnavailableReason: string | null;
   settings: ScreenShareSettings;
   diagnostics?: ScreenShareDiagnostics;
 }
@@ -88,6 +89,7 @@ export interface ScreenShareLifecycleEvent {
   sourceLabel: string | null;
   sourceKind: ScreenShareSourceKind | null;
   audioPublished: boolean;
+  audioUnavailableReason: string | null;
   settings: ScreenShareSettings | null;
   message: string | null;
   failure?: ScreenShareFailure | null;
@@ -152,7 +154,10 @@ export async function startScreenShare(
       request: input,
     });
     if (session.diagnostics) logDiagnostics(session.diagnostics);
-    return session;
+    return {
+      ...session,
+      audioUnavailableReason: session.audioUnavailableReason ?? null,
+    };
   } catch (caught) {
     const failure = parseScreenShareFailure(caught);
     console.error(`[Bakbak screen share] ${failure.code}: ${failure.message}`);
@@ -191,10 +196,12 @@ export async function listenForScreenShareLifecycle(
   return await listen<ScreenShareLifecycleEvent>(
     "screen-share-lifecycle",
     ({ payload }) => {
-      if (payload.state === "error") {
-        const failure =
-          payload.failure ??
-          parseScreenShareFailure(payload.message ?? "Capture failed.");
+      const failure =
+        payload.failure ??
+        (payload.state === "error"
+          ? parseScreenShareFailure(payload.message ?? "Capture failed.")
+          : null);
+      if (failure) {
         console.error(
           `[Bakbak screen share] ${failure.code}: ${failure.message}`,
         );
@@ -202,12 +209,9 @@ export async function listenForScreenShareLifecycle(
       if (payload.diagnostics) logDiagnostics(payload.diagnostics);
       onEvent({
         ...payload,
-        failure:
-          payload.failure ??
-          (payload.state === "error"
-            ? parseScreenShareFailure(payload.message ?? "Capture failed.")
-            : null),
+        failure,
         sourceKind: payload.sourceKind ?? null,
+        audioUnavailableReason: payload.audioUnavailableReason ?? null,
         settings: payload.settings
           ? parseScreenShareSettings(payload.settings)
           : null,

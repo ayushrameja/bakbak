@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, VecDeque},
     path::Path,
     sync::{
         Arc, Mutex as StdMutex,
@@ -16,7 +16,7 @@ use livekit::webrtc::{
     video_source::native::NativeVideoSource,
 };
 use tokio::{
-    sync::{mpsc, oneshot},
+    sync::{mpsc, oneshot, watch},
     task::JoinHandle,
     time::timeout,
 };
@@ -45,10 +45,6 @@ use windows::{
         },
         System::{
             Com::{COINIT_MULTITHREADED, CoInitializeEx},
-            Diagnostics::ToolHelp::{
-                CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
-                TH32CS_SNAPPROCESS,
-            },
             Threading::{
                 GetCurrentProcessId, OpenProcess, PROCESS_NAME_WIN32,
                 PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
@@ -69,6 +65,10 @@ use windows::{
 use super::super::{
     SCREEN_SHARE_FRAME_RATES, SCREEN_SHARE_RESOLUTIONS, ScreenShareCapabilities,
     ScreenShareSettings, ScreenShareSource, ScreenShareSourceKind,
+    windows_process::{
+        WebViewProcessProof, WebViewProcessState, WebViewProcessTracker, process_is_in_tree,
+        process_parent_map,
+    },
 };
 
 const FIRST_FRAME_TIMEOUT: Duration = Duration::from_secs(5);
@@ -81,6 +81,8 @@ const AUDIO_FRAME_SAMPLES: usize = 480;
 const THUMBNAIL_TIMEOUT: Duration = Duration::from_millis(250);
 const THUMBNAIL_MAX_WIDTH: u32 = 320;
 const THUMBNAIL_MAX_HEIGHT: u32 = 180;
+const DISPLAY_AUDIO_ISOLATION_REASON: &str = "Bakbak could not verify its WebView2 audio process tree, so Entire screen audio is disabled; video sharing still works.";
+const DISPLAY_AUDIO_ISOLATION_CHANGED: &str = "[audio-isolation-unavailable] Bakbak's WebView2 audio process tree changed, so screen audio was stopped; video is still sharing.";
 
 enum CaptureTarget {
     Window(HWND),
@@ -101,6 +103,8 @@ pub struct PreparedCapture {
     settings: ScreenShareSettings,
     item: GraphicsCaptureItem,
     audio_target: Option<ProcessLoopbackTarget>,
+    audio_unavailable_reason: Option<String>,
+    audio_isolation_watch: Option<DisplayAudioIsolationWatch>,
     focus_window: Option<isize>,
     termination_sender: mpsc::UnboundedSender<String>,
     pause_sender: mpsc::UnboundedSender<bool>,
@@ -110,6 +114,16 @@ impl PreparedCapture {
     pub fn includes_audio(&self) -> bool {
         self.audio_target.is_some()
     }
+
+    pub fn audio_unavailable_reason(&self) -> Option<&str> {
+        self.audio_unavailable_reason.as_deref()
+    }
+}
+
+struct DisplayAudioIsolationWatch {
+    proof: WebViewProcessProof,
+    receiver: watch::Receiver<WebViewProcessState>,
+    failure_sender: mpsc::UnboundedSender<String>,
 }
 
 pub struct CaptureSession {
@@ -129,6 +143,7 @@ struct ProcessAudioCapture {
     stop: Arc<AtomicBool>,
     capture_task: JoinHandle<()>,
     forward_task: JoinHandle<()>,
+    isolation_task: Option<JoinHandle<()>>,
 }
 
 struct SendDirect3DDevice(IDirect3DDevice);
@@ -156,17 +171,24 @@ impl SendDirect3DDevice {
 }
 
 impl CaptureSession {
-    pub async fn stop(self) {
+    pub async fn stop(mut self) {
         self.pause_task.abort();
-        if let Some(audio) = self.audio_capture {
-            audio.stop.store(true, Ordering::Release);
-            let _ = audio.capture_task.await;
-            audio.forward_task.abort();
-        }
+        self.stop_audio().await;
         let _ = self.frame_pool.RemoveFrameArrived(self.frame_token);
         let _ = self.item.RemoveClosed(self.closed_token);
         let _ = self.session.Close();
         let _ = self.frame_pool.Close();
+    }
+
+    pub async fn stop_audio(&mut self) {
+        if let Some(audio) = self.audio_capture.take() {
+            audio.stop.store(true, Ordering::Release);
+            let _ = audio.capture_task.await;
+            audio.forward_task.abort();
+            if let Some(task) = audio.isolation_task {
+                task.abort();
+            }
+        }
     }
 
     pub async fn update_settings(&self, settings: ScreenShareSettings) -> Result<(), String> {
@@ -223,10 +245,12 @@ pub fn capabilities() -> ScreenShareCapabilities {
     }
 }
 
-pub fn sources() -> Result<Vec<ScreenShareSource>, String> {
+pub fn sources(
+    webview_processes: Option<WebViewProcessProof>,
+) -> Result<Vec<ScreenShareSource>, String> {
     initialize_winrt()?;
-    let mut result = enumerate_displays();
-    result.extend(enumerate_windows()?);
+    let mut result = enumerate_displays(webview_processes.as_ref());
+    result.extend(enumerate_windows(webview_processes.as_ref())?);
     // Previews are best-effort and time-bounded so protected or hung sources
     // never block the Entire screen / Application picker from opening.
     let preview_budget = Instant::now();
@@ -245,13 +269,16 @@ pub async fn pick_source(
     include_audio: bool,
     settings: ScreenShareSettings,
     source_id: Option<&str>,
+    webview_processes: WebViewProcessTracker,
+    audio_failure_sender: mpsc::UnboundedSender<String>,
     termination_sender: mpsc::UnboundedSender<String>,
     pause_sender: mpsc::UnboundedSender<bool>,
 ) -> Result<PreparedCapture, String> {
     initialize_winrt()?;
     let source_id = source_id.ok_or_else(|| "Choose a screen or application first.".to_string())?;
     let target = parse_source_id(source_id)?;
-    validate_target(&target)?;
+    let webview_proof = webview_processes.current_proof();
+    validate_target(&target, webview_proof.as_ref())?;
     let item = create_capture_item(&target)?;
     let size = item
         .Size()
@@ -264,11 +291,13 @@ pub async fn pick_source(
         CaptureTarget::Display(_) => ScreenShareSourceKind::Display,
     };
     let source_label = source_label(&target);
-    let audio_target = (include_audio && process_loopback_supported())
-        .then(|| process_loopback_target(&target))
-        .transpose()
-        .unwrap_or(None)
-        .flatten();
+    let (audio_target, audio_unavailable_reason, audio_isolation_watch) = prepare_audio_isolation(
+        &target,
+        include_audio,
+        webview_proof.as_ref(),
+        &webview_processes,
+        audio_failure_sender,
+    );
     let focus_window = match &target {
         CaptureTarget::Window(hwnd) => Some(hwnd.0 as isize),
         CaptureTarget::Display(_) => None,
@@ -284,6 +313,8 @@ pub async fn pick_source(
         settings,
         item,
         audio_target,
+        audio_unavailable_reason,
+        audio_isolation_watch,
         focus_window,
         termination_sender,
         pause_sender,
@@ -294,7 +325,7 @@ pub async fn start_capture(
     prepared: PreparedCapture,
     video_source: NativeVideoSource,
     audio_source: Option<NativeAudioSource>,
-) -> Result<(CaptureSession, bool), String> {
+) -> Result<(CaptureSession, bool, Option<String>), String> {
     initialize_winrt()?;
     let (device, context, direct3d_device) = create_d3d_device()?;
     let direct3d_device = SendDirect3DDevice(direct3d_device);
@@ -451,9 +482,24 @@ pub async fn start_capture(
         );
     }
 
-    let audio_capture = match (prepared.audio_target, audio_source) {
-        (Some(target), Some(source)) => start_process_audio_capture(target, source).await.ok(),
-        _ => None,
+    let (audio_capture, audio_unavailable_reason) = match (prepared.audio_target, audio_source) {
+        (Some(target), Some(source)) => {
+            match start_process_audio_capture(target, source, prepared.audio_isolation_watch).await
+            {
+                Ok(capture) => (Some(capture), None),
+                Err(error) => (
+                    None,
+                    Some(
+                        error
+                            .strip_prefix("[audio-isolation-unavailable]")
+                            .unwrap_or(&error)
+                            .trim()
+                            .to_string(),
+                    ),
+                ),
+            }
+        }
+        _ => (None, prepared.audio_unavailable_reason),
     };
     let audio_captured = audio_capture.is_some();
 
@@ -471,6 +517,7 @@ pub async fn start_capture(
             audio_capture,
         },
         audio_captured,
+        audio_unavailable_reason,
     ))
 }
 
@@ -482,45 +529,125 @@ fn process_loopback_supported_for_build(build: u32) -> bool {
     build >= PROCESS_LOOPBACK_MINIMUM_BUILD
 }
 
+fn prepare_audio_isolation(
+    target: &CaptureTarget,
+    include_audio: bool,
+    webview_proof: Option<&WebViewProcessProof>,
+    webview_processes: &WebViewProcessTracker,
+    audio_failure_sender: mpsc::UnboundedSender<String>,
+) -> (
+    Option<ProcessLoopbackTarget>,
+    Option<String>,
+    Option<DisplayAudioIsolationWatch>,
+) {
+    if !include_audio {
+        return (None, None, None);
+    }
+    if !process_loopback_supported() {
+        return (None, process_loopback_unavailable_reason(false), None);
+    }
+    match process_loopback_target(target, webview_proof) {
+        Ok(audio_target) => {
+            let watch = match audio_target {
+                ProcessLoopbackTarget::ExcludeProcessTree(_) => Some(DisplayAudioIsolationWatch {
+                    proof: webview_proof
+                        .expect("display audio target requires a WebView2 proof")
+                        .clone(),
+                    receiver: webview_processes.subscribe(),
+                    failure_sender: audio_failure_sender,
+                }),
+                ProcessLoopbackTarget::IncludeProcessTree(_) => None,
+            };
+            (Some(audio_target), None, watch)
+        }
+        Err(error) => (
+            None,
+            Some(
+                error
+                    .strip_prefix("[audio-isolation-unavailable]")
+                    .unwrap_or(&error)
+                    .trim()
+                    .to_string(),
+            ),
+            None,
+        ),
+    }
+}
+
 fn process_loopback_target(
     target: &CaptureTarget,
-) -> Result<Option<ProcessLoopbackTarget>, String> {
+    webview_proof: Option<&WebViewProcessProof>,
+) -> Result<ProcessLoopbackTarget, String> {
     match target {
         CaptureTarget::Window(hwnd) => {
             let mut process_id = 0;
             unsafe { GetWindowThreadProcessId(*hwnd, Some(&mut process_id)) };
-            if process_id == 0 {
-                return Err(
-                    "[audio-isolation-unavailable] Windows could not identify the selected application's process tree."
-                        .to_string(),
-                );
-            }
             let parents = process_parent_map()?;
-            if process_is_in_tree(process_id, unsafe { GetCurrentProcessId() }, &parents) {
-                return Err("Bakbak cannot capture its own application audio.".to_string());
-            }
-            Ok(Some(ProcessLoopbackTarget::IncludeProcessTree(process_id)))
+            application_process_loopback_target(
+                process_id,
+                unsafe { GetCurrentProcessId() },
+                webview_proof,
+                &parents,
+            )
         }
         CaptureTarget::Display(_) => {
-            let current_process_id = unsafe { GetCurrentProcessId() };
+            let proof = webview_proof.ok_or_else(|| {
+                format!("[audio-isolation-unavailable] {DISPLAY_AUDIO_ISOLATION_REASON}")
+            })?;
             let parents = process_parent_map()?;
-            if !process_tree_exclusion_is_proven(current_process_id, &parents) {
-                return Err(
-                    "[audio-isolation-unavailable] Windows could not verify Bakbak's WebView2 process tree, so display audio is disabled."
-                        .to_string(),
-                );
-            }
-            Ok(Some(ProcessLoopbackTarget::ExcludeProcessTree(
-                current_process_id,
-            )))
+            display_process_loopback_target(proof, &parents)
         }
     }
+}
+
+fn application_process_loopback_target(
+    process_id: u32,
+    current_process_id: u32,
+    webview_proof: Option<&WebViewProcessProof>,
+    process_parents: &HashMap<u32, u32>,
+) -> Result<ProcessLoopbackTarget, String> {
+    if process_id == 0 {
+        return Err(
+            "[audio-isolation-unavailable] Windows could not identify the selected application's process tree."
+                .to_string(),
+        );
+    }
+    if process_is_in_tree(process_id, current_process_id, process_parents)
+        || webview_proof.is_some_and(|proof| {
+            process_is_in_tree(process_id, proof.browser_process_id(), process_parents)
+        })
+    {
+        return Err("Bakbak cannot capture its own application audio.".to_string());
+    }
+    Ok(ProcessLoopbackTarget::IncludeProcessTree(process_id))
+}
+
+fn display_process_loopback_target(
+    proof: &WebViewProcessProof,
+    process_parents: &HashMap<u32, u32>,
+) -> Result<ProcessLoopbackTarget, String> {
+    if !proof.is_valid_for(process_parents) {
+        return Err(format!(
+            "[audio-isolation-unavailable] {DISPLAY_AUDIO_ISOLATION_REASON}"
+        ));
+    }
+    Ok(ProcessLoopbackTarget::ExcludeProcessTree(
+        proof.browser_process_id(),
+    ))
 }
 
 async fn start_process_audio_capture(
     target: ProcessLoopbackTarget,
     source: NativeAudioSource,
+    mut isolation_watch: Option<DisplayAudioIsolationWatch>,
 ) -> Result<ProcessAudioCapture, String> {
+    if let Some(watch) = isolation_watch.as_ref()
+        && !display_audio_isolation_is_current(&watch.proof, &watch.receiver.borrow())
+    {
+        return Err(format!(
+            "[audio-isolation-unavailable] {DISPLAY_AUDIO_ISOLATION_REASON}"
+        ));
+    }
     let stop = Arc::new(AtomicBool::new(false));
     let capture_stop = stop.clone();
     let (frame_sender, mut frame_receiver) = mpsc::channel::<Vec<i16>>(8);
@@ -534,6 +661,15 @@ async fn start_process_audio_capture(
         .map_err(|_| "Windows matched-audio capture timed out.".to_string())?
         .map_err(|_| "Windows matched-audio capture stopped during startup.".to_string())?;
     ready?;
+    if let Some(watch) = isolation_watch.as_ref()
+        && !display_audio_isolation_is_current(&watch.proof, &watch.receiver.borrow())
+    {
+        stop.store(true, Ordering::Release);
+        let _ = capture_task.await;
+        return Err(format!(
+            "[audio-isolation-unavailable] {DISPLAY_AUDIO_ISOLATION_REASON}"
+        ));
+    }
 
     let forward_task = tokio::spawn(async move {
         while let Some(samples) = frame_receiver.recv().await {
@@ -548,12 +684,48 @@ async fn start_process_audio_capture(
             }
         }
     });
+    let isolation_task = isolation_watch.take().map(|mut isolation| {
+        let isolation_stop = stop.clone();
+        tokio::spawn(async move {
+            loop {
+                if isolation.receiver.changed().await.is_err() {
+                    break;
+                }
+                if should_stop_for_isolation_change(
+                    &isolation_stop,
+                    &isolation.proof,
+                    &isolation.receiver.borrow(),
+                ) {
+                    let _ = isolation
+                        .failure_sender
+                        .send(DISPLAY_AUDIO_ISOLATION_CHANGED.to_string());
+                    break;
+                }
+            }
+        })
+    });
 
     Ok(ProcessAudioCapture {
         stop,
         capture_task,
         forward_task,
+        isolation_task,
     })
+}
+
+fn display_audio_isolation_is_current(
+    expected: &WebViewProcessProof,
+    state: &WebViewProcessState,
+) -> bool {
+    state.proof() == Some(expected)
+}
+
+fn should_stop_for_isolation_change(
+    stop: &AtomicBool,
+    expected: &WebViewProcessProof,
+    state: &WebViewProcessState,
+) -> bool {
+    !display_audio_isolation_is_current(expected, state) && !stop.swap(true, Ordering::AcqRel)
 }
 
 fn capture_process_audio(
@@ -676,9 +848,12 @@ fn parse_source_id(source_id: &str) -> Result<CaptureTarget, String> {
     }
 }
 
-fn validate_target(target: &CaptureTarget) -> Result<(), String> {
+fn validate_target(
+    target: &CaptureTarget,
+    webview_proof: Option<&WebViewProcessProof>,
+) -> Result<(), String> {
     match target {
-        CaptureTarget::Window(hwnd) if is_shareable_window(*hwnd) => Ok(()),
+        CaptureTarget::Window(hwnd) if is_shareable_window(*hwnd, webview_proof) => Ok(()),
         CaptureTarget::Display(monitor) if is_available_monitor(*monitor) => Ok(()),
         CaptureTarget::Display(_) => {
             Err("The selected display is no longer available.".to_string())
@@ -709,11 +884,14 @@ fn source_label(target: &CaptureTarget) -> String {
     }
 }
 
-fn enumerate_windows() -> Result<Vec<ScreenShareSource>, String> {
+fn enumerate_windows(
+    webview_proof: Option<&WebViewProcessProof>,
+) -> Result<Vec<ScreenShareSource>, String> {
     struct EnumerationContext {
         sources: Vec<ScreenShareSource>,
         process_parents: HashMap<u32, u32>,
         current_process_id: u32,
+        webview_proof: Option<WebViewProcessProof>,
         audio_supported: bool,
         audio_unavailable_reason: Option<String>,
     }
@@ -723,6 +901,7 @@ fn enumerate_windows() -> Result<Vec<ScreenShareSource>, String> {
         if !is_shareable_window_with_process_map(
             hwnd,
             context.current_process_id,
+            context.webview_proof.as_ref(),
             &context.process_parents,
         ) {
             return BOOL(1);
@@ -748,6 +927,7 @@ fn enumerate_windows() -> Result<Vec<ScreenShareSource>, String> {
         sources: Vec::new(),
         process_parents: process_parent_map()?,
         current_process_id: unsafe { GetCurrentProcessId() },
+        webview_proof: webview_proof.cloned(),
         audio_supported,
         audio_unavailable_reason: process_loopback_unavailable_reason(audio_supported),
     };
@@ -767,9 +947,8 @@ fn enumerate_windows() -> Result<Vec<ScreenShareSource>, String> {
     Ok(windows)
 }
 
-fn enumerate_displays() -> Vec<ScreenShareSource> {
-    let audio_supported = process_loopback_supported();
-    let audio_unavailable_reason = process_loopback_unavailable_reason(audio_supported);
+fn enumerate_displays(webview_proof: Option<&WebViewProcessProof>) -> Vec<ScreenShareSource> {
+    let (audio_supported, audio_unavailable_reason) = display_audio_availability(webview_proof);
     available_monitors()
         .into_iter()
         .enumerate()
@@ -783,6 +962,34 @@ fn enumerate_displays() -> Vec<ScreenShareSource> {
             thumbnail_data_url: None,
         })
         .collect()
+}
+
+fn display_audio_availability(
+    webview_proof: Option<&WebViewProcessProof>,
+) -> (bool, Option<String>) {
+    let supported = process_loopback_supported();
+    let proven = webview_proof
+        .and_then(|proof| {
+            process_parent_map()
+                .ok()
+                .filter(|parents| proof.is_valid_for(parents))
+        })
+        .is_some();
+    display_audio_availability_for(supported, proven)
+}
+
+fn display_audio_availability_for(
+    process_loopback_supported: bool,
+    webview_process_tree_proven: bool,
+) -> (bool, Option<String>) {
+    if !process_loopback_supported {
+        return (false, process_loopback_unavailable_reason(false));
+    }
+    let audio_available = webview_process_tree_proven;
+    (
+        audio_available,
+        (!audio_available).then(|| DISPLAY_AUDIO_ISOLATION_REASON.to_string()),
+    )
 }
 
 fn available_monitors() -> Vec<HMONITOR> {
@@ -986,16 +1193,22 @@ fn encode_base64(bytes: &[u8]) -> String {
     output
 }
 
-fn is_shareable_window(hwnd: HWND) -> bool {
+fn is_shareable_window(hwnd: HWND, webview_proof: Option<&WebViewProcessProof>) -> bool {
     let Ok(process_parents) = process_parent_map() else {
         return false;
     };
-    is_shareable_window_with_process_map(hwnd, unsafe { GetCurrentProcessId() }, &process_parents)
+    is_shareable_window_with_process_map(
+        hwnd,
+        unsafe { GetCurrentProcessId() },
+        webview_proof,
+        &process_parents,
+    )
 }
 
 fn is_shareable_window_with_process_map(
     hwnd: HWND,
     current_process_id: u32,
+    webview_proof: Option<&WebViewProcessProof>,
     process_parents: &HashMap<u32, u32>,
 ) -> bool {
     if hwnd.0.is_null() {
@@ -1007,7 +1220,10 @@ fn is_shareable_window_with_process_map(
     let tool_window = extended_style & WS_EX_TOOLWINDOW.0 != 0;
     let mut process_id = 0;
     unsafe { GetWindowThreadProcessId(hwnd, Some(&mut process_id)) };
-    let own_process = process_is_in_tree(process_id, current_process_id, process_parents);
+    let own_process = process_is_in_tree(process_id, current_process_id, process_parents)
+        || webview_proof.is_some_and(|proof| {
+            process_is_in_tree(process_id, proof.browser_process_id(), process_parents)
+        });
     let mut cloaked = 0u32;
     let cloaked = unsafe {
         DwmGetWindowAttribute(
@@ -1027,62 +1243,6 @@ fn is_shareable_window_with_process_map(
         cloaked,
         window_title(hwnd).is_some(),
     )
-}
-
-fn process_parent_map() -> Result<HashMap<u32, u32>, String> {
-    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }
-        .map_err(|error| format!("Windows could not inspect application processes: {error}"))?;
-    let mut result = HashMap::new();
-    let mut entry = PROCESSENTRY32W {
-        dwSize: size_of::<PROCESSENTRY32W>() as u32,
-        ..Default::default()
-    };
-    if let Err(error) = unsafe { Process32FirstW(snapshot, &mut entry) } {
-        let _ = unsafe { CloseHandle(snapshot) };
-        return Err(format!(
-            "Windows could not inspect the first application process: {error}"
-        ));
-    }
-    loop {
-        result.insert(entry.th32ProcessID, entry.th32ParentProcessID);
-        if unsafe { Process32NextW(snapshot, &mut entry) }.is_err() {
-            break;
-        }
-    }
-    let _ = unsafe { CloseHandle(snapshot) };
-    Ok(result)
-}
-
-fn process_is_in_tree(
-    process_id: u32,
-    root_process_id: u32,
-    process_parents: &HashMap<u32, u32>,
-) -> bool {
-    if process_id == 0 || root_process_id == 0 {
-        return false;
-    }
-    let mut current = process_id;
-    let mut visited = HashSet::new();
-    while visited.insert(current) {
-        if current == root_process_id {
-            return true;
-        }
-        let Some(parent) = process_parents.get(&current).copied() else {
-            return false;
-        };
-        if parent == 0 || parent == current {
-            return false;
-        }
-        current = parent;
-    }
-    false
-}
-
-fn process_tree_exclusion_is_proven(
-    root_process_id: u32,
-    process_parents: &HashMap<u32, u32>,
-) -> bool {
-    root_process_id != 0 && process_parents.contains_key(&root_process_id)
 }
 
 fn process_loopback_unavailable_reason(supported: bool) -> Option<String> {
@@ -1476,11 +1636,66 @@ mod tests {
     }
 
     #[test]
-    fn display_audio_requires_a_verified_bakbak_process_tree() {
-        let parents = HashMap::from([(10, 1), (11, 10)]);
-        assert!(process_tree_exclusion_is_proven(10, &parents));
-        assert!(!process_tree_exclusion_is_proven(12, &parents));
-        assert!(!process_tree_exclusion_is_proven(0, &parents));
+    fn entire_screen_excludes_the_webview2_browser_not_the_tauri_host() {
+        let parents = HashMap::from([(10, 1), (20, 10), (21, 20)]);
+        let proof = WebViewProcessProof::for_test(20, [20, 21]);
+        assert_eq!(
+            display_process_loopback_target(&proof, &parents),
+            Ok(ProcessLoopbackTarget::ExcludeProcessTree(20))
+        );
+        assert_ne!(
+            display_process_loopback_target(&proof, &parents),
+            Ok(ProcessLoopbackTarget::ExcludeProcessTree(10))
+        );
+    }
+
+    #[test]
+    fn unproven_display_audio_never_falls_back_to_system_loopback() {
+        let parents = HashMap::from([(10, 1), (20, 10), (30, 1)]);
+        let detached = WebViewProcessProof::for_test(20, [20, 30]);
+        assert!(display_process_loopback_target(&detached, &parents).is_err());
+    }
+
+    #[test]
+    fn application_audio_keeps_selected_tree_and_rejects_bakbak_processes() {
+        let parents = HashMap::from([(10, 1), (11, 10), (20, 10), (21, 20), (22, 21), (30, 1)]);
+        let proof = WebViewProcessProof::for_test(20, [20, 21]);
+        assert_eq!(
+            application_process_loopback_target(30, 10, Some(&proof), &parents),
+            Ok(ProcessLoopbackTarget::IncludeProcessTree(30))
+        );
+        assert!(application_process_loopback_target(11, 10, Some(&proof), &parents).is_err());
+        assert!(application_process_loopback_target(21, 10, Some(&proof), &parents).is_err());
+        assert!(application_process_loopback_target(22, 10, Some(&proof), &parents).is_err());
+    }
+
+    #[test]
+    fn a_webview2_topology_change_invalidates_active_audio() {
+        let initial = WebViewProcessProof::for_test(20, [20, 21]);
+        let changed = WebViewProcessProof::for_test(20, [20, 21, 22]);
+        let stop = AtomicBool::new(false);
+        assert!(display_audio_isolation_is_current(
+            &initial,
+            &WebViewProcessState::Proven(initial.clone())
+        ));
+        assert!(!display_audio_isolation_is_current(
+            &initial,
+            &WebViewProcessState::Proven(changed.clone())
+        ));
+        assert!(!display_audio_isolation_is_current(
+            &initial,
+            &WebViewProcessState::Unavailable
+        ));
+        assert!(should_stop_for_isolation_change(
+            &stop,
+            &initial,
+            &WebViewProcessState::Proven(changed.clone())
+        ));
+        assert!(!should_stop_for_isolation_change(
+            &stop,
+            &initial,
+            &WebViewProcessState::Proven(changed)
+        ));
     }
 
     #[test]
@@ -1510,6 +1725,27 @@ mod tests {
             .expect("unsupported builds explain fallback");
         assert!(reason.contains("video sharing still works"));
         assert!(reason.contains(&PROCESS_LOOPBACK_MINIMUM_BUILD.to_string()));
+    }
+
+    #[test]
+    fn display_source_audio_availability_requires_build_and_webview2_proof() {
+        assert_eq!(display_audio_availability_for(true, true), (true, None));
+        let unsupported = display_audio_availability_for(false, true);
+        assert!(!unsupported.0);
+        assert!(
+            unsupported
+                .1
+                .as_deref()
+                .is_some_and(|reason| reason.contains("20348"))
+        );
+        let unproven = display_audio_availability_for(true, false);
+        assert!(!unproven.0);
+        assert!(
+            unproven
+                .1
+                .as_deref()
+                .is_some_and(|reason| reason.contains("WebView2"))
+        );
     }
 
     #[test]

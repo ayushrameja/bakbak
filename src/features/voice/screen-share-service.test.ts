@@ -142,6 +142,7 @@ describe("screen-share-service", () => {
       sourceLabel: null,
       sourceKind: null,
       audioPublished: false,
+      audioUnavailableReason: null,
       settings: null,
       message: "The selected source stopped before its first frame.",
     } as const;
@@ -168,6 +169,52 @@ describe("screen-share-service", () => {
         recommendedRetrySource: null,
       },
     });
+    consoleError.mockRestore();
+  });
+
+  it("forwards a live audio-isolation downgrade without ending video", async () => {
+    tauri.isTauri.mockReturnValue(true);
+    const onEvent = vi.fn();
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const payload = {
+      state: "sharing",
+      sessionId: "session-1",
+      sourceLabel: "Screen 1",
+      sourceKind: "display",
+      audioPublished: false,
+      audioUnavailableReason:
+        "Bakbak's WebView2 audio process tree changed, so screen audio was stopped; video is still sharing.",
+      settings: { resolution: 1080, frameRate: 60 },
+      message:
+        "[audio-isolation-unavailable] Bakbak's WebView2 audio process tree changed.",
+      failure: {
+        code: "audio-isolation-unavailable",
+        message: "Bakbak's WebView2 audio process tree changed.",
+        recommendedRetrySource: null,
+      },
+    } as const;
+    tauri.listen.mockImplementation(
+      (
+        _event: string,
+        callback: (event: { payload: typeof payload }) => void,
+      ) => {
+        callback({ payload });
+        return Promise.resolve(() => undefined);
+      },
+    );
+
+    await listenForScreenShareLifecycle(onEvent);
+
+    expect(onEvent).toHaveBeenCalledWith({
+      ...payload,
+      sourceKind: "display",
+      settings: { resolution: 1080, frameRate: 60 },
+    });
+    expect(consoleError).toHaveBeenCalledWith(
+      "[Bakbak screen share] audio-isolation-unavailable: Bakbak's WebView2 audio process tree changed.",
+    );
     consoleError.mockRestore();
   });
 });

@@ -42,8 +42,14 @@ pub fn run() {
             }
 
             #[cfg(target_os = "windows")]
-            if native_window_material_supported() {
-                if let Some(window) = app.get_webview_window("main") {
+            if let Some(window) = app.get_webview_window("main") {
+                let manager = app.state::<screen_share::ScreenShareManager>();
+                if let Err(error) =
+                    screen_share::register_windows_webview_process_tracker(&window, &manager)
+                {
+                    eprintln!("Windows screen-audio isolation unavailable: {error}");
+                }
+                if native_window_material_supported() {
                     window.set_effects(EffectsBuilder::new().effect(Effect::Mica).build())?;
                 }
             }

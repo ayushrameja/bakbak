@@ -19,7 +19,7 @@ tauri-build = { version = "2", features = [] }
 webrtc-sys-build = "=0.3.18"
 
 [dependencies]
-tauri = { version = "2", features = ["macos-private-api"] }
+tauri = { version = "=2.11.5", features = ["macos-private-api"] }
 tauri-plugin-opener = "2"
 tauri-plugin-process = "2"
 tauri-plugin-updater = "2"
@@ -42,6 +42,8 @@ tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
 livekit = { version = "=0.7.51", features = ["rustls-tls-native-roots"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
 wasapi = "=0.23.0"
+webview2-com = "=0.38.2"
+webview2-windows-core = { package = "windows-core", version = "=0.61.2" }
 windows = { version = "0.62.2", features = [
   "Foundation",
   "Graphics",
