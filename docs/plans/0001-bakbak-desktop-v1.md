@@ -400,8 +400,10 @@ macOS/Windows acceptance run passes.
       recovery, and privacy-safe copyable diagnostics.
 - [x] Implement plan 0033 Packet B's authoritative active-room presence,
       deterministic occupant ordering, and queued heartbeat refresh.
-- [ ] Implement plan 0033 Packets C–D: private-image recovery and safe 200%
-      listener gain in their dependency order.
+- [x] Implement plan 0033 Packet C's Windows clipboard normalization,
+      validated authenticated poster recovery, explicit retry surface, and
+      optimistic-preview lifecycle.
+- [ ] Implement plan 0033 Packet D's measured, limited 200% listener gain.
 - [ ] Complete plan 0033's six-person, 60-minute macOS/Windows cross-region
       stabilization matrix before the next friend release.
 - [x] Add the Bakbak Signature preset, fixed destination rail, and

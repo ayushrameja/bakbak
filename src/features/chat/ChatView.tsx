@@ -64,6 +64,7 @@ import {
   MAX_MESSAGE_ATTACHMENTS,
   prepareMessageAttachment,
 } from "./message-media";
+import { clipboardFiles } from "./clipboard-files";
 import { EmojiPicker } from "./EmojiPicker";
 import { GiphyPicker } from "./GiphyPicker";
 import { RichMessageMedia } from "./RichMessageMedia";
@@ -1199,7 +1200,7 @@ export function ConversationView({
               }}
               onKeyDown={handleComposerKeyDown}
               onPaste={(event: ClipboardEvent<HTMLInputElement>) => {
-                const files = [...event.clipboardData.files];
+                const files = clipboardFiles(event.clipboardData);
                 if (files.length) {
                   event.preventDefault();
                   void addFiles(files);

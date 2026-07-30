@@ -9518,6 +9518,43 @@ html.is-panel-resizing .desktop-shell {
   font-size: var(--font-meta);
 }
 
+.message-media-error {
+  width: min(420px, 100%);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 10px;
+  align-items: center;
+  margin-top: 6px;
+  padding: 9px 11px;
+  border: 1px dashed var(--line-bright);
+  border-radius: var(--radius-control);
+  color: var(--muted);
+  background: var(--panel-soft);
+  font-size: var(--font-meta);
+}
+
+.message-media-error small {
+  color: var(--faint);
+}
+
+.message-media-error button {
+  grid-row: 1 / 3;
+  grid-column: 2;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line-bright);
+  border-radius: var(--radius-control);
+  color: var(--text);
+  background: var(--panel-strong);
+  cursor: pointer;
+}
+
+.message-media-error button:hover,
+.message-media-error button:focus-visible {
+  border-color: var(--accent);
+  background: var(--panel-hover);
+}
+
 .message-upload-progress {
   width: min(420px, 100%);
   height: 5px;

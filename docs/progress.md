@@ -5630,3 +5630,63 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
   session. If the gallery and sidebar diverge, record their user IDs and
   connection state before rejoining. Implement Packet C's Windows clipboard and
   private-image recovery next; Packet D is unblocked by Packet A.
+
+## 2026-07-30 — Make pasted private images recoverable
+
+- **Completed:** Implemented plan 0033 Packet C. The shared channel/DM composer
+  now reads file-kind entries from both clipboard `items` and `files`, restores
+  a missing Windows File MIME type from its item, deduplicates equivalent
+  representations, and preserves the existing attachment limits. Private
+  poster retrieval now requires a stable authenticated account, classifies
+  offline/session/forbidden/missing/invalid/decode/transient outcomes, validates
+  non-zero PNG/JPEG/WebP blobs by decoding before cache admission, evicts
+  poisoned cache entries, and performs one fresh authenticated retrieval.
+  Attachment rendering keeps the last usable preview while loading, replaces
+  bare broken images with sanitized diagnostics and Retry, and revokes
+  renderer-owned URLs on replacement/unmount. Added an optimistic-media lease
+  across local-to-persisted message replacement and channel navigation; a
+  persisted poster load, cancellation, or account teardown releases its local
+  preview exactly once, while a failed send returns ownership to the restored
+  draft.
+- **Decisions:** Kept account identity and Storage RLS as the authorization
+  boundary and made no schema or policy change without live evidence. Cached
+  media remains keyed by account and a session change during download blocks
+  the write, preventing a cross-account race. Used bounded diagnostic codes
+  instead of raw Storage errors so signed URLs, headers, and session data never
+  enter UI or logs. Kept full originals memory-only; only validated static
+  posters enter IndexedDB.
+- **Validation:**
+  - Focused Packet C Vitest run — passed 5 files and 35/35 tests covering
+    PNG/JPEG/WebP clipboard items, text plus image, unsupported items,
+    duplicate file/item exposure, missing File MIME repair, authenticated cache
+    validation/eviction, offline/401/403/404/transient/session-change outcomes,
+    explicit retry UI, navigation handoff, and exact-once URL revocation.
+  - Focused chat/media Vitest run — passed 15 files and 69/69 tests before the
+    final retrieval edge-case additions.
+  - `pnpm check` — passed formatting, zero-warning lint, both strict TypeScript
+    projects, 84 Vitest files with 478/478 tests, 41/41 Node contracts,
+    synchronized version 1.4.0, production renderer build, and bundle secret
+    scan. Vite retained the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed the renderer rebuild, optimized Rust
+    release build, ad-hoc signing, and macOS `Bakbak.app` bundle creation.
+    Notarization was skipped because Apple notarization credentials are not
+    configured.
+  - Final focused Prettier and `git diff --check` — passed on the code and plan
+    diff before this log entry.
+- **Documentation updated:** Documented Windows clipboard normalization,
+  stable-account poster validation/cache admission, sanitized recovery
+  outcomes, and optimistic URL ownership in `docs/architecture.md`; marked
+  Packet C code/automated acceptance complete while retaining its real
+  two-account and installed checks in plan 0033; split completed Packet C from
+  pending Packet D in plan 0001; and appended this canonical progress entry.
+- **Known limitations:** The real hosted private Storage/RLS path still needs
+  two authenticated accounts: one authorized recipient and one non-member or
+  otherwise forbidden account. Windows paste and installed sender/recipient
+  cache behavior were not executable on this macOS host. The macOS app bundle
+  built but was not launched for the full paste/upload/channel/DM/navigation/
+  restart/warm-cache/cleared-cache matrix. Packet C therefore is not installed
+  acceptance complete.
+- **Next:** Implement Packet D's measured, limited 0–200% listener gain without
+  changing sender capture defaults. Then install one integrated A–D revision on
+  macOS and Windows and run Packet E's six-client cross-region matrix plus
+  Packet C's two-account private Storage probes.

@@ -262,9 +262,15 @@ that account clears it. Threads retain the newest 200 confirmed messages.
 Profile media uses bucket/path revisions and a 256 MiB per-account
 least-recently-used ceiling. Schema v2 adds a separate 256 MiB/account LRU for
 authenticated message and sticker posters. Cached message metadata strips
-transient object URLs; full video, original animated media, GIPHY URLs, and
-GIPHY assets are never persisted. Data & storage clearing removes both media
-caches without touching cloud content.
+transient and optimistic object URLs; full video, original animated media,
+GIPHY URLs, and GIPHY assets are never persisted. A message poster is admitted
+to that cache only after a stable authenticated account is confirmed and its
+blob has non-zero bytes, a PNG/JPEG/WebP MIME type, and a successful image
+decode. An invalid cached poster is evicted before one authenticated fresh
+download; an account change during retrieval prevents the result from being
+cached. Offline, unauthenticated, forbidden, missing-object, invalid-blob,
+decode, and transient failures remain distinct sanitized outcomes. Data &
+storage clearing removes both media caches without touching cloud content.
 
 Private `message-media` and `message-stickers` Storage buckets back rich
 messages. The authenticated `message-media-manage` Edge Function reserves
@@ -1149,7 +1155,11 @@ An invite-management UI is deferred until post-v1.
    non-AAC optional audio, excessive duration, or excessive resolution. On
    send, TUS uploads each reserved original/poster with progress and retry;
    only after every object succeeds does the v2 RPC atomically publish the
-   message. A failed attempt retains the complete draft for retry.
+   message. The composer reads clipboard files from both the `files` and
+   file-kind `items` representations used by Windows, restores a missing File
+   MIME type from the item when available, deduplicates equivalent
+   representations, and then applies the same four-file/type/size/decode limits
+   as the file picker. A failed attempt retains the complete draft for retry.
 4. Plain structured text may still call the compatible legacy RPC. Replies,
    attachments, Bakbak stickers, and GIPHY presentations call the v2 RPC.
    GIPHY selections are staged in the composer, where the user may add text
@@ -1160,7 +1170,13 @@ An invite-management UI is deferred until post-v1.
    The receiver hydrates the affected message by ID before cache replacement.
 6. Clients reconcile cached, query, realtime, and optimistic events by stable
    ID and deterministic timestamp/ID order. Pending optimistic rows never
-   persist.
+   persist. A sender's staged object URL is leased across the optimistic-to-
+   persisted message-ID replacement and channel navigation. The persisted
+   poster loads behind that preview; only its successful image load, explicit
+   optimistic cancellation, or account teardown revokes the preview, exactly
+   once. Renderer-owned downloaded URLs revoke on replacement or unmount.
+   Failed poster retrieval or decoding renders a retry control with a bounded
+   diagnostic code rather than a broken image or raw Storage/session detail.
 7. A committed message from another user plays a short local notification tone.
    `get_channel_activity` compares the latest message with the account's private
    marker so unread emphasis follows the signed-in user across clients.

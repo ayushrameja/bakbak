@@ -1,7 +1,8 @@
 # Plan 0033 — Friend-test voice, presence, and media stabilization
 
-- **Status:** Packets A and B code/automated acceptance complete; their
-  installed acceptance and Packets C–E pending
+- **Status:** Packets A–C code/automated acceptance complete; their installed
+  acceptance, Packet C's real two-account Storage probe, and Packets D–E
+  pending
 - **Approved:** 2026-07-30
 - **Trigger:** Six-person macOS/Windows friend session with participants in
   India and Canada
@@ -164,23 +165,23 @@ canonical progress entry before handoff.
 
 ### Scope
 
-- [ ] Normalize clipboard images from both `clipboardData.files` and
+- [x] Normalize clipboard images from both `clipboardData.files` and
       `clipboardData.items`, use `getAsFile()` for file-kind items, deduplicate
       equivalent entries, and preserve the existing count/type/size limits.
-- [ ] Add focused Windows-compatible paste fixtures for PNG, JPEG, WebP, an
+- [x] Add focused Windows-compatible paste fixtures for PNG, JPEG, WebP, an
       unsupported clipboard item, text plus image, and duplicate file/item
       exposure.
-- [ ] Model poster retrieval outcomes explicitly: offline, unauthenticated,
+- [x] Model poster retrieval outcomes explicitly: offline, unauthenticated,
       forbidden, missing object, invalid/empty blob, decode failure, and
       transient transport failure.
-- [ ] Validate a poster's non-zero size, allowed MIME type, and image decoding
+- [x] Validate a poster's non-zero size, allowed MIME type, and image decoding
       before accepting it into the authenticated cache.
-- [ ] On cached-poster decode failure, revoke its object URL, evict that cache
+- [x] On cached-poster decode failure, revoke its object URL, evict that cache
       entry, and attempt one authenticated fresh download. Never retry
       indefinitely.
-- [ ] Add an image error state with Retry and useful sanitized diagnostics.
+- [x] Add an image error state with Retry and useful sanitized diagnostics.
       Do not leave a bare broken-image element or log signed URLs/session data.
-- [ ] Ensure optimistic object URLs remain alive until the persisted poster has
+- [x] Ensure optimistic object URLs remain alive until the persisted poster has
       loaded or the optimistic message is removed, then revoke them exactly
       once.
 - [ ] Exercise the real private Storage API and RLS path with two authenticated
@@ -188,15 +189,15 @@ canonical progress entry before handoff.
 
 ### Automated acceptance
 
-- [ ] Clipboard file and item representations produce the same staged image
+- [x] Clipboard file and item representations produce the same staged image
       without duplicates.
-- [ ] Navigation and rerender replace an optimistic preview with the persisted
+- [x] Navigation and rerender replace an optimistic preview with the persisted
       poster without a blank or revoked frame.
-- [ ] Valid cached posters render; invalid cached posters evict and retry once;
+- [x] Valid cached posters render; invalid cached posters evict and retry once;
       failed fresh posters show the explicit recovery state.
-- [ ] Object URLs are revoked on replacement/unmount without revoking active
+- [x] Object URLs are revoked on replacement/unmount without revoking active
       previews.
-- [ ] Unauthorized users cannot fetch or cache private message media.
+- [x] Unauthorized users cannot fetch or cache private message media.
 
 ### Installed acceptance
 

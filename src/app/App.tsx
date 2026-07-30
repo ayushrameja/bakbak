@@ -42,6 +42,7 @@ import {
   segmentsToFallback,
 } from "../features/chat/message-content";
 import { prepareStickerUpload } from "../features/chat/message-media";
+import { optimisticMessageMedia } from "../features/chat/optimistic-message-media";
 import {
   MemberPanel,
   type MemberVoiceActivity,
@@ -174,7 +175,6 @@ import type {
   ConversationMessage,
   DirectConversation,
   DirectMessage,
-  MessageAttachment,
   MessageDraft,
   ServerMember,
   Sticker,
@@ -221,21 +221,8 @@ function draftFallbackBody(draft: MessageDraft): string {
   return "";
 }
 
-function optimisticAttachments(draft: MessageDraft): MessageAttachment[] {
-  return (draft.attachments ?? []).map((attachment) => ({
-    id: attachment.id,
-    kind: attachment.kind,
-    mimeType: attachment.file.type,
-    byteSize: attachment.file.size,
-    width: attachment.width,
-    height: attachment.height,
-    durationMs: attachment.durationMs,
-    objectPath: "",
-    posterPath: "",
-    objectUrl: attachment.previewUrl,
-    posterUrl: attachment.previewUrl,
-    uploadProgress: attachment.progress,
-  }));
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
 }
 
 function toggleMockReaction<T extends ConversationMessage>(
@@ -569,6 +556,7 @@ export default function App() {
       setDirectDrafts({});
       setMessages([]);
       setDrafts({});
+      optimisticMessageMedia.clear();
       setUnreadChannelIds(new Set());
       setLatestMessageIds({});
       setVoiceSessions([]);
@@ -1871,7 +1859,7 @@ export default function App() {
         content,
         createdAt: new Date().toISOString(),
         presentation: draft.presentation ?? null,
-        attachments: optimisticAttachments(draft),
+        attachments: optimisticMessageMedia.stage(optimisticId, draft),
         reply: draft.replyTo ?? null,
         replyNotifiesAuthor:
           Boolean(draft.replyTo) &&
@@ -1944,7 +1932,7 @@ export default function App() {
                 uploadController?.signal,
               )
             : [];
-        const saved =
+        const savedWithoutPreview =
           appConfig.dataMode === "mock"
             ? {
                 ...optimistic,
@@ -1957,6 +1945,13 @@ export default function App() {
                 attachmentIds,
                 presentation: draft.presentation ?? null,
               });
+        const saved = {
+          ...savedWithoutPreview,
+          attachments: optimisticMessageMedia.transfer(
+            optimisticId,
+            savedWithoutPreview.attachments ?? [],
+          ),
+        };
         updateDirectThread(conversationId, (current) =>
           mergeMessages(
             current.filter(
@@ -1988,6 +1983,8 @@ export default function App() {
         );
         handleCommunicationEffect({ type: "message-sent" });
       } catch (caught) {
+        if (isAbortError(caught)) return;
+        optimisticMessageMedia.abandon(optimisticId, false);
         updateDirectThread(
           conversationId,
           (current) => current.filter((message) => message.id !== optimisticId),
@@ -2037,7 +2034,7 @@ export default function App() {
         content,
         createdAt: new Date().toISOString(),
         presentation: draft.presentation ?? null,
-        attachments: optimisticAttachments(draft),
+        attachments: optimisticMessageMedia.stage(optimisticId, draft),
         reply: draft.replyTo ?? null,
         replyNotifiesAuthor:
           Boolean(draft.replyTo) &&
@@ -2118,6 +2115,10 @@ export default function App() {
                 ? {
                     ...message,
                     id: `message-${crypto.randomUUID()}`,
+                    attachments: optimisticMessageMedia.transfer(
+                      optimisticId,
+                      message.attachments ?? [],
+                    ),
                     pending: false,
                   }
                 : message,
@@ -2130,13 +2131,20 @@ export default function App() {
             attachmentIds,
             presentation: draft.presentation ?? null,
           });
+          const savedWithPreview = {
+            ...saved,
+            attachments: optimisticMessageMedia.transfer(
+              optimisticId,
+              saved.attachments ?? [],
+            ),
+          };
           updateChannelThread(channelId, (current) =>
             mergeMessages(
               current.filter(
                 (message) =>
                   message.id !== optimisticId && message.id !== saved.id,
               ),
-              [saved],
+              [savedWithPreview],
             ),
           );
           setLatestMessageIds((current) => ({
@@ -2147,6 +2155,8 @@ export default function App() {
         }
         handleCommunicationEffect({ type: "message-sent" });
       } catch (caught) {
+        if (isAbortError(caught)) return;
+        optimisticMessageMedia.abandon(optimisticId, false);
         updateChannelThread(
           channelId,
           (current) => current.filter((message) => message.id !== optimisticId),
@@ -2177,6 +2187,7 @@ export default function App() {
       if (!selectedMessageChannelId) return;
       if (messageId.startsWith("pending-")) {
         uploadAbortControllersRef.current.get(messageId)?.abort();
+        optimisticMessageMedia.abandon(messageId, true);
         updateChannelThread(
           selectedMessageChannelId,
           (current) => current.filter((message) => message.id !== messageId),
@@ -2211,6 +2222,7 @@ export default function App() {
       if (!selectedConversationId) return;
       if (messageId.startsWith("pending-")) {
         uploadAbortControllersRef.current.get(messageId)?.abort();
+        optimisticMessageMedia.abandon(messageId, true);
         updateDirectThread(
           selectedConversationId,
           (current) => current.filter((message) => message.id !== messageId),

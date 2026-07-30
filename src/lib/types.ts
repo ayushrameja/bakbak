@@ -119,6 +119,8 @@ export interface MessageAttachment {
   posterPath: string;
   objectUrl?: string | null;
   posterUrl?: string | null;
+  optimisticPreviewKey?: string;
+  optimisticPreviewUrl?: string;
   uploadProgress?: number;
 }
 
