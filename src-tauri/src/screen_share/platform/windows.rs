@@ -1680,7 +1680,7 @@ mod tests {
         ));
         assert!(!display_audio_isolation_is_current(
             &initial,
-            &WebViewProcessState::Proven(changed)
+            &WebViewProcessState::Proven(changed.clone())
         ));
         assert!(!display_audio_isolation_is_current(
             &initial,

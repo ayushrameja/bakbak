@@ -5395,3 +5395,25 @@ build` was not rerun because this host cannot produce the required Windows
 - **Next:** Run the Windows PR job and x64 release bundle, then complete plan
   0032's muted-presenter three-client isolation matrix on default/selected
   outputs, stop/restart, source switching, and Application sharing.
+
+## 2026-07-28 — Fix Windows isolation test ownership
+
+- **Completed:** Corrected the Windows-only WebView2 topology-change test so its
+  changed process proof is cloned before the first assertion consumes it,
+  allowing the later stop-once assertions to reuse the same fixture.
+- **Decisions:** Kept the fix limited to test ownership; production capture and
+  isolation behavior are unchanged.
+- **Validation:**
+  - `pnpm format:check` — passed; Prettier confirmed all files match the
+    repository style.
+  - `cargo fmt --manifest-path src-tauri/Cargo.toml --check` — passed.
+  - `cargo check --locked --manifest-path src-tauri/Cargo.toml` — passed on the
+    macOS host.
+  - `cargo test --locked --manifest-path src-tauri/Cargo.toml` — passed all
+    17/17 native tests available on macOS.
+- **Documentation updated:** Appended this canonical progress entry.
+- **Known limitations:** The corrected test is Windows-target-gated, so this
+  macOS host cannot compile or execute it; the Windows pull-request job remains
+  the authoritative validation.
+- **Next:** Push the correction and rerun the Windows native capture job for PR
+  #44.
