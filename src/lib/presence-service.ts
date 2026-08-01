@@ -92,6 +92,7 @@ export function subscribeToServerPresence({
   let expiryTimer: ReturnType<typeof setInterval> | null = null;
   let stopped = false;
   let refreshInFlight: Promise<void> | null = null;
+  let refreshQueued = false;
   let heartbeatVersion: "v3" | "v2" = "v3";
 
   onSync({ onlineUserIds: new Set([userId]), voiceSessions: [] });
@@ -100,38 +101,50 @@ export function subscribeToServerPresence({
     if (!stopped) onSync(presenceSnapshotFromHeartbeats(heartbeats));
   };
 
-  const refresh = (): Promise<void> => {
-    if (refreshInFlight) return refreshInFlight;
-    refreshInFlight = (async () => {
-      const current = await supabase
+  const loadHeartbeats = async (): Promise<PresenceHeartbeatRow[]> => {
+    const current = await supabase
+      .from("presence_heartbeats")
+      .select(
+        "user_id,last_seen_at,voice_channel_id,voice_joined_at,is_streaming",
+      )
+      .eq("server_id", serverId)
+      .returns<PresenceHeartbeatDatabaseRow[]>();
+    let rows = current.data;
+    if (current.error) {
+      const legacy = await supabase
         .from("presence_heartbeats")
-        .select(
-          "user_id,last_seen_at,voice_channel_id,voice_joined_at,is_streaming",
-        )
+        .select("user_id,last_seen_at,voice_channel_id,voice_joined_at")
         .eq("server_id", serverId)
         .returns<PresenceHeartbeatDatabaseRow[]>();
-      let rows = current.data;
-      if (current.error) {
-        const legacy = await supabase
-          .from("presence_heartbeats")
-          .select("user_id,last_seen_at,voice_channel_id,voice_joined_at")
-          .eq("server_id", serverId)
-          .returns<PresenceHeartbeatDatabaseRow[]>();
-        if (legacy.error) throw legacy.error;
-        rows = legacy.data;
+      if (legacy.error) throw legacy.error;
+      rows = legacy.data;
+    }
+    return (rows ?? []).map((row) => ({
+      ...row,
+      is_streaming: row.is_streaming === true,
+    }));
+  };
+
+  const refresh = (): Promise<void> => {
+    if (stopped) return Promise.resolve();
+    refreshQueued = true;
+    if (refreshInFlight) return refreshInFlight;
+    refreshInFlight = (async () => {
+      while (refreshQueued && !stopped) {
+        refreshQueued = false;
+        try {
+          const nextHeartbeats = await loadHeartbeats();
+          if (stopped) return;
+          if (refreshQueued) continue;
+          heartbeats = nextHeartbeats;
+          emit();
+        } catch {
+          if (!stopped) onError?.("Online status could not be refreshed.");
+        }
       }
-      heartbeats = (rows ?? []).map((row) => ({
-        ...row,
-        is_streaming: row.is_streaming === true,
-      }));
-      emit();
-    })()
-      .catch(() => {
-        if (!stopped) onError?.("Online status could not be refreshed.");
-      })
-      .finally(() => {
-        refreshInFlight = null;
-      });
+    })().finally(() => {
+      refreshInFlight = null;
+    });
     return refreshInFlight;
   };
 
@@ -219,6 +232,7 @@ export function subscribeToServerPresence({
     },
     stop() {
       stopped = true;
+      refreshQueued = false;
       if (heartbeatTimer) clearInterval(heartbeatTimer);
       if (expiryTimer) clearInterval(expiryTimer);
       if (channel) void supabase.removeChannel(channel);

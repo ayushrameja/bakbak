@@ -148,6 +148,31 @@ describe("BakbakCache", () => {
     });
   });
 
+  it("evicts one invalid authenticated message poster without touching its account peers", async () => {
+    const cache = new BakbakCache(new IDBFactory());
+    await cache.writeMessageMedia(
+      userId,
+      "message-media",
+      "invalid-poster",
+      new Blob(["invalid"]),
+    );
+    await cache.writeMessageMedia(
+      userId,
+      "message-media",
+      "valid-poster",
+      new Blob(["valid"]),
+    );
+
+    await cache.evictMessageMedia(userId, "message-media", "invalid-poster");
+
+    await expect(
+      cache.readMessageMedia(userId, "message-media", "invalid-poster"),
+    ).resolves.toBeNull();
+    await expect(
+      cache.readMessageMedia(userId, "message-media", "valid-poster"),
+    ).resolves.not.toBeNull();
+  });
+
   it("strips transient full-media URLs while retaining rich metadata", () => {
     const normalized = normalizeMessagesForCache([
       {
@@ -163,6 +188,8 @@ describe("BakbakCache", () => {
             durationMs: 2_000,
             objectPath: "private/original.mp4",
             posterPath: "private/poster.webp",
+            optimisticPreviewKey: "pending:attachment",
+            optimisticPreviewUrl: "blob:optimistic",
             objectUrl: "blob:original",
             posterUrl: "blob:poster",
           },
@@ -171,6 +198,12 @@ describe("BakbakCache", () => {
     ]);
     expect(normalized[0]?.attachments?.[0]).not.toHaveProperty("objectUrl");
     expect(normalized[0]?.attachments?.[0]).not.toHaveProperty("posterUrl");
+    expect(normalized[0]?.attachments?.[0]).not.toHaveProperty(
+      "optimisticPreviewKey",
+    );
+    expect(normalized[0]?.attachments?.[0]).not.toHaveProperty(
+      "optimisticPreviewUrl",
+    );
     expect(normalized[0]?.attachments?.[0]?.posterPath).toBe(
       "private/poster.webp",
     );

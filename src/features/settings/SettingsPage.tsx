@@ -108,6 +108,7 @@ interface SettingsPageProps {
   voiceChannelName: string | null;
   voiceMuted: boolean;
   voiceDeafened: boolean;
+  voiceDiagnosticsAvailable: boolean;
   onSectionChange: (section: SettingsSection) => void;
   onSaveProfile: (input: ProfileSaveInput) => Promise<{ warning?: string }>;
   loadProfileMedia?: LoadProfileMedia;
@@ -127,6 +128,7 @@ interface SettingsPageProps {
   onToggleMute: () => void;
   onToggleDeafen: () => void;
   onLeaveVoice: () => void;
+  onCopyVoiceDiagnostics: () => Promise<boolean>;
   onSignOut: () => Promise<void>;
   onClose: () => void;
 }
@@ -1159,6 +1161,9 @@ function AudioSettings(props: SettingsPageProps) {
   const [testing, setTesting] = useState(false);
   const [refreshingDevices, setRefreshingDevices] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
+  const [diagnosticsCopyState, setDiagnosticsCopyState] = useState<
+    "idle" | "copied" | "failed"
+  >("idle");
   const stopTestRef = useRef<(() => void) | null>(null);
   const stopOutputTestRef = useRef<(() => void) | null>(null);
   const mountedRef = useRef(true);
@@ -1570,6 +1575,34 @@ function AudioSettings(props: SettingsPageProps) {
             {props.outputError ? (
               <p className="settings-error">{props.outputError}</p>
             ) : null}
+            <div className="voice-diagnostics-card">
+              <div>
+                <strong>Voice diagnostics</strong>
+                <small>
+                  Copies connection, subscription, playback, and inbound health
+                  metrics. It never includes names, messages, tokens, device
+                  labels, or audio.
+                </small>
+              </div>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={!props.voiceDiagnosticsAvailable}
+                onClick={() => {
+                  void props
+                    .onCopyVoiceDiagnostics()
+                    .then((copied) =>
+                      setDiagnosticsCopyState(copied ? "copied" : "failed"),
+                    );
+                }}
+              >
+                {diagnosticsCopyState === "copied"
+                  ? "Copied"
+                  : diagnosticsCopyState === "failed"
+                    ? "Copy failed"
+                    : "Copy diagnostics"}
+              </button>
+            </div>
           </div>
         </section>
 

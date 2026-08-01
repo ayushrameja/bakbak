@@ -9,6 +9,32 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Detect native changes
+    runs-on: ubuntu-latest
+    outputs:
+      windows-native: ${{ steps.windows-native.outputs.required }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check whether Windows-native validation is required
+        id: windows-native
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]] ||
+            ! git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- \
+              src-tauri \
+              .github/workflows/ci.yml; then
+            echo "required=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "required=false" >> "$GITHUB_OUTPUT"
+          fi
+
   validate:
     runs-on: ubuntu-latest
     steps:
@@ -43,6 +69,8 @@ jobs:
 
   windows-native:
     name: Windows native capture
+    needs: changes
+    if: needs.changes.outputs.windows-native == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4

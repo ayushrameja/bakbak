@@ -42,6 +42,7 @@ import {
   segmentsToFallback,
 } from "../features/chat/message-content";
 import { prepareStickerUpload } from "../features/chat/message-media";
+import { optimisticMessageMedia } from "../features/chat/optimistic-message-media";
 import {
   MemberPanel,
   type MemberVoiceActivity,
@@ -165,6 +166,7 @@ import {
   type ServerPresenceSubscription,
   type VoicePresenceSession,
 } from "../lib/presence-service";
+import { selectVoiceRoomOccupants } from "../features/voice/voice-occupancy";
 import type {
   AppUser,
   Channel,
@@ -173,7 +175,6 @@ import type {
   ConversationMessage,
   DirectConversation,
   DirectMessage,
-  MessageAttachment,
   MessageDraft,
   ServerMember,
   Sticker,
@@ -220,21 +221,8 @@ function draftFallbackBody(draft: MessageDraft): string {
   return "";
 }
 
-function optimisticAttachments(draft: MessageDraft): MessageAttachment[] {
-  return (draft.attachments ?? []).map((attachment) => ({
-    id: attachment.id,
-    kind: attachment.kind,
-    mimeType: attachment.file.type,
-    byteSize: attachment.file.size,
-    width: attachment.width,
-    height: attachment.height,
-    durationMs: attachment.durationMs,
-    objectPath: "",
-    posterPath: "",
-    objectUrl: attachment.previewUrl,
-    posterUrl: attachment.previewUrl,
-    uploadProgress: attachment.progress,
-  }));
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
 }
 
 function toggleMockReaction<T extends ConversationMessage>(
@@ -568,6 +556,7 @@ export default function App() {
       setDirectDrafts({});
       setMessages([]);
       setDrafts({});
+      optimisticMessageMedia.clear();
       setUnreadChannelIds(new Set());
       setLatestMessageIds({});
       setVoiceSessions([]);
@@ -1411,76 +1400,53 @@ export default function App() {
 
   const voiceOccupants = useMemo<VoiceRoomOccupant[]>(() => {
     if (!workspace) return [];
-    const membersById = new Map(
-      workspace.members.map((member) => [member.id, member]),
+    const currentChannel = visibleVoice.channel;
+    const currentCallActive =
+      currentChannel &&
+      (visibleVoice.status === "connected" ||
+        visibleVoice.status === "reconnecting");
+    const streamingUserIds = new Set(
+      visibleVoice.screenShares.map((share) => share.ownerId),
     );
-    return voiceSessions.flatMap((session) => {
-      const member = membersById.get(session.userId);
-      return member
-        ? [
-            {
-              userId: member.id,
-              displayName: member.displayName,
-              avatarUrl: member.avatarUrl,
-              channelId: session.channelId,
-              joinedAt: session.joinedAt,
-              isStreaming: session.isStreaming,
-            },
-          ]
-        : [];
+    if (visibleVoice.screenShareEnabled && signedInUserId) {
+      streamingUserIds.add(signedInUserId);
+    }
+    return selectVoiceRoomOccupants({
+      members: workspace.members,
+      heartbeatSessions: voiceSessions,
+      activeRoom: currentCallActive
+        ? {
+            channelId: currentChannel.id,
+            participants: visibleVoice.participants.map((participant) => ({
+              userId: participant.id,
+              joinedAt: participant.joinedAt,
+            })),
+            streamingUserIds,
+          }
+        : null,
     });
-  }, [voiceSessions, workspace]);
+  }, [signedInUserId, visibleVoice, voiceSessions, workspace]);
   const memberVoiceActivities = useMemo<MemberVoiceActivity[]>(() => {
     if (!workspace) return [];
-    const memberIds = new Set(workspace.members.map((member) => member.id));
     const channelNames = new Map(
       workspace.channels
         .filter((channel) => channel.kind === "voice")
         .map((channel) => [channel.id, channel.name]),
     );
-    const activityByUserId = new Map<string, MemberVoiceActivity>();
-
-    voiceSessions.forEach((session) => {
-      const channelName = channelNames.get(session.channelId);
-      if (!channelName || !memberIds.has(session.userId)) return;
-      activityByUserId.set(session.userId, {
-        userId: session.userId,
-        channelId: session.channelId,
-        channelName,
-        isStreaming: session.isStreaming,
-      });
+    return voiceOccupants.flatMap((occupant) => {
+      const channelName = channelNames.get(occupant.channelId);
+      return channelName
+        ? [
+            {
+              userId: occupant.userId,
+              channelId: occupant.channelId,
+              channelName,
+              isStreaming: occupant.isStreaming,
+            },
+          ]
+        : [];
     });
-
-    const currentChannel = visibleVoice.channel;
-    const currentCallActive =
-      currentChannel &&
-      (visibleVoice.status === "connected" ||
-        visibleVoice.status === "reconnecting") &&
-      channelNames.has(currentChannel.id);
-    if (currentCallActive) {
-      const streamingUserIds = new Set(
-        visibleVoice.screenShares.map((share) => share.ownerId),
-      );
-      if (visibleVoice.screenShareEnabled && signedInUserId) {
-        streamingUserIds.add(signedInUserId);
-      }
-      const currentUserIds = new Set([
-        ...(signedInUserId ? [signedInUserId] : []),
-        ...visibleVoice.participants.map((participant) => participant.id),
-      ]);
-      currentUserIds.forEach((userId) => {
-        if (!memberIds.has(userId)) return;
-        activityByUserId.set(userId, {
-          userId,
-          channelId: currentChannel.id,
-          channelName: currentChannel.name,
-          isStreaming: streamingUserIds.has(userId),
-        });
-      });
-    }
-
-    return [...activityByUserId.values()];
-  }, [signedInUserId, visibleVoice, voiceSessions, workspace]);
+  }, [voiceOccupants, workspace]);
 
   useEffect(() => {
     selectedChannelIdRef.current = selectedChannelId;
@@ -1893,7 +1859,7 @@ export default function App() {
         content,
         createdAt: new Date().toISOString(),
         presentation: draft.presentation ?? null,
-        attachments: optimisticAttachments(draft),
+        attachments: optimisticMessageMedia.stage(optimisticId, draft),
         reply: draft.replyTo ?? null,
         replyNotifiesAuthor:
           Boolean(draft.replyTo) &&
@@ -1966,7 +1932,7 @@ export default function App() {
                 uploadController?.signal,
               )
             : [];
-        const saved =
+        const savedWithoutPreview =
           appConfig.dataMode === "mock"
             ? {
                 ...optimistic,
@@ -1979,6 +1945,13 @@ export default function App() {
                 attachmentIds,
                 presentation: draft.presentation ?? null,
               });
+        const saved = {
+          ...savedWithoutPreview,
+          attachments: optimisticMessageMedia.transfer(
+            optimisticId,
+            savedWithoutPreview.attachments ?? [],
+          ),
+        };
         updateDirectThread(conversationId, (current) =>
           mergeMessages(
             current.filter(
@@ -2010,6 +1983,8 @@ export default function App() {
         );
         handleCommunicationEffect({ type: "message-sent" });
       } catch (caught) {
+        if (isAbortError(caught)) return;
+        optimisticMessageMedia.abandon(optimisticId, false);
         updateDirectThread(
           conversationId,
           (current) => current.filter((message) => message.id !== optimisticId),
@@ -2059,7 +2034,7 @@ export default function App() {
         content,
         createdAt: new Date().toISOString(),
         presentation: draft.presentation ?? null,
-        attachments: optimisticAttachments(draft),
+        attachments: optimisticMessageMedia.stage(optimisticId, draft),
         reply: draft.replyTo ?? null,
         replyNotifiesAuthor:
           Boolean(draft.replyTo) &&
@@ -2140,6 +2115,10 @@ export default function App() {
                 ? {
                     ...message,
                     id: `message-${crypto.randomUUID()}`,
+                    attachments: optimisticMessageMedia.transfer(
+                      optimisticId,
+                      message.attachments ?? [],
+                    ),
                     pending: false,
                   }
                 : message,
@@ -2152,13 +2131,20 @@ export default function App() {
             attachmentIds,
             presentation: draft.presentation ?? null,
           });
+          const savedWithPreview = {
+            ...saved,
+            attachments: optimisticMessageMedia.transfer(
+              optimisticId,
+              saved.attachments ?? [],
+            ),
+          };
           updateChannelThread(channelId, (current) =>
             mergeMessages(
               current.filter(
                 (message) =>
                   message.id !== optimisticId && message.id !== saved.id,
               ),
-              [saved],
+              [savedWithPreview],
             ),
           );
           setLatestMessageIds((current) => ({
@@ -2169,6 +2155,8 @@ export default function App() {
         }
         handleCommunicationEffect({ type: "message-sent" });
       } catch (caught) {
+        if (isAbortError(caught)) return;
+        optimisticMessageMedia.abandon(optimisticId, false);
         updateChannelThread(
           channelId,
           (current) => current.filter((message) => message.id !== optimisticId),
@@ -2199,6 +2187,7 @@ export default function App() {
       if (!selectedMessageChannelId) return;
       if (messageId.startsWith("pending-")) {
         uploadAbortControllersRef.current.get(messageId)?.abort();
+        optimisticMessageMedia.abandon(messageId, true);
         updateChannelThread(
           selectedMessageChannelId,
           (current) => current.filter((message) => message.id !== messageId),
@@ -2233,6 +2222,7 @@ export default function App() {
       if (!selectedConversationId) return;
       if (messageId.startsWith("pending-")) {
         uploadAbortControllersRef.current.get(messageId)?.abort();
+        optimisticMessageMedia.abandon(messageId, true);
         updateDirectThread(
           selectedConversationId,
           (current) => current.filter((message) => message.id !== messageId),
@@ -3462,9 +3452,11 @@ export default function App() {
           voiceChannelName={voice.channel?.name ?? null}
           voiceMuted={voice.muted}
           voiceDeafened={voice.deafened}
+          voiceDiagnosticsAvailable={voice.voiceDiagnosticsAvailable}
           onToggleMute={voice.toggleMute}
           onToggleDeafen={voice.toggleDeafen}
           onLeaveVoice={() => void voice.leave()}
+          onCopyVoiceDiagnostics={voice.copyVoiceDiagnostics}
           onSectionChange={setSettingsSection}
           onSaveProfile={handleSaveProfile}
           loadProfileMedia={loadProfileMedia}

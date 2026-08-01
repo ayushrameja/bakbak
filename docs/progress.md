@@ -5417,3 +5417,409 @@ build` was not rerun because this host cannot produce the required Windows
   the authoritative validation.
 - **Next:** Push the correction and rerun the Windows native capture job for PR
   #44.
+
+## 2026-07-30 — Plan friend-test core stabilization
+
+- **Completed:** Added plan 0033 to turn the six-person cross-region incident
+  into five gated work packets: LiveKit voice continuity and diagnostics,
+  authoritative/stable voice presence, Windows paste and private-image
+  reliability, measured 200% listener gain, and one integrated release gate.
+  Recorded dependencies, safe parallel-agent ownership, automated criteria,
+  installed macOS/Windows criteria, privacy boundaries, and the required agent
+  handoff fields. Linked the plan and its two open Phase 5 gates from the active
+  v1 plan.
+- **Decisions:** Kept the four failure boundaries separate during
+  implementation because voice, presence, private media, and loudness have
+  different authorities and regression risks. Approved Packets B and C for
+  parallel work, required Packet A before Packet D because both edit remote
+  playback, and required all packets to ship from one source revision only
+  after the six-person integrated matrix passes. Kept IndexedDB classified as
+  a possible amplifier of invalid poster data rather than a common root cause.
+  No runtime architecture, backend contract, schema, policy, or application
+  behavior changed in this documentation-only task.
+- **Validation:**
+  - `./node_modules/.bin/prettier --check
+docs/plans/0033-friend-test-voice-presence-and-media-stabilization.md
+docs/plans/0001-bakbak-desktop-v1.md` — passed after formatting the new
+    plan; both changed plan files use repository style.
+  - `git diff --check` — passed with no whitespace errors before the progress
+    entry.
+  - `pnpm format:check` — interrupted after 60 seconds with no output because
+    the Corepack-backed command did not start; the installed local Prettier
+    check above is the focused formatting result.
+  - `./node_modules/.bin/prettier --check
+docs/plans/0033-friend-test-voice-presence-and-media-stabilization.md
+docs/plans/0001-bakbak-desktop-v1.md docs/progress.md` and final
+    `git diff --check` — passed on the complete documentation change.
+- **Documentation updated:** Added
+  `docs/plans/0033-friend-test-voice-presence-and-media-stabilization.md`,
+  updated plan 0001's Phase 5 source of truth, and appended this canonical
+  progress entry. `docs/architecture.md` was not changed because no runtime
+  behavior or contract changed.
+- **Known limitations:** This task records the approved execution plan only.
+  No implementation, product tests, installed builds, or multi-client
+  acceptance items were completed. The canonical pnpm wrapper remains blocked
+  before execution in this environment.
+- **Next:** Assign Packet A for voice continuity first. Packets B and C may run
+  concurrently in isolated branches/worktrees, then Packet D follows the merged
+  Packet A audio lifecycle and Packet E validates one integrated source
+  revision.
+
+## 2026-07-30 — Stabilize remote voice continuity
+
+- **Completed:** Implemented plan 0033 Packet A. Upgraded `livekit-client` from
+  2.20.1 to resolved version 2.21.0, which contains the buffered resume-event
+  fix. Remote audio now reconciles the active room's current subscribed
+  publications after initial connection, signal resume, full reconnect, and
+  output-device changes. One publication reuses one hidden audio element;
+  stale/unsubscribed publications detach and late events cannot revive them.
+  Subscription failure/status, stream pause/resume, media
+  pause/stall/error/end, and autoplay rejection now feed bounded recovery and
+  an actionable continuity warning. Added a bounded in-memory diagnostic
+  recorder and explicit Copy controls in the call warning and Settings. The
+  snapshot preserves safe connection, publication, renderer, and inbound audio
+  health data across cleanup without automatic transmission.
+- **Decisions:** Limited subscription and playback recovery to two attempts so
+  a broken track cannot create an infinite resubscribe or playback loop.
+  Reconciliation reads current LiveKit room truth instead of treating events as
+  a complete ledger. Diagnostics whitelist ephemeral participant/publication
+  SIDs and numeric WebRTC health fields; they exclude identities, display
+  names, messages, tokens, device labels, audio, ICE candidates, and addresses.
+  Kept the existing 0–100% element gain path unchanged because 200% gain belongs
+  to Packet D after this lifecycle is integrated. No backend, schema, policy,
+  token grant, or presence contract changed.
+- **Validation:**
+  - `pnpm add livekit-client@2.21.0` — passed; the lockfile resolves
+    `livekit-client` 2.21.0 and `@livekit/protocol` 1.50.4.
+  - Focused Vitest run for `remote-audio`, `voice-diagnostics`,
+    `useVoiceRoom`, `VoiceRoom`, and `SettingsPage` — passed 5 files and
+    116/116 tests, including missed signal/full reconnect events, idempotent
+    attachment, stale-event rejection, bounded retry, autoplay, stream state,
+    diagnostic privacy, and copy controls.
+  - `pnpm check` — passed formatting, zero-warning lint, both strict TypeScript
+    projects, 81 Vitest files with 447/447 tests, 40/40 Node contracts,
+    synchronized version 1.4.0, production renderer build, and bundle secret
+    scan. The renderer built at 406.37 kB gzip and retained Vite's non-blocking
+    large-chunk warning.
+  - `./node_modules/.bin/tauri build --bundles app --config
+src-tauri/tauri.local.conf.json` — passed, including its `pnpm build`
+    prebuild, optimized Rust compile, and ad-hoc-signed Apple Silicon
+    `Bakbak.app`; notarization was skipped because Apple release credentials
+    are absent.
+  - Post-bundle `node scripts/check-bundle-secrets.mjs` and `codesign --verify
+--deep --strict --verbose=2
+src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
+  - Final `./node_modules/.bin/prettier --check .` and `git diff --check` —
+    passed on the complete implementation and documentation diff.
+- **Documentation updated:** Updated the LiveKit version, remote-audio
+  reconciliation/recovery contract, privacy-safe diagnostics flow, and current
+  bundle size in `docs/architecture.md`; marked Packet A's scope and automated
+  acceptance in plan 0033; split Packet A from the remaining plan 0033 Phase 5
+  implementation gate in plan 0001; and appended this canonical progress
+  entry.
+- **Known limitations:** Packet A's installed six-person, 60-minute
+  India/Canada macOS/Windows matrix remains open, including real network
+  interruption/interface handoff, game/background focus, mute/unmute, and
+  output-device switching. No Windows bundle or installed Windows behavior was
+  validated on this macOS host. The full updater build was not run because this
+  workstation lacks `TAURI_SIGNING_PRIVATE_KEY`; the applicable local macOS app
+  bundle passed. The production renderer is about 70 kB gzip larger than the
+  previously recorded baseline and should be startup-profiled before deciding
+  whether to lazy-load LiveKit.
+- **Next:** Install one shared Packet A source revision on the available macOS
+  and Windows clients and run its six-client cross-region matrix. If selective
+  silence recurs, copy diagnostics from one affected and one unaffected
+  listener before either rejoins. Packets B and C may proceed independently;
+  Packet D can start after Packet A is integrated.
+
+## 2026-07-30 — Gate Windows native PR validation
+
+- **Completed:** Added an always-running lightweight `Detect native changes`
+  job to PR CI. It compares the pull request base/head revisions and starts the
+  Windows native capture job only when `src-tauri/**` or
+  `.github/workflows/ci.yml` changes. Manual `workflow_dispatch` runs always
+  select Windows validation. The ordinary Ubuntu `validate` job remains
+  unconditional for every pull request. Added a Node contract test that
+  protects the path list, manual path, job output, dependency, and conditional.
+- **Decisions:** Kept the Windows job inside the always-triggered CI workflow
+  and gated the job with `if` instead of filtering the whole workflow. A
+  conditionally skipped job reports success, whereas a path-filtered workflow
+  can remain pending if it later becomes a required check. Detection fails
+  toward running Windows: any non-zero `git diff --quiet` result selects the
+  native job. Kept `.github/workflows/ci.yml` in scope so changes to the gate
+  validate themselves. Retained the existing manual dispatch and Windows
+  renderer/Cargo commands.
+- **Validation:**
+  - `node --test scripts/ci-workflow.test.mjs` — passed 1/1 focused workflow
+    contract.
+  - `ruby -e 'require "yaml"; YAML.load_file(".github/workflows/ci.yml")'` —
+    passed; the workflow parses as YAML.
+  - Local gate probes — unchanged native paths produced `required=false`; the
+    known Windows-native implementation commit produced `required=true`.
+  - `pnpm check` — passed formatting, zero-warning lint, both strict TypeScript
+    projects, 81 Vitest files with 447/447 tests, 41/41 Node contracts,
+    synchronized version 1.4.0, production renderer build, and bundle secret
+    scan. Vite retained the existing non-blocking large-chunk warning.
+  - Final `./node_modules/.bin/prettier --check .` and `git diff --check` —
+    passed on the complete workflow, test, and documentation diff.
+- **Documentation updated:** Documented the conditional Windows PR contract in
+  `docs/architecture.md`, refined plan 0032's implemented and automated
+  acceptance wording, added `scripts/ci-workflow.test.mjs`, and appended this
+  canonical progress entry.
+- **Known limitations:** The new workflow revision has not been pushed, so a
+  GitHub-hosted non-native PR skip has not yet been observed. Because this
+  change edits `.github/workflows/ci.yml`, its first PR run intentionally
+  selects Windows validation; later renderer/docs-only PRs will show the job as
+  skipped. Release Windows builds remain unconditional.
+- **Next:** Push the current branch and confirm one successful
+  workflow-change-triggered Windows job. On the next non-native-only PR,
+  confirm `Detect native changes` succeeds and `Windows native capture` is
+  skipped while `validate` runs normally.
+
+## 2026-07-30 — Make active voice presence authoritative
+
+- **Completed:** Implemented plan 0033 Packet B. Added one voice-occupancy
+  selector shared by the channel tree and member rail. It replaces the joined
+  room's heartbeat occupants with the current LiveKit participant IDs, retains
+  that confirmed roster through signal/full reconnect, continues using fresh
+  heartbeat sessions for other rooms, and lets an active participant override
+  a stale heartbeat in another room. Current server membership supplies profile
+  data and filters unknown identities; users deduplicate by ID. Every channel
+  now sorts occupants by NFKC-normalized lowercase display name and stable user
+  ID, including after rerender and category collapse. Presence refreshes now
+  queue one follow-up query while a query is in flight and discard the
+  superseded result.
+- **Decisions:** Kept LiveKit authoritative only for the room the local client
+  has actually joined; using it for other rooms would require subscriptions the
+  privacy/product model does not permit. Reused the existing retained
+  `useVoiceRoom` participant state during reconnect and verified it rather than
+  changing Packet A's room/audio lifecycle. Made `VoiceRoomOccupant.joinedAt`
+  nullable so an authenticated LiveKit participant without a usable timestamp
+  still appears instead of receiving a fabricated timer. Kept all heartbeat
+  reads behind the existing server-scoped RLS contract and made no schema,
+  policy, token, or IndexedDB changes.
+- **Validation:**
+  - Focused Vitest run for `voice-occupancy`, `presence-service`,
+    `ChannelSidebar`, and `useVoiceRoom` — passed 4 files and 72/72 tests.
+    Coverage includes active roster equality, heartbeat-expired participants,
+    active-room ghost removal, other-room heartbeats, membership filtering,
+    user-ID deduplication, deterministic input/profile ordering, category
+    collapse/expand, signal/full reconnect retention, and a delayed
+    superseded heartbeat response.
+  - Focused zero-warning ESLint and both strict TypeScript projects — passed.
+  - `pnpm check` — passed formatting, zero-warning lint, both strict TypeScript
+    projects, 82 Vitest files with 455/455 tests, 41/41 Node contracts,
+    synchronized version 1.4.0, production renderer build, and bundle secret
+    scan. The renderer built at 406.62 kB gzip and retained Vite's non-blocking
+    large-chunk warning.
+  - Final focused 4-file/72-test Vitest run,
+    `./node_modules/.bin/prettier --check .`, bundle secret scan, and
+    `git diff --check` — passed on the complete code and documentation diff.
+- **Documentation updated:** Updated the application-presence authority,
+  refresh serialization, identity resolution, and sorting contract in
+  `docs/architecture.md`; marked Packet B scope/automated acceptance complete
+  in plan 0033; split Packet B from the remaining Phase 5 implementation gate
+  in plan 0001; and appended this canonical progress entry.
+- **Known limitations:** Packet B's installed six-person macOS/Windows
+  acceptance remains open. Real clients still need gallery/sidebar comparison
+  during join, leave, signal/full reconnect, app backgrounding, game focus, and
+  channel switching without clearing local data. This renderer/service-only
+  change did not rerun a Tauri bundle or Windows installed build; the production
+  renderer and full automated suite passed.
+- **Next:** Run Packets A and B together during the integrated six-client
+  session. If the gallery and sidebar diverge, record their user IDs and
+  connection state before rejoining. Implement Packet C's Windows clipboard and
+  private-image recovery next; Packet D is unblocked by Packet A.
+
+## 2026-07-30 — Make pasted private images recoverable
+
+- **Completed:** Implemented plan 0033 Packet C. The shared channel/DM composer
+  now reads file-kind entries from both clipboard `items` and `files`, restores
+  a missing Windows File MIME type from its item, deduplicates equivalent
+  representations, and preserves the existing attachment limits. Private
+  poster retrieval now requires a stable authenticated account, classifies
+  offline/session/forbidden/missing/invalid/decode/transient outcomes, validates
+  non-zero PNG/JPEG/WebP blobs by decoding before cache admission, evicts
+  poisoned cache entries, and performs one fresh authenticated retrieval.
+  Attachment rendering keeps the last usable preview while loading, replaces
+  bare broken images with sanitized diagnostics and Retry, and revokes
+  renderer-owned URLs on replacement/unmount. Added an optimistic-media lease
+  across local-to-persisted message replacement and channel navigation; a
+  persisted poster load, cancellation, or account teardown releases its local
+  preview exactly once, while a failed send returns ownership to the restored
+  draft.
+- **Decisions:** Kept account identity and Storage RLS as the authorization
+  boundary and made no schema or policy change without live evidence. Cached
+  media remains keyed by account and a session change during download blocks
+  the write, preventing a cross-account race. Used bounded diagnostic codes
+  instead of raw Storage errors so signed URLs, headers, and session data never
+  enter UI or logs. Kept full originals memory-only; only validated static
+  posters enter IndexedDB.
+- **Validation:**
+  - Focused Packet C Vitest run — passed 5 files and 35/35 tests covering
+    PNG/JPEG/WebP clipboard items, text plus image, unsupported items,
+    duplicate file/item exposure, missing File MIME repair, authenticated cache
+    validation/eviction, offline/401/403/404/transient/session-change outcomes,
+    explicit retry UI, navigation handoff, and exact-once URL revocation.
+  - Focused chat/media Vitest run — passed 15 files and 69/69 tests before the
+    final retrieval edge-case additions.
+  - `pnpm check` — passed formatting, zero-warning lint, both strict TypeScript
+    projects, 84 Vitest files with 478/478 tests, 41/41 Node contracts,
+    synchronized version 1.4.0, production renderer build, and bundle secret
+    scan. Vite retained the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed the renderer rebuild, optimized Rust
+    release build, ad-hoc signing, and macOS `Bakbak.app` bundle creation.
+    Notarization was skipped because Apple notarization credentials are not
+    configured.
+  - Final focused Prettier and `git diff --check` — passed on the code and plan
+    diff before this log entry.
+- **Documentation updated:** Documented Windows clipboard normalization,
+  stable-account poster validation/cache admission, sanitized recovery
+  outcomes, and optimistic URL ownership in `docs/architecture.md`; marked
+  Packet C code/automated acceptance complete while retaining its real
+  two-account and installed checks in plan 0033; split completed Packet C from
+  pending Packet D in plan 0001; and appended this canonical progress entry.
+- **Known limitations:** The real hosted private Storage/RLS path still needs
+  two authenticated accounts: one authorized recipient and one non-member or
+  otherwise forbidden account. Windows paste and installed sender/recipient
+  cache behavior were not executable on this macOS host. The macOS app bundle
+  built but was not launched for the full paste/upload/channel/DM/navigation/
+  restart/warm-cache/cleared-cache matrix. Packet C therefore is not installed
+  acceptance complete.
+- **Next:** Implement Packet D's measured, limited 0–200% listener gain without
+  changing sender capture defaults. Then install one integrated A–D revision on
+  macOS and Windows and run Packet E's six-client cross-region matrix plus
+  Packet C's two-account private Storage probes.
+
+## 2026-07-30 — Add safe listener-local 200% voice gain
+
+- **Completed:** Implemented plan 0033 Packet D's code and automated
+  acceptance. Remote speech, named soundboard tracks, and watched-share audio
+  now enter one listener-owned Web Audio gain stage per subscribed track and
+  mix through one shared 4×-oversampled soft limiter with a 98% ceiling. The
+  participant control supports 0–200%, exposes the exact percentage and a
+  boosted-state accessibility label, preserves values above 100% through local
+  mute/unmute, and remains session-local. The shared limited output follows the
+  selected speaker. Unsupported Web Audio creation falls back to the existing
+  0–100% media-element path; diagnostics identify whether a track is using the
+  limited output. Track detach, participant departure, room replacement, and
+  renderer cleanup disconnect gain nodes and release the shared output stream,
+  monitor, and context.
+- **Decisions:** Kept browser automatic gain control, echo cancellation,
+  capture constraints, RNNoise, and sender publication unchanged because the
+  required repeatable macOS/Windows microphone measurements have not happened
+  yet. Applied boost only on each listener so one friend's preference cannot
+  alter anybody else's mix. Kept soundboard/global/base gain bounded to unity
+  and multiplied it once with participant gain before the shared limiter.
+  Reused the existing bounded playback recovery path for the output monitor,
+  while treating graph-construction failure as a safe direct-audio fallback
+  rather than an autoplay outage.
+- **Validation:**
+  - Focused Packet D Vitest run — passed 4 files and 92/92 tests covering exact
+    0%, 50%, 100%, 150%, and 200% gain; limiter bounds; independent per-track
+    stages with one shared limiter; output selection and teardown; safe
+    unsupported-runtime fallback; mute restoration above unity; idempotent late
+    attachment; soundboard/share multiplication; autoplay recovery; and the
+    participant control.
+  - Voice and soundboard Vitest run — passed 34 files and 219/219 tests.
+  - Focused zero-warning ESLint — passed for every changed voice module and
+    test.
+  - `pnpm check` — passed formatting, zero-warning lint, both strict TypeScript
+    projects, 85 Vitest files with 485/485 tests, 41/41 Node contracts,
+    synchronized version 1.4.0, production renderer build, and bundle secret
+    scan. Vite retained the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed the renderer rebuild, optimized Rust
+    release build, ad-hoc signing, and macOS `Bakbak.app` bundle creation.
+    Notarization was skipped because Apple notarization credentials are not
+    configured.
+- **Documentation updated:** Documented the listener-owned gain graph, shared
+  limiter, selected-output monitor, fallback diagnostics, lifecycle, and
+  unchanged sender pipeline in `docs/architecture.md`; marked Packet D's
+  implementable scope and automated acceptance complete while retaining its
+  measurement and installed checks in plan 0033; split completed Packet D code
+  from its pending installed measurements in plan 0001; and appended this
+  canonical progress entry.
+- **Known limitations:** No repeatable before/after microphone measurement was
+  performed on this host or Windows, so Packet D deliberately makes no claim
+  that RNNoise or browser capture processing causes the reported low sender
+  level. The built app was not launched with multiple installed clients.
+  Headphone and laptop-speaker checks at 0%, 50%, 100%, 150%, and 200%,
+  clipping/echo observations, and the quiet-versus-normal speaker comparison
+  remain open. Web Audio graph failure intentionally limits the compatibility
+  fallback to the HTML media element's 100% ceiling. The macOS bundle was not
+  notarized.
+- **Next:** Measure representative quiet, normal, and noisy microphones before
+  and after browser processing/RNNoise on macOS and Windows, then run Packet D's
+  installed 0–200% headphone and laptop-speaker matrix. Use the same integrated
+  A–D revision for Packet C's two-account Storage probes and Packet E's
+  six-person, 60-minute India/Canada stabilization gate.
+
+## 2026-08-01 — Prepare exact-revision stabilization candidates
+
+- **Completed:** Implemented Packet E's candidate-production gate without
+  claiming its human acceptance. Added a read-only GitHub Actions workflow that
+  runs only when the exact `stabilization:candidate` label is added to a pull
+  request or an operator manually supplies a full 40-character commit SHA. It
+  verifies and checks out that revision, runs the integrated renderer and
+  locked Rust gates, then builds one Apple Silicon DMG and one Windows x64 NSIS
+  installer with live public configuration and updater publication disabled.
+  Both private seven-day artifacts share the same short revision in their name
+  and include a bounded manifest with app version, full revision, platform, and
+  workflow run. Candidate/release builds now embed their public source revision
+  in copied voice diagnostics. Compiled-secret discovery now includes generic
+  and target-specific Tauri bundle directories.
+- **Decisions:** Kept candidate production separate from the stable release
+  workflow because the existing release path publishes immediately after its
+  two-platform build. Candidate automation has `contents: read`, receives no
+  updater key, creates no GitHub Release, and cannot announce or update clients.
+  A PR label event avoids adding macOS/Windows build spinners to ordinary pull
+  requests. Any source change invalidates both artifacts and requires the label
+  to be removed and re-added. The release workflow also injects its exact
+  `github.sha`, while local builds normalize missing or invalid revisions to
+  `local` instead of presenting false provenance.
+- **Validation:**
+  - `node --test scripts/*.test.mjs` — passed 45/45 contracts, including the
+    label/manual trigger, exact-SHA checkout, two supported installer targets,
+    non-publishing permissions, seven-day artifacts, candidate manifest
+    validation, target-specific secret discovery, and existing CI/release
+    behavior.
+  - Focused Vitest with a 40-character `VITE_BUILD_REVISION` — passed 2 files
+    and 4/4 tests for revision normalization and diagnostic provenance.
+  - Focused zero-warning ESLint, Prettier, workflow YAML parsing, and
+    `git diff --check` — passed.
+  - `pnpm check` — passed formatting, zero-warning lint, both strict TypeScript
+    projects, 86 Vitest files with 486/486 tests, 45/45 Node contracts,
+    synchronized version 1.4.0, production renderer build, and compiled secret
+    scan. Vite retained the existing non-blocking large-chunk warning.
+  - `cargo check --locked --manifest-path src-tauri/Cargo.toml` — passed.
+  - `cargo test --locked --manifest-path src-tauri/Cargo.toml` — passed 17/17
+    native tests with no failures in the binary or doc-test targets.
+  - Exact local Apple candidate command using `--target
+aarch64-apple-darwin --bundles app,dmg` plus
+    `src-tauri/tauri.local.conf.json` — passed the renderer rebuild, optimized
+    native compile, ad-hoc-signed app bundle, and DMG generation. Post-build
+    compiled secret scanning included the target-specific bundle; strict
+    `codesign` verification and `hdiutil verify` both passed.
+- **Documentation updated:** Documented candidate creation and invalidation in
+  `README.md`; added its non-publishing release boundary, public build revision,
+  diagnostics provenance, artifact lifecycle, and validation contract to
+  `docs/architecture.md`; marked Packet E integration, automation, and local
+  automated gates complete while retaining hosted/installed acceptance in plan
+  0033; recorded candidate automation in plan 0001; and appended this canonical
+  progress entry.
+- **Known limitations:** The new workflow has not been pushed or triggered, so
+  no GitHub-hosted Apple Silicon/Windows artifact pair exists yet. Windows x64
+  cannot be built or installed on this macOS host. The locally generated DMG is
+  a workflow-command validation artifact from a dirty working tree with
+  `buildRevision: local`; it is not the exact-revision friend-test candidate
+  and must not be distributed as one. The app/DMG remain ad-hoc signed and
+  unnotarized, while the future Windows candidate is unsigned. Packet C's real
+  two-account Storage probe, Packet D's microphone/input measurements, every
+  installed A–D check, and Packet E's six-person 60-minute India/Canada session
+  remain open. No stable release was created or published.
+- **Next:** Commit and push this Packet E infrastructure, freeze the pull
+  request head, add `stabilization:candidate`, and download only the macOS and
+  Windows artifacts whose manifests share that new full revision. Install
+  those two candidates and run the complete six-person matrix. Append sanitized
+  observations before either allowing the merge/release or returning a failure
+  to its owning packet.

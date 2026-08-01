@@ -161,8 +161,9 @@ explicit click and a permitted `i.ytimg.com` thumbnail.
 
 Voice rooms retain locally persisted microphone/speaker/camera selection,
 opt-in 720p camera calls, sidebar occupancy with elapsed timers, mute/deafen,
-per-participant volume, remote-track audio/video rendering, autoplay recovery,
-reconnect/error states, and a unified participant/screen-share media gallery.
+listener-local 0–200% per-participant volume, remote-track audio/video
+rendering, autoplay recovery, reconnect/error states, and a unified
+participant/screen-share media gallery.
 Microphone capture keeps WebRTC noise suppression and automatic gain control
 and defaults to a second device-local RNNoise stage in a 48 kHz AudioWorklet
 before LiveKit publication.
@@ -196,10 +197,29 @@ message, and user-ID copy actions, omits self messaging, and keeps existing DMs
 available offline while disabling offline creation. Remote participants in the
 active call additionally expose a local mute toggle. Participant volume zero
 is applied across speech, soundboard, and share audio; unmute restores the last
-non-zero level or 100%. One remote-audio renderer owns every hidden speech,
-soundboard, and watched-share element with owner/source/base-gain metadata and
-writes gain to the actual HTML audio element. Listener-owned session state,
-not LiveKit's track volume, drives both current and future attachments.
+non-zero level—including a boosted level—or 100%. One remote-audio renderer
+owns every hidden speech, soundboard, and watched-share element with
+owner/source/base-gain metadata. Each subscribed element feeds one
+listener-owned Web Audio gain stage; all stages mix through one
+4×-oversampled soft limiter whose linear region ends at 90% and whose output
+ceiling is 98%. Participant gain ranges from 0 to 2, while
+source/global/base gains remain bounded to unity, so speech uses participant
+gain once and soundboard/share retain their existing multiplication without
+receiving the boost twice. A single hidden MediaStream output monitor routes
+the limited mix through the selected speaker. Unsupported graph creation falls
+back to the existing 0–100% media-element path and is visible as
+`limitedOutput: false` in the privacy-safe voice diagnostics.
+The renderer reconciles LiveKit's current subscribed publications after
+initial connection, signal resume, full reconnect, and output changes instead
+of depending on a future subscription event. Publication and gain-stage
+ownership are idempotent, and output autoplay plus paused, stalled, failed, or
+ended source playback use the same bounded recovery path. Detach, departure,
+room replacement, and hook teardown disconnect every source/gain node, stop
+the routed stream, remove its monitor, and close the context. Listener-owned
+session state, not LiveKit's track volume or backend metadata, drives both
+current and future attachments. Sender capture constraints, browser AGC, echo
+cancellation, and RNNoise defaults are unchanged pending repeatable installed
+macOS/Windows input measurements.
 Selecting a voice channel immediately joins it; selecting another voice channel switches
 the active call without a pre-join or initial connection surface. An active call
 adds a sidebar control block with room, backend latency, normalized local
@@ -257,9 +277,15 @@ that account clears it. Threads retain the newest 200 confirmed messages.
 Profile media uses bucket/path revisions and a 256 MiB per-account
 least-recently-used ceiling. Schema v2 adds a separate 256 MiB/account LRU for
 authenticated message and sticker posters. Cached message metadata strips
-transient object URLs; full video, original animated media, GIPHY URLs, and
-GIPHY assets are never persisted. Data & storage clearing removes both media
-caches without touching cloud content.
+transient and optimistic object URLs; full video, original animated media,
+GIPHY URLs, and GIPHY assets are never persisted. A message poster is admitted
+to that cache only after a stable authenticated account is confirmed and its
+blob has non-zero bytes, a PNG/JPEG/WebP MIME type, and a successful image
+decode. An invalid cached poster is evicted before one authenticated fresh
+download; an account change during retrieval prevents the result from being
+cached. Offline, unauthenticated, forbidden, missing-object, invalid-blob,
+decode, and transient failures remain distinct sanitized outcomes. Data &
+storage clearing removes both media caches without touching cloud content.
 
 Private `message-media` and `message-stickers` Storage buckets back rich
 messages. The authenticated `message-media-manage` Edge Function reserves
@@ -827,7 +853,8 @@ authority.
 
 ### LiveKit
 
-LiveKit transports a named `bakbak-microphone` speech track, opt-in camera
+The renderer uses `livekit-client` 2.21.0, including its buffered resume-event
+fix. LiveKit transports a named `bakbak-microphone` speech track, opt-in camera
 tracks, at most one named soundboard audio track, desktop screen companions,
 participant/speaking state, and small soundboard control messages.
 Before publication, the renderer may replace the speech track's source with
@@ -843,7 +870,8 @@ video-only screen publication. Screen-companion tokens use generated identities
 plus owner metadata and allow only screen video/audio publication into the exact
 voice room, without subscriptions or data. Each client identifies the
 soundboard track by its exact `bakbak-soundboard` name and applies global
-soundboard volume multiplied by the existing participant volume.
+soundboard volume multiplied once by the listener-local participant volume
+before the shared output limiter.
 
 ## Data model
 
@@ -1143,7 +1171,11 @@ An invite-management UI is deferred until post-v1.
    non-AAC optional audio, excessive duration, or excessive resolution. On
    send, TUS uploads each reserved original/poster with progress and retry;
    only after every object succeeds does the v2 RPC atomically publish the
-   message. A failed attempt retains the complete draft for retry.
+   message. The composer reads clipboard files from both the `files` and
+   file-kind `items` representations used by Windows, restores a missing File
+   MIME type from the item when available, deduplicates equivalent
+   representations, and then applies the same four-file/type/size/decode limits
+   as the file picker. A failed attempt retains the complete draft for retry.
 4. Plain structured text may still call the compatible legacy RPC. Replies,
    attachments, Bakbak stickers, and GIPHY presentations call the v2 RPC.
    GIPHY selections are staged in the composer, where the user may add text
@@ -1154,7 +1186,13 @@ An invite-management UI is deferred until post-v1.
    The receiver hydrates the affected message by ID before cache replacement.
 6. Clients reconcile cached, query, realtime, and optimistic events by stable
    ID and deterministic timestamp/ID order. Pending optimistic rows never
-   persist.
+   persist. A sender's staged object URL is leased across the optimistic-to-
+   persisted message-ID replacement and channel navigation. The persisted
+   poster loads behind that preview; only its successful image load, explicit
+   optimistic cancellation, or account teardown revokes the preview, exactly
+   once. Renderer-owned downloaded URLs revoke on replacement or unmount.
+   Failed poster retrieval or decoding renders a retry control with a bounded
+   diagnostic code rather than a broken image or raw Storage/session detail.
 7. A committed message from another user plays a short local notification tone.
    `get_channel_activity` compares the latest message with the account's private
    marker so unread emphasis follows the signed-in user across clients.
@@ -1203,8 +1241,20 @@ An invite-management UI is deferred until post-v1.
    voice-session, and LIVE state for every server room they have not joined.
 5. Postgres Realtime refreshes the cached rows on every client. Clients expire
    rows older than 55 seconds and re-evaluate every five seconds, so a crashed
-   client disappears without a graceful leave.
-6. Presence is a UI hint only. The actual LiveKit screen publication is
+   client disappears without a graceful leave. Refresh requests are serialized;
+   an event received during an in-flight query queues another query and prevents
+   the superseded response from being emitted.
+6. One voice-occupancy selector resolves both the channel tree and member rail
+   through current server membership. For the room this client has joined,
+   LiveKit's current participant roster replaces heartbeat occupancy entirely;
+   the retained roster remains visible through signal or transport reconnect
+   and clears on terminal disconnect. Fresh heartbeat sessions remain the
+   authority for every other room. Active participants override a stale
+   heartbeat in another room, unknown identities are dropped, users are
+   deduplicated by ID, and each room sorts by NFKC-normalized lowercase display
+   name followed by stable user ID. The channel component applies the same
+   comparator defensively across rerenders and category collapse.
+7. Presence is a UI hint only. The actual LiveKit screen publication is
    authoritative for Watch; database RLS and Edge Function checks remain
    authoritative for access.
 
@@ -1264,19 +1314,37 @@ An invite-management UI is deferred until post-v1.
    hidden remote-audio element. Unsupported runtimes keep the selector
    read-only and use system output. A genuinely missing remembered device
    falls back to default after specific devices become visible.
-10. Unsubscription, leaving, disconnecting, and unmounting detach remote audio
-    and video, invalidate pending camera/join work, stop active local sounds,
-    pause and detach the selected-speaker monitor, stop its MediaStream tracks,
-    close its Web Audio context, disconnect the room, and release local tracks.
-11. If direct WebRTC fails and relay succeeds, later joins prefer relay for ten
+10. Initial connection, signal resume, full reconnect, and output changes
+    reconcile every currently subscribed remote audio publication against the
+    active room. The renderer reuses the publication's existing audio element,
+    removes stale elements, rejects late events for removed publications, and
+    responds to subscription status, stream pause/resume, media
+    pause/stall/error/end, and autoplay rejection. Subscription and playback
+    recovery stop after two attempts and expose an actionable warning instead
+    of looping.
+11. Unsubscription, participant departure, leaving, disconnecting, and
+    unmounting detach remote audio and video, invalidate pending camera/join
+    work, stop active local sounds, pause and detach the selected-speaker
+    monitor, stop its MediaStream tracks, close its Web Audio context,
+    disconnect the room, and release local tracks.
+12. If direct WebRTC fails and relay succeeds, later joins prefer relay for ten
     minutes using only a non-sensitive LiveKit-host-scoped expiry. Relay-first
     failure retries direct; direct success or expiry clears the hint. A total
     failure is reported as a TURN/TLS or local network-policy problem rather
     than token/authentication failure.
-12. Development diagnostics record preparation, authorization, connection,
+13. Development diagnostics record preparation, authorization, connection,
     microphone capture/processing/publication, output routing, soundboard, and
-    total timing without identifiers or tokens.
-13. `CommunicationEffectEvent` is emitted only after lifecycle truth: self join
+    total timing without identifiers or tokens. The Settings voice diagnostic
+    additionally keeps the most recent bounded snapshot in memory until the
+    user explicitly copies it. It contains only ephemeral participant and
+    publication SIDs, connection/signal/subscription/stream/playback state, and
+    whitelisted inbound audio packet, byte, loss, jitter, and round-trip
+    metrics. Candidate/release builds also include the public app version and
+    exact source revision so affected and unaffected listeners can prove they
+    ran the same candidate. It excludes names, message content, tokens, device
+    labels, audio, ICE candidates, and IP addresses, and is never transmitted
+    automatically.
+14. `CommunicationEffectEvent` is emitted only after lifecycle truth: self join
     follows the complete connected gate; normal self leave requires an explicit
     user leave; switches emit only the destination join; sign-out, teardown,
     canceled joins, and unexpected disconnects never imitate a normal leave.
@@ -1451,10 +1519,12 @@ An invite-management UI is deferred until post-v1.
    they can play or publish activity. A reliable `soundboard:stop-all` message
    clears that participant immediately; disconnect, leave, and track cleanup do
    the same.
-9. Remote named tracks use `soundboard volume × participant volume`. Normal
-   microphone speech keeps only participant volume. Deafen suppresses remote
-   audio and the sender's local monitor branch without muting outbound
-   soundboard audio.
+9. Remote named tracks use `soundboard volume × participant volume`; watched
+   share audio uses participant volume once, and normal microphone speech keeps
+   only participant volume. The listener-local gain accepts 0–200%, then all
+   remote sources share the final bounded limiter and selected-output monitor.
+   Deafen zeros every remote gain stage and the sender's local monitor branch
+   without muting outbound soundboard audio.
 
 Unknown message types, stale duplicates, and unknown sound IDs are ignored
 safely. Built-in suppression plus RNNoise target keyboard and steady background
@@ -1518,22 +1588,35 @@ model; Jitsi's Apache/MIT notice and Xiph.Org's BSD 3-Clause notice ship under
 1. Pull requests run formatting, lint, strict TypeScript, renderer/unit tests,
    release-script tests, version synchronization, production build, secret
    scan, and a locked Rust check.
-2. A merge to `main` resolves the next stable SemVer from the newest `v*` tag.
+2. A pull request receives the `stabilization:candidate` label only when its
+   head is ready for installed acceptance. The label-triggered candidate
+   workflow validates and checks out that exact 40-character revision, runs
+   the complete renderer and locked Rust check/test gates, then builds an
+   Apple Silicon DMG and Windows x64 NSIS installer with the live public
+   renderer configuration. A manual dispatch can build another exact revision
+   after the workflow exists on `main`.
+3. Candidate updater artifacts are disabled. The workflow scans both generic
+   and target-specific compiled bundle directories, then uploads private
+   seven-day Actions artifacts named with the same short revision. Each
+   contains an installer plus bounded provenance containing the app version,
+   full revision, platform, and workflow run. It has read-only repository
+   permissions and cannot create or publish a GitHub Release.
+4. A merge to `main` resolves the next stable SemVer from the newest `v*` tag.
    Patch is the default; `release:minor` and `release:major` labels override it,
    while `release:skip` suppresses documentation-only releases. The resolver
    regression fixes the `v0.16.0 + release:major` boundary at `v1.0.0`; source
    package versions are not changed manually before that isolated release
    checkout.
-3. The release checkout synchronizes the calculated version across
+5. The release checkout synchronizes the calculated version across
    `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`.
-4. Tauri Action builds macOS `aarch64` and Windows `x86_64` installers with the
+6. Tauri Action builds macOS `aarch64` and Windows `x86_64` installers with the
    production renderer configuration. Update artifacts are signed with the
    separate Tauri updater key. Intel macOS builds ended at v0.4.0.
-5. The workflow holds the GitHub Release as a draft until it verifies exactly
+7. The workflow holds the GitHub Release as a draft until it verifies exactly
    one Apple Silicon DMG, one NSIS setup executable, no Intel macOS artifacts,
    and one signed `latest.json` entry for each supported target. Unexpected or
    duplicate targets fail manifest verification.
-6. After publication, the workflow synchronizes the released version across
+8. After publication, the workflow synchronizes the released version across
    `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`, then
    updates the Bakbak package entry in `src-tauri/Cargo.lock`. It pushes an
    attempt-scoped branch, then a tested Node boundary discovers or creates its
@@ -1545,16 +1628,16 @@ model; Jitsi's Apache/MIT notice and Xiph.Org's BSD 3-Clause notice ship under
    only after GitHub confirms the merge. Exhausted retries leave the branch
    intact for operator recovery instead of risking a duplicate PR or merging a
    changed head.
-7. A separate announcement job always reads the verified published release
+9. A separate announcement job always reads the verified published release
    from GitHub's API and posts it to the protected System endpoint with three
    retries. Failures do not unpublish the desktop release, and the release ID
    makes reruns idempotent. A manual workflow independently streams every
    stable release oldest-first in historical mode and advances current
    members' release read baseline.
-8. Desktop clients check the public GitHub Releases `latest.json` shortly after
-   startup. An available update is shown globally; installation and restart
-   require an explicit user action so an active conversation is not interrupted.
-   Windows uses Tauri's passive installer mode.
+10. Desktop clients check the public GitHub Releases `latest.json` shortly after
+    startup. An available update is shown globally; installation and restart
+    require an explicit user action so an active conversation is not interrupted.
+    Windows uses Tauri's passive installer mode.
 
 Git tags and published Releases are the release source of truth. The tracked
 `0.2.0` version is the first-release floor. Release builds inject the resolved
@@ -1744,6 +1827,7 @@ credential in a `VITE_*` variable.
 | `VITE_LIVEKIT_URL`       | Public LiveKit WebSocket URL                                                   | No      |
 | `VITE_BACKEND_REGION`    | Public label for the deployed Supabase backend, currently Canada Central       | No      |
 | `VITE_GIPHY_API_KEY`     | Public GIPHY beta API key for direct GIF/sticker search and analytics          | No      |
+| `VITE_BUILD_REVISION`    | Exact public source commit embedded by candidate/release automation            | No      |
 
 ### Edge Function managed values
 
@@ -1761,8 +1845,9 @@ credential in a `VITE_*` variable.
 ignored local `.env` files; Edge Function secrets use Supabase's managed secret
 store.
 
-Release workflows read the renderer-visible values from GitHub Actions
-repository variables and force `VITE_DATA_MODE=live`. They read
+Candidate and release workflows read the service-facing renderer values from
+GitHub Actions repository variables, force `VITE_DATA_MODE=live`, and inject
+the exact public `VITE_BUILD_REVISION` selected for that build. Releases read
 `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` from
 GitHub Actions secrets. System announcements additionally require the
 `BAKBAK_SYSTEM_EVENTS_SECRET` Actions secret matching the Supabase function
@@ -1802,7 +1887,20 @@ and multi-zoom dark/light connector alignment observation.
 Screen-sharing work additionally runs the Deno token suite, focused Rust tests,
 `cargo check --locked`, macOS and Windows native builds, compiled secret scans,
 and the bidirectional installed-client matrix in plan 0003. Artifact sizes are
-recorded before and after the native LiveKit dependency is shipped.
+recorded before and after the native LiveKit dependency is shipped. Pull
+requests always run the Ubuntu validation job. A lightweight changed-file job
+runs in parallel and starts the Windows native Cargo check/test job only when
+`src-tauri/**` or `.github/workflows/ci.yml` changes; manual workflow dispatch
+always starts it. The Windows job remains conditionally present inside the
+always-triggered workflow so a skipped job completes successfully instead of
+leaving a future required workflow pending.
+
+The stabilization-candidate workflow runs only when its exact label is added
+to a pull request or when an operator manually supplies a full commit SHA. It
+checks out and verifies that revision, then builds both supported installers
+without updater signing or release publication. The uploaded installer names
+and manifests carry one shared revision; any later source change invalidates
+both artifacts and requires a fresh run.
 
 GitHub release validation additionally requires successful Apple Silicon macOS
 and Windows x64 native builds, updater signatures for both targets, exactly one
@@ -1936,7 +2034,7 @@ that it has passed.
   must complete the installed-client isolation matrix. Cross-platform
   two-account verification and before/after installer-size measurements remain
   required by plans 0003 and 0010.
-- The current production renderer is roughly 336 kB compressed; LiveKit and
+- The current production renderer is roughly 406 kB compressed; LiveKit and
   Supabase can be lazy-loaded in a later performance pass if startup profiling
   shows a meaningful benefit.
 - The macOS app uses an ad-hoc hardened-runtime signature with audio-input and

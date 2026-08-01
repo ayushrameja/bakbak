@@ -119,6 +119,8 @@ export interface MessageAttachment {
   posterPath: string;
   objectUrl?: string | null;
   posterUrl?: string | null;
+  optimisticPreviewKey?: string;
+  optimisticPreviewUrl?: string;
   uploadProgress?: number;
 }
 
@@ -261,6 +263,6 @@ export interface VoiceRoomOccupant {
   displayName: string;
   avatarUrl: string | null;
   channelId: string;
-  joinedAt: string;
+  joinedAt: string | null;
   isStreaming: boolean;
 }

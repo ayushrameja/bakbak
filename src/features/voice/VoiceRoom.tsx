@@ -86,6 +86,9 @@ export function VoiceRoom({
   const [focusedTarget, setFocusedTarget] = useState<MediaTarget | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenError, setFullscreenError] = useState<string | null>(null);
+  const [diagnosticsCopyState, setDiagnosticsCopyState] = useState<
+    "idle" | "copied" | "failed"
+  >("idle");
   const [fullscreenControlsVisible, setFullscreenControlsVisible] =
     useState(true);
   const fullscreenRef = useRef(false);
@@ -100,6 +103,10 @@ export function VoiceRoom({
   const macosSimpleFullscreen = isMacosVoiceFullscreen(
     typeof navigator === "undefined" ? "" : navigator.userAgent,
   );
+
+  useEffect(() => {
+    setDiagnosticsCopyState("idle");
+  }, [voice.voiceContinuityWarning]);
 
   const applyFullscreenState = useCallback((next: boolean) => {
     if (next) {
@@ -453,6 +460,28 @@ export function VoiceRoom({
               ) : null}
             </div>
           ) : null}
+          {voice.voiceContinuityWarning ? (
+            <div className="voice-device-error" role="alert">
+              <CircleAlert size={16} />
+              <span>{voice.voiceContinuityWarning}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  void voice
+                    .copyVoiceDiagnostics()
+                    .then((copied) =>
+                      setDiagnosticsCopyState(copied ? "copied" : "failed"),
+                    );
+                }}
+              >
+                {diagnosticsCopyState === "copied"
+                  ? "Copied"
+                  : diagnosticsCopyState === "failed"
+                    ? "Copy failed"
+                    : "Copy diagnostics"}
+              </button>
+            </div>
+          ) : null}
           {voice.inputDeviceError ? (
             <div className="voice-device-error" role="alert">
               <CircleAlert size={16} />
@@ -792,9 +821,11 @@ function ParticipantCard({
           <input
             type="range"
             min="0"
-            max="1"
+            max="2"
             step="0.05"
             value={participant.volume}
+            aria-valuetext={`${Math.round(participant.volume * 100)}%${participant.volume > 1 ? " boosted" : ""}`}
+            title="Levels above 100% boost quiet participants and may also amplify background noise."
             onInput={(event) =>
               voice.setParticipantVolume(
                 participant.id,
@@ -812,10 +843,11 @@ function ParticipantCard({
               event.preventDefault();
               voice.setParticipantVolume(
                 participant.id,
-                Math.max(0, Math.min(1, participant.volume + direction * 0.05)),
+                Math.max(0, Math.min(2, participant.volume + direction * 0.05)),
               );
             }}
           />
+          <output>{Math.round(participant.volume * 100)}%</output>
         </label>
       ) : null}
     </article>

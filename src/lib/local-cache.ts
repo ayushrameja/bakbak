@@ -199,6 +199,8 @@ export function normalizeMessagesForCache<T extends ConversationMessage>(
         const cached = { ...attachment };
         delete cached.objectUrl;
         delete cached.posterUrl;
+        delete cached.optimisticPreviewKey;
+        delete cached.optimisticPreviewUrl;
         return cached;
       }),
     }));
@@ -421,6 +423,17 @@ export class BakbakCache {
       await waitForTransaction(transaction);
     }, undefined);
     await this.pruneMessageMedia(userId);
+  }
+
+  async evictMessageMedia(
+    userId: string,
+    bucket: CachedMessageMedia["bucket"],
+    path: string | null,
+  ): Promise<void> {
+    if (!path) return;
+    await this.deleteKeys(MESSAGE_MEDIA_STORE, [
+      messageMediaKey(userId, bucket, path),
+    ]);
   }
 
   async retainProfileMedia(

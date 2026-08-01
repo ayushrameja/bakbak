@@ -115,6 +115,8 @@ function createVoice(
     muted: false,
     deafened: false,
     audioPlaybackBlocked: false,
+    voiceContinuityWarning: null,
+    voiceDiagnosticsAvailable: false,
     error: null,
     inputDeviceError: null,
     microphoneProcessingError: null,
@@ -161,6 +163,7 @@ function createVoice(
     toggleMute: vi.fn().mockResolvedValue(undefined),
     toggleDeafen: vi.fn().mockResolvedValue(undefined),
     resumeAudio: vi.fn().mockResolvedValue(undefined),
+    copyVoiceDiagnostics: vi.fn().mockResolvedValue(true),
     setParticipantVolume: vi.fn(),
     toggleParticipantMute: vi.fn(),
     refreshDevices: vi.fn().mockResolvedValue(undefined),
@@ -554,10 +557,12 @@ describe("VoiceRoom", () => {
       />,
     );
     const slider = screen.getByRole("slider", { name: "Mira volume" });
+    expect(slider).toHaveAttribute("max", "2");
+    expect(screen.getByText("100%")).toBeVisible();
 
-    fireEvent.input(slider, { target: { value: "0.5" } });
-    expect(voice.setParticipantVolume).toHaveBeenLastCalledWith("user-2", 0.5);
-    participant.volume = 0.5;
+    fireEvent.input(slider, { target: { value: "1.5" } });
+    expect(voice.setParticipantVolume).toHaveBeenLastCalledWith("user-2", 1.5);
+    participant.volume = 1.5;
     rerender(
       <VoiceRoom
         channel={channel}
@@ -573,7 +578,8 @@ describe("VoiceRoom", () => {
     updatedSlider.focus();
     await userEvent.keyboard("{ArrowLeft}");
 
-    expect(voice.setParticipantVolume).toHaveBeenLastCalledWith("user-2", 0.45);
+    expect(voice.setParticipantVolume).toHaveBeenLastCalledWith("user-2", 1.45);
+    expect(screen.getByText("150%")).toBeVisible();
     expect(container.querySelector(".voice-media-gallery")).toBeVisible();
     expect(
       container.querySelector(".voice-participant-stage"),
@@ -692,6 +698,31 @@ describe("VoiceRoom", () => {
     expect(screen.getByText("Room audio needs one click")).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "Enable audio" }));
     expect(resumeAudio).toHaveBeenCalledOnce();
+  });
+
+  it("surfaces a continuity warning and copies the sanitized snapshot", async () => {
+    const copyVoiceDiagnostics = vi.fn().mockResolvedValue(true);
+    const voice = createVoice({
+      voiceContinuityWarning:
+        "Bakbak could not restore one incoming voice track.",
+      voiceDiagnosticsAvailable: true,
+      copyVoiceDiagnostics,
+    });
+    render(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={voice}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Copy diagnostics" }),
+    );
+
+    expect(copyVoiceDiagnostics).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
   });
 
   it("lets the user review or dismiss a temporary output warning", async () => {

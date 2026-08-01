@@ -31,6 +31,7 @@ import { VoiceElapsedTime } from "../voice/VoiceElapsedTime";
 import { SidebarVoicePanel } from "../voice/SidebarVoicePanel";
 import { SidebarUserDock } from "../voice/SidebarUserDock";
 import type { useVoiceRoom } from "../voice/useVoiceRoom";
+import { compareVoiceRoomOccupants } from "../voice/voice-occupancy";
 import {
   loadCollapsedChannelGroups,
   saveCollapsedChannelGroups,
@@ -234,15 +235,19 @@ export function ChannelSidebar({
       );
     }
 
-    const occupants = voiceOccupants.filter(
-      (occupant) => occupant.channelId === channel.id,
-    );
+    const occupants = voiceOccupants
+      .filter((occupant) => occupant.channelId === channel.id)
+      .sort(compareVoiceRoomOccupants);
     const roomJoinedAt = occupants.reduce<string | null>(
-      (earliest, occupant) =>
-        earliest === null ||
-        Date.parse(occupant.joinedAt) < Date.parse(earliest)
+      (earliest, occupant) => {
+        if (!occupant.joinedAt || Number.isNaN(Date.parse(occupant.joinedAt))) {
+          return earliest;
+        }
+        return earliest === null ||
+          Date.parse(occupant.joinedAt) < Date.parse(earliest)
           ? occupant.joinedAt
-          : earliest,
+          : earliest;
+      },
       null,
     );
     const speakingUserIds =

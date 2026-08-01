@@ -274,6 +274,12 @@ without changing uploaded profile media or persisting provider files/URLs.
 Plan 0032 replaces Windows Entire screen's Tauri-host exclusion with a proven,
 live-tracked WebView2 browser-process exclusion and fails audio closed while
 preserving video whenever that proof is unavailable or changes.
+Plan 0033 turns the six-person cross-region friend-test failures into phased
+stabilization gates for LiveKit voice continuity, authoritative and
+deterministically ordered voice presence, Windows clipboard/private-image
+reliability, and listener-owned 200% speech gain. Its work packets remain
+separate during implementation and ship together only after the integrated
+macOS/Windows acceptance run passes.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -390,6 +396,21 @@ preserving video whenever that proof is unavailable or changes.
       acceptance matrix.
 - [ ] Complete plan 0032's installed three-client Windows Entire screen and
       Application audio-isolation matrix.
+- [x] Implement plan 0033 Packet A's voice continuity reconciliation, bounded
+      recovery, and privacy-safe copyable diagnostics.
+- [x] Implement plan 0033 Packet B's authoritative active-room presence,
+      deterministic occupant ordering, and queued heartbeat refresh.
+- [x] Implement plan 0033 Packet C's Windows clipboard normalization,
+      validated authenticated poster recovery, explicit retry surface, and
+      optimistic-preview lifecycle.
+- [x] Implement plan 0033 Packet D's listener-local, limited 200% gain and
+      automated lifecycle coverage without changing sender capture defaults.
+- [x] Add plan 0033 Packet E's exact-revision, non-publishing macOS/Windows
+      stabilization-candidate workflow and build provenance.
+- [ ] Complete Packet D's repeatable macOS/Windows microphone measurements and
+      installed 0–200% listening checks.
+- [ ] Complete plan 0033's six-person, 60-minute macOS/Windows cross-region
+      stabilization matrix before the next friend release.
 - [x] Add the Bakbak Signature preset, fixed destination rail, and
       accessible persisted side-panel resizing under plan 0014.
 - [x] Reset every v5-or-older installation once to Classic System + Flat +

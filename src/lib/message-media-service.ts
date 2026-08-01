@@ -5,6 +5,32 @@ import { getSupabaseClient } from "./supabase";
 import type { MessageScope, StagedMessageAttachment } from "./types";
 
 const mediaCache = new BakbakCache();
+const POSTER_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+export type MessageMediaFailure =
+  | "offline"
+  | "unauthenticated"
+  | "forbidden"
+  | "missing"
+  | "invalid"
+  | "decode"
+  | "transient";
+
+export class MessageMediaRetrievalError extends Error {
+  readonly name = "MessageMediaRetrievalError";
+
+  constructor(
+    readonly failure: MessageMediaFailure,
+    readonly diagnostic: string,
+    options?: ErrorOptions,
+  ) {
+    super(messageForMediaFailure(failure), options);
+  }
+}
+
+export interface MessagePosterDownloadOptions {
+  refresh?: boolean;
+}
 
 interface ReservedAttachment {
   attachmentId: string;
@@ -86,34 +112,223 @@ export async function deleteRichMessage(
   });
 }
 
-export async function downloadMessageMedia(
+export async function downloadMessageMedia(path: string): Promise<Blob> {
+  const userId = await requireCurrentUserId();
+  const data = await downloadPrivateMedia(path);
+  await assertCurrentUser(userId);
+  return data;
+}
+
+export async function downloadMessagePoster(
   path: string,
-  cachePoster = false,
+  options: MessagePosterDownloadOptions = {},
 ): Promise<Blob> {
-  const userId = cachePoster ? await currentUserId() : null;
-  if (userId) {
+  const userId = await requireCurrentUserId();
+  if (options.refresh) {
+    await mediaCache.evictMessageMedia(userId, "message-media", path);
+  } else {
     const cached = await mediaCache.readMessageMedia(
       userId,
       "message-media",
       path,
     );
-    if (cached) return cached;
+    if (cached) {
+      try {
+        await validateMessagePoster(cached);
+        await assertCurrentUser(userId);
+        return cached;
+      } catch (error) {
+        await mediaCache.evictMessageMedia(userId, "message-media", path);
+        if (!(error instanceof MessageMediaRetrievalError)) throw error;
+      }
+    }
   }
-  const { data, error } = await getSupabaseClient()
-    .storage.from("message-media")
-    .download(path);
-  if (error) throw error;
-  if (userId) {
-    await mediaCache.writeMessageMedia(userId, "message-media", path, data);
-  }
+
+  const data = await downloadPrivateMedia(path);
+  await validateMessagePoster(data);
+  await assertCurrentUser(userId);
+  await mediaCache.writeMessageMedia(userId, "message-media", path, data);
   return data;
 }
 
-async function currentUserId(): Promise<string | null> {
-  const {
-    data: { session },
-  } = await getSupabaseClient().auth.getSession();
-  return session?.user.id ?? null;
+export async function validateMessagePoster(
+  blob: Blob,
+  decode: (blob: Blob) => Promise<void> = decodePoster,
+): Promise<void> {
+  if (blob.size < 1 || !POSTER_TYPES.has(normalizeMimeType(blob.type))) {
+    throw new MessageMediaRetrievalError(
+      "invalid",
+      "message-poster:invalid-blob",
+    );
+  }
+  try {
+    await decode(blob);
+  } catch (error) {
+    if (error instanceof MessageMediaRetrievalError) throw error;
+    throw new MessageMediaRetrievalError(
+      "decode",
+      "message-poster:decode-failed",
+      { cause: error },
+    );
+  }
+}
+
+export function messageMediaDiagnostic(error: unknown): {
+  message: string;
+  diagnostic: string;
+} {
+  if (error instanceof MessageMediaRetrievalError) {
+    return { message: error.message, diagnostic: error.diagnostic };
+  }
+  return {
+    message: messageForMediaFailure("transient"),
+    diagnostic: "message-media:transient",
+  };
+}
+
+async function downloadPrivateMedia(path: string): Promise<Blob> {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    throw new MessageMediaRetrievalError("offline", "message-media:offline");
+  }
+  let result: { data: Blob | null; error: unknown };
+  try {
+    result = await getSupabaseClient()
+      .storage.from("message-media")
+      .download(path);
+  } catch (error) {
+    throw classifyMediaFailure(error);
+  }
+  if (result.error) throw classifyMediaFailure(result.error);
+  if (!result.data) {
+    throw new MessageMediaRetrievalError(
+      "missing",
+      "message-media:missing-object",
+    );
+  }
+  return result.data;
+}
+
+async function requireCurrentUserId(): Promise<string> {
+  let sessionResult: Awaited<
+    ReturnType<ReturnType<typeof getSupabaseClient>["auth"]["getSession"]>
+  >;
+  try {
+    sessionResult = await getSupabaseClient().auth.getSession();
+  } catch (error) {
+    throw classifyMediaFailure(error);
+  }
+  if (sessionResult.error || !sessionResult.data.session?.user.id) {
+    throw new MessageMediaRetrievalError(
+      "unauthenticated",
+      "message-media:unauthenticated",
+      sessionResult.error ? { cause: sessionResult.error } : undefined,
+    );
+  }
+  return sessionResult.data.session.user.id;
+}
+
+async function assertCurrentUser(expectedUserId: string): Promise<void> {
+  if ((await requireCurrentUserId()) === expectedUserId) return;
+  throw new MessageMediaRetrievalError(
+    "unauthenticated",
+    "message-media:session-changed",
+  );
+}
+
+async function decodePoster(blob: Blob): Promise<void> {
+  if (typeof createImageBitmap === "function") {
+    const bitmap = await createImageBitmap(blob);
+    try {
+      if (bitmap.width < 1 || bitmap.height < 1) {
+        throw new Error("Decoded poster has no pixels.");
+      }
+    } finally {
+      bitmap.close();
+    }
+    return;
+  }
+  if (
+    typeof Image === "undefined" ||
+    typeof URL.createObjectURL !== "function"
+  ) {
+    throw new Error("No image decoder is available.");
+  }
+  const url = URL.createObjectURL(blob);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () =>
+        image.naturalWidth > 0 && image.naturalHeight > 0
+          ? resolve()
+          : reject(new Error("Decoded poster has no pixels."));
+      image.onerror = () => reject(new Error("Poster decoding failed."));
+      image.src = url;
+    });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function classifyMediaFailure(error: unknown): MessageMediaRetrievalError {
+  if (error instanceof MessageMediaRetrievalError) return error;
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return new MessageMediaRetrievalError("offline", "message-media:offline", {
+      cause: error,
+    });
+  }
+  const status = mediaErrorStatus(error);
+  if (status === 401) {
+    return new MessageMediaRetrievalError(
+      "unauthenticated",
+      "message-media:storage-401",
+      { cause: error },
+    );
+  }
+  if (status === 403) {
+    return new MessageMediaRetrievalError(
+      "forbidden",
+      "message-media:storage-403",
+      { cause: error },
+    );
+  }
+  if (status === 404) {
+    return new MessageMediaRetrievalError(
+      "missing",
+      "message-media:storage-404",
+      { cause: error },
+    );
+  }
+  return new MessageMediaRetrievalError(
+    "transient",
+    "message-media:transport-failed",
+    { cause: error },
+  );
+}
+
+function mediaErrorStatus(error: unknown): number | null {
+  if (!isRecord(error)) return null;
+  for (const value of [error.status, error.statusCode, error.status_code]) {
+    const status = typeof value === "string" ? Number(value) : value;
+    if (typeof status === "number" && Number.isFinite(status)) return status;
+  }
+  return null;
+}
+
+function normalizeMimeType(type: string): string {
+  return type.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+}
+
+function messageForMediaFailure(failure: MessageMediaFailure): string {
+  const messages: Record<MessageMediaFailure, string> = {
+    offline: "You're offline. Reconnect, then retry this image.",
+    unauthenticated: "Your session expired. Sign in again, then retry.",
+    forbidden: "You no longer have access to this private image.",
+    missing: "This image is missing from private storage.",
+    invalid: "Private storage returned an empty or unsupported image.",
+    decode: "The downloaded image could not be decoded.",
+    transient: "Private storage did not respond. Retry this image.",
+  };
+  return messages[failure];
 }
 
 async function reserveAttachment(
