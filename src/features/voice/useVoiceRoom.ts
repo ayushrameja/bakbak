@@ -80,6 +80,7 @@ import {
   RemoteAudioRenderer,
   type RemoteAudioHealthEvent,
 } from "./remote-audio";
+import { clampRemoteParticipantGain } from "./remote-audio-gain";
 import { enumerateMediaDeviceGroups } from "./media-devices";
 import {
   buildLiveKitTokenRequest,
@@ -2284,7 +2285,7 @@ export function useVoiceRoom(
 
   const setParticipantVolume = useCallback(
     (participantId: string, volume: number) => {
-      const safeVolume = Math.max(0, Math.min(1, volume));
+      const safeVolume = clampRemoteParticipantGain(volume);
       participantVolumes.current.set(participantId, safeVolume);
       if (safeVolume > 0) {
         audibleParticipantVolumes.current.set(participantId, safeVolume);

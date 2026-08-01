@@ -1,3 +1,10 @@
+import {
+  clampRemoteParticipantGain,
+  RemoteAudioGainGraph,
+  type RemoteAudioGainGraphOptions,
+  type RemoteAudioGainStage,
+} from "./remote-audio-gain";
+
 export interface RemoteAudioTrackLike {
   readonly kind: string;
   attach(element: HTMLMediaElement): HTMLMediaElement;
@@ -48,6 +55,8 @@ export interface RemoteAudioDiagnostic {
   mediaReadyState: number;
   recoveryAttempts: number;
   lastEvent: string;
+  listenerGain: number;
+  limitedOutput: boolean;
 }
 
 interface OwnedRemoteAudio {
@@ -65,6 +74,7 @@ interface OwnedRemoteAudio {
   recoveryPending: Promise<boolean> | null;
   lastEvent: string;
   removeHealthListeners: () => void;
+  gainStage: RemoteAudioGainStage | null;
 }
 
 const MAX_PLAYBACK_RECOVERY_ATTEMPTS = 2;
@@ -87,10 +97,17 @@ export class RemoteAudioRenderer {
   private selectedDeviceId = "default";
   private healthListener: ((event: RemoteAudioHealthEvent) => void) | null =
     null;
+  private readonly gainGraph: RemoteAudioGainGraph;
 
   constructor(
     private readonly getHost: () => HTMLElement = () => document.body,
-  ) {}
+    gainGraphOptions: RemoteAudioGainGraphOptions = {},
+  ) {
+    this.gainGraph = new RemoteAudioGainGraph({
+      ...gainGraphOptions,
+      getHost: gainGraphOptions.getHost ?? getHost,
+    });
+  }
 
   setHealthListener(
     listener: ((event: RemoteAudioHealthEvent) => void) | null,
@@ -117,12 +134,6 @@ export class RemoteAudioRenderer {
     element.hidden = true;
     element.muted = this.muted || this.mutedTracks.has(track);
     element.dataset.bakbakRemoteAudio = "";
-    if (
-      this.selectedDeviceId !== "default" &&
-      typeof element.setSinkId === "function"
-    ) {
-      void element.setSinkId(this.selectedDeviceId).catch(() => undefined);
-    }
 
     const owned: OwnedRemoteAudio = {
       element,
@@ -133,7 +144,15 @@ export class RemoteAudioRenderer {
       recoveryPending: null,
       lastEvent: "attached",
       removeHealthListeners: () => undefined,
+      gainStage: this.gainGraph.attach(element),
     };
+    if (
+      !owned.gainStage &&
+      this.selectedDeviceId !== "default" &&
+      typeof element.setSinkId === "function"
+    ) {
+      void element.setSinkId(this.selectedDeviceId).catch(() => undefined);
+    }
     owned.removeHealthListeners = this.addHealthListeners(track, owned);
     this.applyGain(owned);
     this.getHost().append(element);
@@ -145,11 +164,17 @@ export class RemoteAudioRenderer {
       this.detach(track);
       return null;
     }
+    void this.gainGraph.start().then((started) => {
+      if (started || this.elements.get(track) !== owned) return;
+      owned.playbackState = "blocked";
+      owned.lastEvent = "output-autoplay-blocked";
+      this.emitHealth(owned, "playback-blocked", false);
+    });
     return element;
   }
 
   setParticipantGain(ownerId: string, gain: number): void {
-    this.participantGains.set(ownerId, clampGain(gain));
+    this.participantGains.set(ownerId, clampRemoteParticipantGain(gain));
     this.elements.forEach((owned) => {
       if (owned.metadata.ownerId === ownerId) this.applyGain(owned);
     });
@@ -171,6 +196,7 @@ export class RemoteAudioRenderer {
     try {
       track.detach(owned.element);
     } finally {
+      owned.gainStage?.disconnect();
       owned.element.remove();
       this.elements.delete(track);
       this.mutedTracks.delete(track);
@@ -181,6 +207,7 @@ export class RemoteAudioRenderer {
     this.muted = muted;
     this.elements.forEach((owned, track) => {
       owned.element.muted = muted || this.mutedTracks.has(track);
+      this.applyGain(owned);
     });
   }
 
@@ -188,12 +215,17 @@ export class RemoteAudioRenderer {
     if (muted) this.mutedTracks.add(track);
     else this.mutedTracks.delete(track);
     const owned = this.elements.get(track);
-    if (owned) owned.element.muted = this.muted || muted;
+    if (owned) {
+      owned.element.muted = this.muted || muted;
+      this.applyGain(owned);
+    }
   }
 
   async setDevice(deviceId: string): Promise<void> {
+    const graphRouted = await this.gainGraph.setDevice(deviceId);
     await Promise.all(
-      [...this.elements.values()].map(async ({ element }) => {
+      [...this.elements.values()].map(async ({ element, gainStage }) => {
+        if (graphRouted && gainStage) return;
         if (typeof element.setSinkId !== "function") {
           if (deviceId !== "default") {
             throw new Error("Audio output selection is not supported.");
@@ -274,6 +306,8 @@ export class RemoteAudioRenderer {
       mediaReadyState: owned.element.readyState,
       recoveryAttempts: owned.recoveryAttempts,
       lastEvent: owned.lastEvent,
+      listenerGain: this.resolveGain(owned),
+      limitedOutput: Boolean(owned.gainStage),
     }));
   }
 
@@ -287,6 +321,7 @@ export class RemoteAudioRenderer {
     });
     this.mutedTracks.clear();
     this.muted = false;
+    this.gainGraph.cleanup();
   }
 
   private addHealthListeners(
@@ -359,6 +394,9 @@ export class RemoteAudioRenderer {
         track.attach(owned.element);
       }
       await Promise.resolve(owned.element.play());
+      if (!(await this.gainGraph.start())) {
+        throw new DOMException("gesture required", "NotAllowedError");
+      }
       if (this.elements.get(track) !== owned) return false;
       const alreadyReportedPlaying = owned.lastEvent === "playing";
       owned.playbackState = "playing";
@@ -405,12 +443,22 @@ export class RemoteAudioRenderer {
   }
 
   private applyGain(owned: OwnedRemoteAudio): void {
+    const gain = this.resolveGain(owned);
+    if (owned.gainStage) {
+      owned.element.volume = 1;
+      owned.gainStage.setGain(gain);
+      return;
+    }
+    owned.element.volume = clampGain(gain);
+  }
+
+  private resolveGain(owned: OwnedRemoteAudio): number {
     const participantGain =
       this.participantGains.get(owned.metadata.ownerId) ?? 1;
     const globalGain = this.globalGains.get(owned.metadata.sourceKind) ?? 1;
-    owned.element.volume = clampGain(
-      participantGain * globalGain * owned.metadata.baseGain,
-    );
+    return this.muted || owned.element.muted
+      ? 0
+      : participantGain * globalGain * owned.metadata.baseGain;
   }
 }
 

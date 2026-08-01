@@ -161,8 +161,9 @@ explicit click and a permitted `i.ytimg.com` thumbnail.
 
 Voice rooms retain locally persisted microphone/speaker/camera selection,
 opt-in 720p camera calls, sidebar occupancy with elapsed timers, mute/deafen,
-per-participant volume, remote-track audio/video rendering, autoplay recovery,
-reconnect/error states, and a unified participant/screen-share media gallery.
+listener-local 0–200% per-participant volume, remote-track audio/video
+rendering, autoplay recovery, reconnect/error states, and a unified
+participant/screen-share media gallery.
 Microphone capture keeps WebRTC noise suppression and automatic gain control
 and defaults to a second device-local RNNoise stage in a 48 kHz AudioWorklet
 before LiveKit publication.
@@ -196,15 +197,29 @@ message, and user-ID copy actions, omits self messaging, and keeps existing DMs
 available offline while disabling offline creation. Remote participants in the
 active call additionally expose a local mute toggle. Participant volume zero
 is applied across speech, soundboard, and share audio; unmute restores the last
-non-zero level or 100%. One remote-audio renderer owns every hidden speech,
-soundboard, and watched-share element with owner/source/base-gain metadata and
-writes gain to the actual HTML audio element. It reconciles LiveKit's current
-subscribed publications after initial connection, signal resume, full
-reconnect, and output changes instead of depending on a future subscription
-event. Publication ownership is idempotent, and paused, stalled, failed, or
-ended playback receives at most two local recovery attempts. Listener-owned
-session state, not LiveKit's track volume, drives both current and future
-attachments.
+non-zero level—including a boosted level—or 100%. One remote-audio renderer
+owns every hidden speech, soundboard, and watched-share element with
+owner/source/base-gain metadata. Each subscribed element feeds one
+listener-owned Web Audio gain stage; all stages mix through one
+4×-oversampled soft limiter whose linear region ends at 90% and whose output
+ceiling is 98%. Participant gain ranges from 0 to 2, while
+source/global/base gains remain bounded to unity, so speech uses participant
+gain once and soundboard/share retain their existing multiplication without
+receiving the boost twice. A single hidden MediaStream output monitor routes
+the limited mix through the selected speaker. Unsupported graph creation falls
+back to the existing 0–100% media-element path and is visible as
+`limitedOutput: false` in the privacy-safe voice diagnostics.
+The renderer reconciles LiveKit's current subscribed publications after
+initial connection, signal resume, full reconnect, and output changes instead
+of depending on a future subscription event. Publication and gain-stage
+ownership are idempotent, and output autoplay plus paused, stalled, failed, or
+ended source playback use the same bounded recovery path. Detach, departure,
+room replacement, and hook teardown disconnect every source/gain node, stop
+the routed stream, remove its monitor, and close the context. Listener-owned
+session state, not LiveKit's track volume or backend metadata, drives both
+current and future attachments. Sender capture constraints, browser AGC, echo
+cancellation, and RNNoise defaults are unchanged pending repeatable installed
+macOS/Windows input measurements.
 Selecting a voice channel immediately joins it; selecting another voice channel switches
 the active call without a pre-join or initial connection surface. An active call
 adds a sidebar control block with room, backend latency, normalized local
@@ -855,7 +870,8 @@ video-only screen publication. Screen-companion tokens use generated identities
 plus owner metadata and allow only screen video/audio publication into the exact
 voice room, without subscriptions or data. Each client identifies the
 soundboard track by its exact `bakbak-soundboard` name and applies global
-soundboard volume multiplied by the existing participant volume.
+soundboard volume multiplied once by the listener-local participant volume
+before the shared output limiter.
 
 ## Data model
 
@@ -1500,10 +1516,12 @@ An invite-management UI is deferred until post-v1.
    they can play or publish activity. A reliable `soundboard:stop-all` message
    clears that participant immediately; disconnect, leave, and track cleanup do
    the same.
-9. Remote named tracks use `soundboard volume × participant volume`. Normal
-   microphone speech keeps only participant volume. Deafen suppresses remote
-   audio and the sender's local monitor branch without muting outbound
-   soundboard audio.
+9. Remote named tracks use `soundboard volume × participant volume`; watched
+   share audio uses participant volume once, and normal microphone speech keeps
+   only participant volume. The listener-local gain accepts 0–200%, then all
+   remote sources share the final bounded limiter and selected-output monitor.
+   Deafen zeros every remote gain stage and the sender's local monitor branch
+   without muting outbound soundboard audio.
 
 Unknown message types, stale duplicates, and unknown sound IDs are ignored
 safely. Built-in suppression plus RNNoise target keyboard and steady background

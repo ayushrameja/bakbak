@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RemoteAudioRenderer, type RemoteAudioTrackLike } from "./remote-audio";
+import type { RemoteAudioContextConstructor } from "./remote-audio-gain";
 
 function createTrack(kind = "audio") {
   const attach = vi.fn((element: HTMLMediaElement) => element);
@@ -178,6 +179,112 @@ describe("RemoteAudioRenderer", () => {
     expect(soundboard.volume).toBe(0.2);
   });
 
+  it("applies 0–200% listener gain once across speech, soundboard, and watched share", () => {
+    const host = document.createElement("div");
+    const graph = createGainGraphDouble();
+    const renderer = new RemoteAudioRenderer(() => host, graph.options);
+    renderer.setParticipantGain("mira", 1.5);
+    renderer.setGlobalGain("soundboard", 0.5);
+
+    const speechTrack = createTrack().track;
+    const speech = renderer.attach(speechTrack, {
+      ownerId: "mira",
+      sourceKind: "speech",
+    })!;
+    const soundboard = renderer.attach(createTrack().track, {
+      ownerId: "mira",
+      sourceKind: "soundboard",
+    })!;
+    const share = renderer.attach(createTrack().track, {
+      ownerId: "mira",
+      sourceKind: "screen-share",
+    })!;
+    renderer.attach(speechTrack, {
+      ownerId: "mira",
+      sourceKind: "speech",
+    });
+
+    expect(speech.volume).toBe(1);
+    expect(soundboard.volume).toBe(1);
+    expect(share.volume).toBe(1);
+    expect(graph.gains.map((gain) => gain.gain.value)).toEqual([
+      1.5, 0.75, 1.5,
+    ]);
+    expect(renderer.diagnostics()).toEqual([
+      expect.objectContaining({ sourceKind: "speech", listenerGain: 1.5 }),
+      expect.objectContaining({
+        sourceKind: "soundboard",
+        listenerGain: 0.75,
+      }),
+      expect.objectContaining({
+        sourceKind: "screen-share",
+        listenerGain: 1.5,
+      }),
+    ]);
+    expect(graph.createGain).toHaveBeenCalledTimes(3);
+
+    renderer.setParticipantGain("mira", 2);
+    expect(graph.gains.map((gain) => gain.gain.value)).toEqual([2, 1, 2]);
+    renderer.setMuted(true);
+    expect(graph.gains.map((gain) => gain.gain.value)).toEqual([0, 0, 0]);
+    renderer.setMuted(false);
+    expect(graph.gains.map((gain) => gain.gain.value)).toEqual([2, 1, 2]);
+  });
+
+  it("routes a boosted graph to the selected speaker instead of the source element", async () => {
+    const graph = createGainGraphDouble();
+    const renderer = new RemoteAudioRenderer(
+      () => document.body,
+      graph.options,
+    );
+    const source = renderer.attach(createTrack().track, {
+      ownerId: "mira",
+      sourceKind: "speech",
+    })!;
+    const sourceSetSinkId = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(source, "setSinkId", {
+      configurable: true,
+      value: sourceSetSinkId,
+    });
+
+    await renderer.setDevice("speaker-2");
+
+    expect(graph.setSinkId).toHaveBeenCalledWith("speaker-2");
+    expect(sourceSetSinkId).not.toHaveBeenCalled();
+  });
+
+  it("surfaces and recovers shared output autoplay blocking through the existing bounded path", async () => {
+    const graph = createGainGraphDouble();
+    graph.play.mockRejectedValueOnce(
+      new DOMException("gesture required", "NotAllowedError"),
+    );
+    const health = vi.fn();
+    const renderer = new RemoteAudioRenderer(
+      () => document.body,
+      graph.options,
+    );
+    renderer.setHealthListener(health);
+    const sourcePlay = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockResolvedValue(undefined);
+    const { track } = createTrack();
+
+    renderer.attach(track, {
+      ownerId: "mira",
+      sourceKind: "speech",
+      publicationSid: "TR_speech",
+    });
+    await vi.waitFor(() =>
+      expect(health).toHaveBeenCalledWith(
+        expect.objectContaining({ code: "playback-blocked" }),
+      ),
+    );
+
+    await expect(renderer.recover(track, "user-gesture")).resolves.toBe(true);
+    expect(sourcePlay).toHaveBeenCalledOnce();
+    expect(renderer.diagnostics()[0]?.playbackState).toBe("playing");
+  });
+
   it("routes current and future remote tracks to the selected speaker", async () => {
     const host = document.createElement("div");
     const renderer = new RemoteAudioRenderer(() => host);
@@ -240,6 +347,9 @@ describe("RemoteAudioRenderer", () => {
 
     element.dispatchEvent(new Event("stalled"));
     await vi.waitFor(() => expect(play).toHaveBeenCalledOnce());
+    await vi.waitFor(() =>
+      expect(renderer.diagnostics()[0]?.playbackState).toBe("playing"),
+    );
 
     expect(attach).toHaveBeenCalledOnce();
     expect(host.childElementCount).toBe(1);
@@ -342,3 +452,68 @@ describe("RemoteAudioRenderer", () => {
     expect(host.childElementCount).toBe(1);
   });
 });
+
+function createGainGraphDouble() {
+  const gains: Array<{
+    gain: { value: number };
+    connect: ReturnType<typeof vi.fn>;
+    disconnect: ReturnType<typeof vi.fn>;
+  }> = [];
+  const createGain = vi.fn(() => {
+    const gain = {
+      gain: { value: 1 },
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    };
+    gains.push(gain);
+    return gain;
+  });
+  const limiter = {
+    curve: null,
+    oversample: "none",
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+  };
+  const track = { stop: vi.fn() };
+  const destination = {
+    stream: {
+      getTracks: () => [track],
+    },
+  } as unknown as MediaStreamAudioDestinationNode;
+  const context = {
+    state: "running",
+    createMediaElementSource: vi.fn(() => ({
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    })),
+    createGain,
+    createWaveShaper: vi.fn(() => limiter),
+    createMediaStreamDestination: vi.fn(() => destination),
+    resume: vi.fn().mockResolvedValue(undefined),
+    close: vi.fn().mockResolvedValue(undefined),
+  } as unknown as AudioContext;
+  const Context = vi.fn(function () {
+    return context;
+  }) as unknown as RemoteAudioContextConstructor;
+  const output = document.createElement("audio");
+  const play = vi.fn().mockResolvedValue(undefined);
+  const setSinkId = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperties(output, {
+    play: {
+      configurable: true,
+      value: play,
+    },
+    pause: { configurable: true, value: vi.fn() },
+    setSinkId: { configurable: true, value: setSinkId },
+  });
+  return {
+    createGain,
+    gains,
+    play,
+    setSinkId,
+    options: {
+      contextConstructor: Context,
+      createOutputElement: () => output,
+    },
+  };
+}

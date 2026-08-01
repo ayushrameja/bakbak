@@ -5690,3 +5690,66 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
   changing sender capture defaults. Then install one integrated A–D revision on
   macOS and Windows and run Packet E's six-client cross-region matrix plus
   Packet C's two-account private Storage probes.
+
+## 2026-07-30 — Add safe listener-local 200% voice gain
+
+- **Completed:** Implemented plan 0033 Packet D's code and automated
+  acceptance. Remote speech, named soundboard tracks, and watched-share audio
+  now enter one listener-owned Web Audio gain stage per subscribed track and
+  mix through one shared 4×-oversampled soft limiter with a 98% ceiling. The
+  participant control supports 0–200%, exposes the exact percentage and a
+  boosted-state accessibility label, preserves values above 100% through local
+  mute/unmute, and remains session-local. The shared limited output follows the
+  selected speaker. Unsupported Web Audio creation falls back to the existing
+  0–100% media-element path; diagnostics identify whether a track is using the
+  limited output. Track detach, participant departure, room replacement, and
+  renderer cleanup disconnect gain nodes and release the shared output stream,
+  monitor, and context.
+- **Decisions:** Kept browser automatic gain control, echo cancellation,
+  capture constraints, RNNoise, and sender publication unchanged because the
+  required repeatable macOS/Windows microphone measurements have not happened
+  yet. Applied boost only on each listener so one friend's preference cannot
+  alter anybody else's mix. Kept soundboard/global/base gain bounded to unity
+  and multiplied it once with participant gain before the shared limiter.
+  Reused the existing bounded playback recovery path for the output monitor,
+  while treating graph-construction failure as a safe direct-audio fallback
+  rather than an autoplay outage.
+- **Validation:**
+  - Focused Packet D Vitest run — passed 4 files and 92/92 tests covering exact
+    0%, 50%, 100%, 150%, and 200% gain; limiter bounds; independent per-track
+    stages with one shared limiter; output selection and teardown; safe
+    unsupported-runtime fallback; mute restoration above unity; idempotent late
+    attachment; soundboard/share multiplication; autoplay recovery; and the
+    participant control.
+  - Voice and soundboard Vitest run — passed 34 files and 219/219 tests.
+  - Focused zero-warning ESLint — passed for every changed voice module and
+    test.
+  - `pnpm check` — passed formatting, zero-warning lint, both strict TypeScript
+    projects, 85 Vitest files with 485/485 tests, 41/41 Node contracts,
+    synchronized version 1.4.0, production renderer build, and bundle secret
+    scan. Vite retained the existing non-blocking large-chunk warning.
+  - `pnpm tauri:build:local` — passed the renderer rebuild, optimized Rust
+    release build, ad-hoc signing, and macOS `Bakbak.app` bundle creation.
+    Notarization was skipped because Apple notarization credentials are not
+    configured.
+- **Documentation updated:** Documented the listener-owned gain graph, shared
+  limiter, selected-output monitor, fallback diagnostics, lifecycle, and
+  unchanged sender pipeline in `docs/architecture.md`; marked Packet D's
+  implementable scope and automated acceptance complete while retaining its
+  measurement and installed checks in plan 0033; split completed Packet D code
+  from its pending installed measurements in plan 0001; and appended this
+  canonical progress entry.
+- **Known limitations:** No repeatable before/after microphone measurement was
+  performed on this host or Windows, so Packet D deliberately makes no claim
+  that RNNoise or browser capture processing causes the reported low sender
+  level. The built app was not launched with multiple installed clients.
+  Headphone and laptop-speaker checks at 0%, 50%, 100%, 150%, and 200%,
+  clipping/echo observations, and the quiet-versus-normal speaker comparison
+  remain open. Web Audio graph failure intentionally limits the compatibility
+  fallback to the HTML media element's 100% ceiling. The macOS bundle was not
+  notarized.
+- **Next:** Measure representative quiet, normal, and noisy microphones before
+  and after browser processing/RNNoise on macOS and Windows, then run Packet D's
+  installed 0–200% headphone and laptop-speaker matrix. Use the same integrated
+  A–D revision for Packet C's two-account Storage probes and Packet E's
+  six-person, 60-minute India/Canada stabilization gate.

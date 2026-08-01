@@ -668,7 +668,7 @@ describe("useVoiceRoom join lifecycle", () => {
     expect(effects).toHaveBeenCalledWith({ type: "signal-restored" });
   });
 
-  it("mutes a remote participant locally and restores their last audible volume", async () => {
+  it("mutes a remote participant locally and restores their last boosted volume", async () => {
     const setParticipantGain = vi.spyOn(
       RemoteAudioRenderer.prototype,
       "setParticipantGain",
@@ -691,13 +691,13 @@ describe("useVoiceRoom join lifecycle", () => {
       await joinPromise;
     });
 
-    act(() => result.current.setParticipantVolume("mira", 0.35));
-    expect(setParticipantGain).toHaveBeenLastCalledWith("mira", 0.35);
+    act(() => result.current.setParticipantVolume("mira", 1.5));
+    expect(setParticipantGain).toHaveBeenLastCalledWith("mira", 1.5);
     expect(
       result.current.participants.find(
         (participant) => participant.id === "mira",
       )?.volume,
-    ).toBe(0.35);
+    ).toBe(1.5);
 
     act(() => result.current.toggleParticipantMute("mira"));
     expect(setParticipantGain).toHaveBeenLastCalledWith("mira", 0);
@@ -708,12 +708,12 @@ describe("useVoiceRoom join lifecycle", () => {
     ).toBe(0);
 
     act(() => result.current.toggleParticipantMute("mira"));
-    expect(setParticipantGain).toHaveBeenLastCalledWith("mira", 0.35);
+    expect(setParticipantGain).toHaveBeenLastCalledWith("mira", 1.5);
     expect(
       result.current.participants.find(
         (participant) => participant.id === "mira",
       )?.volume,
-    ).toBe(0.35);
+    ).toBe(1.5);
   });
 
   it("hard-mutes remote soundboard elements when their track or stop event goes idle", async () => {

@@ -557,10 +557,12 @@ describe("VoiceRoom", () => {
       />,
     );
     const slider = screen.getByRole("slider", { name: "Mira volume" });
+    expect(slider).toHaveAttribute("max", "2");
+    expect(screen.getByText("100%")).toBeVisible();
 
-    fireEvent.input(slider, { target: { value: "0.5" } });
-    expect(voice.setParticipantVolume).toHaveBeenLastCalledWith("user-2", 0.5);
-    participant.volume = 0.5;
+    fireEvent.input(slider, { target: { value: "1.5" } });
+    expect(voice.setParticipantVolume).toHaveBeenLastCalledWith("user-2", 1.5);
+    participant.volume = 1.5;
     rerender(
       <VoiceRoom
         channel={channel}
@@ -576,7 +578,8 @@ describe("VoiceRoom", () => {
     updatedSlider.focus();
     await userEvent.keyboard("{ArrowLeft}");
 
-    expect(voice.setParticipantVolume).toHaveBeenLastCalledWith("user-2", 0.45);
+    expect(voice.setParticipantVolume).toHaveBeenLastCalledWith("user-2", 1.45);
+    expect(screen.getByText("150%")).toBeVisible();
     expect(container.querySelector(".voice-media-gallery")).toBeVisible();
     expect(
       container.querySelector(".voice-participant-stage"),

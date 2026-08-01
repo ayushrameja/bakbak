@@ -403,7 +403,10 @@ macOS/Windows acceptance run passes.
 - [x] Implement plan 0033 Packet C's Windows clipboard normalization,
       validated authenticated poster recovery, explicit retry surface, and
       optimistic-preview lifecycle.
-- [ ] Implement plan 0033 Packet D's measured, limited 200% listener gain.
+- [x] Implement plan 0033 Packet D's listener-local, limited 200% gain and
+      automated lifecycle coverage without changing sender capture defaults.
+- [ ] Complete Packet D's repeatable macOS/Windows microphone measurements and
+      installed 0–200% listening checks.
 - [ ] Complete plan 0033's six-person, 60-minute macOS/Windows cross-region
       stabilization matrix before the next friend release.
 - [x] Add the Bakbak Signature preset, fixed destination rail, and

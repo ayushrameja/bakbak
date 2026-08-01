@@ -821,9 +821,11 @@ function ParticipantCard({
           <input
             type="range"
             min="0"
-            max="1"
+            max="2"
             step="0.05"
             value={participant.volume}
+            aria-valuetext={`${Math.round(participant.volume * 100)}%${participant.volume > 1 ? " boosted" : ""}`}
+            title="Levels above 100% boost quiet participants and may also amplify background noise."
             onInput={(event) =>
               voice.setParticipantVolume(
                 participant.id,
@@ -841,10 +843,11 @@ function ParticipantCard({
               event.preventDefault();
               voice.setParticipantVolume(
                 participant.id,
-                Math.max(0, Math.min(1, participant.volume + direction * 0.05)),
+                Math.max(0, Math.min(2, participant.volume + direction * 0.05)),
               );
             }}
           />
+          <output>{Math.round(participant.volume * 100)}%</output>
         </label>
       ) : null}
     </article>

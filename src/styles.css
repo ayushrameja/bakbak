@@ -2111,6 +2111,14 @@ button:active:not(:disabled) {
   accent-color: var(--accent);
 }
 
+.participant-volume output {
+  min-width: 38px;
+  color: currentColor;
+  font-size: var(--font-meta);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 .participant-card__focus-control {
   position: absolute;
   z-index: 1;
@@ -6322,7 +6330,7 @@ body {
   right: 9px;
   bottom: 9px;
   left: auto;
-  width: min(150px, 42%);
+  width: min(190px, 55%);
   padding: 5px 7px;
   border-radius: var(--radius-control);
   color: white;

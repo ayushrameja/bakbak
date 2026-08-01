@@ -1,8 +1,8 @@
 # Plan 0033 — Friend-test voice, presence, and media stabilization
 
-- **Status:** Packets A–C code/automated acceptance complete; their installed
-  acceptance, Packet C's real two-account Storage probe, and Packets D–E
-  pending
+- **Status:** Packets A–C and Packet D's listener-gain code/automated
+  acceptance complete; their installed acceptance, Packet C's real two-account
+  Storage probe, Packet D's hardware input measurements, and Packet E pending
 - **Approved:** 2026-07-30
 - **Trigger:** Six-person macOS/Windows friend session with participants in
   India and Canada
@@ -217,27 +217,27 @@ canonical progress entry before handoff.
 - [ ] First measure repeatable microphone level before and after browser voice
       processing/RNNoise on representative quiet, normal, and noisy microphones
       on macOS and Windows.
-- [ ] Keep RNNoise or capture-default changes evidence-driven. Do not globally
+- [x] Keep RNNoise or capture-default changes evidence-driven. Do not globally
       raise sender gain as a substitute for repairing listener playback.
-- [ ] Route remote speech through a listener-owned Web Audio graph that supports
+- [x] Route remote speech through a listener-owned Web Audio graph that supports
       `0%` through `200%`, with `100%` as unity gain.
-- [ ] Add a limiter or equivalent bounded headroom after gain so 200% cannot
+- [x] Add a limiter or equivalent bounded headroom after gain so 200% cannot
       produce uncontrolled clipping.
-- [ ] Keep mute, deafen, participant departure, late subscription, output
+- [x] Keep mute, deafen, participant departure, late subscription, output
       switching, soundboard multiplication, and watched-share behavior
       consistent with the existing ownership model.
-- [ ] Keep participant gain listener-local and do not publish it to other
+- [x] Keep participant gain listener-local and do not publish it to other
       members.
 
 ### Automated acceptance
 
-- [ ] Remote speech produces expected gain at 0%, 50%, 100%, 150%, and 200%.
-- [ ] Limiting prevents samples from exceeding the output ceiling under boosted
+- [x] Remote speech produces expected gain at 0%, 50%, 100%, 150%, and 200%.
+- [x] Limiting prevents samples from exceeding the output ceiling under boosted
       speech.
-- [ ] Local participant mute restores the last non-zero gain, including values
+- [x] Local participant mute restores the last non-zero gain, including values
       above 100%.
-- [ ] Late/reconciled tracks inherit the selected gain exactly once.
-- [ ] Soundboard and watched-share gain multiplication remains covered and
+- [x] Late/reconciled tracks inherit the selected gain exactly once.
+- [x] Soundboard and watched-share gain multiplication remains covered and
       cannot accidentally receive speech boost twice.
 
 ### Installed acceptance
@@ -280,8 +280,7 @@ Each packet handoff appends one `docs/progress.md` entry containing:
 
 ## Next
 
-Run Packets A and B's installed six-client macOS/Windows reconnect matrix
-together, comparing the active gallery and sidebar before copying diagnostics
-or rejoining if either diverges. Implement Packet C next; Packet D is now
-unblocked by the integrated Packet A lifecycle. Packet E runs from one
-integrated source revision.
+Complete Packet D's repeatable macOS/Windows microphone measurements and
+installed 0–200% listening matrix alongside Packets A–C's remaining installed
+checks. Packet E then runs the full six-person, cross-region stabilization gate
+from one integrated source revision.
