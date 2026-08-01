@@ -29,6 +29,7 @@ env:
   VITE_LIVEKIT_URL: ${{ vars.VITE_LIVEKIT_URL }}
   VITE_BACKEND_REGION: ${{ vars.VITE_BACKEND_REGION }}
   VITE_GIPHY_API_KEY: ${{ vars.VITE_GIPHY_API_KEY }}
+  VITE_BUILD_REVISION: ${{ github.sha }}
 
 jobs:
   prepare:

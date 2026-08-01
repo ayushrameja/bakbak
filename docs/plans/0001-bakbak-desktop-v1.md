@@ -405,6 +405,8 @@ macOS/Windows acceptance run passes.
       optimistic-preview lifecycle.
 - [x] Implement plan 0033 Packet D's listener-local, limited 200% gain and
       automated lifecycle coverage without changing sender capture defaults.
+- [x] Add plan 0033 Packet E's exact-revision, non-publishing macOS/Windows
+      stabilization-candidate workflow and build provenance.
 - [ ] Complete Packet D's repeatable macOS/Windows microphone measurements and
       installed 0–200% listening checks.
 - [ ] Complete plan 0033's six-person, 60-minute macOS/Windows cross-region

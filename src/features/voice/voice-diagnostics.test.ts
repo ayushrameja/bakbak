@@ -7,6 +7,7 @@ import {
   type Room,
 } from "livekit-client";
 import { describe, expect, it, vi } from "vitest";
+import { APP_VERSION, normalizeBuildRevision } from "../../lib/app-version";
 import { RemoteAudioRenderer } from "./remote-audio";
 import {
   VoiceDiagnosticsRecorder,
@@ -93,6 +94,10 @@ describe("VoiceDiagnosticsRecorder", () => {
 
     const snapshot = await recorder.capture(room, remoteAudio, "manual copy");
 
+    expect(snapshot.appVersion).toBe(APP_VERSION);
+    expect(snapshot.buildRevision).toBe(
+      normalizeBuildRevision(import.meta.env.VITE_BUILD_REVISION),
+    );
     expect(snapshot.liveKitClientVersion).toBe("2.21.0");
     expect(snapshot.tracks).toEqual([
       expect.objectContaining({
@@ -143,7 +148,7 @@ describe("VoiceDiagnosticsRecorder", () => {
 
     await expect(copyVoiceDiagnostics(snapshot, clipboard)).resolves.toBe(true);
     expect(clipboard.writeText).toHaveBeenCalledWith(
-      expect.stringContaining('"schemaVersion": 1'),
+      expect.stringContaining('"schemaVersion": 2'),
     );
     await expect(copyVoiceDiagnostics(snapshot, null)).resolves.toBe(false);
   });

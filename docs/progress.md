@@ -5753,3 +5753,73 @@ src-tauri/target/release/bundle/macos/Bakbak.app` — passed.
   installed 0–200% headphone and laptop-speaker matrix. Use the same integrated
   A–D revision for Packet C's two-account Storage probes and Packet E's
   six-person, 60-minute India/Canada stabilization gate.
+
+## 2026-08-01 — Prepare exact-revision stabilization candidates
+
+- **Completed:** Implemented Packet E's candidate-production gate without
+  claiming its human acceptance. Added a read-only GitHub Actions workflow that
+  runs only when the exact `stabilization:candidate` label is added to a pull
+  request or an operator manually supplies a full 40-character commit SHA. It
+  verifies and checks out that revision, runs the integrated renderer and
+  locked Rust gates, then builds one Apple Silicon DMG and one Windows x64 NSIS
+  installer with live public configuration and updater publication disabled.
+  Both private seven-day artifacts share the same short revision in their name
+  and include a bounded manifest with app version, full revision, platform, and
+  workflow run. Candidate/release builds now embed their public source revision
+  in copied voice diagnostics. Compiled-secret discovery now includes generic
+  and target-specific Tauri bundle directories.
+- **Decisions:** Kept candidate production separate from the stable release
+  workflow because the existing release path publishes immediately after its
+  two-platform build. Candidate automation has `contents: read`, receives no
+  updater key, creates no GitHub Release, and cannot announce or update clients.
+  A PR label event avoids adding macOS/Windows build spinners to ordinary pull
+  requests. Any source change invalidates both artifacts and requires the label
+  to be removed and re-added. The release workflow also injects its exact
+  `github.sha`, while local builds normalize missing or invalid revisions to
+  `local` instead of presenting false provenance.
+- **Validation:**
+  - `node --test scripts/*.test.mjs` — passed 45/45 contracts, including the
+    label/manual trigger, exact-SHA checkout, two supported installer targets,
+    non-publishing permissions, seven-day artifacts, candidate manifest
+    validation, target-specific secret discovery, and existing CI/release
+    behavior.
+  - Focused Vitest with a 40-character `VITE_BUILD_REVISION` — passed 2 files
+    and 4/4 tests for revision normalization and diagnostic provenance.
+  - Focused zero-warning ESLint, Prettier, workflow YAML parsing, and
+    `git diff --check` — passed.
+  - `pnpm check` — passed formatting, zero-warning lint, both strict TypeScript
+    projects, 86 Vitest files with 486/486 tests, 45/45 Node contracts,
+    synchronized version 1.4.0, production renderer build, and compiled secret
+    scan. Vite retained the existing non-blocking large-chunk warning.
+  - `cargo check --locked --manifest-path src-tauri/Cargo.toml` — passed.
+  - `cargo test --locked --manifest-path src-tauri/Cargo.toml` — passed 17/17
+    native tests with no failures in the binary or doc-test targets.
+  - Exact local Apple candidate command using `--target
+aarch64-apple-darwin --bundles app,dmg` plus
+    `src-tauri/tauri.local.conf.json` — passed the renderer rebuild, optimized
+    native compile, ad-hoc-signed app bundle, and DMG generation. Post-build
+    compiled secret scanning included the target-specific bundle; strict
+    `codesign` verification and `hdiutil verify` both passed.
+- **Documentation updated:** Documented candidate creation and invalidation in
+  `README.md`; added its non-publishing release boundary, public build revision,
+  diagnostics provenance, artifact lifecycle, and validation contract to
+  `docs/architecture.md`; marked Packet E integration, automation, and local
+  automated gates complete while retaining hosted/installed acceptance in plan
+  0033; recorded candidate automation in plan 0001; and appended this canonical
+  progress entry.
+- **Known limitations:** The new workflow has not been pushed or triggered, so
+  no GitHub-hosted Apple Silicon/Windows artifact pair exists yet. Windows x64
+  cannot be built or installed on this macOS host. The locally generated DMG is
+  a workflow-command validation artifact from a dirty working tree with
+  `buildRevision: local`; it is not the exact-revision friend-test candidate
+  and must not be distributed as one. The app/DMG remain ad-hoc signed and
+  unnotarized, while the future Windows candidate is unsigned. Packet C's real
+  two-account Storage probe, Packet D's microphone/input measurements, every
+  installed A–D check, and Packet E's six-person 60-minute India/Canada session
+  remain open. No stable release was created or published.
+- **Next:** Commit and push this Packet E infrastructure, freeze the pull
+  request head, add `stabilization:candidate`, and download only the macOS and
+  Windows artifacts whose manifests share that new full revision. Install
+  those two candidates and run the complete six-person matrix. Append sanitized
+  observations before either allowing the merge/release or returning a failure
+  to its owning packet.

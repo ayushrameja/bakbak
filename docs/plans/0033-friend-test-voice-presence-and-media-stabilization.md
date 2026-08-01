@@ -1,8 +1,9 @@
 # Plan 0033 — Friend-test voice, presence, and media stabilization
 
-- **Status:** Packets A–C and Packet D's listener-gain code/automated
-  acceptance complete; their installed acceptance, Packet C's real two-account
-  Storage probe, Packet D's hardware input measurements, and Packet E pending
+- **Status:** Packets A–D code/automated acceptance and Packet E candidate
+  automation complete; hosted candidate generation, installed acceptance,
+  Packet C's real two-account Storage probe, Packet D's hardware input
+  measurements, and Packet E's release decision pending
 - **Approved:** 2026-07-30
 - **Trigger:** Six-person macOS/Windows friend session with participants in
   India and Canada
@@ -251,8 +252,13 @@ canonical progress entry before handoff.
 
 ## Phase E — Integrated stabilization release gate
 
-- [ ] Integrate A–D only after their focused automated suites pass.
-- [ ] Run `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm test`,
+- [x] Integrate A–D only after their focused automated suites pass.
+- [x] Add an exact-revision candidate workflow that runs only from the explicit
+      `stabilization:candidate` PR label or manual full-SHA dispatch, builds the
+      Apple Silicon and Windows x64 installers without updater/release
+      publication, scans the compiled outputs, records bounded provenance, and
+      retains the private artifacts for seven days.
+- [x] Run `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm test`,
       `pnpm build`, applicable Rust/native checks, `pnpm tauri build`, bundle
       secret inspection, and `git diff --check`.
 - [ ] Produce installed Apple Silicon macOS and Windows x64 candidates from the
@@ -265,6 +271,23 @@ canonical progress entry before handoff.
 - [ ] Release only when there is no selective silence, the active-room lists
       agree, unchanged occupants do not reorder, authorized images survive
       navigation/restart, and 200% gain behaves safely.
+
+### Candidate execution
+
+1. Freeze the pull-request head, then add `stabilization:candidate`. A label
+   event for any other label does not build installers.
+2. Download the `macos-aarch64` and `windows-x64` Actions artifacts whose names
+   end in the same short revision. Confirm their manifests contain the same
+   full source revision and app version before installation.
+3. Any source change invalidates both candidates. Remove and re-add the label,
+   discard the older artifacts, and restart the matrix from the new revision.
+4. Use only sanitized platform, version/revision, scenario, and outcome notes.
+   Copy voice diagnostics from one affected and one unaffected listener before
+   rejoining; never record voice/message content, tokens, signed URLs, device
+   labels, or addresses.
+5. Append observed results to `docs/progress.md`. Do not publish the stable
+   release or merge a PR that would trigger it until every release criterion
+   above passes.
 
 ## Agent handoff template
 
@@ -280,7 +303,8 @@ Each packet handoff appends one `docs/progress.md` entry containing:
 
 ## Next
 
-Complete Packet D's repeatable macOS/Windows microphone measurements and
-installed 0–200% listening matrix alongside Packets A–C's remaining installed
-checks. Packet E then runs the full six-person, cross-region stabilization gate
-from one integrated source revision.
+Run the candidate workflow from the frozen integrated revision, install its
+matching macOS/Windows artifacts, and complete Packet D's microphone/listening
+checks alongside Packets A–C's remaining installed acceptance. Packet E then
+records the full six-person cross-region result and either permits release or
+returns the observed failure to the owning packet.

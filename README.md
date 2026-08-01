@@ -45,6 +45,17 @@ Signed updater artifacts are created only by the GitHub release workflow. A
 plain `pnpm tauri build` still expects the updater private key because the main
 Tauri configuration intentionally enables release updater artifacts.
 
+Before a stabilization release, add the `stabilization:candidate` label to the
+ready pull request. The candidate workflow validates that exact PR-head commit,
+runs the integrated renderer and native gates, and builds one Apple Silicon DMG
+plus one Windows x64 NSIS installer. It uploads them as private GitHub Actions
+artifacts for seven days, each with a `candidate-manifest.json` containing the
+app version, full source revision, platform, and workflow run. Candidate builds
+disable updater artifacts and never create or publish a GitHub Release. If the
+PR head changes, discard the old artifacts and remove/re-add the label. Once
+the workflow exists on `main`, it may also be dispatched manually with an exact
+40-character commit SHA.
+
 Mock mode is selected by `VITE_DATA_MODE=mock`; it never connects to Supabase
 or LiveKit.
 
@@ -159,6 +170,11 @@ release to `#releases`;
 publication itself remains successful if announcement delivery needs a rerun.
 The manual System history workflow imports stable releases oldest-first and is
 idempotent by GitHub release ID.
+
+Do not merge a stabilization pull request for automatic release until both
+candidate artifacts from the same revision pass the installed friend-test
+gate. The candidate workflow is deliberately separate because “publish first,
+test later” is a thrilling plot device and a terrible release process.
 
 Because `main` requires pull requests, repository **Settings → Actions →
 General → Workflow permissions** must allow GitHub Actions to create and

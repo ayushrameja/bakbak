@@ -6,6 +6,7 @@ import {
   type RemoteTrackPublication,
   type Room,
 } from "livekit-client";
+import { APP_VERSION, BUILD_REVISION } from "../../lib/app-version";
 import type {
   RemoteAudioDiagnostic,
   RemoteAudioRenderer,
@@ -43,9 +44,11 @@ export interface VoiceTrackDiagnostic {
 }
 
 export interface VoiceDiagnosticSnapshot {
-  schemaVersion: 1;
+  schemaVersion: 2;
   capturedAt: string;
   trigger: string;
+  appVersion: string;
+  buildRevision: string;
   liveKitClientVersion: string;
   connectionState: string;
   signalState: "connected" | "reconnecting";
@@ -111,9 +114,11 @@ export class VoiceDiagnosticsRecorder {
       ? await readRoomTracks(room, playbackByPublication)
       : (this.lastSnapshot?.tracks ?? []);
     const snapshot: VoiceDiagnosticSnapshot = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       capturedAt: new Date().toISOString(),
       trigger: sanitizeCode(trigger),
+      appVersion: APP_VERSION,
+      buildRevision: BUILD_REVISION,
       liveKitClientVersion,
       connectionState: sanitizeCode(
         room?.state ?? this.lastSnapshot?.connectionState ?? "disconnected",

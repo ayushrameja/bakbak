@@ -1339,8 +1339,11 @@ An invite-management UI is deferred until post-v1.
     user explicitly copies it. It contains only ephemeral participant and
     publication SIDs, connection/signal/subscription/stream/playback state, and
     whitelisted inbound audio packet, byte, loss, jitter, and round-trip
-    metrics. It excludes names, message content, tokens, device labels, audio,
-    ICE candidates, and IP addresses, and is never transmitted automatically.
+    metrics. Candidate/release builds also include the public app version and
+    exact source revision so affected and unaffected listeners can prove they
+    ran the same candidate. It excludes names, message content, tokens, device
+    labels, audio, ICE candidates, and IP addresses, and is never transmitted
+    automatically.
 14. `CommunicationEffectEvent` is emitted only after lifecycle truth: self join
     follows the complete connected gate; normal self leave requires an explicit
     user leave; switches emit only the destination join; sign-out, teardown,
@@ -1585,22 +1588,35 @@ model; Jitsi's Apache/MIT notice and Xiph.Org's BSD 3-Clause notice ship under
 1. Pull requests run formatting, lint, strict TypeScript, renderer/unit tests,
    release-script tests, version synchronization, production build, secret
    scan, and a locked Rust check.
-2. A merge to `main` resolves the next stable SemVer from the newest `v*` tag.
+2. A pull request receives the `stabilization:candidate` label only when its
+   head is ready for installed acceptance. The label-triggered candidate
+   workflow validates and checks out that exact 40-character revision, runs
+   the complete renderer and locked Rust check/test gates, then builds an
+   Apple Silicon DMG and Windows x64 NSIS installer with the live public
+   renderer configuration. A manual dispatch can build another exact revision
+   after the workflow exists on `main`.
+3. Candidate updater artifacts are disabled. The workflow scans both generic
+   and target-specific compiled bundle directories, then uploads private
+   seven-day Actions artifacts named with the same short revision. Each
+   contains an installer plus bounded provenance containing the app version,
+   full revision, platform, and workflow run. It has read-only repository
+   permissions and cannot create or publish a GitHub Release.
+4. A merge to `main` resolves the next stable SemVer from the newest `v*` tag.
    Patch is the default; `release:minor` and `release:major` labels override it,
    while `release:skip` suppresses documentation-only releases. The resolver
    regression fixes the `v0.16.0 + release:major` boundary at `v1.0.0`; source
    package versions are not changed manually before that isolated release
    checkout.
-3. The release checkout synchronizes the calculated version across
+5. The release checkout synchronizes the calculated version across
    `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`.
-4. Tauri Action builds macOS `aarch64` and Windows `x86_64` installers with the
+6. Tauri Action builds macOS `aarch64` and Windows `x86_64` installers with the
    production renderer configuration. Update artifacts are signed with the
    separate Tauri updater key. Intel macOS builds ended at v0.4.0.
-5. The workflow holds the GitHub Release as a draft until it verifies exactly
+7. The workflow holds the GitHub Release as a draft until it verifies exactly
    one Apple Silicon DMG, one NSIS setup executable, no Intel macOS artifacts,
    and one signed `latest.json` entry for each supported target. Unexpected or
    duplicate targets fail manifest verification.
-6. After publication, the workflow synchronizes the released version across
+8. After publication, the workflow synchronizes the released version across
    `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`, then
    updates the Bakbak package entry in `src-tauri/Cargo.lock`. It pushes an
    attempt-scoped branch, then a tested Node boundary discovers or creates its
@@ -1612,16 +1628,16 @@ model; Jitsi's Apache/MIT notice and Xiph.Org's BSD 3-Clause notice ship under
    only after GitHub confirms the merge. Exhausted retries leave the branch
    intact for operator recovery instead of risking a duplicate PR or merging a
    changed head.
-7. A separate announcement job always reads the verified published release
+9. A separate announcement job always reads the verified published release
    from GitHub's API and posts it to the protected System endpoint with three
    retries. Failures do not unpublish the desktop release, and the release ID
    makes reruns idempotent. A manual workflow independently streams every
    stable release oldest-first in historical mode and advances current
    members' release read baseline.
-8. Desktop clients check the public GitHub Releases `latest.json` shortly after
-   startup. An available update is shown globally; installation and restart
-   require an explicit user action so an active conversation is not interrupted.
-   Windows uses Tauri's passive installer mode.
+10. Desktop clients check the public GitHub Releases `latest.json` shortly after
+    startup. An available update is shown globally; installation and restart
+    require an explicit user action so an active conversation is not interrupted.
+    Windows uses Tauri's passive installer mode.
 
 Git tags and published Releases are the release source of truth. The tracked
 `0.2.0` version is the first-release floor. Release builds inject the resolved
@@ -1811,6 +1827,7 @@ credential in a `VITE_*` variable.
 | `VITE_LIVEKIT_URL`       | Public LiveKit WebSocket URL                                                   | No      |
 | `VITE_BACKEND_REGION`    | Public label for the deployed Supabase backend, currently Canada Central       | No      |
 | `VITE_GIPHY_API_KEY`     | Public GIPHY beta API key for direct GIF/sticker search and analytics          | No      |
+| `VITE_BUILD_REVISION`    | Exact public source commit embedded by candidate/release automation            | No      |
 
 ### Edge Function managed values
 
@@ -1828,8 +1845,9 @@ credential in a `VITE_*` variable.
 ignored local `.env` files; Edge Function secrets use Supabase's managed secret
 store.
 
-Release workflows read the renderer-visible values from GitHub Actions
-repository variables and force `VITE_DATA_MODE=live`. They read
+Candidate and release workflows read the service-facing renderer values from
+GitHub Actions repository variables, force `VITE_DATA_MODE=live`, and inject
+the exact public `VITE_BUILD_REVISION` selected for that build. Releases read
 `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` from
 GitHub Actions secrets. System announcements additionally require the
 `BAKBAK_SYSTEM_EVENTS_SECRET` Actions secret matching the Supabase function
@@ -1876,6 +1894,13 @@ runs in parallel and starts the Windows native Cargo check/test job only when
 always starts it. The Windows job remains conditionally present inside the
 always-triggered workflow so a skipped job completes successfully instead of
 leaving a future required workflow pending.
+
+The stabilization-candidate workflow runs only when its exact label is added
+to a pull request or when an operator manually supplies a full commit SHA. It
+checks out and verifies that revision, then builds both supported installers
+without updater signing or release publication. The uploaded installer names
+and manifests carry one shared revision; any later source change invalidates
+both artifacts and requires a fresh run.
 
 GitHub release validation additionally requires successful Apple Silicon macOS
 and Windows x64 native builds, updater signatures for both targets, exactly one

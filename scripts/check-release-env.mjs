@@ -6,6 +6,9 @@ const requiredVariables = [
 
 const missing = requiredVariables.filter((name) => !process.env[name]?.trim());
 if (process.env.VITE_DATA_MODE !== "live") missing.push("VITE_DATA_MODE=live");
+if (!/^[0-9a-f]{40}$/i.test(process.env.VITE_BUILD_REVISION ?? "")) {
+  missing.push("VITE_BUILD_REVISION=<40-character commit SHA>");
+}
 
 if (missing.length > 0) {
   throw new Error(`Release environment is incomplete: ${missing.join(", ")}`);
