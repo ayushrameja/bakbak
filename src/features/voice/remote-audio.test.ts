@@ -231,6 +231,46 @@ describe("RemoteAudioRenderer", () => {
     expect(graph.gains.map((gain) => gain.gain.value)).toEqual([2, 1, 2]);
   });
 
+  it("waits for LiveKit's stream and changes its audible gain below and above unity", () => {
+    const host = document.createElement("div");
+    const graph = createGainGraphDouble();
+    const stream = {
+      getAudioTracks: () => [{ kind: "audio" }],
+    } as unknown as MediaStream;
+    const attach = vi.fn((element: HTMLMediaElement) => {
+      element.srcObject = stream;
+      return element;
+    });
+    const track: RemoteAudioTrackLike = {
+      kind: "audio",
+      attach,
+      detach: vi.fn((element: HTMLMediaElement) => element),
+    };
+    const renderer = new RemoteAudioRenderer(() => host, graph.options);
+    renderer.setParticipantGain("mira", 0.4);
+
+    const element = renderer.attach(track, {
+      ownerId: "mira",
+      sourceKind: "speech",
+    })!;
+
+    expect(graph.createMediaStreamSource).toHaveBeenCalledWith(stream);
+    expect(graph.createMediaElementSource).not.toHaveBeenCalled();
+    expect(attach.mock.invocationCallOrder[0]).toBeLessThan(
+      graph.createMediaStreamSource.mock.invocationCallOrder[0]!,
+    );
+    expect(element).toHaveProperty("muted", true);
+    expect(element).toHaveProperty("volume", 0);
+    expect(graph.gains[0]?.gain.value).toBe(0.4);
+
+    renderer.setParticipantGain("mira", 1.75);
+    expect(graph.gains[0]?.gain.value).toBe(1.75);
+    renderer.setMuted(true);
+    expect(graph.gains[0]?.gain.value).toBe(0);
+    renderer.setMuted(false);
+    expect(graph.gains[0]?.gain.value).toBe(1.75);
+  });
+
   it("routes a boosted graph to the selected speaker instead of the source element", async () => {
     const graph = createGainGraphDouble();
     const renderer = new RemoteAudioRenderer(
@@ -480,12 +520,18 @@ function createGainGraphDouble() {
       getTracks: () => [track],
     },
   } as unknown as MediaStreamAudioDestinationNode;
+  const createMediaElementSource = vi.fn(() => ({
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+  }));
+  const createMediaStreamSource = vi.fn(() => ({
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+  }));
   const context = {
     state: "running",
-    createMediaElementSource: vi.fn(() => ({
-      connect: vi.fn(),
-      disconnect: vi.fn(),
-    })),
+    createMediaElementSource,
+    createMediaStreamSource,
     createGain,
     createWaveShaper: vi.fn(() => limiter),
     createMediaStreamDestination: vi.fn(() => destination),
@@ -508,6 +554,8 @@ function createGainGraphDouble() {
   });
   return {
     createGain,
+    createMediaElementSource,
+    createMediaStreamSource,
     gains,
     play,
     setSinkId,

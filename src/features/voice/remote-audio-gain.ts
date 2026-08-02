@@ -8,6 +8,12 @@ export type RemoteAudioContextConstructor = new () => AudioContext;
 
 export interface RemoteAudioGainStage {
   readonly gain: number;
+  /**
+   * True when Web Audio reads the MediaStream directly. The companion media
+   * element must stay muted in that case so the same participant is not heard
+   * once through the element and again through the limited mix.
+   */
+  readonly isolatesElementPlayback: boolean;
   setGain(gain: number): void;
   disconnect(): void;
 }
@@ -53,14 +59,32 @@ export class RemoteAudioGainGraph {
   attach(element: HTMLAudioElement): RemoteAudioGainStage | null {
     const graph = this.ensureGraph();
     if (!graph) return null;
-    let source: MediaElementAudioSourceNode | null = null;
+    let source: AudioNode | null = null;
     let gainNode: GainNode | null = null;
     try {
-      source = graph.context.createMediaElementSource(element);
+      const stream = readAttachedMediaStream(element);
+      let isolatesElementPlayback = false;
+      if (
+        stream !== null &&
+        typeof graph.context.createMediaStreamSource === "function"
+      ) {
+        try {
+          source = graph.context.createMediaStreamSource(stream);
+          isolatesElementPlayback = true;
+        } catch {
+          // Some embedded engines expose the API but reject remote streams.
+          // The element-backed graph remains a valid limited route.
+        }
+      }
+      source ??= graph.context.createMediaElementSource(element);
       gainNode = graph.context.createGain();
       source.connect(gainNode);
       gainNode.connect(graph.limiter);
-      return new BrowserRemoteAudioGainStage(source, gainNode);
+      return new BrowserRemoteAudioGainStage(
+        source,
+        gainNode,
+        isolatesElementPlayback,
+      );
     } catch {
       source?.disconnect();
       gainNode?.disconnect();
@@ -202,8 +226,9 @@ class BrowserRemoteAudioGainStage implements RemoteAudioGainStage {
   private connected = true;
 
   constructor(
-    private readonly source: MediaElementAudioSourceNode,
+    private readonly source: AudioNode,
     private readonly node: GainNode,
+    readonly isolatesElementPlayback: boolean,
   ) {}
 
   get gain(): number {
@@ -221,6 +246,15 @@ class BrowserRemoteAudioGainStage implements RemoteAudioGainStage {
     this.source.disconnect();
     this.node.disconnect();
   }
+}
+
+function readAttachedMediaStream(
+  element: HTMLAudioElement,
+): MediaStream | null {
+  const source = element.srcObject;
+  return source && typeof (source as MediaStream).getAudioTracks === "function"
+    ? (source as MediaStream)
+    : null;
 }
 
 export function clampRemoteParticipantGain(value: number): number {

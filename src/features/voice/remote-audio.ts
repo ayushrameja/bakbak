@@ -60,6 +60,7 @@ export interface RemoteAudioDiagnostic {
 }
 
 interface OwnedRemoteAudio {
+  track: RemoteAudioTrackLike;
   element: HTMLAudioElement;
   metadata: {
     ownerId: string;
@@ -132,10 +133,14 @@ export class RemoteAudioRenderer {
     const element = document.createElement("audio");
     element.autoplay = true;
     element.hidden = true;
-    element.muted = this.muted || this.mutedTracks.has(track);
+    // LiveKit calls play() while attaching. Keep that first play inaudible
+    // until the stream-backed gain route (or the direct fallback) is ready.
+    element.muted = true;
+    element.volume = 0;
     element.dataset.bakbakRemoteAudio = "";
 
     const owned: OwnedRemoteAudio = {
+      track,
       element,
       metadata: normalizeMetadata(metadata),
       playbackState: "attached",
@@ -144,21 +149,26 @@ export class RemoteAudioRenderer {
       recoveryPending: null,
       lastEvent: "attached",
       removeHealthListeners: () => undefined,
-      gainStage: this.gainGraph.attach(element),
+      gainStage: null,
     };
-    if (
-      !owned.gainStage &&
-      this.selectedDeviceId !== "default" &&
-      typeof element.setSinkId === "function"
-    ) {
-      void element.setSinkId(this.selectedDeviceId).catch(() => undefined);
-    }
     owned.removeHealthListeners = this.addHealthListeners(track, owned);
-    this.applyGain(owned);
     this.getHost().append(element);
     this.elements.set(track, owned);
     try {
       track.attach(element);
+      // LiveKit has now assigned the remote MediaStream. Prefer reading that
+      // stream directly so both WebKit and WebView2 receive a real gain node;
+      // creating a MediaElementSource before srcObject existed could leave an
+      // apparently healthy slider disconnected from audible playback.
+      owned.gainStage = this.gainGraph.attach(element);
+      if (
+        !owned.gainStage &&
+        this.selectedDeviceId !== "default" &&
+        typeof element.setSinkId === "function"
+      ) {
+        void element.setSinkId(this.selectedDeviceId).catch(() => undefined);
+      }
+      this.applyGain(owned);
     } catch {
       this.emitHealth(owned, "playback-failed", true);
       this.detach(track);
@@ -205,20 +215,14 @@ export class RemoteAudioRenderer {
 
   setMuted(muted: boolean): void {
     this.muted = muted;
-    this.elements.forEach((owned, track) => {
-      owned.element.muted = muted || this.mutedTracks.has(track);
-      this.applyGain(owned);
-    });
+    this.elements.forEach((owned) => this.applyGain(owned));
   }
 
   setTrackMuted(track: RemoteAudioTrackLike, muted: boolean): void {
     if (muted) this.mutedTracks.add(track);
     else this.mutedTracks.delete(track);
     const owned = this.elements.get(track);
-    if (owned) {
-      owned.element.muted = this.muted || muted;
-      this.applyGain(owned);
-    }
+    if (owned) this.applyGain(owned);
   }
 
   async setDevice(deviceId: string): Promise<void> {
@@ -445,10 +449,16 @@ export class RemoteAudioRenderer {
   private applyGain(owned: OwnedRemoteAudio): void {
     const gain = this.resolveGain(owned);
     if (owned.gainStage) {
-      owned.element.volume = 1;
+      // Room.startAudio() may unmute LiveKit's attached elements. A direct
+      // MediaStream source therefore also keeps its companion element at zero
+      // volume, preventing an unprocessed duplicate from bypassing this gain.
+      owned.element.volume = owned.gainStage.isolatesElementPlayback ? 0 : 1;
+      owned.element.muted =
+        owned.gainStage.isolatesElementPlayback || this.isSourceMuted(owned);
       owned.gainStage.setGain(gain);
       return;
     }
+    owned.element.muted = this.isSourceMuted(owned);
     owned.element.volume = clampGain(gain);
   }
 
@@ -456,9 +466,13 @@ export class RemoteAudioRenderer {
     const participantGain =
       this.participantGains.get(owned.metadata.ownerId) ?? 1;
     const globalGain = this.globalGains.get(owned.metadata.sourceKind) ?? 1;
-    return this.muted || owned.element.muted
+    return this.isSourceMuted(owned)
       ? 0
       : participantGain * globalGain * owned.metadata.baseGain;
+  }
+
+  private isSourceMuted(owned: OwnedRemoteAudio): boolean {
+    return this.muted || this.mutedTracks.has(owned.track);
   }
 }
 

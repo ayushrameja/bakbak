@@ -669,6 +669,7 @@ describe("useVoiceRoom join lifecycle", () => {
   });
 
   it("mutes a remote participant locally and restores their last boosted volume", async () => {
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
     const setParticipantGain = vi.spyOn(
       RemoteAudioRenderer.prototype,
       "setParticipantGain",
@@ -685,11 +686,22 @@ describe("useVoiceRoom join lifecycle", () => {
     await waitFor(() => expect(liveKitState.rooms[0]).toBeDefined());
     const room = liveKitState.rooms[0]!;
     const mira = remoteParticipant("mira", "Mira");
+    const { publication, track } = remoteAudioPublication();
+    mira.testTrackPublications.push(publication);
     room.remoteParticipants.set("mira", mira);
     await act(async () => {
       connection.resolve(undefined);
       await joinPromise;
     });
+    act(() => room.emit("trackSubscribed", track, publication, mira));
+    const remoteElement = document.querySelector<HTMLAudioElement>(
+      "audio[data-bakbak-remote-audio]",
+    );
+    expect(remoteElement).not.toBeNull();
+
+    act(() => result.current.setParticipantVolume("mira", 0.4));
+    expect(setParticipantGain).toHaveBeenLastCalledWith("mira", 0.4);
+    expect(remoteElement).toHaveProperty("volume", 0.4);
 
     act(() => result.current.setParticipantVolume("mira", 1.5));
     expect(setParticipantGain).toHaveBeenLastCalledWith("mira", 1.5);

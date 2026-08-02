@@ -17,6 +17,10 @@ always roll back, and `Keep other audio at full volume` must default on.
 - [x] Keep participant volume in one listener-local session map. Give the
       participant card a separate focus button and a continuous, keyboard
       accessible volume range that cannot activate focus.
+- [x] Repair installed tooltip gain by handling the range's native input event
+      and creating the gain source only after LiveKit attaches its concrete
+      remote MediaStream. Keep the companion element silent so playback
+      recovery cannot bypass attenuation or boost.
 - [x] Add `off`, `starting`, `active`, and `fallback-error` microphone
       processing states. Require AudioWorklet `ready` and configuration
       acknowledgements before committing On, restore the original sender when
@@ -64,8 +68,9 @@ always roll back, and `Keep other audio at full volume` must default on.
 
 ## Automated acceptance
 
-- [x] Actual audio-element volume covers 100%, 50%, and 0%, late tracks, screen
-      audio, and soundboard multiplication.
+- [x] Actual direct-fallback volume plus stream-backed gain covers 0%, 40%,
+      100%, 150%, 175%, and 200%, late tracks, screen audio, soundboard
+      multiplication, source ordering, and duplicate-route suppression.
 - [x] Slider input and keyboard adjustment do not trigger participant focus.
 - [x] RNNoise ready/configure/error, sender restore, frame wrapping, and
       preference migration have focused tests.

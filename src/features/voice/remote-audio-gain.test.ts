@@ -43,6 +43,40 @@ describe("remote listener gain safety", () => {
     expect(audio.gains).toHaveLength(2);
   });
 
+  it("prefers the attached remote MediaStream over an unbound media element", () => {
+    const audio = createGraphDouble();
+    const graph = new RemoteAudioGainGraph(audio.options);
+    const element = document.createElement("audio");
+    const stream = {
+      getAudioTracks: () => [{ kind: "audio" }],
+    } as unknown as MediaStream;
+    element.srcObject = stream;
+
+    const stage = graph.attach(element);
+
+    expect(audio.createMediaStreamSource).toHaveBeenCalledWith(stream);
+    expect(audio.createMediaElementSource).not.toHaveBeenCalled();
+    expect(stage?.isolatesElementPlayback).toBe(true);
+  });
+
+  it("keeps the limited element route when an embedded engine rejects the stream source", () => {
+    const audio = createGraphDouble();
+    audio.createMediaStreamSource.mockImplementationOnce(() => {
+      throw new DOMException("unsupported stream", "NotSupportedError");
+    });
+    const graph = new RemoteAudioGainGraph(audio.options);
+    const element = document.createElement("audio");
+    element.srcObject = {
+      getAudioTracks: () => [{ kind: "audio" }],
+    } as unknown as MediaStream;
+
+    const stage = graph.attach(element);
+
+    expect(stage).not.toBeNull();
+    expect(audio.createMediaElementSource).toHaveBeenCalledWith(element);
+    expect(stage?.isolatesElementPlayback).toBe(false);
+  });
+
   it("routes the mixed call to the selected output and releases every graph resource", async () => {
     const audio = createGraphDouble();
     const graph = new RemoteAudioGainGraph(audio.options);
@@ -106,14 +140,21 @@ function createGraphDouble() {
   } as unknown as MediaStream;
   const destination = { stream } as MediaStreamAudioDestinationNode;
   const createWaveShaper = vi.fn(() => limiter);
+  const createMediaElementSource = vi.fn(() => {
+    const source = { connect: vi.fn(), disconnect: vi.fn() };
+    sources.push(source);
+    return source;
+  });
+  const createMediaStreamSource = vi.fn(() => {
+    const source = { connect: vi.fn(), disconnect: vi.fn() };
+    sources.push(source);
+    return source;
+  });
   const close = vi.fn().mockResolvedValue(undefined);
   const context = {
     state: "running",
-    createMediaElementSource: vi.fn(() => {
-      const source = { connect: vi.fn(), disconnect: vi.fn() };
-      sources.push(source);
-      return source;
-    }),
+    createMediaElementSource,
+    createMediaStreamSource,
     createGain: vi.fn(() => {
       const gain = {
         gain: { value: 1 },
@@ -146,6 +187,8 @@ function createGraphDouble() {
   return {
     close,
     context,
+    createMediaElementSource,
+    createMediaStreamSource,
     createWaveShaper,
     gains,
     limiter,

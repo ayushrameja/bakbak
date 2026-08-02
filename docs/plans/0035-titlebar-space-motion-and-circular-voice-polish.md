@@ -33,6 +33,9 @@ or screen-share lifecycle contracts.
 - [x] Render substantially larger static/GIF profiles or circular camera video
       with a forgiving above-avatar tooltip-style action popover that keeps the
       media clear and exposes profile, LIVE, and working 0–200% volume actions.
+- [x] Make pointer volume changes use the range input event and verify the
+      tooltip drives the attached participant's real stream-backed gain below
+      and above unity without opening profile or LIVE media.
 - [x] Keep non-LIVE profile and camera circles passive. Only a LIVE circle or
       its LIVE actions open the existing focused share stage; activating the
       focused media returns to people without a Back button, participant expand

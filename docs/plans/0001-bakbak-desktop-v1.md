@@ -523,6 +523,8 @@ media returns to people, with no participant expansion or renderer fullscreen.
 - [x] Finalize plan 0035 with passive non-LIVE circles, LIVE-only share focus,
       a control-free media-return stage, restored sidebar media shortcuts,
       clearer room timers, and 345 ms sidebar-only directional motion.
+- [x] Repair plan 0035's tooltip volume path so native range input updates the
+      post-attachment LiveKit MediaStream gain for both attenuation and boost.
 - [ ] Complete plan 0035's light/dark two-resolution and installed
       macOS/Windows multi-client visual/interaction acceptance matrix.
 

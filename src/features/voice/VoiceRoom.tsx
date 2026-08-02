@@ -614,7 +614,7 @@ function ParticipantOrb({
               value={participant.volume}
               aria-valuetext={`${Math.round(participant.volume * 100)}%${participant.volume > 1 ? " boosted" : ""}`}
               title="Levels above 100% boost quiet participants and may also amplify background noise."
-              onChange={(event) =>
+              onInput={(event) =>
                 voice.setParticipantVolume(
                   participant.id,
                   Number(event.currentTarget.value),

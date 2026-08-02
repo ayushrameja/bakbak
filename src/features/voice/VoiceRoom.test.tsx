@@ -409,7 +409,7 @@ describe("VoiceRoom", () => {
     expect(slider).toHaveAttribute("max", "2");
     expect(screen.getByText("100%")).toBeVisible();
 
-    fireEvent.change(slider, { target: { value: "1.5" } });
+    fireEvent.input(slider, { target: { value: "1.5" } });
     expect(voice.setParticipantVolume).toHaveBeenLastCalledWith("user-2", 1.5);
     participant.volume = 1.5;
     rerender(
@@ -967,7 +967,7 @@ describe("VoiceRoom", () => {
     ).toBe("SPAN");
     expect(screen.queryByRole("button", { name: "Expand Mira" })).toBeNull();
     expect(screen.getByRole("slider", { name: "Mira volume" })).toBeVisible();
-    fireEvent.change(screen.getByRole("slider", { name: "Mira volume" }), {
+    fireEvent.input(screen.getByRole("slider", { name: "Mira volume" }), {
       target: { value: "0.4" },
     });
     expect(voice.setParticipantVolume).toHaveBeenLastCalledWith("user-2", 0.4);

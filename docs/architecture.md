@@ -180,8 +180,11 @@ active call additionally expose a local mute toggle. Participant volume zero
 is applied across speech, soundboard, and share audio; unmute restores the last
 non-zero level—including a boosted level—or 100%. One remote-audio renderer
 owns every hidden speech, soundboard, and watched-share element with
-owner/source/base-gain metadata. Each subscribed element feeds one
-listener-owned Web Audio gain stage; all stages mix through one
+owner/source/base-gain metadata. LiveKit first attaches the remote stream, then
+the renderer feeds that concrete MediaStream into one listener-owned Web Audio
+gain stage; the companion element stays muted at zero volume so LiveKit
+playback recovery cannot create an unprocessed duplicate. Engines that reject
+the stream source retry an element-backed gain stage. All stages mix through one
 4×-oversampled soft limiter whose linear region ends at 90% and whose output
 ceiling is 98%. Participant gain ranges from 0 to 2, while
 source/global/base gains remain bounded to unity, so speech uses participant

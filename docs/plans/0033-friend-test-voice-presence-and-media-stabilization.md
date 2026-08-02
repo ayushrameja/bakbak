@@ -222,6 +222,9 @@ canonical progress entry before handoff.
       raise sender gain as a substitute for repairing listener playback.
 - [x] Route remote speech through a listener-owned Web Audio graph that supports
       `0%` through `200%`, with `100%` as unity gain.
+- [x] Feed that graph from LiveKit's attached MediaStream rather than creating
+      an unbound media-element source before `srcObject` exists; retain an
+      element-backed limited fallback and a direct 0–100% fallback.
 - [x] Add a limiter or equivalent bounded headroom after gain so 200% cannot
       produce uncontrolled clipping.
 - [x] Keep mute, deafen, participant departure, late subscription, output

@@ -6880,3 +6880,55 @@ aarch64-apple-darwin --bundles app,dmg` plus
 - **Next:** Run the Windows native CI job, then complete the installed
   two-client matrix with the presenter microphone muted so digital loopback is
   measured separately from ordinary speaker-to-microphone echo.
+
+## 2026-08-02 — Repair tooltip participant attenuation and boost
+
+- **Completed:** Repaired the circular participant tooltip's listener-volume
+  path at both boundaries. Pointer movement now uses the range control's native
+  continuous `input` event. Remote audio now waits for LiveKit to attach the
+  concrete stream before creating its gain source, prefers a direct
+  `MediaStreamAudioSourceNode`, and keeps the companion LiveKit element muted at
+  zero volume so `Room.startAudio()` cannot create an unscaled duplicate path.
+  Engines that reject the stream source retry the limited media-element graph;
+  engines without a usable graph retain the existing direct 0–100% fallback.
+- **Decisions:** Kept participant identity, LiveKit wire data, the listener-local
+  session map, selected-output monitor, soundboard/share multiplication, and
+  shared limiter unchanged. The repair belongs in the listener renderer rather
+  than sender gain: every listener can independently attenuate or boost the
+  same friend, and no preference is published to the room.
+- **Validation:**
+  - Focused tooltip/hook/remote-audio/gain Vitest suite — passed 4 files and
+    98/98 tests, including native range input, participant-identity propagation,
+    attached-stream ordering, 40% attenuation, 175% boost, duplicate-route
+    suppression, mute restoration, and element/direct fallbacks.
+  - `pnpm test` — passed 85 Vitest files / 481 tests and 48/48 Node contract
+    tests.
+  - `pnpm build` — passed both strict TypeScript projects and the production
+    Vite build; the existing large-chunk warning remains non-blocking.
+  - Direct full-repository Prettier and zero-warning ESLint checks — passed.
+  - Direct renderer and Node TypeScript checks — passed; `pnpm build` also ran
+    the repository's exact `pnpm typecheck` script successfully.
+  - `node scripts/set-version.mjs --check` — passed at synchronized version
+    1.5.1.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist` and the
+    available generic and Apple Silicon Tauri bundle directories.
+  - `git diff --check` — passed.
+  - Standalone `pnpm format:check`, `pnpm lint`, and `pnpm typecheck` attempts —
+    interrupted after the existing host-side no-output stalls; their exact
+    direct repository binaries passed, and `pnpm build` independently verified
+    the typecheck script.
+  - `pnpm tauri build` — interrupted after roughly one minute with no build
+    output from the existing host-side stall; no fresh installed bundle is
+    claimed.
+- **Documentation updated:** Updated the remote-audio architecture contract,
+  plans 0030, 0033, and 0035, the active v1 phase, and this canonical progress
+  log.
+- **Known limitations:** Automated tests prove event delivery and the actual
+  stream/gain-node values, but this host cannot impersonate a second person's
+  ears. Installed macOS and Windows clients still need the planned two-client
+  0%, 40%, 100%, 150%, and 200% perception check, including selected-output,
+  deafen/recovery, watched-share, and soundboard cases. The direct compatibility
+  fallback intentionally cannot boost above the media element's 100% ceiling.
+- **Next:** Build the same revision on macOS and Windows and run the installed
+  two-client participant-volume matrix before closing Packet D's listening
+  acceptance gate.
