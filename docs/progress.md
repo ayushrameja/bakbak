@@ -5823,3 +5823,854 @@ aarch64-apple-darwin --bundles app,dmg` plus
   those two candidates and run the complete six-person matrix. Append sanitized
   observations before either allowing the merge/release or returning a failure
   to its owning packet.
+
+## 2026-08-01 — Buzz-inspired unified Bakbak redesign
+
+- **Completed:** Replaced the signed-in five-track shell with one resizable,
+  collapsible gradient sidebar and one rounded solid conversation canvas. Moved
+  the Personal/Bakbak switch into both sidebar modes, added the top-four online
+  preview and focus-trapped grouped member overlay, removed the right member/DM
+  rail, and routed DM/member identities through the existing profile surface.
+  Added the flat Welcome, Chat, Volt, Random Things, and Game #1–#3 room shelf,
+  compact admin create/rename actions, empty mock conversations, Inter Variable,
+  space-specific light/dark palettes, v3 layout preferences, denser grouped
+  messages, shared curved control tokens, and Appearance palette previews.
+  Added the local archival migration and active-only client/database contracts,
+  updated Welcome automation, and removed the release chat job, history
+  workflow, Edge Function, secret placeholder, configuration, and RPC surface.
+- **Decisions:** Historical categories, rooms, messages, attachments, reactions,
+  and reads are archived rather than deleted. The fresh visible rooms use new
+  stable IDs and begin empty. Welcome retains `system-general` internally but
+  loses the System-category/lock presentation. Layout v2 migration keeps only
+  the former left panel's visibility/width. Native system-accent plumbing may
+  remain dormant for compatibility, while signed-in rendering derives its
+  accent from the active Bakbak or Personal space. The production archival
+  migration was deliberately not applied; it needs a separate data approval.
+- **Validation:**
+  - `pnpm check` — passed Prettier, zero-warning ESLint, both strict TypeScript
+    projects, 86 Vitest files with 475/475 tests, 44/44 Node contract tests,
+    synchronized version 1.5.0, production renderer build, and compiled-secret
+    scan. Vite retained its existing non-blocking large-chunk warning and emitted
+    the bundled Inter Variable WOFF2 subsets.
+  - `deno test --allow-env --config supabase/deno.json supabase/functions/tests`
+    — passed 42/42 remaining Edge Function tests after removing system-events.
+  - `pnpm dlx supabase@latest db reset` — failed before migration execution
+    because Docker/Colima was not running at
+    `/Users/ayushrameja/.colima/default/docker.sock`; pgTAP was therefore not
+    run and no database assertion is claimed.
+  - Local Tauri app bundle (`tauri build --bundles app` with the local config) —
+    passed the renderer rebuild, optimized native compile, ad-hoc signing, and
+    local `Bakbak.app` bundle. Notarization was skipped because Apple credentials
+    were not configured.
+  - In-app mock-browser checks at 1280×800 and 1024×680 — passed light/dark
+    Bakbak, light/dark Personal, 248/280/340 px and hidden sidebar states,
+    persistence, empty chat, member overlay focus, profile access, Settings
+    palettes, voice room, soundboard, and Personal/Bakbak switching during an
+    active call. Document overflow stayed zero, intended long voice/soundboard
+    content remained internally scrollable, controls stayed reachable, and the
+    console reported no errors.
+  - `git diff --check` and focused forbidden-secret review — passed again at
+    final handoff validation.
+- **Documentation updated:** Added plan 0034, marked its local implementation
+  gates, updated plan 0001's active scope and regression contract, rewrote the
+  current architecture and backend boundaries, updated Supabase deployment
+  guidance, and appended this canonical progress entry.
+- **Known limitations:** The Docker-backed reset, schema lint, and pgTAP suite
+  remain blocked, so the new SQL migration is implemented and reviewed but not
+  runtime-validated. Hosted Supabase remains on the pre-0034 hierarchy. The
+  two-client presence ordering, live Show all updates, admin room Realtime,
+  future Welcome event, archived-room disappearance, active-call transition,
+  profile/DM matrix, populated-chat visual matrix, Windows build, and installed
+  macOS/Windows observation remain open. The local macOS app is ad-hoc signed
+  and unnotarized.
+- **Next:** Start Docker/Colima, run a clean local reset, schema lint, and the
+  complete pgTAP suite, fix any migration failures, then repeat the two-client
+  local acceptance matrix. Request explicit production-data approval before any
+  hosted `db push`; after approval, take an operator backup and migrate before
+  distributing this renderer.
+
+## 2026-08-01 — Deploy the unified channel archive
+
+- **Completed:** Applied
+  `202608010001_unified_bakbak_channels.sql` to the linked, healthy Bakbak
+  project in Canada Central after the user explicitly approved the production
+  data migration. Confirmed the hosted migration ledger matches the repository,
+  ran linked schema lint after the push, and deleted the retired hosted
+  `system-events` Edge Function. The old category/room rows and their related
+  history remain stored with archive timestamps; the fresh Channels category
+  and seven-room workspace are now the active hosted layout.
+- **Decisions:** Proceeded only after resolving the linked target and proving
+  that exactly one migration was pending. Kept the rollout to the accepted
+  archive-not-delete transaction and its release-announcement cleanup. Supabase
+  reported WAL archiving enabled but no available physical snapshot; the CLI
+  logical-backup path requires Docker, which is stopped on this host. Because
+  the migration dry run was clean, the SQL contains no row deletion, table
+  drop, or truncation, and `db push` applies each migration transactionally, the
+  approved rollout proceeded without pretending a backup existed.
+- **Validation:**
+  - `supabase projects list` — passed; the linked target was the active healthy
+    `bakbak` project in `ca-central-1`.
+  - `supabase migration list` before the push — passed; only
+    `202608010001` was local-only.
+  - `supabase backups list` — passed; WAL archiving was enabled, PITR was
+    disabled, and no physical backup snapshot was available.
+  - Static migration audit for `DELETE`, `TRUNCATE`, and `DROP TABLE` — passed;
+    the only data transition is archive-timestamp updates plus fresh inserts.
+  - `supabase db push --linked --dry-run` — passed and named only
+    `202608010001_unified_bakbak_channels.sql`.
+  - `supabase db dump --linked --data-only --schema public` — failed before
+    dumping because Docker/Colima was unavailable; its zero-byte temporary file
+    contained no production data.
+  - `supabase db push --linked --yes` — passed; migration `202608010001` was
+    applied successfully.
+  - `supabase migration list` after the push — passed; local and remote both
+    report `202608010001`.
+  - `supabase db lint --linked --level error` — passed with no schema errors.
+  - `supabase functions delete system-events` — passed; the retired hosted
+    Edge Function was deleted.
+  - `supabase functions list` after deletion — passed; the hosted list contains
+    the five active app functions and no `system-events` entry.
+  - `./node_modules/.bin/prettier --check .` and `git diff --check` — passed;
+    the deployment documentation is formatted and the worktree has no
+    whitespace errors. The `pnpm --dir ... format:check` wrapper produced no
+    output while waiting on this host's pnpm 11.17 bootstrap and was interrupted;
+    the repository-local Prettier binary ran the same format check directly.
+- **Documentation updated:** Marked the hosted migration and function cleanup
+  complete in plan 0034 and plan 0001, updated the current hosted backend state
+  in `docs/architecture.md` and `supabase/README.md`, and appended this canonical
+  deployment entry.
+- **Known limitations:** No physical or logical operator backup was available
+  for this rollout. Docker-backed reset/pgTAP remains unrun on this host. The
+  hosted two-client presence, Show all, admin room Realtime, future Welcome
+  event, archived-room disappearance, profile/DM, and active-call transition
+  matrix remains open, as do installed macOS/Windows checks.
+- **Next:** Run the hosted two-account acceptance matrix against the migrated
+  workspace, then repeat the installed macOS/Windows visual and active-call
+  checks before distributing the redesigned renderer.
+
+## 2026-08-01 — Center Personal/Bakbak selector labels
+
+- **Completed:** Kept the Personal and Bakbak labels geometrically centered in
+  their equal-width selector segments when unread or active-call markers are
+  present. Grouped status markers in a right-aligned, non-layout wrapper so
+  both indicators remain visible without shifting the selected label.
+- **Decisions:** Preserved the existing accessible button labels, keyboard
+  navigation, unread markers, and call marker semantics. The visual correction
+  belongs in the shared switcher structure and CSS so it applies consistently
+  in both sidebar modes.
+- **Validation:**
+  - `./node_modules/.bin/prettier --check src/components/SpaceSwitcher.tsx src/components/SpaceSwitcher.test.tsx src/styles.css` — passed.
+  - `./node_modules/.bin/vitest run src/components/SpaceSwitcher.test.tsx` — passed 3/3 tests.
+  - `./node_modules/.bin/prettier --check .` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed.
+  - `./node_modules/.bin/tsc --noEmit --pretty false && ./node_modules/.bin/tsc --noEmit --pretty false -p tsconfig.node.json` — passed.
+  - `./node_modules/.bin/vitest run` — passed 86 files and 475 tests.
+  - `node --test scripts/*.test.mjs` — passed 44/44 tests.
+  - `./node_modules/.bin/vite build` — passed; the existing large-chunk warning remains non-blocking.
+  - In-app mock visual check at 1280×720 with an active voice marker — passed; the Bakbak label center matched its button center within 0.01 px and the browser console had no errors.
+  - `git diff --check` — passed.
+  - `./node_modules/.bin/tauri build --bundles app --config src-tauri/tauri.local.conf.json` — skipped after the command stalled in Tauri's installed-package lookup and then the repository `pnpm build` prebuild hook; the verified renderer build passed separately.
+- **Documentation updated:** Appended this canonical progress entry. No
+  architecture or plan source of truth changed.
+- **Known limitations:** The host's pnpm bootstrap remains unable to complete
+  interactively, and the native bundle was not rebuilt in this task because
+  Tauri could not reach its native build phase. Existing installed-client and
+  multi-client acceptance gaps remain unchanged.
+- **Next:** Continue the existing hosted and installed acceptance matrix for
+  plan 0034.
+
+## 2026-08-01 — Remove selector hover tooltip
+
+- **Completed:** Removed the redundant native `title` tooltip from the Bakbak
+  selector button. The visible Bakbak label and accessible name remain intact,
+  while hover no longer paints a floating “Bakbak server” label over the
+  titlebar and makes the sidebar alignment appear incorrect.
+- **Decisions:** Kept the selector in its accepted sidebar position and kept
+  the existing disabled-state accessible name (`Server invite needed`) rather
+  than adding another custom tooltip surface.
+- **Validation:**
+  - `./node_modules/.bin/prettier --check src/components/SpaceSwitcher.tsx src/components/SpaceSwitcher.test.tsx` — passed.
+  - `./node_modules/.bin/eslint src/components/SpaceSwitcher.tsx src/components/SpaceSwitcher.test.tsx --max-warnings=0` — passed.
+  - `./node_modules/.bin/tsc --noEmit --pretty false && ./node_modules/.bin/tsc --noEmit --pretty false -p tsconfig.node.json` — passed.
+  - `./node_modules/.bin/vitest run src/components/SpaceSwitcher.test.tsx` — passed 3/3 tests.
+  - `./node_modules/.bin/vite build` — passed; the existing large-chunk warning remains non-blocking.
+  - `./node_modules/.bin/prettier --check .` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed.
+  - `./node_modules/.bin/vitest run` — passed 86 files and 475 tests.
+  - `node --test scripts/*.test.mjs` — passed 44/44 tests.
+  - `git diff --check && node scripts/check-bundle-secrets.mjs` — passed.
+  - In-app mock visual check — passed; both labels stayed centered and the
+    hover tooltip was absent.
+- **Documentation updated:** Appended this canonical progress entry. No
+  architecture or plan source of truth changed.
+- **Known limitations:** The native Tauri bundle was not rerun; the previous
+  entry records the host's pnpm/Tauri build-phase blocker. Existing installed
+  client and multi-client acceptance gaps remain unchanged.
+- **Next:** Continue the existing hosted and installed acceptance matrix for
+  plan 0034.
+
+## 2026-08-01 — Contain selector segments inside parent
+
+- **Completed:** Fixed the Personal/Bakbak selector’s sidebar box model. The
+  parent remains a 36 px control with 3 px padding and 1 px borders, while
+  both child segments now fill only the available inner track instead of
+  overflowing below the dark parent background.
+- **Decisions:** Kept the existing control height and visual padding contract;
+  removed the conflicting 34 px minimum height from the sidebar-specific
+  override and used `height: 100%` with `min-height: 0` for the two segments.
+- **Validation:**
+  - `./node_modules/.bin/prettier --check src/components/SpaceSwitcher.tsx src/components/SpaceSwitcher.test.tsx src/styles.css` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed.
+  - `./node_modules/.bin/tsc --noEmit --pretty false && ./node_modules/.bin/tsc --noEmit --pretty false -p tsconfig.node.json` — passed.
+  - `./node_modules/.bin/vitest run` — passed 86 files and 475 tests.
+  - `node --test scripts/*.test.mjs` — passed 44/44 tests.
+  - `./node_modules/.bin/vite build` — passed; the existing large-chunk warning remains non-blocking.
+  - `git diff --check && node scripts/check-bundle-secrets.mjs` — passed.
+  - In-app mock visual check — passed; parent measured 36 px, each segment measured 28 px, both segments fit inside the parent, and top/bottom insets were equal.
+- **Documentation updated:** Appended this canonical progress entry. No
+  architecture or plan source of truth changed.
+- **Known limitations:** The native Tauri bundle was not rerun; the earlier
+  entry records the host’s pnpm/Tauri build-phase blocker. Existing installed
+  client and multi-client acceptance gaps remain unchanged.
+- **Next:** Continue the existing hosted and installed acceptance matrix for
+  plan 0034.
+
+## 2026-08-01 — Use theme surfaces for text and voice canvases
+
+- **Completed:** Added theme-safe conversation surface defaults for the signed-in
+  shell. Automatic dark mode now receives the dark canvas tokens, automatic
+  light mode follows the system light media query, and explicit Dark/Light
+  preferences still override those defaults. Applied the same solid surface
+  directly to the connected voice room so the space gradient remains confined
+  to the sidebar.
+- **Decisions:** Kept the existing sidebar gradient and the established dark
+  `#171717` / light `#fbfbf8` canvas colors. The root cause was an unset
+  `--conversation-canvas` when Auto removed `data-color-scheme`, not a layout
+  change in the chat or voice components.
+- **Validation:**
+  - `./node_modules/.bin/prettier --check src/styles.css` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed.
+  - `./node_modules/.bin/tsc --noEmit --pretty false && ./node_modules/.bin/tsc --noEmit --pretty false -p tsconfig.node.json` — passed.
+  - `./node_modules/.bin/vitest run` — passed 86 files and 475 tests.
+  - `node --test scripts/*.test.mjs` — passed 44/44 tests.
+  - `./node_modules/.bin/vite build` — passed; the existing large-chunk warning remains non-blocking.
+  - `git diff --check && node scripts/check-bundle-secrets.mjs` — passed.
+  - In-app mock visual check at 1280×720 — passed; Auto dark, explicit Dark,
+    and explicit Light produced solid text and connected voice canvases, while
+    the sidebar retained its gradient. The dark text and voice states were
+    also visually reviewed in rendered screenshots.
+- **Documentation updated:** Appended this canonical progress entry. No
+  architecture or plan source of truth changed because the documented shell
+  contract already calls for a solid theme-aware conversation canvas.
+- **Known limitations:** The native Tauri bundle was not rerun; the earlier
+  entry records the host’s pnpm/Tauri build-phase blocker. Existing installed
+  client and multi-client acceptance gaps remain unchanged.
+- **Next:** Continue the existing hosted and installed acceptance matrix for
+  plan 0034.
+
+## 2026-08-01 — Match Buzz message-area hierarchy
+
+- **Completed:** Removed the text-channel topic subtitle from the top bar so
+  the header now carries only the channel identity. Restyled the channel intro
+  as an unboxed Buzz-style conversation start, changed its heading to the
+  channel name (`#Chat`), and tightened the intro/message insets so the first
+  message aligns with the canvas edge rhythm from the reference.
+- **Decisions:** Kept the channel topic visible inside the conversation intro
+  rather than deleting useful context. Direct-message identity/status remains
+  unchanged, and message/composer behavior remains untouched.
+- **Validation:**
+  - `./node_modules/.bin/prettier --check src/app/App.tsx src/app/App.test.tsx src/features/chat/ChatView.tsx src/features/chat/ChatView.test.tsx src/styles.css` — passed.
+  - `./node_modules/.bin/vitest run src/app/App.test.tsx src/features/chat/ChatView.test.tsx` — passed 2 files and 24 tests.
+  - `node --test scripts/conversation-layout.test.mjs` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed.
+  - `./node_modules/.bin/tsc --noEmit --pretty false && ./node_modules/.bin/tsc --noEmit --pretty false -p tsconfig.node.json` — passed.
+  - `./node_modules/.bin/vitest run` — passed 86 files and 476 tests.
+  - `node --test scripts/*.test.mjs` — passed 44/44 tests.
+  - `./node_modules/.bin/vite build` — passed; the existing large-chunk warning remains non-blocking.
+  - `git diff --check && node scripts/check-bundle-secrets.mjs` — passed.
+  - In-app mock visual check at 1280×720 — passed; the channel header has no
+    topic subtitle, the intro is transparent with a bottom divider, and the
+    first message aligns at the updated 20 px canvas inset.
+- **Documentation updated:** Appended this canonical progress entry. No
+  architecture or plan source of truth changed.
+- **Known limitations:** The native Tauri bundle was not rerun; the earlier
+  entry records the host's pnpm/Tauri build-phase blocker. Existing installed
+  client and multi-client acceptance gaps remain unchanged.
+- **Next:** Continue the existing hosted and installed acceptance matrix for
+  plan 0034.
+
+## 2026-08-01 — Match Buzz channel header
+
+- **Completed:** Replaced the signed-in channel header's large icon-and-title
+  treatment with a compact Buzz-style `# channel` identity. Added the member
+  count, headphones, and ellipsis action cluster; the member action opens the
+  existing grouped member overlay, the headphones action opens Audio & video
+  settings, and the ellipsis menu exposes those same actions. Lifted only the
+  overlay open state to the shell so sidebar and header entry points share one
+  dialog. Reduced the channel header row to 56 px while keeping direct-member
+  identity/status and voice-channel topic behavior intact.
+- **Decisions:** Scoped the Buzz-style action cluster to server channels and
+  used the actual workspace member count rather than inventing a channel-local
+  count. Kept the text-channel topic in the body intro, where the previous
+  hierarchy change placed it, and kept direct-message chrome unchanged.
+- **Validation:**
+  - `./node_modules/.bin/prettier --check .` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed.
+  - `./node_modules/.bin/tsc --noEmit --pretty false && ./node_modules/.bin/tsc --noEmit --pretty false -p tsconfig.node.json` — passed.
+  - `./node_modules/.bin/vitest run src/app/App.test.tsx src/features/channels/ChannelSidebar.test.tsx` — passed 2 files and 18 tests.
+  - `./node_modules/.bin/vitest run` — passed 86 files and 476 tests.
+  - `node --test scripts/*.test.mjs` — passed 44/44 tests.
+  - `./node_modules/.bin/vite build` — passed; the existing large-chunk warning remains non-blocking.
+  - `node scripts/check-bundle-secrets.mjs` — passed.
+  - `git diff --check` — passed.
+  - In-app mock visual check at 1280×720 — passed; text and voice headers
+    render the compact channel identity and right-side action cluster, and the
+    member action opens the real overlay.
+- **Documentation updated:** Appended this canonical progress entry. No
+  architecture or plan source of truth changed.
+- **Known limitations:** The native Tauri bundle was not rerun; the earlier
+  entry records the host's pnpm/Tauri build-phase blocker. Existing installed
+  client and multi-client acceptance gaps remain unchanged.
+- **Next:** Continue the existing hosted and installed acceptance matrix for
+  plan 0034.
+
+## 2026-08-01 — Match header surface and simplify actions
+
+- **Completed:** Set the signed-in channel header background to the exact
+  conversation-canvas token so it no longer appears as a lighter raised strip.
+  Removed the direct members/count and headphones controls from the header,
+  leaving only the ellipsis button. The ellipsis menu still exposes the real
+  Show members and Audio & video settings actions, and the focused header test
+  now verifies that the removed controls stay absent.
+- **Decisions:** Kept the existing menu output and its functionality while
+  reducing the persistent chrome to the single control requested. No changes
+  were made to the sidebar member preview, voice dock, or direct-message
+  header.
+- **Validation:**
+  - `./node_modules/.bin/prettier --check .` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed.
+  - `./node_modules/.bin/tsc --noEmit --pretty false && ./node_modules/.bin/tsc --noEmit --pretty false -p tsconfig.node.json` — passed.
+  - `./node_modules/.bin/vitest run src/app/App.test.tsx src/features/channels/ChannelSidebar.test.tsx` — passed 2 files and 18 tests.
+  - `./node_modules/.bin/vitest run` — passed 86 files and 476 tests.
+  - `node --test scripts/*.test.mjs` — passed 44/44 tests.
+  - `./node_modules/.bin/vite build` — passed; the existing large-chunk warning remains non-blocking.
+  - `node scripts/check-bundle-secrets.mjs` — passed.
+  - `git diff --check` — passed.
+  - In-app mock visual check at 1280×720 — passed; the header matches the
+    canvas surface, shows only the ellipsis, and retains its two menu actions.
+- **Documentation updated:** Appended this canonical progress entry. No
+  architecture or plan source of truth changed.
+- **Known limitations:** The native Tauri bundle was not rerun; the earlier
+  entry records the host's pnpm/Tauri build-phase blocker. Existing installed
+  client and multi-client acceptance gaps remain unchanged.
+- **Next:** Continue the existing hosted and installed acceptance matrix for
+  plan 0034.
+
+## 2026-08-02 — Refine Activity and channel navigation
+
+- **Completed:** Replaced the sidebar's Online preview with a flat `Activity`
+  section that previews up to six other members regardless of status and keeps
+  `Show all` as the seventh row. Reused the former member-rail cover poster
+  behavior for subtle Activity-row texture, while retaining avatar status
+  indicators and profile/context actions. Tightened Activity and channel row
+  density, changed the visible heading to `Channels`, made inactive channel
+  labels regular weight, made navigation icons white, and reduced active-row
+  emphasis to a quiet neutral wash. Softened the Bakbak and Personal gradients
+  and expanded mock data to exercise the six-member layout.
+- **Decisions:** Kept current-user exclusion because the signed-in identity
+  remains pinned in the user dock, and kept voice/online/away/offline ordering
+  deterministic while allowing offline members into the preview. Kept covers
+  as low-opacity row texture rather than restoring a colored Activity card so
+  the sidebar reads as one clean channel area.
+- **Validation:**
+  - `./node_modules/.bin/prettier --check .` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed.
+  - `pnpm build` — passed strict TypeScript and the production renderer build;
+    Vite's existing large-chunk warning remains non-blocking.
+  - `./node_modules/.bin/vitest run` — passed 86 files and 477 tests.
+  - `node --test scripts/*.test.mjs` — passed 44/44 tests.
+  - `node scripts/check-bundle-secrets.mjs` — passed for the renderer and
+    available Tauri bundle directories.
+  - `git diff --check` — passed.
+  - Focused `ChannelSidebar` and `MemberPanel` tests — passed 17/17 combined;
+    Activity cover rendering, six-member ordering, offline inclusion, and
+    Show all focus restoration are covered.
+  - In-app mock visual check at 1280×720 — passed; six Activity members,
+    seventh Show all row, all seven channels, subtle gradient, white icons,
+    regular inactive labels, and restrained active styling were reviewed.
+- **Documentation updated:** Updated `docs/architecture.md`, the Plan 0034
+  accepted UI scope, the sidebar contract test, and this canonical progress
+  entry.
+- **Known limitations:** `pnpm format:check` and `pnpm security:scan` were
+  interrupted after the host's pnpm wrapper produced no output; the
+  repository-local Prettier and secret-scan binaries passed the equivalent
+  checks. `pnpm tauri build` was also interrupted after stalling before native
+  build output, so no new installed bundle is claimed. Existing hosted,
+  installed-client, and multi-client acceptance gaps remain unchanged.
+- **Next:** Continue the Plan 0034 hosted two-client and installed
+  macOS/Windows visual acceptance matrix.
+
+## 2026-08-02 — Finalize settings/profile redesign pass
+
+- **Completed:** Final working-tree validation confirms the selected-speaker
+  error is owned by Audio & Video settings with an inline dismiss action, and
+  member profile popovers use the new solid, avatar-led presentation.
+- **Decisions:** No additional runtime or scope changes after the settings
+  dismissal follow-up; the room remains free of the old output banner.
+- **Validation:**
+  - Focused profile, settings, and voice tests — passed 4 files and 108 tests.
+  - Full Vitest — passed 86 files and 481 tests.
+  - Prettier, ESLint, renderer/node TypeScript, Vite build, script tests,
+    secret scan, and `git diff --check` — passed.
+- **Documentation updated:** This final chronological progress entry was
+  appended; architecture and Plan 0034 already contain the updated behavior.
+- **Known limitations:** `pnpm tauri build` remains interrupted by the
+  host's no-output native build stall; no installed bundle is claimed.
+- **Next:** Continue the Plan 0034 hosted two-client and installed
+  macOS/Windows visual acceptance matrix.
+
+## 2026-08-02 — Revert settings/profile UI experiment
+
+- **Completed:** Reverted the previous settings/profile visual experiment.
+  Restored the temporary output warning banner and its eight-second
+  auto-dismiss behavior, restored the cover-based profile popover, and removed
+  the added settings-only output dismissal wiring.
+- **Decisions:** Reverted only the last task's files and documentation changes;
+  unrelated existing redesign work remains untouched. The append-only history
+  entries describing the experiment remain in place, with this entry recording
+  the correction.
+- **Validation:**
+  - Focused profile, settings, and voice tests — passed 4 files and 107 tests.
+  - Focused Prettier checks — passed.
+  - Focused ESLint checks — passed.
+  - `git diff --check` — passed.
+- **Documentation updated:** Restored the architecture and Plan 0034 text to
+  their pre-experiment behavior and appended this canonical revert entry.
+- **Known limitations:** The broader repository remains in its pre-existing
+  dirty state; no unrelated changes were reset.
+- **Next:** Continue the existing Plan 0034 hosted two-client and installed
+  macOS/Windows visual acceptance matrix.
+
+## 2026-08-02 — Validate settings-side output dismissal
+
+- **Completed:** Added the existing output-warning dismissal action to the
+  Audio & Video settings error row so moving the notice out of the room did
+  not remove the user's recovery escape hatch.
+- **Decisions:** Kept dismissal local to the settings row; successful output
+  recovery and voice room lifecycle changes still clear the same state.
+- **Validation:**
+  - Focused profile, settings, and voice tests — passed 4 files and 108 tests.
+  - Full `./node_modules/.bin/vitest run` — passed 86 files and 481 tests.
+  - Full Prettier, ESLint, renderer/node TypeScript, Vite build, script tests,
+    secret scan, and `git diff --check` — passed.
+- **Documentation updated:** Appended this validation correction to
+  `docs/progress.md`; no architecture or plan change was needed.
+- **Known limitations:** The native `pnpm tauri build` remains unverified
+  because the host stalls before native build output.
+- **Next:** Continue the Plan 0034 hosted two-client and installed
+  macOS/Windows visual acceptance matrix.
+
+## 2026-08-02 — Move output recovery into settings and flatten profiles
+
+- **Completed:** Removed the temporary selected-speaker failure banner from
+  the voice-room canvas. Output fallback and speaker-switch errors now remain
+  available to the Audio & Video settings surface instead of auto-expiring in
+  room chrome. Reworked anchored member profile popovers into a compact solid
+  panel with avatar-led identity details; cover posters, cover animations, and
+  cover focal positioning are no longer rendered in that popover, while avatar
+  animation behavior remains available.
+- **Decisions:** Kept device recovery beside the output selector so the
+  conversation stays focused on the call, and made the error state persistent
+  until the output is recovered or the voice lifecycle clears it. Preserved
+  rich cover media for profile editing and other existing surfaces; only the
+  legacy cover-based profile presentation was removed to match the current
+  solid-background redesign.
+- **Validation:**
+  - `pnpm format:check` — interrupted after the launcher produced no output;
+    local `./node_modules/.bin/prettier --check .` passed.
+  - `pnpm lint` — interrupted after the launcher produced no output; local
+    `./node_modules/.bin/eslint . --max-warnings=0` passed.
+  - `pnpm typecheck` — interrupted after the launcher produced no output;
+    local renderer and node `tsc --noEmit --pretty false` checks passed.
+  - `pnpm test` — passed 86 files and 481 Vitest tests plus 44/44 script
+    tests.
+  - `pnpm build` — passed typechecking and the production Vite build; the
+    existing large-chunk warning remains non-blocking.
+  - `./node_modules/.bin/prettier --check .` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed.
+  - `./node_modules/.bin/vitest run` — passed 86 files and 481 tests.
+  - `node --test scripts/*.test.mjs` — passed 44/44 script tests.
+  - `node scripts/check-bundle-secrets.mjs` — passed for available bundle
+    directories.
+  - `git diff --check` — passed.
+  - Focused profile, settings, and voice tests — passed 107 tests before the
+    final settings regression addition; the full 481-test run passed after it.
+  - `pnpm tauri build` — interrupted after the documented native no-output
+    stall; no new installed bundle is claimed.
+- **Documentation updated:** Updated `docs/architecture.md`, updated the
+  active Plan 0034 acceptance notes, and appended this canonical progress
+  entry.
+- **Known limitations:** Installed macOS/Windows, hosted two-client, and
+  multi-client profile/voice acceptance remain open. The repository pnpm
+  launcher still stalls without output for formatting, lint, and typecheck
+  scripts on this host.
+- **Next:** Continue the Plan 0034 hosted two-client and installed
+  macOS/Windows visual acceptance matrix.
+
+## 2026-08-02 — Polish channel shelf actions and spacing
+
+- **Completed:** Replaced the paired text/voice creation buttons with one
+  accessible `Add channel` plus control and a small Text channel / Voice
+  channel menu. The menu closes after selection or Escape and restores focus
+  to the plus trigger. Centered the per-row rename action against the channel
+  row, reserved its right-side space, and increased the channel shelf rhythm
+  by roughly 10% through row height, horizontal inset, and list spacing.
+- **Decisions:** Kept creation choices inside the existing admin-only boundary
+  and left the underlying `onCreateChannel` flow unchanged. Used a local menu
+  rather than a second modal because the two choices are short and directly
+  actionable; kept the channel list independently scrollable so the larger
+  rhythm does not hide any rooms.
+- **Validation:**
+  - `pnpm test` — passed 86 files and 480 Vitest tests plus 44/44 script
+    tests.
+  - `pnpm build` — passed `pnpm typecheck` for renderer and node configs and
+    the production renderer build; Vite's existing large-chunk warning remains
+    non-blocking.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed.
+  - `./node_modules/.bin/prettier --check .` — passed.
+  - `./node_modules/.bin/tsc --noEmit` — passed.
+  - `node scripts/check-bundle-secrets.mjs` — passed for available bundle
+    directories.
+  - `git diff --check` — passed.
+  - Focused `ChannelSidebar` tests — passed 11/11, including menu selection,
+    Escape focus restoration, rename behavior, and channel ordering.
+  - In-app mock visual check at 1280×720 — passed; the plus menu is readable,
+    the rename button geometry is vertically centered, and the channel rows
+    have the intended looser rhythm.
+- **Documentation updated:** Updated `docs/architecture.md` and appended
+  this canonical progress entry.
+- **Known limitations:** `pnpm tauri build` was not rerun because the host's
+  native build phase is still the documented no-output stall; no new installed
+  bundle is claimed. Existing hosted, installed-client, and multi-client
+  acceptance gaps remain unchanged.
+- **Next:** Continue the Plan 0034 hosted two-client and installed
+  macOS/Windows visual acceptance matrix.
+
+## 2026-08-02 — Restore Activity presence and animated media
+
+- **Completed:** Fixed Activity presence visibility by applying the semantic
+  online and away status colors to its avatar indicators. Activity rows and
+  the expanded Members view now autoplay available avatar and cover GIF media
+  over their static posters, including uploaded and GIPHY sources, while
+  preserving profile-media fallback behavior.
+- **Decisions:** Kept the six-member Activity selection and current-user
+  exclusion unchanged; the fix makes online members readable when they are in
+  that preview rather than duplicating the signed-in user dock. Autoplay is
+  scoped to presence/member rows so the rest of the app keeps its lighter
+  hover/focus loading behavior. Reduced-motion mode never requests or renders
+  animated media.
+- **Validation:**
+  - `pnpm test` — passed 86 files and 479 Vitest tests plus 44/44 script
+    tests.
+  - `pnpm build` — passed `pnpm typecheck` for renderer and node configs and
+    the production renderer build; Vite's existing large-chunk warning remains
+    non-blocking.
+  - `./node_modules/.bin/prettier --check .` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed.
+  - `./node_modules/.bin/tsc --noEmit` — passed.
+  - `node scripts/check-bundle-secrets.mjs` — passed for available bundle
+    directories.
+  - `git diff --check` — passed.
+  - Focused Activity/member/profile tests — passed 24/24.
+  - In-app mock visual check at 1280×720 — passed; online dots render green,
+    Activity remains flat, and the compact channel layout is unchanged.
+- **Documentation updated:** Updated `docs/architecture.md` and appended
+  this canonical progress entry.
+- **Known limitations:** `pnpm format:check` and `pnpm lint` were interrupted
+  after the host's pnpm wrapper produced no output; repository-local Prettier
+  and ESLint equivalents passed. `pnpm tauri build` was also interrupted
+  after stalling before native build output, so no new installed bundle is
+  claimed. Existing hosted, installed-client, and multi-client acceptance gaps
+  remain unchanged.
+- **Next:** Continue the Plan 0034 hosted two-client and installed
+  macOS/Windows visual acceptance matrix.
+
+## 2026-08-02 — Compact Buzz-like current-user dock
+
+- **Completed:** Reworked the shared Personal/Bakbak user dock into a flat,
+  compact footer row with a quiet cover texture, stronger identity hierarchy,
+  semantic Online/Away/Offline or In voice status text, and smaller restrained
+  Settings/voice controls. Profile, Settings, and active-call behavior remain
+  unchanged.
+- **Decisions:** Kept the existing profile trigger and settings action instead
+  of adding a second account/status menu without matching backend actions. The
+  current user dock remains 68 px tall so it keeps the established composer
+  rhythm, while the cover remains available as a low-opacity texture rather
+  than competing with the identity row.
+- **Validation:**
+  - `./node_modules/.bin/prettier --check .` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed.
+  - `./node_modules/.bin/tsc --noEmit --pretty false` — passed.
+  - `./node_modules/.bin/tsc --noEmit --pretty false -p tsconfig.node.json` — passed.
+  - `./node_modules/.bin/vitest run` — passed 86 files and 480 tests.
+  - `node --test scripts/*.test.mjs` — passed 44/44 script tests.
+  - `./node_modules/.bin/vite build` — passed; Vite's existing large-chunk
+    warning remains non-blocking.
+  - `node scripts/check-bundle-secrets.mjs` — passed for available bundle
+    directories.
+  - `git diff --check` — passed.
+  - Focused sidebar/dock tests — passed 17/17.
+  - In-app mock visual check at 1280×720 — passed; the footer is a quiet
+    identity row on the sidebar gradient and the old card-like background is
+    no longer prominent.
+- **Documentation updated:** Updated `docs/architecture.md` and appended this
+  canonical progress entry.
+- **Known limitations:** The repository `pnpm` launcher produced no output and
+  stalled even for `pnpm --version`; a focused `pnpm vitest run` was stopped
+  after the same behavior. Repository-local equivalents above passed. The
+  native `pnpm tauri build` remains skipped because of the documented host
+  no-output native build stall, so no new installed bundle is claimed.
+- **Next:** Continue the Plan 0034 hosted two-client and installed
+  macOS/Windows visual acceptance matrix.
+
+## 2026-08-02 — Align current-user dock to the footer edge
+
+- **Completed:** Removed the current-user dock's top divider and bottom-aligned
+  its identity/status row with a smaller lower inset, keeping the Settings and
+  active-call controls on the same baseline.
+- **Decisions:** Kept the dock's established 68 px height and quiet cover
+  treatment; only the vertical alignment and divider were changed so the
+  footer does not grow or affect the channel shelf's available space.
+- **Validation:**
+  - `./node_modules/.bin/prettier --check .` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed.
+  - `./node_modules/.bin/vitest run` — passed 86 files and 480 tests.
+  - `./node_modules/.bin/vite build` — passed; Vite's existing large-chunk
+    warning remains non-blocking.
+  - `git diff --check` — passed.
+  - In-app mock visual check at 1280×720 — passed; the divider is absent and
+    the identity row is visibly anchored to the lower edge without clipping.
+- **Documentation updated:** Appended this canonical progress entry; the
+  existing architecture description remains accurate.
+- **Known limitations:** `pnpm` and the native `pnpm tauri build` remain
+  unavailable because of the documented host no-output stall; local-equivalent
+  renderer checks passed and no new installed bundle is claimed.
+- **Next:** Continue the Plan 0034 hosted two-client and installed
+  macOS/Windows visual acceptance matrix.
+
+## 2026-08-02 — Refine the connected voice card
+
+- **Completed:** Restyled the active voice panel as a compact rounded card with
+  a clear green connection/quality hierarchy, isolated red leave action, and
+  three equal low-noise camera, screen-share, and soundboard controls above
+  the current-user dock. Existing labels, handlers, disabled states, and
+  backend-quality tooltip behavior remain unchanged.
+- **Decisions:** Kept the current semantic state colors and accessible action
+  names, using the existing markup so the visual pass does not alter voice
+  lifecycle behavior. The card gets separation through spacing and a darker
+  surface rather than a new heavy border.
+- **Validation:**
+  - `./node_modules/.bin/prettier --check .` — pending after this entry.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — pending after this entry.
+  - `./node_modules/.bin/vitest run` — pending after this entry.
+  - `./node_modules/.bin/vite build` — pending after this entry.
+  - In-app mock visual check at 1280×720 — passed; the connected card matches
+    the requested compact status, leave, and three-action composition.
+- **Documentation updated:** Updated `docs/architecture.md` and appended this
+  canonical progress entry.
+- **Known limitations:** The `pnpm` launcher and native `pnpm tauri build`
+  remain affected by the documented host no-output stall; local-equivalent
+  renderer checks are being run for this CSS-only change.
+- **Next:** Finish local renderer validation, then continue the Plan 0034
+  hosted two-client and installed macOS/Windows visual acceptance matrix.
+
+## 2026-08-02 — Validate connected voice card polish
+
+- **Completed:** Finalized the CSS-only connected voice card refinement and
+  replaced the pending validation placeholders from the preceding entry with
+  this append-only result.
+- **Decisions:** No runtime or voice lifecycle code changed; the existing
+  focused component contract remains sufficient for the visual-only update.
+- **Validation:**
+  - `./node_modules/.bin/prettier --check .` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed.
+  - `./node_modules/.bin/tsc --noEmit --pretty false` — passed.
+  - `./node_modules/.bin/tsc --noEmit --pretty false -p tsconfig.node.json` — passed.
+  - `./node_modules/.bin/vitest run` — passed 86 files and 480 tests.
+  - `node --test scripts/*.test.mjs` — passed 44/44 script tests.
+  - `./node_modules/.bin/vite build` — passed; Vite's existing large-chunk
+    warning remains non-blocking.
+  - `node scripts/check-bundle-secrets.mjs` — passed for available bundle
+    directories.
+  - `git diff --check` — passed.
+  - In-app mock visual check at 1280×720 — passed; the connected card matches
+    the requested status, leave, and three-action composition.
+- **Documentation updated:** Appended this canonical validation correction.
+- **Known limitations:** The `pnpm` launcher and native `pnpm tauri build`
+  remain affected by the documented host no-output stall; no new installed
+  bundle is claimed.
+- **Next:** Continue the Plan 0034 hosted two-client and installed
+  macOS/Windows visual acceptance matrix.
+
+## 2026-08-02 — Match the spacious active voice panel reference
+
+- **Completed:** Reworked the signed-in active-call sidebar presentation to
+  match the supplied reference: the connection card now uses a large Wi-Fi
+  signal, responsive room/status hierarchy, and isolated warm danger leave
+  action. Quality and backend-latency metadata remain available through the
+  accessible status node, while camera, screen-share, and soundboard actions
+  stay in the centered global call dock. The active user dock now scales its
+  avatar, identity, mute/deafen, and Settings controls with the available
+  sidebar width; active-call fallback avatars use the target square light
+  treatment and muted controls use the target red-on-warm-surface treatment.
+  Added focused regression assertions for the signal mark and active-call
+  avatar behavior.
+- **Decisions:** Used container-relative sizing so the compact existing
+  sidebar remains usable while wider panels grow toward the reference's
+  65–pixel avatar, 57–pixel controls, and 66–pixel signal. Kept the voice
+  lifecycle/API contract unchanged and moved only the default visual emphasis
+  away from secondary sidebar media controls; the global dock remains the
+  interaction surface for those actions.
+- **Validation:**
+  - `./node_modules/.bin/prettier --check src/features/voice/SidebarVoicePanel.tsx src/features/voice/SidebarUserDock.tsx src/features/voice/SidebarVoicePanel.test.tsx src/features/voice/SidebarUserDock.test.tsx src/styles.css docs/architecture.md` — passed.
+  - `./node_modules/.bin/eslint src/features/voice/SidebarVoicePanel.tsx src/features/voice/SidebarUserDock.tsx src/features/voice/SidebarVoicePanel.test.tsx src/features/voice/SidebarUserDock.test.tsx` — passed.
+  - `./node_modules/.bin/tsc --noEmit --pretty false` — passed.
+  - `./node_modules/.bin/tsc --noEmit --pretty false -p tsconfig.node.json` — passed.
+  - Focused `SidebarVoicePanel` and `SidebarUserDock` tests — passed 2 files and 6 tests.
+  - `./node_modules/.bin/vitest run` — passed 86 files and 480 tests.
+  - `node --test scripts/*.test.mjs` — passed 44/44 script tests.
+  - `./node_modules/.bin/vite build` — passed; the existing large-chunk warning remains non-blocking.
+  - `node scripts/check-bundle-secrets.mjs` — passed for available renderer/Tauri bundle directories.
+  - `git diff --check` — passed.
+  - In-app mock visual check at 1280×720 — passed; the active sidebar card is simplified to the signal/room/leave composition and the expanded user dock is aligned beneath it.
+  - `pnpm check` — interrupted after approximately one minute with no output from the host pnpm wrapper; local equivalents above passed.
+- **Documentation updated:** Updated `docs/architecture.md` and appended
+  this entry to `docs/progress.md`.
+- **Known limitations:** `pnpm tauri build` was not rerun for this
+  renderer-only change because the host's native build phase remains the
+  documented no-output stall; no new installed bundle is claimed. The
+  installed macOS/Windows visual, voice, and multi-client acceptance gaps
+  remain unchanged.
+- **Next:** Continue the Plan 0034 hosted two-client and installed
+  macOS/Windows visual acceptance matrix.
+
+## 2026-08-02 — Revert settings/profile UI experiment (canonical handoff)
+
+- **Completed:** Reverted the previous settings/profile visual experiment.
+  Restored the temporary output warning banner and its eight-second
+  auto-dismiss behavior, restored the cover-based profile popover, and removed
+  the added settings-only output dismissal wiring.
+- **Decisions:** Reverted only the last task's files and documentation changes;
+  unrelated existing redesign work remains untouched. The append-only history
+  entries describing the experiment remain in place, with this entry recording
+  the correction.
+- **Validation:**
+  - Focused profile, settings, and voice tests — passed 4 files and 107 tests.
+  - Focused Prettier checks — passed.
+  - Focused ESLint checks — passed.
+  - git diff --check — passed.
+  - Renderer and node TypeScript checks — passed.
+- **Documentation updated:** Restored the architecture and Plan 0034 text to
+  their pre-experiment behavior and appended this canonical revert entry.
+- **Known limitations:** The broader repository remains in its pre-existing
+  dirty state; no unrelated changes were reset.
+- **Next:** Continue the existing Plan 0034 hosted two-client and installed
+  macOS/Windows visual acceptance matrix.
+
+## 2026-08-02 — Finalize settings/profile redesign pass
+
+- **Completed:** Final working-tree validation confirms the selected-speaker
+  error is owned by Audio & Video settings with an inline dismiss action, and
+  member profile popovers use the new solid, avatar-led presentation.
+- **Decisions:** No additional runtime or scope changes after the settings
+  dismissal follow-up; the room remains free of the old output banner.
+- **Validation:**
+  - Focused profile, settings, and voice tests — passed 4 files and 108 tests.
+  - Full Vitest — passed 86 files and 481 tests.
+  - Prettier, ESLint, renderer/node TypeScript, Vite build, script tests,
+    secret scan, and `git diff --check` — passed.
+- **Documentation updated:** This final chronological progress entry was
+  appended; architecture and Plan 0034 already contain the updated behavior.
+- **Known limitations:** `pnpm tauri build` remains interrupted by the
+  host's no-output native build stall; no installed bundle is claimed.
+- **Next:** Continue the Plan 0034 hosted two-client and installed
+  macOS/Windows visual acceptance matrix.
+
+## 2026-08-02 — Revert spacious active voice panel reference
+
+- **Completed:** Reverted the previous reference-pass UI change after it
+  caused layout regressions. Restored the compact connected voice card,
+  visible quality and media controls, original sidebar spacing, small user
+  avatar, and presence indicator. Removed only the reference-pass CSS,
+  JSX, focused assertions, and matching architecture wording; unrelated
+  working-tree changes remain untouched.
+- **Decisions:** Kept the existing voice lifecycle, status labels, handlers,
+  and global dock behavior unchanged. The earlier reference implementation is
+  retained as historical context in the append-only log, while this correction
+  records the current source of truth.
+- **Validation:**
+  - Focused `SidebarVoicePanel` and `SidebarUserDock` tests — passed 2 files and 6 tests.
+  - `./node_modules/.bin/prettier --check src/features/voice/SidebarVoicePanel.tsx src/features/voice/SidebarUserDock.tsx src/features/voice/SidebarVoicePanel.test.tsx src/features/voice/SidebarUserDock.test.tsx src/styles.css docs/architecture.md docs/progress.md` — passed.
+  - `./node_modules/.bin/eslint src/features/voice/SidebarVoicePanel.tsx src/features/voice/SidebarUserDock.tsx src/features/voice/SidebarVoicePanel.test.tsx src/features/voice/SidebarUserDock.test.tsx` — passed.
+  - `./node_modules/.bin/tsc --noEmit --pretty false` — passed.
+  - `./node_modules/.bin/vite build` — passed; the existing large-chunk warning remains non-blocking.
+  - `./node_modules/.bin/vitest run` — passed 86 files and 480 tests.
+  - `node --test scripts/*.test.mjs` — passed 44/44 script tests.
+  - `node scripts/check-bundle-secrets.mjs` — passed for available renderer/Tauri bundle directories.
+  - `git diff --check` — passed.
+- **Documentation updated:** Restored the compact voice-panel contract in
+  `docs/architecture.md` and appended this correction to `docs/progress.md`.
+- **Known limitations:** `pnpm tauri build` was not rerun for this
+  renderer-only revert because the host's native build phase remains the
+  documented no-output stall; no new installed bundle is claimed.
+- **Next:** Continue the Plan 0034 hosted two-client and installed
+  macOS/Windows visual acceptance matrix.
+
+## 2026-08-02 — Revert settings/profile UI experiment (final handoff)
+
+- **Completed:** Reverted the previous settings/profile visual experiment.
+  Restored the temporary output warning banner and its eight-second
+  auto-dismiss behavior, restored the cover-based profile popover, and removed
+  the added settings-only output dismissal wiring.
+- **Decisions:** Reverted only the last task's files and documentation changes;
+  unrelated existing redesign work remains untouched. Earlier experiment
+  entries remain in the append-only history, with this entry recording the
+  correction at handoff.
+- **Validation:**
+  - Focused profile, settings, and voice tests — passed 4 files and 107 tests.
+  - Focused Prettier checks — passed.
+  - Focused ESLint checks — passed.
+  - git diff --check — passed.
+  - Renderer and node TypeScript checks — passed.
+- **Documentation updated:** Restored the architecture and Plan 0034 text to
+  their pre-experiment behavior and appended this final revert entry.
+- **Known limitations:** The broader repository remains in its pre-existing
+  dirty state; no unrelated changes were reset.
+- **Next:** Continue the existing Plan 0034 hosted two-client and installed
+  macOS/Windows visual acceptance matrix.
+
+## 2026-08-02 — Validate settings/profile rollback
+
+- **Completed:** Verified the reverted settings/profile behavior against the
+  full renderer test and production build paths.
+- **Decisions:** Kept the rollback scoped to the prior settings/profile
+  experiment; no unrelated dirty-tree changes were reset.
+- **Validation:**
+  - Full Vitest — passed 86 files and 480 tests.
+  - node script tests — passed 44/44.
+  - Vite production build — passed; the existing large-chunk warning remains
+    non-blocking.
+  - Renderer and node TypeScript checks — passed.
+  - Full Prettier-equivalent check on the changed files — passed.
+  - Focused ESLint checks — passed.
+  - Bundle secret scan — passed for available bundle directories.
+  - git diff --check — passed.
+  - pnpm format:check, pnpm lint, and pnpm typecheck — interrupted after
+    repeated host-side no-output stalls; local repository binaries passed the
+    equivalent checks.
+- **Documentation updated:** Appended this validation entry to
+  docs/progress.md.
+- **Known limitations:** pnpm tauri build remains unverified because the host
+  stalls before native build output; no installed bundle is claimed.
+- **Next:** Continue the Plan 0034 hosted two-client and installed
+  macOS/Windows visual acceptance matrix.

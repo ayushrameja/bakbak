@@ -61,6 +61,50 @@ describe("App navigation state", () => {
     expect(screen.getByRole("button", { name: "Personal" })).toBeEnabled();
   });
 
+  it("keeps the text-channel topic in the intro instead of the top bar", async () => {
+    render(<App />);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Enter the preview" }),
+    );
+
+    expect(screen.getByRole("heading", { name: "#Chat" })).toBeVisible();
+    expect(
+      screen.getByText("A private conversation for server members."),
+    ).toBeVisible();
+    expect(
+      document.querySelector(".top-bar .top-bar__channel span"),
+    ).toBeNull();
+
+    const topBar = document.querySelector<HTMLElement>(".top-bar")!;
+    expect(
+      within(topBar).getByText("Chat", { selector: "strong" }),
+    ).toBeVisible();
+    expect(
+      within(topBar).queryByRole("button", { name: "Show 4 members" }),
+    ).toBeNull();
+    expect(
+      within(topBar).queryByRole("button", { name: "Open audio settings" }),
+    ).toBeNull();
+    await userEvent.click(
+      within(topBar).getByRole("button", { name: "More channel actions" }),
+    );
+    expect(screen.getByRole("menu")).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    expect(
+      within(topBar).getByRole("button", { name: "More channel actions" }),
+    ).toHaveAttribute("aria-expanded", "false");
+
+    await userEvent.click(
+      within(topBar).getByRole("button", { name: "More channel actions" }),
+    );
+    await userEvent.click(
+      screen.getByRole("menuitem", { name: "Show members" }),
+    );
+    expect(screen.getByRole("dialog", { name: "Members" })).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Members" })).toBeNull();
+  });
+
   it("preserves each channel draft while visiting settings and other rooms", async () => {
     render(<App />);
     await userEvent.click(
@@ -68,7 +112,7 @@ describe("App navigation state", () => {
     );
 
     const spawnDraft = await screen.findByRole("combobox", {
-      name: "Message #spawn",
+      name: "Message #Chat",
     });
     await userEvent.type(spawnDraft, "tea-fuelled thought");
     await userEvent.click(screen.getByRole("button", { name: "Settings" }));
@@ -77,32 +121,31 @@ describe("App navigation state", () => {
       screen.getByRole("button", { name: "Close settings" }),
     );
     expect(
-      await screen.findByRole("combobox", { name: "Message #spawn" }),
+      await screen.findByRole("combobox", { name: "Message #Chat" }),
     ).toHaveValue("tea-fuelled thought");
 
-    await userEvent.click(screen.getByRole("button", { name: "clips" }));
+    await userEvent.click(screen.getByRole("button", { name: "Volt" }));
     const clipsDraft = await screen.findByRole("combobox", {
-      name: "Message #clips",
+      name: "Message #Volt",
     });
     await userEvent.type(clipsDraft, "second room, same brain");
-    await userEvent.click(screen.getByRole("button", { name: "spawn" }));
+    await userEvent.click(screen.getByRole("button", { name: "Chat" }));
     expect(
-      await screen.findByRole("combobox", { name: "Message #spawn" }),
+      await screen.findByRole("combobox", { name: "Message #Chat" }),
     ).toHaveValue("tea-fuelled thought");
   });
 
-  it("shows, hides, and persists both side panels independently", async () => {
+  it("shows, hides, and persists the single unified sidebar", async () => {
     const first = render(<App />);
     await userEvent.click(
       screen.getByRole("button", { name: "Enter the preview" }),
     );
 
-    expect(
-      screen.getByRole("complementary", { name: "Members" }),
-    ).toBeVisible();
     const shell = document.querySelector(".desktop-shell");
     expect(shell).toHaveAttribute("data-left-panel", "visible");
-    expect(shell).toHaveAttribute("data-right-panel", "visible");
+    expect(shell).not.toHaveAttribute("data-right-panel");
+    expect(document.querySelector(".panel-slot--right")).toBeNull();
+    expect(document.querySelector(".panel-resizer--right")).toBeNull();
     expect(
       screen
         .getByRole("button", { name: "Hide channel panel" })
@@ -115,7 +158,6 @@ describe("App navigation state", () => {
       screen.getByRole("button", { name: "Hide channel panel" }),
     );
     expect(shell).toHaveAttribute("data-left-panel", "hidden");
-    expect(shell).toHaveAttribute("data-right-panel", "visible");
     const leftSlot = document.querySelector(".panel-slot--left");
     const leftResizer = document.querySelector(".panel-resizer--left");
     expect(leftSlot).toHaveAttribute("data-visible", "false");
@@ -127,33 +169,6 @@ describe("App navigation state", () => {
     expect(
       screen.getByRole("button", { name: "Show channel panel" }),
     ).toHaveAttribute("aria-expanded", "false");
-    await userEvent.click(
-      screen.getByRole("button", { name: "Hide member panel" }),
-    );
-    expect(
-      screen.getByRole("button", { name: "Show member panel" }),
-    ).toHaveAttribute("aria-expanded", "false");
-    expect(
-      screen.queryByRole("complementary", { name: "Members" }),
-    ).not.toBeInTheDocument();
-    const rightSlot = document.querySelector(".panel-slot--right");
-    const rightResizer = document.querySelector(".panel-resizer--right");
-    expect(rightSlot).toHaveAttribute("data-visible", "false");
-    expect(rightSlot).toHaveAttribute("aria-hidden", "true");
-    expect(rightSlot).toHaveAttribute("inert");
-    expect(rightSlot?.querySelector(".member-panel")).not.toBeNull();
-    expect(rightResizer).toHaveAttribute("data-enabled", "false");
-    expect(shell).toHaveAttribute("data-left-panel", "hidden");
-    expect(shell).toHaveAttribute("data-right-panel", "hidden");
-
-    await userEvent.click(
-      screen.getByRole("button", { name: "Show channel panel" }),
-    );
-    expect(shell).toHaveAttribute("data-left-panel", "visible");
-    expect(shell).toHaveAttribute("data-right-panel", "hidden");
-    await userEvent.click(
-      screen.getByRole("button", { name: "Hide channel panel" }),
-    );
 
     first.unmount();
     render(<App />);
@@ -163,9 +178,7 @@ describe("App navigation state", () => {
     expect(
       screen.getByRole("button", { name: "Show channel panel" }),
     ).toBeVisible();
-    expect(
-      screen.getByRole("button", { name: "Show member panel" }),
-    ).toBeVisible();
+    expect(screen.queryByRole("button", { name: /member panel/i })).toBeNull();
   });
 
   it("does not expose text chat inside voice channels", async () => {
@@ -173,12 +186,12 @@ describe("App navigation state", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Enter the preview" }),
     );
-    await userEvent.click(screen.getByRole("button", { name: "Queue" }));
+    await userEvent.click(screen.getByRole("button", { name: "Game #1" }));
 
     const callRegion = await screen.findByRole("region", {
       name: "Current voice call",
     });
-    expect(callRegion).toHaveTextContent("Queue");
+    expect(callRegion).toHaveTextContent("Game #1");
     expect(
       screen.queryByRole("button", { name: "Join voice" }),
     ).not.toBeInTheDocument();
@@ -188,22 +201,21 @@ describe("App navigation state", () => {
     ).toBeVisible();
     expect(screen.queryByText("Ayush (you)")).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("combobox", { name: "Message #Queue" }),
+      screen.queryByRole("combobox", { name: "Message #Game #1" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /chat/i }),
+      within(screen.getByRole("main")).queryByRole("button", {
+        name: /chat/i,
+      }),
     ).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Crash" }));
-    expect(callRegion).toHaveTextContent("Crash");
+    await userEvent.click(screen.getByRole("button", { name: "Game #2" }));
+    expect(callRegion).toHaveTextContent("Game #2");
     expect(callRegion).toHaveTextContent("Connecting");
     await waitFor(() =>
       expect(callRegion).toHaveTextContent("Voice connected"),
     );
-    expect(screen.getByText("Crash: chaos connected")).toBeVisible();
-    expect(
-      screen.getByRole("heading", { name: /In Voice — \d+/ }),
-    ).toBeVisible();
+    expect(screen.getByText("Game #2: chaos connected")).toBeVisible();
     expect(screen.getByRole("group", { name: "User controls" })).toBeVisible();
   });
 
@@ -212,7 +224,7 @@ describe("App navigation state", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Enter the preview" }),
     );
-    await userEvent.click(screen.getByRole("button", { name: "Queue" }));
+    await userEvent.click(screen.getByRole("button", { name: "Game #1" }));
     const callRegion = await screen.findByRole("region", {
       name: "Current voice call",
     });
@@ -228,13 +240,13 @@ describe("App navigation state", () => {
     expect(
       screen.getByRole("heading", { name: "Your conversations live here" }),
     ).toBeVisible();
-    expect(callRegion).toHaveTextContent("Queue");
+    expect(callRegion).toHaveTextContent("Game #1");
     expect(screen.getByRole("group", { name: "User controls" })).toBeVisible();
 
     await userEvent.click(
       screen.getByRole("button", { name: "Bakbak server" }),
     );
-    expect(callRegion).toHaveTextContent("Queue");
+    expect(callRegion).toHaveTextContent("Game #1");
     expect(
       screen.getByRole("button", { name: "Bakbak server" }),
     ).toHaveAttribute("aria-current", "page");
@@ -289,7 +301,7 @@ describe("App navigation state", () => {
         screen.getByRole("button", { name: "Enter the preview" }),
       );
       const composer = await screen.findByRole("combobox", {
-        name: "Message #spawn",
+        name: "Message #Chat",
       });
       await userEvent.type(composer, "Soft plucks, loud opinions.");
       await userEvent.click(
@@ -320,7 +332,7 @@ describe("App navigation state", () => {
         screen.getByRole("button", { name: "Enter the preview" }),
       );
       const composer = await screen.findByRole("combobox", {
-        name: "Message #spawn",
+        name: "Message #Chat",
       });
       await userEvent.type(composer, "This one should bounce.");
       const realSetTimeout = window.setTimeout.bind(window);
@@ -344,15 +356,14 @@ describe("App navigation state", () => {
     }
   });
 
-  it("opens one private profile card from the member panel", async () => {
+  it("opens one private profile card from the sidebar member preview", async () => {
     render(<App />);
     await userEvent.click(
       screen.getByRole("button", { name: "Enter the preview" }),
     );
 
-    const memberPanel = screen.getByRole("complementary", { name: "Members" });
     await userEvent.click(
-      within(memberPanel).getByRole("button", {
+      screen.getByRole("button", {
         name: "View Mira's profile",
       }),
     );
@@ -362,7 +373,7 @@ describe("App navigation state", () => {
     expect(screen.queryByText("mira@bakbak.local")).not.toBeInTheDocument();
 
     await userEvent.click(
-      within(memberPanel).getByRole("button", {
+      screen.getByRole("button", {
         name: "View Jo's profile",
       }),
     );

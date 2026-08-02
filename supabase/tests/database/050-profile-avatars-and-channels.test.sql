@@ -368,7 +368,7 @@ select throws_ok(
   'an admin cannot create channels in another server'
 );
 select throws_ok(
-  $$select public.rename_channel('00000000-0000-4000-8000-000000000101', 'cross-server')$$,
+  $$select public.rename_channel('00000000-0000-4000-8000-000000000122', 'cross-server')$$,
   '42501',
   'Channel unavailable or admin permission required.',
   'an admin cannot rename channels in another server'
@@ -387,13 +387,13 @@ select throws_ok(
   'admins cannot bypass the guarded creation RPC'
 );
 select throws_ok(
-  $$update public.channels set name = 'direct-update' where id = '00000000-0000-4000-8000-000000000101'$$,
+  $$update public.channels set name = 'direct-update' where id = '00000000-0000-4000-8000-000000000122'$$,
   '42501',
   'permission denied for table channels',
   'admins cannot bypass the guarded rename RPC'
 );
 select throws_ok(
-  $$delete from public.channels where id = '00000000-0000-4000-8000-000000000101'$$,
+  $$delete from public.channels where id = '00000000-0000-4000-8000-000000000122'$$,
   '42501',
   'permission denied for table channels',
   'channel deletion remains unavailable'

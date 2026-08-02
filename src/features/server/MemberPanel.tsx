@@ -1,4 +1,4 @@
-import { Crown, MonitorUp, Volume2 } from "lucide-react";
+import { Crown, MessageCircle, MonitorUp, Volume2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Avatar } from "../../components/Avatar";
 import { ProfileMediaImage } from "../../components/ProfileMediaImage";
@@ -11,6 +11,7 @@ import type { OpenUserContextMenu } from "../../components/UserContextMenu";
 import { COVER_BUCKET } from "../../lib/profile-service";
 import { resolveGiphyProfileMedia } from "../../lib/profile-giphy-media";
 import type { ServerMember } from "../../lib/types";
+import { useReducedMotion } from "../../lib/use-reduced-motion";
 
 const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
 const ignoreProfileOpen: OpenProfile = () => undefined;
@@ -32,6 +33,7 @@ interface MemberPanelProps {
   currentUserId?: string;
   onWatchStream?:
     ((member: ServerMember, channelId: string) => void) | undefined;
+  onMessage?: ((member: ServerMember) => void) | undefined;
 }
 
 interface MemberWithActivity {
@@ -48,6 +50,7 @@ export function MemberPanel({
   openProfileId = null,
   currentUserId = "",
   onWatchStream,
+  onMessage,
 }: MemberPanelProps) {
   const activityByMemberId = new Map(
     voiceActivities.map((activity) => [activity.userId, activity]),
@@ -61,7 +64,14 @@ export function MemberPanel({
   const online = members
     .filter(
       (member) =>
-        member.status !== "offline" && !activityByMemberId.has(member.id),
+        member.status === "online" && !activityByMemberId.has(member.id),
+    )
+    .sort(compareMembers)
+    .map((member) => ({ member, activity: null }));
+  const away = members
+    .filter(
+      (member) =>
+        member.status === "idle" && !activityByMemberId.has(member.id),
     )
     .sort(compareMembers)
     .map((member) => ({ member, activity: null }));
@@ -75,6 +85,7 @@ export function MemberPanel({
   const groups = [
     { label: "In Voice", entries: inVoice },
     { label: "Online", entries: online },
+    { label: "Away", entries: away },
     { label: "Offline", entries: offline },
   ].filter((group) => group.entries.length > 0);
 
@@ -96,6 +107,7 @@ export function MemberPanel({
             openProfileId={openProfileId}
             currentUserId={currentUserId}
             onWatchStream={onWatchStream}
+            onMessage={onMessage}
           />
         ))
       )}
@@ -112,6 +124,7 @@ function MemberGroup({
   openProfileId,
   currentUserId,
   onWatchStream,
+  onMessage,
 }: {
   label: string;
   entries: MemberWithActivity[];
@@ -122,6 +135,7 @@ function MemberGroup({
   currentUserId: string;
   onWatchStream?:
     ((member: ServerMember, channelId: string) => void) | undefined;
+  onMessage?: ((member: ServerMember) => void) | undefined;
 }) {
   return (
     <section className="member-panel__group" aria-label={label}>
@@ -137,6 +151,7 @@ function MemberGroup({
             onOpenProfile={onOpenProfile}
             onOpenContextMenu={onOpenUserContextMenu}
             expanded={openProfileId === member.id}
+            autoPlayAnimation
             aria-label={`View ${member.displayName}'s profile`}
           >
             {({ animationUrl, animated, engaged }) => (
@@ -145,6 +160,7 @@ function MemberGroup({
                   member={member}
                   loadProfileMedia={loadProfileMedia}
                   engaged={engaged}
+                  autoPlayAnimation
                 />
                 <Avatar
                   user={member}
@@ -154,7 +170,10 @@ function MemberGroup({
                   animated={animated}
                 />
                 <span className="member-panel__identity">
-                  <strong>{member.displayName}</strong>
+                  <strong>
+                    {member.displayName}
+                    {member.id === currentUserId ? " (You)" : ""}
+                  </strong>
                   <span
                     className={`member-panel__presence ${activity?.isStreaming ? "is-streaming" : activity ? "is-in-voice" : ""}`}
                   >
@@ -199,29 +218,61 @@ function MemberGroup({
               Watch Stream
             </button>
           ) : null}
+          {member.id !== currentUserId && onMessage ? (
+            <button
+              className="member-panel__message"
+              type="button"
+              aria-label={`Message ${member.displayName}`}
+              onClick={() => onMessage(member)}
+            >
+              <MessageCircle size={14} aria-hidden="true" />
+            </button>
+          ) : null}
         </div>
       ))}
     </section>
   );
 }
 
-function MemberCoverPoster({
+export function MemberCoverPoster({
   member,
   loadProfileMedia,
   engaged,
+  autoPlayAnimation = false,
+  className = "member-panel__cover",
+  rootSelector = ".member-panel",
 }: {
   member: ServerMember;
   loadProfileMedia: LoadProfileMedia;
   engaged: boolean;
+  autoPlayAnimation?: boolean;
+  className?: string;
+  rootSelector?: string;
 }) {
+  const reducedMotion = useReducedMotion();
   const markerRef = useRef<HTMLSpanElement>(null);
   const [requested, setRequested] = useState(Boolean(member.coverUrl));
   const [coverUrl, setCoverUrl] = useState(member.coverUrl);
+  const [animationRequested, setAnimationRequested] = useState(
+    Boolean(member.coverAnimationUrl),
+  );
+  const [coverAnimationUrl, setCoverAnimationUrl] = useState(
+    member.coverAnimationUrl,
+  );
 
   useEffect(() => {
     setRequested(Boolean(member.coverUrl));
     setCoverUrl(member.coverUrl);
-  }, [member.coverGiphyId, member.coverPath, member.coverUrl, member.id]);
+    setAnimationRequested(Boolean(member.coverAnimationUrl));
+    setCoverAnimationUrl(member.coverAnimationUrl);
+  }, [
+    member.coverAnimationPath,
+    member.coverAnimationUrl,
+    member.coverGiphyId,
+    member.coverPath,
+    member.coverUrl,
+    member.id,
+  ]);
 
   useEffect(() => {
     if (
@@ -231,7 +282,7 @@ function MemberCoverPoster({
     )
       return;
     if (member.coverGiphyId) {
-      if (engaged) setRequested(true);
+      if (engaged || autoPlayAnimation) setRequested(true);
       return;
     }
     const marker = markerRef.current;
@@ -245,66 +296,119 @@ function MemberCoverPoster({
         setRequested(true);
         observer.disconnect();
       },
-      { root: marker.closest(".member-panel"), rootMargin: "64px" },
+      { root: marker.closest(rootSelector), rootMargin: "64px" },
     );
     observer.observe(marker);
     return () => observer.disconnect();
   }, [
+    autoPlayAnimation,
     engaged,
     member.coverGiphyId,
     member.coverPath,
     member.coverUrl,
     requested,
+    rootSelector,
   ]);
 
   useEffect(() => {
-    if (
-      !requested ||
-      member.coverUrl ||
-      (!member.coverPath && !member.coverGiphyId)
-    )
-      return;
+    if (!reducedMotion && (engaged || autoPlayAnimation)) {
+      setAnimationRequested(true);
+    }
+  }, [autoPlayAnimation, engaged, reducedMotion]);
+
+  useEffect(() => {
+    const shouldLoadPoster =
+      requested &&
+      !coverUrl &&
+      !member.coverUrl &&
+      Boolean(member.coverPath || member.coverGiphyId);
+    const shouldLoadAnimation =
+      animationRequested &&
+      !reducedMotion &&
+      !coverAnimationUrl &&
+      !member.coverAnimationUrl &&
+      Boolean(member.coverAnimationPath || member.coverGiphyId);
+    if (!shouldLoadPoster && !shouldLoadAnimation) return;
+
     let current = true;
-    const poster = member.coverGiphyId
+    const media = member.coverGiphyId
       ? resolveGiphyProfileMedia(
           {
             avatarGiphyId: member.avatarGiphyId,
             coverGiphyId: member.coverGiphyId,
           },
-          { includeCover: true },
-        ).then((media) => media.coverPosterUrl)
-      : loadProfileMedia(COVER_BUCKET, member.coverPath);
-    void poster
-      .then((url) => {
-        if (current) setCoverUrl(url);
+          {
+            includeCover: true,
+            includeCoverAnimation: shouldLoadAnimation,
+          },
+        ).then((resolved) => ({
+          posterUrl: resolved.coverPosterUrl,
+          animationUrl: resolved.coverAnimationUrl,
+        }))
+      : Promise.all([
+          shouldLoadPoster
+            ? loadProfileMedia(COVER_BUCKET, member.coverPath)
+            : Promise.resolve(coverUrl),
+          shouldLoadAnimation
+            ? loadProfileMedia(COVER_BUCKET, member.coverAnimationPath)
+            : Promise.resolve(coverAnimationUrl),
+        ]).then(([posterUrl, animationUrl]) => ({ posterUrl, animationUrl }));
+    void media
+      .then(({ posterUrl, animationUrl }) => {
+        if (!current) return;
+        if (shouldLoadPoster) setCoverUrl(posterUrl);
+        if (shouldLoadAnimation) setCoverAnimationUrl(animationUrl);
       })
       .catch(() => undefined);
     return () => {
       current = false;
     };
   }, [
+    animationRequested,
+    autoPlayAnimation,
+    coverAnimationUrl,
+    coverUrl,
+    engaged,
     loadProfileMedia,
     member.avatarGiphyId,
+    member.coverAnimationPath,
+    member.coverAnimationUrl,
     member.coverGiphyId,
     member.coverPath,
     member.coverUrl,
+    reducedMotion,
     requested,
   ]);
 
   return (
     <span
       ref={markerRef}
-      className={`member-panel__cover ${coverUrl ? "has-media" : ""}`}
+      className={`${className} ${coverUrl || (!reducedMotion && coverAnimationUrl) ? "has-media" : ""}`}
       aria-hidden="true"
     >
       {coverUrl ? (
         <ProfileMediaImage
+          className="member-cover-poster__poster"
           bucket={COVER_BUCKET}
           loadMedia={loadProfileMedia}
           path={member.coverPath}
           src={coverUrl}
           alt=""
           loading="lazy"
+          draggable={false}
+          style={{
+            objectPosition: `${member.coverPositionX}% ${member.coverPositionY}%`,
+          }}
+        />
+      ) : null}
+      {!reducedMotion && coverAnimationUrl ? (
+        <ProfileMediaImage
+          className="member-cover-poster__animation"
+          bucket={COVER_BUCKET}
+          loadMedia={loadProfileMedia}
+          path={member.coverAnimationPath}
+          src={coverAnimationUrl}
+          alt=""
           draggable={false}
           style={{
             objectPosition: `${member.coverPositionX}% ${member.coverPositionY}%`,

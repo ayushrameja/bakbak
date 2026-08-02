@@ -57,9 +57,11 @@ export function SpaceSwitcher({
         disabled={disabled}
         onClick={() => onSelect("personal")}
       >
-        <span>Personal</span>
+        <span className="space-switcher__label">Personal</span>
         {personalUnread ? (
-          <i className="space-switcher__unread" aria-hidden="true" />
+          <span className="space-switcher__status" aria-hidden="true">
+            <i className="space-switcher__unread" />
+          </span>
         ) : null}
       </button>
       <button
@@ -71,16 +73,15 @@ export function SpaceSwitcher({
         aria-describedby={
           serverUnread || callActive ? "server-space-status" : undefined
         }
-        title={serverAvailable ? "Bakbak server" : "Invite needed"}
         disabled={disabled || !serverAvailable}
         onClick={() => onSelect("server")}
       >
-        <span>Bakbak</span>
-        {serverUnread ? (
-          <i className="space-switcher__unread" aria-hidden="true" />
-        ) : null}
-        {callActive ? (
-          <i className="space-switcher__call" aria-hidden="true" />
+        <span className="space-switcher__label">Bakbak</span>
+        {serverUnread || callActive ? (
+          <span className="space-switcher__status" aria-hidden="true">
+            {serverUnread ? <i className="space-switcher__unread" /> : null}
+            {callActive ? <i className="space-switcher__call" /> : null}
+          </span>
         ) : null}
       </button>
       {personalUnread ? (

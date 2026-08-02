@@ -100,7 +100,7 @@ describe("ChatView controlled drafts", () => {
       />,
     );
 
-    expect(screen.getByText("Automation-only channel")).toBeVisible();
+    expect(screen.getByText("Welcome is automatic")).toBeVisible();
     expect(screen.getByText("Bakbak v0.16.0")).toBeVisible();
     expect(
       screen.getByText("System channels have entered the chat."),
@@ -190,6 +190,8 @@ describe("ChatView controlled drafts", () => {
     expect(
       screen.getByText("Be the first to say something in #lobby."),
     ).toBeVisible();
+    expect(screen.getByRole("heading", { name: "#lobby" })).toBeVisible();
+    expect(screen.getByText("Friends only")).toBeVisible();
     expect(container.querySelector(".conversation-flow--empty")).toBeNull();
     expect(container.querySelector(".channel-intro__state")).toBeNull();
     expect(container.querySelector(".empty-conversation__spark")).toBeNull();

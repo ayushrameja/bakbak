@@ -1,7 +1,7 @@
 import { IDBFactory } from "fake-indexeddb";
 import { describe, expect, it } from "vitest";
-import { mockMessages, mockWorkspace } from "./mock-data";
-import type { DirectConversation } from "./types";
+import { mockWorkspace } from "./mock-data";
+import type { ChatMessage, DirectConversation } from "./types";
 import {
   BakbakCache,
   MAX_CACHED_MESSAGES_PER_THREAD,
@@ -11,6 +11,14 @@ import {
 } from "./local-cache";
 
 const userId = mockWorkspace.members[0]?.id ?? "current-user";
+const cachedMessage: ChatMessage = {
+  id: "message-cached",
+  channelId: mockWorkspace.channels[1]!.id,
+  authorId: userId,
+  body: "Cached hello",
+  content: null,
+  createdAt: "2026-08-01T00:00:00.000Z",
+};
 
 describe("BakbakCache", () => {
   it("isolates account state and normalizes transient workspace fields", async () => {
@@ -96,8 +104,8 @@ describe("BakbakCache", () => {
     ).toBe(false);
     expect(
       mergeMessages(
-        mockMessages,
-        mockMessages.map((message) => ({ ...message, body: "new body" })),
+        [cachedMessage],
+        [{ ...cachedMessage, body: "new body" }],
       )[0]?.body,
     ).toBe("new body");
   });
@@ -176,7 +184,7 @@ describe("BakbakCache", () => {
   it("strips transient full-media URLs while retaining rich metadata", () => {
     const normalized = normalizeMessagesForCache([
       {
-        ...mockMessages[0]!,
+        ...cachedMessage,
         attachments: [
           {
             id: "attachment",

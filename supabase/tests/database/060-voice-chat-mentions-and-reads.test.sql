@@ -78,7 +78,7 @@ values
 insert into public.messages (id, channel_id, author_id, body, created_at)
 values (
   '60000000-0000-4000-8000-000000000201',
-  '00000000-0000-4000-8000-000000000201',
+  '00000000-0000-4000-8000-000000000125',
   '60000000-0000-4000-8000-000000000001',
   'Historical voice message',
   '2026-07-13 10:00:00+00'
@@ -96,7 +96,7 @@ select is(
     select last_read_message_id
     from public.channel_read_states
     where user_id = '60000000-0000-4000-8000-000000000002'
-      and channel_id = '00000000-0000-4000-8000-000000000201'
+      and channel_id = '00000000-0000-4000-8000-000000000125'
   ),
   '60000000-0000-4000-8000-000000000201'::uuid,
   'new memberships baseline existing voice history as read'
@@ -107,13 +107,13 @@ set local "request.jwt.claim.sub" = '60000000-0000-4000-8000-000000000002';
 set local "request.jwt.claims" = '{"sub":"60000000-0000-4000-8000-000000000002","role":"authenticated"}';
 
 select lives_ok(
-  $$insert into public.messages (channel_id, body) values ('00000000-0000-4000-8000-000000000201', 'Direct voice fallback')$$,
+  $$insert into public.messages (channel_id, body) values ('00000000-0000-4000-8000-000000000125', 'Direct voice fallback')$$,
   'members can send legacy body-only messages to voice channels'
 );
 
 select lives_ok(
   $$select public.send_message(
-    '00000000-0000-4000-8000-000000000201',
+    '00000000-0000-4000-8000-000000000125',
     '[{"type":"text","text":"Hello "},{"type":"mention","user_id":"60000000-0000-4000-8000-000000000001","fallback":"Old name"}]'::jsonb
   )$$,
   'members can send structured voice messages with a same-server mention'
@@ -149,14 +149,14 @@ set local role authenticated;
 set local "request.jwt.claim.sub" = '60000000-0000-4000-8000-000000000002';
 set local "request.jwt.claims" = '{"sub":"60000000-0000-4000-8000-000000000002","role":"authenticated"}';
 select throws_ok(
-  $$select public.send_message('00000000-0000-4000-8000-000000000201', '{"type":"text"}'::jsonb)$$,
+  $$select public.send_message('00000000-0000-4000-8000-000000000125', '{"type":"text"}'::jsonb)$$,
   '22023',
   'Message content must contain between 1 and 100 segments.',
   'structured content must be an array'
 );
 select throws_ok(
   $$select public.send_message(
-    '00000000-0000-4000-8000-000000000201',
+    '00000000-0000-4000-8000-000000000125',
     '[{"type":"mention","user_id":"60000000-0000-4000-8000-000000000001"}]'::jsonb
   )$$,
   '22023',
@@ -165,7 +165,7 @@ select throws_ok(
 );
 select throws_ok(
   $$select public.send_message(
-    '00000000-0000-4000-8000-000000000201',
+    '00000000-0000-4000-8000-000000000125',
     jsonb_build_array(jsonb_build_object('type', 'text', 'text', repeat('x', 4001)))
   )$$,
   '22023',
@@ -174,7 +174,7 @@ select throws_ok(
 );
 select throws_ok(
   $$select public.send_message(
-    '00000000-0000-4000-8000-000000000201',
+    '00000000-0000-4000-8000-000000000125',
     (
       select jsonb_agg(
         jsonb_build_object(
@@ -192,7 +192,7 @@ select throws_ok(
 );
 select throws_ok(
   $$select public.send_message(
-    '00000000-0000-4000-8000-000000000201',
+    '00000000-0000-4000-8000-000000000125',
     '[{"type":"mention","user_id":"60000000-0000-4000-8000-000000000003","fallback":"Outsider"}]'::jsonb
   )$$,
   '42501',
@@ -206,7 +206,7 @@ set local "request.jwt.claim.sub" = '60000000-0000-4000-8000-000000000001';
 set local "request.jwt.claims" = '{"sub":"60000000-0000-4000-8000-000000000001","role":"authenticated"}';
 select lives_ok(
   $$select public.send_message(
-    '00000000-0000-4000-8000-000000000201',
+    '00000000-0000-4000-8000-000000000125',
     '[{"type":"text","text":"Fresh voice gossip"}]'::jsonb
   )$$,
   'another member can publish a fresh voice message'
@@ -220,17 +220,17 @@ select ok(
   (
     select has_unread
     from public.get_channel_activity('00000000-0000-4000-8000-000000000001')
-    where channel_id = '00000000-0000-4000-8000-000000000201'
+    where channel_id = '00000000-0000-4000-8000-000000000125'
   ),
   'a newer voice message from another member is unread'
 );
 select lives_ok(
   $$select public.mark_channel_read(
-    '00000000-0000-4000-8000-000000000201',
+    '00000000-0000-4000-8000-000000000125',
     (
       select latest_message_id
       from public.get_channel_activity('00000000-0000-4000-8000-000000000001')
-      where channel_id = '00000000-0000-4000-8000-000000000201'
+      where channel_id = '00000000-0000-4000-8000-000000000125'
     )
   )$$,
   'members can advance their own read marker'
@@ -239,14 +239,14 @@ select is(
   (
     select has_unread
     from public.get_channel_activity('00000000-0000-4000-8000-000000000001')
-    where channel_id = '00000000-0000-4000-8000-000000000201'
+    where channel_id = '00000000-0000-4000-8000-000000000125'
   ),
   false,
   'advancing the marker clears unread activity'
 );
 select lives_ok(
   $$select public.mark_channel_read(
-    '00000000-0000-4000-8000-000000000201',
+    '00000000-0000-4000-8000-000000000125',
     '60000000-0000-4000-8000-000000000201'
   )$$,
   'an older read request is accepted idempotently'
@@ -255,7 +255,7 @@ select isnt(
   (
     select last_read_message_id
     from public.channel_read_states
-    where channel_id = '00000000-0000-4000-8000-000000000201'
+    where channel_id = '00000000-0000-4000-8000-000000000125'
   ),
   '60000000-0000-4000-8000-000000000201'::uuid,
   'read markers never regress'
@@ -267,7 +267,7 @@ select is(
 );
 select throws_ok(
   $$insert into public.channel_read_states (channel_id, last_read_message_id)
-    values ('00000000-0000-4000-8000-000000000201', '60000000-0000-4000-8000-000000000201')$$,
+    values ('00000000-0000-4000-8000-000000000125', '60000000-0000-4000-8000-000000000201')$$,
   '42501',
   'permission denied for table channel_read_states',
   'clients cannot forge read states directly'
@@ -288,7 +288,7 @@ select is(
 );
 select throws_ok(
   $$select public.send_message(
-    '00000000-0000-4000-8000-000000000201',
+    '00000000-0000-4000-8000-000000000125',
     '[{"type":"text","text":"Cross-server"}]'::jsonb
   )$$,
   '42501',

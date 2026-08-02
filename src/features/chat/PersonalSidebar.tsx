@@ -1,5 +1,6 @@
 import { KeyRound, MessageCirclePlus, X } from "lucide-react";
 import { Avatar } from "../../components/Avatar";
+import { SpaceSwitcher } from "../../components/SpaceSwitcher";
 import type {
   LoadProfileMedia,
   OpenProfile,
@@ -14,6 +15,7 @@ import type {
 import { SidebarVoicePanel } from "../voice/SidebarVoicePanel";
 import { SidebarUserDock } from "../voice/SidebarUserDock";
 import type { useVoiceRoom } from "../voice/useVoiceRoom";
+import type { AppSpace } from "../server/app-space";
 import {
   useEffect,
   useRef,
@@ -42,6 +44,12 @@ interface PersonalSidebarProps {
   inviteAvailable?: boolean;
   onOpenInvite?: () => void;
   readOnly?: boolean;
+  activeSpace?: AppSpace;
+  personalUnread?: boolean;
+  serverUnread?: boolean;
+  serverAvailable?: boolean;
+  switchDisabled?: boolean;
+  onSelectSpace?: (space: AppSpace) => void;
 }
 
 export function PersonalSidebar({
@@ -64,6 +72,12 @@ export function PersonalSidebar({
   inviteAvailable = false,
   onOpenInvite = () => undefined,
   readOnly = false,
+  activeSpace = "personal",
+  personalUnread = false,
+  serverUnread = false,
+  serverAvailable = true,
+  switchDisabled = false,
+  onSelectSpace = () => undefined,
 }: PersonalSidebarProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -100,6 +114,15 @@ export function PersonalSidebar({
 
   return (
     <aside className="channel-sidebar personal-sidebar" id="context-panel">
+      <SpaceSwitcher
+        activeSpace={activeSpace}
+        personalUnread={personalUnread}
+        serverUnread={serverUnread}
+        callActive={voice.status !== "disconnected"}
+        serverAvailable={serverAvailable}
+        disabled={switchDisabled}
+        onSelect={onSelectSpace}
+      />
       <header className="server-switcher personal-sidebar__header">
         <div>
           <strong>Personal</strong>

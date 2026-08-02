@@ -127,14 +127,14 @@ set local "request.jwt.claims" =
 
 select lives_ok(
   $$select public.send_message_v2(
-    '00000000-0000-4000-8000-000000000101',
+    '00000000-0000-4000-8000-000000000122',
     '[{"type":"text","text":"Parent"}]'::jsonb
   )$$,
   'a member can send v2 channel text'
 );
 select lives_ok(
   $$select public.send_message_v2(
-    '00000000-0000-4000-8000-000000000101',
+    '00000000-0000-4000-8000-000000000122',
     '[]'::jsonb,
     null,
     true,
@@ -150,7 +150,7 @@ select lives_ok(
 );
 select lives_ok(
   $$select public.send_message_v2(
-    '00000000-0000-4000-8000-000000000101',
+    '00000000-0000-4000-8000-000000000122',
     '[{"type":"text","text":"Channel GIF caption"}]'::jsonb,
     null,
     true,
@@ -177,7 +177,7 @@ select is(
 );
 select throws_ok(
   $$select public.send_message_v2(
-    '00000000-0000-4000-8000-000000000101',
+    '00000000-0000-4000-8000-000000000122',
     '[]'::jsonb
   )$$,
   '22023',
@@ -186,11 +186,11 @@ select throws_ok(
 );
 select throws_ok(
   $$select public.send_message_v2(
-    '00000000-0000-4000-8000-000000000103',
+    '00000000-0000-4000-8000-000000000123',
     '[{"type":"text","text":"reply"}]'::jsonb,
     (
       select id from public.messages
-      where channel_id = '00000000-0000-4000-8000-000000000101'
+      where channel_id = '00000000-0000-4000-8000-000000000122'
         and body = 'Parent'
     )
   )$$,
@@ -200,11 +200,11 @@ select throws_ok(
 );
 select lives_ok(
   $$select public.send_message_v2(
-    '00000000-0000-4000-8000-000000000101',
+    '00000000-0000-4000-8000-000000000122',
     '[{"type":"text","text":"Self reply"}]'::jsonb,
     (
       select id from public.messages
-      where channel_id = '00000000-0000-4000-8000-000000000101'
+      where channel_id = '00000000-0000-4000-8000-000000000122'
         and body = 'Parent'
     ),
     true
@@ -224,7 +224,7 @@ reset role;
 select lives_ok(
   $$select public.reserve_message_attachment(
     '92000000-0000-4000-8000-000000000002',
-    '00000000-0000-4000-8000-000000000101',
+    '00000000-0000-4000-8000-000000000122',
     null,
     'image',
     'image/png',
@@ -249,7 +249,7 @@ set local "request.jwt.claims" =
   '{"sub":"92000000-0000-4000-8000-000000000002","role":"authenticated"}';
 select lives_ok(
   $$select public.send_message_v2(
-    '00000000-0000-4000-8000-000000000101',
+    '00000000-0000-4000-8000-000000000122',
     '[]'::jsonb,
     null,
     true,
@@ -277,7 +277,7 @@ select lives_ok(
     'channel',
     (
       select id from public.messages
-      where channel_id = '00000000-0000-4000-8000-000000000101'
+      where channel_id = '00000000-0000-4000-8000-000000000122'
         and body = 'Parent'
     ),
     (select id from public.stickers where label = 'Wave')
@@ -297,7 +297,7 @@ select lives_ok(
     'channel',
     (
       select id from public.messages
-      where channel_id = '00000000-0000-4000-8000-000000000101'
+      where channel_id = '00000000-0000-4000-8000-000000000122'
         and body = 'Parent'
     ),
     (select id from public.stickers where label = 'Wave')
@@ -342,7 +342,7 @@ select lives_ok(
     'channel',
     (
       select id from public.messages
-      where channel_id = '00000000-0000-4000-8000-000000000101'
+      where channel_id = '00000000-0000-4000-8000-000000000122'
         and body = 'Parent'
     ),
     id
@@ -358,7 +358,7 @@ select throws_ok(
     'channel',
     (
       select id from public.messages
-      where channel_id = '00000000-0000-4000-8000-000000000101'
+      where channel_id = '00000000-0000-4000-8000-000000000122'
         and body = 'Parent'
     ),
     (select id from public.stickers where label = 'Cap 6')
@@ -422,7 +422,7 @@ select throws_ok(
     '[{"type":"text","text":"Wrong parent"}]'::jsonb,
     (
       select id from public.messages
-      where channel_id = '00000000-0000-4000-8000-000000000101'
+      where channel_id = '00000000-0000-4000-8000-000000000122'
       limit 1
     )
   )$$,
@@ -436,7 +436,7 @@ select lives_ok(
     'channel',
     (
       select id from public.messages
-      where channel_id = '00000000-0000-4000-8000-000000000101'
+      where channel_id = '00000000-0000-4000-8000-000000000122'
         and body = '[Image]'
       limit 1
     )
@@ -456,11 +456,11 @@ select is(
     from public.get_channel_activity(
       '00000000-0000-4000-8000-000000000001'
     )
-    where channel_id = '00000000-0000-4000-8000-000000000101'
+    where channel_id = '00000000-0000-4000-8000-000000000122'
   ),
   (
     select id from public.messages
-    where channel_id = '00000000-0000-4000-8000-000000000101'
+    where channel_id = '00000000-0000-4000-8000-000000000122'
       and deleted_at is null
     order by created_at desc, id desc
     limit 1

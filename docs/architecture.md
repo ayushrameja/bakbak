@@ -7,93 +7,63 @@ and phase completion belong in the numbered files under `docs/plans`.
 
 ## Current implementation state
 
-As of 2026-07-26, Bakbak has a complete local/mock product path and production
-Supabase and LiveKit adapters. The renderer provides the invite-only welcome
-flow and one shared neutral glass shell with scoped semantic control colors. An
-always-present 48 px titlebar
-places the 232 px Personal/Bakbak switch at the left and a rotating idle or
-voice-aware joke at the true signed-in window centre without interrupting
-voice. One titlebar-level event boundary makes every non-control pixel a native
-drag/double-click region; startup,
-authentication, and invite-only states keep a navigation-free titlebar while
-their main content owns product branding. The titlebar's right edge holds both
-side-panel toggles and Windows window controls, leaving the contextual header
-dedicated to the current person or room.
-macOS retains native overlay traffic lights and uses an active-state-following
+As of 2026-08-02, Bakbak has a complete local/mock product path and production
+Supabase and LiveKit adapters. The signed-in renderer uses a Buzz/Slack-inspired
+two-track shell: one space-specific gradient sidebar and one rounded solid
+conversation canvas. The always-present 48 px titlebar keeps the rotating idle
+or voice-aware joke at the true window centre without interrupting voice. The
+Personal/Bakbak segmented switch lives at the top of the sidebar; the titlebar
+retains one control for hiding or restoring that sidebar. Startup,
+authentication, invite, and startup-error screens retain their existing
+branded content beneath navigation-free titlebar chrome.
+
+macOS retains native overlay traffic lights and an active-state-following
 `underWindowBackground` material. Windows uses renderer-owned controls and
 applies Mica on build 22000 or newer; Windows 10 and browser/mock mode use an
-opaque CSS underlay. The edge-to-edge shell keeps five tracks: the 232 px
-context panel, a 1 px separator with a 9 px resize hit area, the conversation
-canvas at a minimum 420 px, a second separator, and the 240 px details panel.
-Both side panels remain mounted but become inert while independently hidden;
-pointer/keyboard resizing stays within 200–360 px and v2 layout preferences
-persist widths and visibility per device. Settings is a centered, focus-trapped
-in-app modal with internal scrolling, active-call controls, and confirmed
-logout. Its Data & storage section reports the current account's bounded
-conversation/profile cache, freshness, and confirmed local clearing without
-removing cloud data, authentication, or device/appearance preferences.
+opaque CSS underlay. The sidebar defaults to 280 px, resizes from 248–340 px,
+and leaves a 420 px minimum conversation canvas. V3 layout preferences persist
+only sidebar visibility and width, migrate v2's left-side fields, and discard
+the retired right-panel fields. Settings remains a centred, focus-trapped
+in-app modal with internal scrolling, active-call controls, confirmed logout,
+and account-scoped cache management.
 
-Appearance has one neutral glass treatment with a restrained, live
-operating-system accent and no selectable accent, global decorative texture,
-or heavy shadows. A device-local scheme choice offers Auto, Light, and Dark:
-Auto follows `prefers-color-scheme`, while the explicit choices apply before
-React mounts and update the matching `theme-color` metadata. The renderer
-listens before querying native color, renders a neutral fallback within 250 ms,
-normalizes arbitrary accents for the active light/dark canvas, and refreshes
-from native state on color events and window focus. Dark mode uses 64/72/84%
-near-black canvas/panel/strong bases; light mode uses 60/72/84% neutral-white
-bases. Both receive a quiet 6/5/3% accent veil and an 8% accent hover. Primary
-chrome uses 24 px blur at 120% saturation while avatars, covers, emoji, camera
-video, and screen sharing remain untouched. The Bakbak identity uses
-two custom linked lowercase `b` strokes. The canonical
-`public/bakbak.svg` drives the browser favicon and generated native icon bundle,
-while the matching code-native `BakbakMark` appears statically on
-authentication, invite, and empty Personal surfaces. Successful session and
-workspace loading instead share six staggered uppercase `BAKBAK` letters over a
-slow system-accent/neutral gradient. Reduced motion renders the completed word
-and static gradient immediately; workspace errors retain their explicit
-recovery surface. The server header
-intentionally omits the mark: it contains only the fixed Bakbak wordmark and
-`β · vX.Y.Z` chip whose value comes from the renderer's package metadata. Its
-neutral, system-accented aurora, sparse constellation, and diagonal signal
-weave remain contained to that header and load no raster texture. The icon
-retains a flat, gradient-free treatment with no face or mascot. Scoped
-Discord-inspired
-positive, danger, warning, and icon tokens identify connection/presence,
-destructive, warning, and inactive control state. Selection aliases the
-normalized system accent across navigation, focus, and active ordinary
-controls. Appearance Settings exposes only the three scheme choices plus
-read-only System accent and `Glass` summaries; typography and accent controls
-remain absent.
-Legacy `bakbak.appearancePreferences.*` values are inert and intentionally left
-in local storage. Roundo v2.0 is served from a committed variable WOFF2 with
-upright weights 200–700 and a generic sans-serif fallback for unsupported
-glyphs; product UI uses only 500, 600, and 700, never renders below 11 px, and
-gives chat/composer text a 15 px weight-500 baseline. Profiles
-support validated display names, 190-character plain-text
+The Bakbak space uses a honey-to-moss/teal-to-midnight gradient and honey/teal
+interaction tokens. Personal uses a berry/violet-to-blue-to-midnight gradient
+and violet/blue tokens. Switching spaces cross-fades the gradient and accents
+over 240 ms; reduced motion applies the destination palette immediately. The
+conversation canvas is `#171717` in dark mode and near-white in light mode.
+Auto, Light, and Dark appearance choices remain device-local and apply before
+React mounts. Appearance Settings replaces the operating-system accent summary
+with read-only Bakbak and Personal palette previews.
+
+Inter Variable is bundled locally at weights 400–700 with `Inter`,
+`Avenir Next`, `Segoe UI`, and `sans-serif` fallbacks. The rem-based scale uses
+16 px chat, 14 px controls, 12 px metadata, and 11 px captions. Controls use
+8–10 px curves, cards 14 px, the conversation canvas 16 px, and dialogs 20 px,
+with one-pixel borders, two-pixel focus rings, and restrained shadows.
+
+Profiles retain validated display names, 190-character plain-text
 descriptions, static or GIF avatars, 3:1 static or GIF covers, integer cover
-focal points, target-specific GIPHY GIF selection, lazy static member-row cover
-accents, and an accessible Discord-style anchored card. Uploaded profile media
-keeps its private poster/animation objects; GIPHY profiles store only bounded
-provider IDs and resolve memory-only renditions with initials/no-cover
-fallbacks. Admin-only
-controls create or rename text and voice channels, while Realtime reconciles
-changes for every member. Category Realtime follows the same
-subscribe-before-snapshot catch-up path, so an already-open client discovers
-categories added by a migration without clearing its cache. Ordered channel
-categories reproduce the visible Unlucky Boys layout beneath an expanded
-topmost System category. System owns the lowercase `releases` and `general`
-automation-only text rooms; the mirrored layout remains 7 categories, 18 text
-rooms, and 6 voice rooms in the same mixed order. The channel shelf renders all
-eight categories as a collapsible connector tree while retaining
-room-type/read-only icons and hidden selected, unread, and voice-occupancy
-summaries. One shared spine coordinate aligns each category chevron, vertical
-connector, and row elbow. Collapse state is device-local per server and does
-not alter subscriptions or room state. This layout imports no Discord messages
-or credentials. Selected text and voice channel rows use a persistent soft
-accent pill, thin accent outline, brighter icon/label, and stronger active
-hover while exposing `aria-current="page"`. The tree connector remains visible
-without restoring the retired accent stripe.
+focal points, target-specific GIPHY selection, private media, and accessible
+anchored cards. Admin-only controls create or rename ordinary text and voice
+rooms through a single plus menu that offers Text channel and Voice channel
+choices. The sole non-collapsible Channels shelf contains Welcome, Chat, Volt,
+Random Things, then Game #1–#3. Welcome keeps the internal `system-general`
+purpose and is automation-only for future member joins, but has no System
+category or lock-heavy presentation. New text rooms append after Random Things
+and new voice rooms after the last voice room.
+
+The sidebar previews up to six other members regardless of online status,
+prioritising people in voice, then online, away, and offline members with
+deterministic name order. A seventh flat row opens Show all in a centred
+focus-trapped overlay grouped as In Voice, Online, Away, and Offline, including
+the current user as You while preserving profile, DM, context, and
+stream-watching actions. Preview rows retain the former member-rail's lazy
+cover texture without adding a card background. Personal omits this server
+preview. The right member/details rail no longer exists; DM header identity
+opens the same profile surface. Category and channel snapshots request active
+rows only, archive Realtime reconciliation removes navigation rows, and an
+archived selection falls back to the first active room.
 
 Upgraded clients expose chat, structured individual mentions, account-synced
 unread emphasis, incoming-message sounds, and drafts only for text channels.
@@ -384,25 +354,22 @@ GitHub Actions `VITE_GIPHY_API_KEY` repository variable, renderer rollout,
 hosted two-account acceptance, and installed macOS/Windows acceptance remain
 open.
 
-The additive
-`202607240001_system_channels_and_link_previews.sql` migration is implemented
-and deployed. It adds typed channel purposes,
-stable System category/channel IDs, typed authorless automation messages,
-idempotency keys, link-preview fields, one atomic membership welcome/read-state
-trigger, membership-history backfill, release publication, and read baselines
-for imported history. Direct policies, legacy/rich send paths, replies,
-attachments, reactions, deletion, and rename all preserve ordinary chat
-behavior while rejecting System mutations. `system-events` accepts only the
-dedicated shared secret plus stable releases from `ayushrameja/bakbak`;
-`link-preview` keeps the platform JWT gate and authorizes each stored message
-through RLS. Both functions are deployed, the dedicated high-entropy secret is
-synchronized between Supabase and GitHub Actions, and 15 published stable
-releases were imported oldest-first with the historical read baseline.
-Announcements and the manual history workflow have no feature gate.
-Follow-up migration `202607240002_channel_category_realtime.sql` publishes
-`channel_categories` through Supabase Realtime. The renderer also performs an
-ordered category catch-up snapshot after subscribing, which repairs clients
-that were already open when the System category was first migrated.
+Migration `202607240001_system_channels_and_link_previews.sql` introduced the
+historical System rooms, welcome/release automation, and protected link
+previews. Its follow-up publishes category changes through Realtime. Plan 0034
+retires only the release-announcement portion: the hosted `system-events`
+function, manual history workflow, release job, secret, and
+`publish_system_release` RPC are removed. Link previews and typed Welcome
+automation remain.
+
+The additive `202608010001_unified_bakbak_channels.sql` migration was applied to
+the hosted Bakbak project after explicit production approval on 2026-08-01. It
+adds nullable channel/category archive timestamps, archives every pre-0034
+category and room without deleting related history, creates one fresh Channels
+category and seven fresh empty rooms, and restricts member/admin policies,
+activity, presence, read states, and management RPCs to active rows. Future
+membership events target the fresh active Welcome room; historical membership
+and release events are not backfilled.
 
 The additive
 `202607130001_voice_chat_mentions_and_read_state.sql` migration is implemented,
@@ -590,7 +557,9 @@ bakbak/
 │       ├── 0029-simpler-chat-and-reliable-voice-input.md
 │       ├── 0030-media-and-voice-reliability.md
 │       ├── 0031-giphy-profile-avatars-and-covers.md
-│       └── 0032-windows-screen-share-audio-isolation.md
+│       ├── 0032-windows-screen-share-audio-isolation.md
+│       ├── 0033-friend-test-voice-presence-and-media-stabilization.md
+│       └── 0034-buzz-inspired-unified-bakbak-redesign.md
 ├── public/
 │   ├── bakbak.svg                 # canonical favicon/native-icon source
 │   ├── fonts/roundo/              # pinned Roundo v2.0 variable WOFF2
@@ -623,8 +592,7 @@ bakbak/
     │   ├── livekit-token/
     │   ├── message-media-manage/
     │   ├── soundboard-manage/
-    │   ├── sticker-manage/
-    │   └── system-events/
+    │   └── sticker-manage/
     ├── migrations/
     ├── seed.sql
     └── tests/                     # RLS and database behavior tests
@@ -635,65 +603,39 @@ architectural placeholder folders are not used.
 
 ## UI composition
 
-The renderer uses a titlebar, three-panel desktop layout, and modal layer:
+The renderer uses a titlebar, two-track desktop layout, and modal layer:
 
-1. The 48 px titlebar owns window drag behavior. Its left side holds the 232 px
-   Personal/Bakbak switch after an 88 px macOS traffic-light safe area, while
-   a deterministic eight-second idle joke cycle occupies an independent center
-   grid track so unequal edge controls cannot displace it. Connecting,
-   connected, reconnecting, and failed voice states replace the line
-   immediately with room-aware copy. One handler on the complete titlebar starts
-   native drag and double-click maximize from every non-control descendant and
-   blank region; the Personal/Bakbak navigation, panel controls, and Windows
-   controls are explicitly excluded. Unread and active-call markers remain attached
-   to their spaces, blocking dialogs disable space and panel navigation while
-   leaving native window controls available, and voice fullscreen temporarily
-   removes the titlebar. Its right-edge layout controls independently toggle
-   the context and details panels. A separate 60 px contextual header beneath
-   it is dedicated to the current conversation or room.
-2. The 232 px channel panel contains an expanded topmost System category with
-   read-only `releases` and `general`, followed by seven ordered Unlucky Boys
-   categories with 18 ordinary text rooms and six voice rooms in mixed source
-   order, plus
-   active-call/sidebar controls, a shared Personal/server user footer with the
-   signed-in member's authenticated static cover poster behind its identity and
-   controls, voice occupancy, and admin-only create/rename controls. Categories
-   use accessible disclosure buttons and an Apple-style connector rail with
-   hash, speaker, or System/read-only child icons. The chevron visual center,
-   vertical spine, and row elbows share one coordinate. A selected room keeps a
-   soft accent surface, thin inset accent outline, brighter icon and label, and
-   a distinct active hover while declaring the current page. Collapsed headers
-   remain closed during
-   selection or activity and summarize a contained selection, unread text
-   rooms, and total voice occupants. The shelf scrolls independently; admin
-   creation adds an uncategorized room to a matching collapsible Conversations
-   or Voice rooms group because category management is outside plan 0012.
-   Occupied rooms show one room-active timer; their compact occupant rows omit
-   personal timers/local suffixes and ring the current room's active speakers.
-3. The flexible center canvas contains text chat or the voice room. The shell
-   has no outer padding, gutters, rounding, outlines, or panel shadows; two
-   straight 1 px separators define its edges. Titlebar buttons independently
-   toggle the left and right tracks over 220 ms. Pointer resizing temporarily
-   removes that grid transition so the conversation canvas follows every drag
-   update immediately, clears any existing browser selection, and disables
-   selection until pointer release/cancel. Persistent clipping slots keep each
-   side component mounted while hidden, but `inert`, `aria-hidden`, and a
-   disabled resizer prevent interaction during the zero-width state.
-   Text channels and Personal DMs keep their introduction above a simple
-   message list or compact target-specific empty status. They render no rails,
-   branches, grouped-message dots, terminal markers, or message-state badges.
-   Chat-author avatar/profile triggers alone are circular. The existing message
-   list semantics and interaction contracts remain unchanged.
-4. The 240 px member panel is visible by default and groups unique members as
-   In Voice, Online, and Offline in normal document flow, with a visible 5 px
-   separation between its compact member surfaces. Known heartbeat
-   sessions merge with the current LiveKit room so active members appear before
-   the next heartbeat. Rows lazily load static cover posters through the shared
-   authenticated cache, preserve focal positioning, and never request cover
-   animation. It is not a drawer or overlay.
-   Space changes replace any in-flight 0/40/80 ms left/center/right entrance
-   sequence rather than queueing transitions, while voice and draft ownership
-   remains above the animated subtrees.
+1. The 48 px titlebar owns window drag behavior and a deterministic eight-second
+   idle joke cycle in an independent centre grid track. Connecting, connected,
+   reconnecting, and failed voice states replace the line immediately with
+   room-aware copy. Its only signed-in layout control hides or restores the
+   sidebar; Windows controls remain at the trailing edge and voice fullscreen
+   temporarily removes the titlebar.
+2. The 280 px default gradient sidebar begins with the Personal/Bakbak
+   segmented switch. Bakbak then shows a flat Activity preview of six members
+   plus a Show all row, followed by one flat Channels shelf; admins use one
+   plus control to choose a text or voice channel from a small menu, while
+   rename actions stay centered on their channel rows. Personal shows its
+   heading, New message, and DM list without duplicating server presence.
+   Active-call controls and the current-user dock stay pinned at the bottom in
+   both spaces. The active-call card uses a compact connected status/quality
+   stack, isolated leave action, and three equal media/sound controls. The dock
+   is a compact, flat Buzz-like identity row with a profile trigger, semantic
+   presence label, and Settings/voice controls; profile cover media remains a
+   quiet texture rather than a card background.
+   One resizer keeps the track within 248–340 px, and the hidden slot remains
+   mounted but inert.
+3. The flexible rounded solid canvas contains the contextual header and text or
+   voice conversation. Text channels and DMs use a 16 px Buzz/Slack-style
+   timeline: author/avatar headers start five-minute groups, follow-ups compact,
+   hover/focus actions float above the row, and the rounded composer stays at
+   the bottom. Replies, mentions, rich media, reactions, deletion, unread
+   behavior, scrolling, and drafts keep their established contracts.
+4. Show all opens the reusable wide modal and groups members as In Voice,
+   Online, Away, and Offline. The modal traps and restores focus, includes You,
+   and retains profile, DM, context-menu, and Watch Stream actions. Known
+   heartbeat sessions merge with the current LiveKit room so active members
+   appear before the next heartbeat.
 5. During a call, an absolute centered dock appears across channel navigation.
    It auto-hides without consuming layout, clears the text composer, remains
    keyboard discoverable, and owns its More menu and compact 480×380 maximum
@@ -727,15 +669,13 @@ The renderer uses a titlebar, three-panel desktop layout, and modal layer:
    seconds and labels the result as backend latency. LiveKit
    `ConnectionQualityChanged` events separately normalize the local participant as
    Unknown/Excellent/Good/Poor; reconnecting display takes precedence. The
-   selected glass scheme uses neutral translucency with a subtle system-accent
-   veil plus independent positive, danger, warning, and icon colors. Renderer
-   selection and active ordinary controls use the normalized system accent.
-   Renderer identity
-   screens use the static linked-`bb` Bakbak mark. The server header omits the
-   logo and pairs the Bakbak wordmark with the package-version-backed
-   `β · vX.Y.Z` chip. Its theme-responsive atmospheric background contains a
-   sparse constellation and diagonal signal weave. A
-   one-shot renderer-launch assembly
+   conversation canvas stays solid while the sidebar uses the active space
+   gradient. Independent positive, danger, warning, and icon colors retain
+   their semantic roles; selection and ordinary controls use the active
+   Bakbak or Personal accent.
+   Renderer identity screens and the Personal empty state use the static
+   linked-`bb` Bakbak mark. The unified sidebar no longer spends vertical space
+   on a separate server brand/version header. A one-shot renderer-launch assembly
    completes within 500 ms; panel/space motion and message stagger collapse to
    the final state under reduced motion. Every scroll surface uses a transparent
    6 px track and reveals its thumb on hover, focus, or scroll activity, which
@@ -995,28 +935,21 @@ An invite-management UI is deferred until post-v1.
 
 ### Application shell and direct messages
 
-1. The titlebar's left-positioned segmented switch selects a navigation-neutral
-   `AppSpace` discriminant between Personal and the single server. Each space keeps its
-   latest in-memory conversation/channel selection. A cold start remains on Bakbak when
-   membership loads; missing membership plus established DM history resolves
-   to Personal; neither history nor membership resolves to InviteGate.
-2. The context panel swaps the Personal conversation list and server channel
-   shelf while retaining the shared user footer and current-call controls.
-   Settings remains an overlay and does not become a rail destination. The
-   last selected server text channel or Personal DM is cached per account;
-   voice rooms are deliberately never restored or auto-joined.
-3. Layout preferences v2 store visibility plus context/details widths. A stable
-   five-track CSS grid uses two 1 px separator tracks for every visibility
-   combination; hidden panel and divider tracks animate to zero without being
-   removed. Each panel remains mounted in a clipping slot that becomes inert
-   and hidden from assistive technology. The invisible 9 px pointer target
-   overlaps its 1 px separator; keyboard separators support arrows,
-   Shift+arrows, Home/End, and double-click reset and disable immediately with
-   the panel. Pointer capture updates the grid without its collapse transition
-   and suppresses document selection only for the active drag. Release,
-   cancellation, capture loss, or window blur always restores normal selection
-   and motion. Runtime maxima clamp the 200–360 px widths so the centre retains
-   at least 420 px; hidden panels keep their stored widths.
+1. The segmented switch at the top of the unified sidebar selects an `AppSpace`
+   discriminant between Personal and the single server. Each space keeps its
+   latest in-memory conversation/channel selection. A cold start remains on
+   Bakbak when membership loads; missing membership plus established DM history
+   resolves to Personal; neither history nor membership resolves to InviteGate.
+2. The sidebar swaps the Personal conversation list and flat server channel
+   shelf while retaining shared active-call and current-user footers. Settings
+   remains an overlay. The last selected active server text channel or Personal
+   DM is cached per account; voice rooms are never restored or auto-joined.
+3. Layout preferences v3 store only sidebar visibility and its 248–340 px width.
+   The two-track grid keeps at least 420 px for the rounded canvas. A 9 px pointer
+   target overlays the visual separator; keyboard resizing supports arrows,
+   Shift+arrows, Home/End, and reset. The titlebar visibility control restores a
+   collapsed sidebar. Migration reads v2's left-side values and intentionally
+   discards all right-panel state.
 4. After Auth resolves the user ID, the renderer reads that account's
    normalized IndexedDB snapshot and may paint it as cached data. It then
    revalidates workspace, membership, profiles, DM summaries, unread state, and
@@ -1045,21 +978,19 @@ An invite-management UI is deferred until post-v1.
 8. Selecting a conversation loads its RLS-filtered history and advances the
    signed-in participant's monotonic read state when visible. Private read-state
    Realtime refreshes Personal unread markers.
-9. The details panel resolves the other participant's profile and private media
-   through shared-server or established-DM policy. Former members may use the
-   reversible invite action while keeping established conversations. The DM
-   conversation row and header hydrate that participant's private avatar poster
-   through the shared profile-media cache, while the details rail plays their
-   GIF avatar and cover unless reduced motion is enabled. The Personal member
-   picker truncates long names and dismisses on outside pointer or Escape.
-   Media resolves memory first, then the user-scoped IndexedDB blob, then
-   authenticated Storage. Workspace metadata publishes before avatar hydration,
-   so a slow image cannot hold the shell hostage.
+9. The DM conversation row and header hydrate the other participant's private
+   avatar poster through the shared profile-media cache. Activating the header
+   identity opens the existing profile surface, which can play their GIF avatar
+   and cover unless reduced motion is enabled. The Personal member picker
+   truncates long names and dismisses on outside pointer or Escape. Media
+   resolves memory first, then the user-scoped IndexedDB blob, then authenticated
+   Storage. Workspace metadata publishes before avatar hydration, so a slow
+   image cannot hold the shell hostage.
 
 ### Profile, appearance, and modal settings
 
-1. The renderer loads one local Roundo font face and one glass token set before
-   mounting React. A validated `auto | light | dark` preference applies before
+1. The renderer imports locally installed Inter Variable before mounting React.
+   A validated `auto | light | dark` preference applies before
    React mounts; Auto delegates to CSS `prefers-color-scheme`, so operating-
    system changes continue to apply live. Rust supplies the pre-render
    native/fallback material marker; fallback
@@ -1098,16 +1029,17 @@ An invite-management UI is deferred until post-v1.
 5. A memory plus user-scoped IndexedDB bucket/path cache deduplicates
    authenticated downloads and revokes object URLs on replacement, account
    change, clearing, and teardown. Workspace metadata publishes before avatar
-   posters hydrate progressively; compact GIFs load only on identity
-   hover/focus. Static cover posters
+   posters hydrate progressively. Activity and expanded member rows request
+   animated avatars and cover media alongside their visible static posters, so
+   GIFs play automatically and loop wherever the source GIF loops; other
+   compact identity surfaces retain hover/focus loading. Static cover posters
    load lazily for visible member rows, immediately for the always-visible
-   shared user dock, or on demand for an open profile card or editor; cover
-   animation loads only for the open card/editor. Reduced-motion
-   mode never
-   requests GIFs. If WebKit cannot decode a cached object URL, every shared
-   profile-media surface removes the failed image immediately, evicts that
-   account/bucket/path entry, retries authenticated Storage once, and otherwise
-   keeps the neutral fallback instead of exposing a native broken-image icon.
+   shared user dock, or on demand for an open profile card or editor. Reduced-
+   motion mode never requests GIFs. If WebKit cannot decode a cached object
+   URL, every shared profile-media surface removes the failed image
+   immediately, evicts that account/bucket/path entry, retries authenticated
+   Storage once, and otherwise keeps the neutral fallback instead of exposing
+   a native broken-image icon.
    Realtime generation guards stop stale downloads from replacing newer
    profile state. GIPHY IDs persist in account/DM snapshots, but normalization
    strips all resolved provider URLs. Online clients batch-resolve static avatar
@@ -1548,34 +1480,31 @@ Interface cues deliberately bypass the selected call output.
 Soundboard section collapse state is stored independently per server under
 `bakbak.soundboardSections.v1:<server ID>` and never syncs; favorite rows sync
 through Supabase instead.
-Channel-category collapse state is stored independently per server under
-`bakbak.channelCategories.v1:<server ID>`. Only boolean values for currently
-known real or synthetic group IDs are accepted; malformed data falls back to
-expanded groups, and unavailable storage affects persistence rather than
-interaction.
+Legacy channel-category collapse state may remain under
+`bakbak.channelCategories.v1:<server ID>`, but the sole Channels shelf is flat
+and non-collapsible, so the redesigned shell neither reads nor writes it.
 Appearance stores only `auto`, `light`, or `dark` under
 `bakbak.appearancePreference.v1`. Invalid values restore Auto. Old
 `bakbak.appearancePreferences.*` entries remain inert rather than receiving a
-cleanup migration. System accent is native-derived and has no device-local or
-account preference key.
+cleanup migration. The native system-accent bridge remains dormant for desktop
+compatibility; no accent preference or system-accent summary is exposed.
 It stores `{ enabled, volume, categories }` under
 `bakbak.interfaceSoundPreferences.v1`; the default is enabled at 55% with
 Messages, Voice, Screen share, and Status enabled. Interface sounds lazily
 preload after the first pointer/keyboard interaction, use the Web Audio system
 destination, never queue blocked pre-gesture events, cap concurrency at three,
 throttle messages to 350 ms, batch remote roster churn for 250 ms, and cool
-failure alerts for two seconds. Panel visibility plus context/right widths use
-`bakbak.layoutPreferences.v2`; malformed values restore defaults and widths are
-reclamped to the viewport so at least 420 px remains for the centre canvas.
+failure alerts for two seconds. Sidebar visibility and width use
+`bakbak.layoutPreferences.v3`; v2 migrates only its left-side values and drops
+retired right-side state. Malformed values restore the 280 px visible default,
+and widths are clamped to 248–340 px while leaving at least 420 px for canvas.
 All of these preferences are device-local and never part of the profile or
 Supabase schema.
 
-Roundo v2.0 is vendored from Fontshare as
-`public/fonts/roundo/Roundo-Variable.woff2` and served locally with no CDN
-dependency. Its SHA-256 is
-`74481965a428478803e36f6aaf21d163c36c5c8fc2cb27029dfbf1f9fb6f5a65`;
-the upstream/download record and SIL Open Font License 1.1 notice live under
-`third_party/roundo`. Every WAV under `public/interface-sounds` is original
+Inter Variable is installed through the pinned `@fontsource-variable/inter`
+package and bundled by Vite, with no runtime CDN dependency. The legacy Roundo
+source and license remain in the repository for provenance but are not loaded
+by the renderer. Every WAV under `public/interface-sounds` is original
 Bakbak project output from the checked-in deterministic sine-pluck and
 rounded-envelope generator. The modern pack contains no recordings, third-party
 samples, square/triangle oscillators, or seeded grit. The microphone
@@ -1661,19 +1590,6 @@ These contracts match the current implementation.
 - **Errors:** normalized unauthorized, origin/method/payload,
   not-found/invalid-channel, request-failed, and service-unavailable responses
   without secret details.
-
-### `POST /functions/v1/system-events`
-
-- **Authentication:** exact `x-bakbak-system-secret`; the platform JWT gate is
-  intentionally disabled for this GitHub-to-function endpoint
-- **Request:** repository name, historical flag, and one GitHub release with
-  numeric ID, SemVer tag, name/body/URL, publication timestamp, and
-  draft/prerelease flags
-- **Validation:** exact `ayushrameja/bakbak` repository and release URL,
-  published stable release, bounded strings, valid timestamp, sanitized
-  plain-text notes
-- **Publication:** service-role-only `publish_system_release` upserts
-  `github-release:<id>` and optionally advances existing members' read baseline
 
 ### `POST /functions/v1/link-preview`
 
@@ -1831,15 +1747,14 @@ credential in a `VITE_*` variable.
 
 ### Edge Function managed values
 
-| Name                          | Purpose                                                            | Secret handling                |
-| ----------------------------- | ------------------------------------------------------------------ | ------------------------------ |
-| `SUPABASE_URL`                | Supabase project URL available to the function                     | Platform-managed               |
-| `SUPABASE_ANON_KEY`           | Validates/forwards user-scoped Supabase access                     | Platform-managed               |
-| `SUPABASE_SERVICE_ROLE_KEY`   | Privileged server-only database access if the function requires it | Secret; never bundle or commit |
-| `LIVEKIT_URL`                 | Public WebSocket URL returned with the short-lived token           | Platform-managed               |
-| `LIVEKIT_API_KEY`             | LiveKit token issuer identity                                      | Secret; never bundle or commit |
-| `LIVEKIT_API_SECRET`          | Signs LiveKit participant tokens                                   | Secret; never bundle or commit |
-| `BAKBAK_SYSTEM_EVENTS_SECRET` | Authenticates only GitHub release automation to `system-events`    | Secret; never bundle or commit |
+| Name                        | Purpose                                                            | Secret handling                |
+| --------------------------- | ------------------------------------------------------------------ | ------------------------------ |
+| `SUPABASE_URL`              | Supabase project URL available to the function                     | Platform-managed               |
+| `SUPABASE_ANON_KEY`         | Validates/forwards user-scoped Supabase access                     | Platform-managed               |
+| `SUPABASE_SERVICE_ROLE_KEY` | Privileged server-only database access if the function requires it | Secret; never bundle or commit |
+| `LIVEKIT_URL`               | Public WebSocket URL returned with the short-lived token           | Platform-managed               |
+| `LIVEKIT_API_KEY`           | LiveKit token issuer identity                                      | Secret; never bundle or commit |
+| `LIVEKIT_API_SECRET`        | Signs LiveKit participant tokens                                   | Secret; never bundle or commit |
 
 `.env.example` contains placeholders only. Real renderer development values use
 ignored local `.env` files; Edge Function secrets use Supabase's managed secret
@@ -1849,9 +1764,7 @@ Candidate and release workflows read the service-facing renderer values from
 GitHub Actions repository variables, force `VITE_DATA_MODE=live`, and inject
 the exact public `VITE_BUILD_REVISION` selected for that build. Releases read
 `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` from
-GitHub Actions secrets. System announcements additionally require the
-`BAKBAK_SYSTEM_EVENTS_SECRET` Actions secret matching the Supabase function
-secret. The updater key/password and System secret are never Vite variables,
+GitHub Actions secrets. The updater key/password are never Vite variables,
 renderer inputs, release assets, or committed files.
 
 ## Validation strategy
@@ -1918,61 +1831,30 @@ that it has passed.
 
 ## Current limitations and deferred work
 
-- Plan 0019's adaptive semantic control tokens, shared sidebar user dock,
-  presence-aware member groups, and lazy static member-cover accents are
-  implemented with focused component, integration, contrast, and appearance
-  regressions. Dark/light three-resolution and min/default/max panel-width
-  visual QA plus installed macOS/Windows observation remain required.
-- Plan 0018's system-adaptive glass tokens, native/fallback bootstrap, macOS
-  material configuration, Windows 11 Mica gate, edge-to-edge five-track shell,
-  persistent inert panel slots, centered signed-in title, bounded motion, and
-  auto-hiding scrollbars are implemented with focused renderer/native contract
-  coverage. Installed macOS and Windows 10/11 validation still must cover real
-  vibrancy/Mica, inactive windows, varied-wallpaper contrast, startup flash,
-  traffic lights/window controls, shadow, drag/resize/fullscreen, and both
-  system schemes. Browser QA cannot prove those native effects.
-- Plan 0017's 48 px titlebar, segmented Personal/Bakbak switch, centered
-  draggable context jokes, rail-free geometry, comfortable Roundo scale,
-  platform configurations, adapter tests,
-  and dark mock-browser checks at 1024×680, 1280×800, and 2560×1440 are
-  implemented. Installed macOS and Windows verification still must cover
-  native controls, dragging, maximize/restore, resizing, light/dark modes,
-  offline font loading, OS shortcuts, and screen-share cleanup on close.
-- Plan 0026's native macOS/Windows accent bridge, renderer normalization,
-  unified interaction tokens, calmer accent-veiled glass, and read-only
-  Appearance swatch are implemented with focused renderer, native, contrast,
-  and styling contracts. Installed macOS live color changes and the Windows
-  Automatic/wallpaper-derived color path still require direct observation.
-- Plan 0027's System schema/functions/workflows, automation-only renderer,
-  safe links/previews, deafen cues, and shared connector axis are implemented
-  and locally validated. The migration and functions are hosted, the release
-  secret is configured in Supabase and GitHub Actions, and 15 stable releases
-  have been imported with the historical read baseline. Follow-up migration
-  `202607240002` publishes category changes, while renderer category catch-up
-  self-heals clients that were open during the initial migration. Installed
-  multi-client unread/audio plus dark/light multi-zoom layout observation
-  remain required.
+- Plan 0034's two-track shell, Inter typography, distinct space palettes,
+  active-only flat room shelf, online preview, member overlay, v3 layout
+  preferences, retired release automation, hosted archival migration, and
+  hosted `system-events` removal are complete. Installed macOS/Windows native
+  material, offline-font, full visual matrix, and two-client
+  presence/Welcome/admin/Realtime/active-call acceptance remain required.
+- Plan 0027's protected link previews and deafen audio remain active. Plan 0034
+  retires its release function/workflows and archives its System hierarchy.
+  Hosted Supabase now runs the active-only plan 0034 channel schema.
 - Plan 0028's loading, scroll anchoring, user actions, local participant mute,
   and requested-owner stream handoff are implemented and covered by focused
   renderer/release regressions. Direct light/dark/reduced-motion observation
   and the installed macOS/Windows three-client watch matrix remain required
   before release acceptance.
-- Plan 0016's neutral appearance and local Roundo bundle remain active, while a
-  later user-directed follow-up restores only Auto/Light/Dark scheme selection
-  and removes the typography summary. Accent, surface, and font controls remain
-  absent. Plan 0026 supersedes only the fixed decorative/selection palette:
-  Bakbak always follows the native accent and exposes it read-only. Plan 0019's
-  semantic positive/danger/warning colors remain independent, while plan
-  0020's server-header atmosphere now derives from the same accent.
-  The in-app browser's localhost policy blocked the mock-preview reload, so the
-  dark/light 1024×680 and 1280×800 visual matrix plus installed macOS/Windows
-  glyph, clipping, wrapping, and offline-network observation remain required.
-- Plan 0006's three-panel shell, centered settings modal, Flat surfaces,
-  text-only upgraded chat boundary, sidebar call controls, floating dock, and
-  simplified voice canvas pass automated and mock-browser validation. The
-  canonical browser-plus-native two-account call still requires human audio,
-  camera, screen-share, soundboard, quality, reconnect, and dual-control-surface
-  observation before distribution.
+- Plan 0034 supersedes plan 0016's active typography and plan 0026's visible
+  system-accent treatment with bundled Inter Variable and distinct Bakbak and
+  Personal palettes. Auto/Light/Dark remains the only appearance choice.
+  Installed macOS/Windows glyph, clipping, native material, and offline-font
+  observation remain required.
+- Plan 0006's centered settings modal, sidebar call controls, and simplified
+  voice canvas remain active inside plan 0034's replacement two-track shell.
+  The canonical browser-plus-native two-account call still requires human
+  audio, camera, screen-share, soundboard, quality, reconnect, and
+  dual-control-surface observation before distribution.
 - Plan 0007's prepared-room lifecycle, claims validation, microphone reuse,
   loader, participant sizing, sound emoji treatment, and five-sound controls
   pass automated and mock-browser validation, and its migration/token function

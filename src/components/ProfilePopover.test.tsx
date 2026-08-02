@@ -159,6 +159,36 @@ describe("rich profile surfaces", () => {
     expect(onOpenProfile).toHaveBeenCalledWith(member, trigger);
   });
 
+  it("autoplays animated avatars for presence rows without hover", async () => {
+    const loadMedia = vi.fn().mockResolvedValue("blob:animated-avatar");
+    render(
+      <ProfileTrigger
+        member={member}
+        loadMedia={loadMedia}
+        onOpenProfile={vi.fn()}
+        autoPlayAnimation
+      >
+        {({ animationUrl, animated }) => (
+          <Avatar
+            user={member}
+            animationUrl={animationUrl}
+            animated={animated}
+          />
+        )}
+      </ProfileTrigger>,
+    );
+
+    await waitFor(() =>
+      expect(loadMedia).toHaveBeenCalledWith(
+        "avatars",
+        member.avatarAnimationPath,
+      ),
+    );
+    expect(document.querySelector(".avatar__animation")).toHaveClass(
+      "is-visible",
+    );
+  });
+
   it("opens user actions from pointer and keyboard context gestures", () => {
     const onOpenContextMenu = vi.fn();
     render(

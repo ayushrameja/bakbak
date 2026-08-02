@@ -33,9 +33,22 @@ export function SidebarUserDock({
 }: SidebarUserDockProps) {
   const callActive = voice.status !== "disconnected";
   const connected = voice.status === "connected";
+  const statusLabel = connected
+    ? "In voice"
+    : member.status === "online"
+      ? "Online"
+      : member.status === "idle"
+        ? "Away"
+        : "Offline";
 
   return (
-    <div className="user-dock" role="group" aria-label="User controls">
+    <div
+      className="user-dock"
+      data-call-active={callActive ? "true" : "false"}
+      data-status={member.status}
+      role="group"
+      aria-label="User controls"
+    >
       <SidebarUserCover member={member} loadProfileMedia={loadProfileMedia} />
       <ProfileTrigger
         className="user-dock__profile"
@@ -57,7 +70,7 @@ export function SidebarUserDock({
             />
             <span className="user-dock__identity">
               <strong>{member.displayName}</strong>
-              <span>{connected ? "In voice" : "Available"}</span>
+              <span className="user-dock__status">{statusLabel}</span>
             </span>
           </>
         )}

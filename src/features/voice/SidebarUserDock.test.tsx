@@ -34,7 +34,10 @@ describe("SidebarUserDock", () => {
     renderDock(createVoice(), { onOpenProfile, onOpenSettings });
 
     expect(screen.getByRole("group", { name: "User controls" })).toBeVisible();
-    expect(screen.getByText("Available")).toBeVisible();
+    expect(screen.getByText("Online")).toBeVisible();
+    expect(
+      screen.getByRole("group", { name: "User controls" }),
+    ).toHaveAttribute("data-status", "online");
     expect(screen.queryByRole("button", { name: "Mute" })).toBeNull();
     await userEvent.click(
       screen.getByRole("button", { name: "View Mira's profile" }),

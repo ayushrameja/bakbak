@@ -24,7 +24,13 @@ describe("SpaceSwitcher", () => {
     expect(container.querySelectorAll(".space-switcher__unread")).toHaveLength(
       2,
     );
+    expect(container.querySelectorAll(".space-switcher__status")).toHaveLength(
+      2,
+    );
     expect(container.querySelector(".space-switcher__call")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Bakbak server" }),
+    ).not.toHaveAttribute("title");
 
     await userEvent.click(
       screen.getByRole("button", { name: "Bakbak server" }),

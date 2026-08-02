@@ -72,7 +72,7 @@ select is(
   (
     select count(*)
     from public.get_voice_join_context(
-      '00000000-0000-4000-8000-000000000201'
+      '00000000-0000-4000-8000-000000000125'
     )
   ),
   1::bigint,
@@ -82,7 +82,7 @@ select is(
   (
     select display_name
     from public.get_voice_join_context(
-      '00000000-0000-4000-8000-000000000201'
+      '00000000-0000-4000-8000-000000000125'
     )
   ),
   'Context Member'::text,
@@ -92,7 +92,7 @@ select is(
   (
     select count(*)
     from public.get_voice_join_context(
-      '00000000-0000-4000-8000-000000000101'
+      '00000000-0000-4000-8000-000000000122'
     )
   ),
   0::bigint,
@@ -136,7 +136,7 @@ select is(
   (
     select count(*)
     from public.get_voice_join_context(
-      '00000000-0000-4000-8000-000000000201'
+      '00000000-0000-4000-8000-000000000125'
     )
   ),
   0::bigint,

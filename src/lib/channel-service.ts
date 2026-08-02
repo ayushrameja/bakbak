@@ -13,6 +13,7 @@ interface ChannelRow {
   kind: ChannelKind;
   purpose: "chat" | "system-releases" | "system-general";
   position: number;
+  archived_at: string | null;
 }
 
 interface ChannelCategoryRow {
@@ -20,6 +21,7 @@ interface ChannelCategoryRow {
   server_id: string;
   name: string;
   position: number;
+  archived_at: string | null;
 }
 
 export interface CreateChannelInput {
@@ -107,8 +109,11 @@ export function subscribeToLiveChannels(
         try {
           const { data, error } = await supabase
             .from("channels")
-            .select("id,server_id,category_id,name,kind,purpose,position")
+            .select(
+              "id,server_id,category_id,name,kind,purpose,position,archived_at",
+            )
             .eq("server_id", serverId)
+            .is("archived_at", null)
             .order("position")
             .returns<ChannelRow[]>();
           if (stopped) return;
@@ -174,8 +179,9 @@ export function subscribeToLiveChannelCategories(
         try {
           const { data, error } = await supabase
             .from("channel_categories")
-            .select("id,server_id,name,position")
+            .select("id,server_id,name,position,archived_at")
             .eq("server_id", serverId)
+            .is("archived_at", null)
             .order("position")
             .returns<ChannelCategoryRow[]>();
           if (stopped) return;
@@ -200,6 +206,9 @@ export function reconcileChannels(
   current: readonly Channel[],
   incoming: Channel,
 ): Channel[] {
+  if (incoming.archivedAt) {
+    return current.filter((channel) => channel.id !== incoming.id);
+  }
   const existingIndex = current.findIndex(
     (channel) => channel.id === incoming.id,
   );
@@ -216,6 +225,9 @@ export function reconcileChannelCategories(
   current: readonly ChannelCategory[],
   incoming: ChannelCategory,
 ): ChannelCategory[] {
+  if (incoming.archivedAt) {
+    return current.filter((category) => category.id !== incoming.id);
+  }
   const existingIndex = current.findIndex(
     (category) => category.id === incoming.id,
   );
@@ -246,6 +258,7 @@ function channelFromRow(row: ChannelRow): Channel {
     kind: row.kind,
     purpose: row.purpose,
     position: row.position,
+    archivedAt: row.archived_at,
     topic:
       row.purpose === "system-releases"
         ? "Published Bakbak releases and their notes."
@@ -263,6 +276,7 @@ function categoryFromRow(row: ChannelCategoryRow): ChannelCategory {
     serverId: row.server_id,
     name: row.name,
     position: row.position,
+    archivedAt: row.archived_at,
   };
 }
 

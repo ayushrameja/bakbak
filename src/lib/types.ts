@@ -34,6 +34,7 @@ export interface ChannelCategory {
   serverId: string;
   name: string;
   position: number;
+  archivedAt?: string | null;
 }
 
 export interface Channel {
@@ -45,6 +46,7 @@ export interface Channel {
   purpose?: ChannelPurpose;
   position: number;
   topic: string;
+  archivedAt?: string | null;
 }
 
 export interface ServerMember extends AppUser {

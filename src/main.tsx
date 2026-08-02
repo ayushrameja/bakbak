@@ -1,16 +1,15 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import "@fontsource-variable/inter";
 import App from "./App";
 import {
   applyAppearancePreference,
   loadAppearancePreference,
 } from "./features/settings/appearance-preferences";
-import { initializeSystemAccent } from "./features/settings/system-accent";
 import "./styles.css";
 
-async function renderApp(): Promise<void> {
+function renderApp(): void {
   applyAppearancePreference(loadAppearancePreference());
-  await initializeSystemAccent(250);
 
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <React.StrictMode>
@@ -19,4 +18,4 @@ async function renderApp(): Promise<void> {
   );
 }
 
-void renderApp();
+renderApp();

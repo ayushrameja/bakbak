@@ -1,17 +1,9 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { APP_VERSION } from "../../lib/app-version";
-import type {
-  AppUser,
-  Channel,
-  ChannelCategory,
-  Server,
-  ServerMember,
-} from "../../lib/types";
+import { describe, expect, it, vi } from "vitest";
+import type { AppUser, Channel, Server, ServerMember } from "../../lib/types";
 import type { useVoiceRoom } from "../voice/useVoiceRoom";
 import { ChannelSidebar } from "./ChannelSidebar";
-import { channelGroupPreferencesKey } from "./channel-group-preferences";
 
 const user: AppUser = {
   id: "user-1",
@@ -39,34 +31,40 @@ const server: Server = {
   description: "Friends only",
 };
 
-const voiceChannel: Channel = {
-  id: "voice-1",
-  serverId: server.id,
-  categoryId: null,
-  name: "Lounge",
-  kind: "voice",
-  position: 1,
-  topic: "Talk here",
-};
-const friend: ServerMember = {
-  ...user,
-  id: "friend-1",
-  displayName: "Mira",
-  email: "mira@example.test",
-  role: "member",
-};
+const channels: Channel[] = [
+  room("welcome", "Welcome", "text", 100, "system-general"),
+  room("chat", "Chat", "text", 200),
+  room("volt", "Volt", "text", 300),
+  room("random", "Random Things", "text", 400),
+  room("game-1", "Game #1", "voice", 1100),
+  room("game-2", "Game #2", "voice", 1200),
+  room("game-3", "Game #3", "voice", 1300),
+];
+
+const currentMember = member("user-1", "Ayu", "online", "admin");
+const mira = member("mira", "Mira", "online");
+const jo = member("jo", "Jo", "idle");
+const kabir = member("kabir", "Kabir", "offline");
 
 function renderSidebar(
-  channels: Channel[],
   overrides: Partial<React.ComponentProps<typeof ChannelSidebar>> = {},
 ) {
   const props: React.ComponentProps<typeof ChannelSidebar> = {
     server,
-    categories: [],
+    categories: [
+      {
+        id: "category-channels",
+        serverId: server.id,
+        name: "Channels",
+        position: 10,
+      },
+    ],
     channels,
-    selectedChannelId: channels[0]?.id ?? "",
+    selectedChannelId: "chat",
     user,
+    members: [currentMember, mira, jo, kabir],
     voiceOccupants: [],
+    memberVoiceActivities: [],
     unreadChannelIds: new Set(),
     voice: {
       status: "disconnected",
@@ -75,11 +73,20 @@ function renderSidebar(
     mode: "mock",
     soundboardOpen: false,
     canManageChannels: false,
+    activeSpace: "server",
+    personalUnread: false,
+    serverUnread: false,
+    serverAvailable: true,
+    onSelectSpace: vi.fn(),
     onSelect: vi.fn(),
     onPrepareVoiceChannel: vi.fn(),
     onCreateChannel: vi.fn(),
     onRenameChannel: vi.fn(),
     onOpenSettings: vi.fn(),
+    onOpenProfile: vi.fn(),
+    onOpenUserContextMenu: vi.fn(),
+    onMessageMember: vi.fn(),
+    onWatchStream: vi.fn(),
     onToggleSoundboard: vi.fn(),
     onOpenScreenShare: vi.fn(),
     ...overrides,
@@ -87,572 +94,270 @@ function renderSidebar(
   return { props, ...render(<ChannelSidebar {...props} />) };
 }
 
-describe("ChannelSidebar room shelf", () => {
-  beforeEach(() => window.localStorage.clear());
+describe("ChannelSidebar unified navigation", () => {
+  it("renders one flat Channels list in the accepted exact order", () => {
+    renderSidebar();
+    const nav = screen.getByRole("navigation", { name: "Channels" });
+    expect(
+      within(nav)
+        .getAllByRole("button")
+        .filter(
+          (button) =>
+            button.hasAttribute("aria-current") ||
+            button.classList.contains("channel-row"),
+        )
+        .map((button) => button.textContent),
+    ).toEqual([
+      "Welcome",
+      "Chat",
+      "Volt",
+      "Random Things",
+      "Game #1",
+      "Game #2",
+      "Game #3",
+    ]);
+    expect(screen.queryByText("System")).not.toBeInTheDocument();
+  });
 
-  it("marks the selected room as the current page", () => {
-    const textChannel: Channel = {
-      ...voiceChannel,
-      id: "text-lobby",
-      name: "lobby",
-      kind: "text",
+  it("keeps the Personal/Bakbak switch keyboard operable inside the sidebar", async () => {
+    const onSelectSpace = vi.fn();
+    renderSidebar({ onSelectSpace });
+    const personal = screen.getByRole("button", { name: "Personal" });
+    personal.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(onSelectSpace).toHaveBeenCalledWith("server");
+    await userEvent.keyboard("{Home}");
+    expect(onSelectSpace).toHaveBeenLastCalledWith("personal");
+  });
+
+  it("shows six members regardless of status, prioritizing voice and presence", () => {
+    const zed = member("zed", "Zed", "online");
+    const amy = member("amy", "Amy", "online");
+    const noa = member("noa", "Noa", "idle");
+    renderSidebar({
+      members: [currentMember, zed, jo, mira, amy, noa, kabir],
+      memberVoiceActivities: [
+        {
+          userId: jo.id,
+          channelId: "game-1",
+          channelName: "Game #1",
+          isStreaming: false,
+        },
+      ],
+    });
+    const preview = screen.getByLabelText("Activity");
+    expect(
+      within(preview)
+        .getAllByRole("button", { name: /^View/ })
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual([
+      "View Jo's profile",
+      "View Amy's profile",
+      "View Mira's profile",
+      "View Zed's profile",
+      "View Noa's profile",
+      "View Kabir's profile",
+    ]);
+    expect(
+      within(preview).getByRole("button", { name: "Show all" }),
+    ).toBeVisible();
+    expect(
+      within(preview)
+        .getByLabelText("Mira, online")
+        .querySelector(".avatar__status--online"),
+    ).not.toBeNull();
+  });
+
+  it("autoplays avatar and cover GIFs in Activity rows", () => {
+    const animatedMember = {
+      ...member("animated", "Animated", "online"),
+      avatarUrl: "blob:avatar-poster",
+      avatarAnimationUrl: "blob:avatar-animation",
+      coverUrl: "blob:cover-poster",
+      coverAnimationUrl: "blob:cover-animation",
     };
-    renderSidebar([textChannel, voiceChannel], {
-      selectedChannelId: textChannel.id,
+    const { container } = renderSidebar({
+      members: [currentMember, animatedMember],
     });
 
-    expect(screen.getByRole("button", { name: "lobby" })).toHaveClass("active");
-    expect(screen.getByRole("button", { name: "lobby" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
-    expect(screen.getByRole("button", { name: "Lounge" })).not.toHaveAttribute(
-      "aria-current",
-    );
-  });
-
-  it("shows the Bakbak wordmark without a logo or retired adda tagline", () => {
-    const { container } = renderSidebar([voiceChannel]);
-
-    expect(screen.getByText("Bakbak")).toBeVisible();
-    expect(screen.queryByText("Friends-only adda")).not.toBeInTheDocument();
     expect(
-      screen.getByLabelText(`Beta release, version ${APP_VERSION}`),
-    ).toBeVisible();
-    expect(screen.getByText(`v${APP_VERSION}`)).toBeVisible();
-    expect(screen.getByText("β")).toBeVisible();
+      container.querySelector<HTMLImageElement>(".avatar__animation"),
+    ).toHaveClass("is-visible");
     expect(
-      screen.getByText(
-        (_, element) =>
-          element?.classList.contains("server-brand__release") === true &&
-          element.textContent?.trim() === `β · v${APP_VERSION}`,
+      container.querySelector<HTMLImageElement>(
+        ".activity-preview .member-cover-poster__animation",
       ),
-    ).toBeVisible();
-    expect(container.querySelector(".server-brand__mark")).toBeNull();
-    expect(container.querySelector(".bakbak-mark")).toBeNull();
+    ).toHaveAttribute("src", "blob:cover-animation");
   });
 
-  it("shows create and rename controls only to admins", async () => {
-    const onCreateChannel = vi.fn();
+  it("shows a purposeful empty presence state", () => {
+    renderSidebar({ members: [currentMember] });
+    expect(
+      screen.getByText(/suspicious amount of productivity/i),
+    ).toBeVisible();
+  });
+
+  it("keeps the former member-rail cover texture in Activity rows", () => {
+    const covered = {
+      ...member("covered", "Covered", "online"),
+      coverUrl: "blob:activity-cover",
+      coverPositionX: 72,
+      coverPositionY: 31,
+    };
+    const { container } = renderSidebar({
+      members: [currentMember, covered],
+    });
+    const cover = container.querySelector<HTMLImageElement>(
+      ".activity-preview__cover img",
+    );
+    expect(cover).toHaveAttribute("src", "blob:activity-cover");
+    expect(cover).toHaveStyle({ objectPosition: "72% 31%" });
+  });
+
+  it("opens a focus-trapped grouped member overlay and restores Show all focus", async () => {
+    renderSidebar();
+    const opener = screen.getByRole("button", { name: "Show all" });
+    await userEvent.click(opener);
+    expect(screen.getByRole("dialog", { name: "Members" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Close" })).toHaveFocus();
+    expect(screen.getByRole("heading", { name: "Online — 2" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Away — 1" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Offline — 1" })).toBeVisible();
+    expect(screen.getByText("Ayu (You)")).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Members" })).toBeNull();
+    expect(opener).toHaveFocus();
+  });
+
+  it("preserves profile, context, DM, and stream actions in the member overlay", async () => {
+    const onOpenProfile = vi.fn();
+    const onOpenUserContextMenu = vi.fn();
+    const onMessageMember = vi.fn();
+    const onWatchStream = vi.fn();
+    renderSidebar({
+      onOpenProfile,
+      onOpenUserContextMenu,
+      onMessageMember,
+      onWatchStream,
+      memberVoiceActivities: [
+        {
+          userId: mira.id,
+          channelId: "game-1",
+          channelName: "Game #1",
+          isStreaming: true,
+        },
+      ],
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Show all" }));
+    const profileButtons = screen.getAllByRole("button", {
+      name: "View Mira's profile",
+    });
+    const overlayProfile = profileButtons.at(-1)!;
+    fireEvent.contextMenu(overlayProfile, { clientX: 10, clientY: 20 });
+    expect(onOpenUserContextMenu).toHaveBeenCalled();
+    await userEvent.click(overlayProfile);
+    expect(onOpenProfile).toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Message Mira" }));
+    expect(onMessageMember).toHaveBeenCalledWith(mira);
+
+    await userEvent.click(screen.getByRole("button", { name: "Show all" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Watch Mira's stream" }),
+    );
+    expect(onWatchStream).toHaveBeenCalledWith(mira, channels[4]);
+  });
+
+  it("offers compact admin creation and ordinary rename while protecting Welcome", async () => {
+    const onCreateChannel = vi.fn<(kind: Channel["kind"]) => void>();
     const onRenameChannel = vi.fn();
-    renderSidebar([voiceChannel], {
+    renderSidebar({
       canManageChannels: true,
       onCreateChannel,
       onRenameChannel,
     });
-
+    const addChannel = screen.getByRole("button", { name: "Add channel" });
+    expect(addChannel).toHaveAttribute("aria-haspopup", "menu");
+    await userEvent.click(addChannel);
+    expect(screen.getByRole("menu", { name: "Add channel" })).toBeVisible();
     await userEvent.click(
-      screen.getByRole("button", { name: "Create voice channel" }),
+      screen.getByRole("menuitem", { name: "Text channel" }),
     );
+    await userEvent.click(addChannel);
     await userEvent.click(
-      screen.getByRole("button", { name: "Rename Lounge" }),
+      screen.getByRole("menuitem", { name: "Voice channel" }),
     );
-    expect(onCreateChannel).toHaveBeenCalledWith("voice");
-    expect(onRenameChannel).toHaveBeenCalledWith(voiceChannel);
+    await userEvent.click(screen.getByRole("button", { name: "Rename Chat" }));
+    expect(onCreateChannel.mock.calls.map(([kind]) => kind)).toEqual([
+      "text",
+      "voice",
+    ]);
+    expect(onRenameChannel).toHaveBeenCalledWith(channels[1]);
+    expect(screen.queryByRole("button", { name: "Rename Welcome" })).toBeNull();
   });
 
-  it("keeps automation channels expanded and hides their rename control", () => {
-    const systemCategory: ChannelCategory = {
-      id: "category-system",
-      serverId: server.id,
-      name: "System",
-      position: 0,
-    };
-    const releases: Channel = {
-      ...voiceChannel,
-      id: "releases",
-      categoryId: systemCategory.id,
-      name: "releases",
-      kind: "text",
-      purpose: "system-releases",
-    };
-    renderSidebar([releases], {
-      categories: [systemCategory],
-      canManageChannels: true,
-    });
-
-    expect(screen.getByRole("button", { name: "System" })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
-    expect(
-      screen.getByLabelText("Automation-only channel"),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Rename releases" }),
-    ).not.toBeInTheDocument();
+  it("closes the add-channel menu with Escape and returns focus to the plus", async () => {
+    renderSidebar({ canManageChannels: true });
+    const addChannel = screen.getByRole("button", { name: "Add channel" });
+    await userEvent.click(addChannel);
+    expect(screen.getByRole("menu", { name: "Add channel" })).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("menu", { name: "Add channel" })).toBeNull();
+    expect(addChannel).toHaveFocus();
   });
 
-  it("hides management controls from ordinary members", () => {
-    renderSidebar([voiceChannel]);
-    expect(
-      screen.queryByRole("button", { name: "Create voice channel" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Rename Lounge" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("emphasizes unread text channels", () => {
-    const textChannel: Channel = {
-      ...voiceChannel,
-      id: "text-1",
-      name: "random",
-      kind: "text",
-    };
-    renderSidebar([textChannel], {
-      selectedChannelId: "different-channel",
-      unreadChannelIds: new Set([textChannel.id]),
-    });
-
-    expect(screen.getByRole("button", { name: /random/i })).toHaveClass(
-      "channel-row--unread",
-    );
-  });
-
-  it("does not expose unread state for voice channels", () => {
-    renderSidebar([voiceChannel], {
-      selectedChannelId: "different-channel",
-      unreadChannelIds: new Set([voiceChannel.id]),
-    });
-
-    expect(screen.getByRole("button", { name: /Lounge/i })).not.toHaveClass(
-      "channel-row--unread",
-    );
-  });
-
-  it("renders mixed text and voice channels in category and room order", () => {
-    const categories: ChannelCategory[] = [
-      {
-        id: "category-gamez",
-        serverId: server.id,
-        name: "Gamez",
-        position: 20,
-      },
-      {
-        id: "category-welcome",
-        serverId: server.id,
-        name: "Welcome",
-        position: 10,
-      },
-    ];
-    const channels: Channel[] = [
-      {
-        ...voiceChannel,
-        id: "voice-queue",
-        categoryId: "category-gamez",
-        name: "Queue",
-        position: 20,
-      },
-      {
-        ...voiceChannel,
-        id: "text-clips",
-        categoryId: "category-gamez",
-        name: "clips",
-        kind: "text",
-        position: 10,
-      },
-      {
-        ...voiceChannel,
-        id: "text-spawn",
-        categoryId: "category-welcome",
-        name: "spawn",
-        kind: "text",
-        position: 10,
-      },
-    ];
-
-    renderSidebar(channels, { categories });
-
-    const categoryRegions = screen.getAllByRole("region");
-    expect(
-      categoryRegions.map((region) => region.getAttribute("aria-label")),
-    ).toEqual(["Welcome", "Gamez"]);
-    expect(
-      within(screen.getByRole("region", { name: "Gamez" })).getByRole(
-        "button",
-        { name: "Gamez" },
-      ),
-    ).toHaveAttribute("aria-expanded", "true");
-    expect(
-      within(
-        screen
-          .getByRole("region", { name: "Gamez" })
-          .querySelector(".channel-group__children") as HTMLElement,
-      )
-        .getAllByRole("button")
-        .map((button) => button.textContent),
-    ).toEqual(["clips", "Queue"]);
-  });
-
-  it("collapses groups independently with pointer and keyboard activation", async () => {
-    const categories: ChannelCategory[] = [
-      {
-        id: "category-welcome",
-        serverId: server.id,
-        name: "Welcome",
-        position: 10,
-      },
-      {
-        id: "category-gamez",
-        serverId: server.id,
-        name: "Gamez",
-        position: 20,
-      },
-    ];
-    const spawn = {
-      ...voiceChannel,
-      id: "text-spawn",
-      categoryId: "category-welcome",
-      name: "spawn",
-      kind: "text" as const,
-    };
-    const clips = {
-      ...voiceChannel,
-      id: "text-clips",
-      categoryId: "category-gamez",
-      name: "clips",
-      kind: "text" as const,
-    };
-    const onSelect = vi.fn();
-    renderSidebar([spawn, clips], {
-      categories,
-      selectedChannelId: clips.id,
-      onSelect,
-    });
-    const welcomeToggle = screen.getByRole("button", { name: "Welcome" });
-    const gamezToggle = screen.getByRole("button", { name: "Gamez" });
-
-    expect(welcomeToggle).toHaveAttribute("aria-expanded", "true");
-    await userEvent.click(welcomeToggle);
-    expect(welcomeToggle).toHaveAttribute("aria-expanded", "false");
-    expect(
-      screen.queryByRole("button", { name: "spawn" }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "clips" })).toBeVisible();
-    expect(onSelect).not.toHaveBeenCalled();
-
-    gamezToggle.focus();
-    await userEvent.keyboard("{Enter}");
-    expect(gamezToggle).toHaveAttribute("aria-expanded", "false");
-    expect(
-      screen.queryByRole("button", { name: "clips" }),
-    ).not.toBeInTheDocument();
-    expect(onSelect).not.toHaveBeenCalled();
-
-    expect(
-      JSON.parse(
-        window.localStorage.getItem(channelGroupPreferencesKey(server.id)) ??
-          "{}",
-      ),
-    ).toEqual({
-      "category-welcome": true,
-      "category-gamez": true,
-    });
-  });
-
-  it("restores collapse state and leaves new categories expanded", async () => {
-    const welcome: ChannelCategory = {
-      id: "category-welcome",
-      serverId: server.id,
-      name: "Welcome",
-      position: 10,
-    };
-    const spawn = {
-      ...voiceChannel,
-      id: "text-spawn",
-      categoryId: welcome.id,
-      name: "spawn",
-      kind: "text" as const,
-    };
-    const firstRender = renderSidebar([spawn], { categories: [welcome] });
-    await userEvent.click(screen.getByRole("button", { name: "Welcome" }));
-    firstRender.unmount();
-
-    const gamez: ChannelCategory = {
-      id: "category-gamez",
-      serverId: server.id,
-      name: "Gamez",
-      position: 20,
-    };
-    renderSidebar([spawn], { categories: [welcome, gamez] });
-
-    expect(screen.getByRole("button", { name: /^Welcome/ })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
-    expect(screen.getByRole("button", { name: "Gamez" })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
-  });
-
-  it("summarizes selected, unread, and occupied channels while collapsed", async () => {
-    const category: ChannelCategory = {
-      id: "category-development",
-      serverId: server.id,
-      name: "Development",
-      position: 10,
-    };
-    const selectedChannel: Channel = {
-      ...voiceChannel,
-      id: "text-react",
-      categoryId: category.id,
-      name: "React",
-      kind: "text",
-      position: 10,
-    };
-    const unreadChannel: Channel = {
-      ...selectedChannel,
-      id: "text-typescript",
-      name: "TypeScript",
-      position: 20,
-    };
-    const occupiedVoiceChannel: Channel = {
-      ...voiceChannel,
-      id: "voice-node",
-      categoryId: category.id,
-      name: "Node.js",
-      position: 30,
-    };
-    renderSidebar([selectedChannel, unreadChannel, occupiedVoiceChannel], {
-      categories: [category],
-      selectedChannelId: selectedChannel.id,
-      unreadChannelIds: new Set([unreadChannel.id]),
-      voiceOccupants: [
-        {
-          userId: friend.id,
-          displayName: friend.displayName,
-          avatarUrl: null,
-          channelId: occupiedVoiceChannel.id,
-          joinedAt: new Date().toISOString(),
-          isStreaming: false,
-        },
-      ],
-    });
-
-    const toggle = screen.getByRole("button", { name: "Development" });
-    await userEvent.click(toggle);
-
-    expect(toggle).toHaveClass("is-selected");
-    expect(screen.getByText("Selected channel inside.")).toBeInTheDocument();
-    expect(screen.getByLabelText("1 unread channel")).toBeVisible();
-    expect(screen.getByLabelText("1 person in voice")).toBeVisible();
-    expect(
-      screen.queryByRole("button", { name: "React" }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByText("Mira")).not.toBeVisible();
-  });
-
-  it("collapses synthetic conversation and voice groups independently", async () => {
-    const textChannel: Channel = {
-      ...voiceChannel,
-      id: "text-random",
-      name: "random",
-      kind: "text",
-      position: 0,
-    };
-    renderSidebar([textChannel, voiceChannel], {
-      selectedChannelId: textChannel.id,
-    });
-
-    await userEvent.click(
-      screen.getByRole("button", { name: "Conversations" }),
-    );
-
-    expect(
-      screen.queryByRole("button", { name: "random" }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Lounge/i })).toBeVisible();
-    expect(
-      JSON.parse(
-        window.localStorage.getItem(channelGroupPreferencesKey(server.id)) ??
-          "{}",
-      ),
-    ).toMatchObject({
-      "uncategorized:text": true,
-      "uncategorized:voice": false,
-    });
-  });
-
-  it("prepares voice channels for pointer and keyboard discovery", () => {
-    const onPrepareVoiceChannel = vi.fn();
-    renderSidebar([voiceChannel], { onPrepareVoiceChannel });
-    const button = screen.getByRole("button", { name: /Lounge/i });
-
-    fireEvent.pointerEnter(button);
-    fireEvent.focus(button);
-
-    expect(onPrepareVoiceChannel).toHaveBeenCalledTimes(2);
-    expect(onPrepareVoiceChannel).toHaveBeenLastCalledWith(voiceChannel, true);
-  });
-
-  it("shows voice occupants without joining the room", () => {
-    renderSidebar([voiceChannel], {
-      selectedChannelId: "text-1",
-      voiceOccupants: [
-        {
-          userId: "friend-1",
-          displayName: "Mira",
-          avatarUrl: null,
-          channelId: voiceChannel.id,
-          joinedAt: new Date().toISOString(),
-          isStreaming: false,
-        },
-      ],
-    });
-    expect(screen.getByText("Mira")).toBeVisible();
-  });
-
-  it("keeps voice occupants sorted when input order and category collapse change", async () => {
-    const occupants = [
-      {
-        userId: "friend-z",
-        displayName: "Zed",
-        avatarUrl: null,
-        channelId: voiceChannel.id,
-        joinedAt: new Date().toISOString(),
-        isStreaming: false,
-      },
-      {
-        userId: "friend-a",
-        displayName: "Amy",
-        avatarUrl: null,
-        channelId: voiceChannel.id,
-        joinedAt: new Date().toISOString(),
-        isStreaming: false,
-      },
-    ];
-    const { container, props, rerender } = renderSidebar([voiceChannel], {
-      voiceOccupants: occupants,
-    });
-    const renderedNames = () =>
-      [
-        ...container.querySelectorAll(
-          ".channel-group__children:not([hidden]) .channel-voice-person b",
-        ),
-      ].map((name) => name.textContent);
-
-    expect(renderedNames()).toEqual(["Amy", "Zed"]);
-    rerender(
-      <ChannelSidebar {...props} voiceOccupants={[...occupants].reverse()} />,
-    );
-    expect(renderedNames()).toEqual(["Amy", "Zed"]);
-
-    await userEvent.click(screen.getByRole("button", { name: /Voice rooms/i }));
-    expect(renderedNames()).toEqual([]);
-    await userEvent.click(screen.getByRole("button", { name: /Voice rooms/i }));
-    expect(renderedNames()).toEqual(["Amy", "Zed"]);
-  });
-
-  it("shows one room timer, omits personal timers and local labels, and rings speakers", () => {
-    const roomStartedAt = "2026-07-20T12:00:00.000Z";
-    const { container } = renderSidebar([voiceChannel], {
-      voiceOccupants: [
-        {
-          userId: user.id,
-          displayName: user.displayName,
-          avatarUrl: null,
-          channelId: voiceChannel.id,
-          joinedAt: roomStartedAt,
-          isStreaming: false,
-        },
-        {
-          userId: friend.id,
-          displayName: friend.displayName,
-          avatarUrl: null,
-          channelId: voiceChannel.id,
-          joinedAt: "2026-07-20T12:01:00.000Z",
-          isStreaming: false,
-        },
-      ],
+  it("keeps active-call and current-user controls pinned in the footer", () => {
+    renderSidebar({
       voice: {
-        status: "disconnected",
-        channel: voiceChannel,
-        participants: [
-          {
-            id: friend.id,
-            displayName: friend.displayName,
-            isLocal: false,
-            isSpeaking: true,
-            isMuted: false,
-            volume: 1,
-            joinedAt: null,
-            cameraEnabled: false,
-            cameraTrack: null,
-            activeSounds: [],
-          },
-        ],
+        status: "connected",
+        connectionQuality: "good",
+        channel: channels[4],
+        cameraEnabled: false,
+        cameraPending: false,
+        screenShareEnabled: false,
+        screenSharePending: false,
+        screenShareAvailable: true,
+        leave: vi.fn().mockResolvedValue(undefined),
+        toggleCamera: vi.fn().mockResolvedValue(undefined),
+        stopScreenShare: vi.fn().mockResolvedValue(undefined),
       } as unknown as ReturnType<typeof useVoiceRoom>,
     });
-
-    expect(screen.getByLabelText("Lounge active time")).toContainElement(
-      container.querySelector(`time[datetime="${roomStartedAt}"]`),
-    );
-    expect(
-      container.querySelectorAll(".channel-voice-people time"),
-    ).toHaveLength(0);
-    expect(screen.queryByText(/\(you\)/i)).not.toBeInTheDocument();
-    expect(
-      screen
-        .getByRole("button", { name: "View Mira's profile" })
-        .querySelector(".channel-voice-person__avatar"),
-    ).toHaveClass("is-speaking");
-  });
-
-  it("shows server-wide LIVE state with a remote watch action", async () => {
-    const occupant = {
-      userId: friend.id,
-      displayName: friend.displayName,
-      avatarUrl: null,
-      channelId: voiceChannel.id,
-      joinedAt: new Date().toISOString(),
-      isStreaming: true,
-    };
-    const onWatchStream = vi.fn();
-    renderSidebar([voiceChannel], {
-      members: [{ ...user, role: "admin" }, friend],
-      voiceOccupants: [occupant],
-      onWatchStream,
-    });
-
-    expect(screen.getByText("LIVE")).toBeVisible();
-    await userEvent.click(
-      screen.getByRole("button", { name: "Watch Mira's stream" }),
-    );
-    expect(onWatchStream).toHaveBeenCalledWith(friend, voiceChannel);
-  });
-
-  it("opens voice-occupant and signed-in user profiles", async () => {
-    const onOpenProfile = vi.fn();
-    renderSidebar([voiceChannel], {
-      members: [{ ...user, role: "admin" }, friend],
-      voiceOccupants: [
-        {
-          userId: friend.id,
-          displayName: friend.displayName,
-          avatarUrl: null,
-          channelId: voiceChannel.id,
-          joinedAt: new Date().toISOString(),
-          isStreaming: false,
-        },
-      ],
-      onOpenProfile,
-    });
-
-    const occupantTrigger = screen.getByRole("button", {
-      name: "View Mira's profile",
-    });
-    await userEvent.click(occupantTrigger);
-    expect(onOpenProfile).toHaveBeenCalledWith(friend, occupantTrigger);
-
-    const userTrigger = screen.getByRole("button", {
-      name: "View Ayu's profile",
-    });
-    await userEvent.click(userTrigger);
-    expect(onOpenProfile).toHaveBeenLastCalledWith(
-      expect.objectContaining({ id: user.id }),
-      userTrigger,
-    );
+    expect(document.querySelector(".sidebar-voice-panel")).not.toBeNull();
+    expect(document.querySelector(".user-dock")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Settings" })).toBeVisible();
   });
 });
+
+function room(
+  id: string,
+  name: string,
+  kind: Channel["kind"],
+  position: number,
+  purpose: Channel["purpose"] = "chat",
+): Channel {
+  return {
+    id,
+    serverId: server.id,
+    categoryId: "category-channels",
+    name,
+    kind,
+    purpose,
+    position,
+    topic: "Friends only",
+  };
+}
+
+function member(
+  id: string,
+  displayName: string,
+  status: ServerMember["status"],
+  role: ServerMember["role"] = "member",
+): ServerMember {
+  return {
+    ...user,
+    id,
+    displayName,
+    email: `${id}@example.test`,
+    status,
+    role,
+  };
+}

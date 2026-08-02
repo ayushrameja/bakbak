@@ -22,9 +22,10 @@ types up to 10 MiB. Owners manage their objects; authenticated users may read
 another person's objects only when both share a server. `avatar_path` remains
 the canonical static poster for older clients, while optional animation and
 cover paths live in the additive rich-profile fields.
-Ordered `channel_categories` group the default server's 18 text and six voice
-rooms into the seven-category Unlucky Boys layout. Categories and rooms are
-member-readable, while category mutation remains operator-only.
+Plan 0034 archives the previous categories and rooms without deleting related
+history, then creates one active Channels category with four text and three
+voice rooms. Ordinary clients read only active rows; archived history remains
+operator/service-role recoverable.
 
 ## Local validation
 
@@ -115,7 +116,6 @@ pnpm dlx supabase@latest functions deploy soundboard-manage --use-api
 pnpm dlx supabase@latest functions deploy message-media-manage --use-api
 pnpm dlx supabase@latest functions deploy sticker-manage --use-api
 pnpm dlx supabase@latest functions deploy link-preview --use-api
-pnpm dlx supabase@latest functions deploy system-events --use-api
 ```
 
 Plan 0014's additive DM/LIVE migration is deployed. Older clients continue
@@ -187,26 +187,20 @@ poster for animation, and enforces 25 active stickers/member and 200/server.
 Uploaders and server admins archive active stickers; referenced rows and
 objects remain available to authorized history.
 
-System channels and previews add migration
-`202607240001_system_channels_and_link_previews.sql`. Apply it before either
-new function. Follow-up migration
-`202607240002_channel_category_realtime.sql` publishes
-`channel_categories` through Supabase Realtime so an already-open renderer can
-catch up the System category without clearing its cache. Keep JWT verification
-enabled for `link-preview`; it authorizes channel membership or DM
-participation by selecting the stored message through the caller's RLS session.
-`system-events` deliberately disables the platform JWT gate because GitHub
-Actions authenticates with the dedicated
-`x-bakbak-system-secret`; configure the same high-entropy
-`BAKBAK_SYSTEM_EVENTS_SECRET` in Supabase Function Secrets and GitHub Actions,
-and never use a `VITE_*` variable for it. Release announcements are standard
-behavior with no feature flag. Deploy the migration and both functions before
-merging the workflow, then run the manual system-history workflow once to
-import earlier stable releases.
+System channels and previews originally arrived in migration
+`202607240001_system_channels_and_link_previews.sql`; the follow-up migration
+publishes categories through Realtime. Keep JWT verification enabled for
+`link-preview`, which authorizes the stored message through caller-scoped RLS.
+Plan 0034 removes the separate release-announcement function and workflow,
+including the retired function from the hosted project.
 
-The hosted Bakbak project has migrations `202607240001` and `202607240002` plus
-both functions deployed. Its synchronized System secret is configured, and the
-one-time history pass imported 15 stable releases oldest-first on 2026-07-24.
+The `202608010001_unified_bakbak_channels.sql` migration adds archive state,
+archives the old visible hierarchy, creates the fresh seven-room layout, and
+replaces affected policies/RPCs with active-row rules. It was applied to the
+hosted Bakbak project after explicit production-data approval on 2026-08-01.
+For any other environment, review the dry run and take an operator backup before
+the push. The complete two-client archive, Welcome, presence, Realtime, message,
+and admin-management acceptance matrix remains required.
 
 Validate the complete backend locally with:
 
@@ -217,12 +211,10 @@ deno test --allow-env --config supabase/deno.json supabase/functions/tests
 ```
 
 Keep `verify_jwt = true` for user-authenticated functions in
-`supabase/config.toml`; only `system-events` uses its dedicated secret with
-`verify_jwt = false`. Set `LIVEKIT_URL`, `LIVEKIT_API_KEY`,
-`LIVEKIT_API_SECRET`, and `BAKBAK_SYSTEM_EVENTS_SECRET` through the hosted Edge
-Function Secrets dashboard before invoking the corresponding functions. Do
-not pass secret values on a shell command line or place them in renderer
-environment files.
+`supabase/config.toml`. Set `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and
+`LIVEKIT_API_SECRET` through hosted Edge Function Secrets before invoking the
+corresponding function. Do not pass secret values on a shell command line or
+place them in renderer environment files.
 
 `--use-api` uses Supabase's server-side bundler and avoids a macOS CLI
 `output.eszip` temporary-file race observed with the default local bundler.

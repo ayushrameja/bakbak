@@ -102,15 +102,6 @@ function renderSettings(
       },
     },
     appearancePreference: "auto",
-    systemAccent: {
-      red: 10,
-      green: 132,
-      blue: 255,
-      source: "macos",
-      color: "#0a84ff",
-      onAccent: "#000000",
-      scheme: "dark",
-    },
     inputError: null,
     outputError: null,
     cameraError: null,
@@ -959,12 +950,11 @@ describe("SettingsPage", () => {
     const onAppearancePreferenceChange = vi.fn();
     renderSettings("appearance", { onAppearancePreferenceChange });
 
-    expect(screen.getByText("Glass")).toBeVisible();
-    expect(screen.getByText("#0A84FF")).toBeVisible();
-    expect(screen.getByText(/Following macOS Accent Color\./)).toBeVisible();
-    expect(
-      screen.getByRole("img", { name: "Current system accent #0a84ff" }),
-    ).toBeVisible();
+    expect(screen.getByText("Bakbak palette")).toBeVisible();
+    expect(screen.getByText("Honey & teal")).toBeVisible();
+    expect(screen.getByText("Personal palette")).toBeVisible();
+    expect(screen.getByText("Berry & blue")).toBeVisible();
+    expect(screen.queryByText("System accent")).toBeNull();
     expect(screen.getByRole("radio", { name: /Auto/ })).toBeChecked();
     expect(screen.getByRole("radio", { name: /Dark/ })).not.toBeChecked();
     expect(screen.getByRole("radio", { name: /Light/ })).not.toBeChecked();
