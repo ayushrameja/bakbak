@@ -537,6 +537,9 @@ media returns to people, with no participant expansion or renderer fullscreen.
       if `v1.0.0` already exists.
 - [x] Add signed Tauri update artifacts, a public GitHub Releases endpoint, and
       an explicit in-app update-and-restart experience.
+- [x] Harden startup checks with 60-second requests and bounded retries, and add
+      a manual Updates settings section with visible failure states, progress,
+      diagnostics, and a GitHub Releases fallback.
 - [x] Add gated GitHub Actions validation and draft release workflows for macOS
       Apple Silicon and Windows x64 NSIS installers, rejecting Intel artifacts.
 - [x] Configure the updater signing secrets and live renderer variables in

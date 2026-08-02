@@ -1,16 +1,19 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppUpdateNotice } from "./AppUpdateNotice";
+import { AppUpdateProvider } from "./AppUpdateProvider";
 
 const mocks = vi.hoisted(() => ({
   check: vi.fn(),
   downloadAndInstall: vi.fn(),
   isTauri: vi.fn(),
+  openUrl: vi.fn(),
   relaunch: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: mocks.isTauri }));
 vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: mocks.relaunch }));
+vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: mocks.openUrl }));
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: mocks.check }));
 
 describe("AppUpdateNotice", () => {
@@ -22,6 +25,7 @@ describe("AppUpdateNotice", () => {
       downloadAndInstall: mocks.downloadAndInstall,
     });
     mocks.downloadAndInstall.mockResolvedValue(undefined);
+    mocks.openUrl.mockResolvedValue(undefined);
     mocks.relaunch.mockResolvedValue(undefined);
   });
 
@@ -31,7 +35,11 @@ describe("AppUpdateNotice", () => {
   });
 
   it("checks in the desktop runtime and installs only after confirmation", async () => {
-    render(<AppUpdateNotice checkDelayMs={1} />);
+    render(
+      <AppUpdateProvider startupDelayMs={1} retryDelaysMs={[]}>
+        <AppUpdateNotice />
+      </AppUpdateProvider>,
+    );
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1);
@@ -49,12 +57,20 @@ describe("AppUpdateNotice", () => {
     });
 
     expect(mocks.downloadAndInstall).toHaveBeenCalledOnce();
+    expect(mocks.downloadAndInstall).toHaveBeenCalledWith(
+      expect.any(Function),
+      { timeout: 600_000 },
+    );
     expect(mocks.relaunch).toHaveBeenCalledOnce();
   });
 
   it("does not call the updater in a normal browser", async () => {
     mocks.isTauri.mockReturnValue(false);
-    render(<AppUpdateNotice checkDelayMs={1} />);
+    render(
+      <AppUpdateProvider startupDelayMs={1} retryDelaysMs={[]}>
+        <AppUpdateNotice />
+      </AppUpdateProvider>,
+    );
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1);

@@ -6932,3 +6932,63 @@ aarch64-apple-darwin --bundles app,dmg` plus
 - **Next:** Build the same revision on macOS and Windows and run the installed
   two-client participant-volume matrix before closing Packet D's listening
   acceptance gate.
+
+## 2026-08-02 — Make desktop updates recoverable
+
+- **Completed:** Replaced the startup notice's one-shot 15-second updater call
+  with one app-wide update provider shared by the global notice and Settings.
+  Checks now allow 60 seconds, retry twice after bounded two- and five-second
+  delays, prevent overlapping requests, classify offline/timeout/service
+  failures without exposing raw errors, and persist only the last successful
+  check time. Added an Updates settings section with installed and available
+  versions, manual checks, visible status and retry count, signed download
+  progress, install retry, a GitHub Releases fallback, and copyable privacy-safe
+  diagnostics. Update downloads now receive a ten-minute ceiling.
+- **Decisions:** Kept the automatic global notice as the normal path and made
+  Settings the recovery path instead of creating two independent updater
+  clients. Diagnostics contain only public app/build versions, bounded updater
+  state and timestamps, retry counts, and online status; account data,
+  messages, credentials, raw request failures, and response bodies are excluded.
+  Existing `1.6.0` and older installations cannot receive this renderer logic
+  remotely, so users whose old 15-second check keeps timing out need a manual
+  installer or one successful fast check before future updates become
+  recoverable in-app.
+- **Validation:**
+  - Focused updater and Settings Vitest — passed 3 files and 34/34 tests,
+    covering desktop/browser startup behavior, 60-second request options,
+    three-attempt timeout recovery, successful-check persistence, release-page
+    fallback, signed install invocation, and sanitized diagnostics.
+  - `pnpm test` — passed 86 Vitest files / 484 tests and 48/48 Node contract
+    tests.
+  - Direct full-repository Prettier and zero-warning ESLint checks — passed.
+  - Direct renderer and Node TypeScript checks — passed; `pnpm build` also ran
+    the repository's exact `pnpm typecheck` script successfully.
+  - `pnpm build` — passed strict typechecking and the production Vite build;
+    the existing large-chunk warning remains non-blocking.
+  - `cargo check --locked --manifest-path src-tauri/Cargo.toml` — passed.
+  - `node scripts/set-version.mjs --check` — passed at synchronized version
+    1.6.0.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist` and the
+    available generic and Apple Silicon Tauri bundle directories.
+  - In-app browser mock QA — passed entry into Preview, Settings navigation,
+    Updates-panel content and accessible controls, desktop-only browser state,
+    and a clean warning/error console.
+  - `git diff --check` — passed.
+  - Standalone `pnpm format:check`, `pnpm lint`, and `pnpm typecheck` attempts —
+    interrupted after repeated no-output package-manager stalls; their exact
+    direct binaries passed, and `pnpm build` independently completed the exact
+    typecheck script.
+  - `pnpm tauri build` — interrupted after 60 seconds of the existing no-output
+    host-side stall; no fresh installed or updater-signed bundle is claimed.
+- **Documentation updated:** Updated the desktop updater runtime contract in
+  `docs/architecture.md`, marked the updater-recovery scope complete in the
+  active desktop-v1 plan, and appended this canonical entry.
+- **Known limitations:** The signed updater flow still requires the protected
+  CI signing key and installed macOS/Windows validation. Browser mock mode can
+  verify layout and desktop-only messaging but cannot call the native updater.
+  Already-installed clients through `1.6.0` retain the old 15-second one-shot
+  check until they install the fixed release.
+- **Next:** Publish the next patch release, provide its manual GitHub installer
+  link to friends who do not receive the old startup popup, then validate
+  automatic and manual `1.6.1 -> later patch` updates on installed Apple Silicon
+  macOS and Windows x64 clients.
