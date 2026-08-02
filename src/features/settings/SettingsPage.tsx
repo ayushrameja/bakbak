@@ -1,5 +1,6 @@
 import {
   Camera,
+  CircleArrowUp,
   Database,
   Headphones,
   Laptop,
@@ -58,10 +59,12 @@ import {
 import type { MicrophoneProcessingState } from "../voice/useVoiceRoom";
 import { setAudioElementOutput } from "../voice/media-devices";
 import { GiphyPicker } from "../chat/GiphyPicker";
+import { AppUpdateSettings } from "./AppUpdateSettings";
 
 const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
 
-export type SettingsSection = "profile" | "audio" | "appearance" | "storage";
+export type SettingsSection =
+  "profile" | "audio" | "appearance" | "storage" | "updates";
 
 export interface ProfileSaveInput {
   displayName: string;
@@ -260,6 +263,12 @@ export function SettingsPage(props: SettingsPageProps) {
               label="Data & storage"
               onClick={() => props.onSectionChange("storage")}
             />
+            <SettingsNavButton
+              active={props.section === "updates"}
+              icon={<CircleArrowUp size={17} />}
+              label="Updates"
+              onClick={() => props.onSectionChange("updates")}
+            />
             <div className="settings-nav__spacer" />
             {props.voiceStatus !== "disconnected" ? (
               <div className="settings-call-strip">
@@ -344,6 +353,7 @@ export function SettingsPage(props: SettingsPageProps) {
                 onClear={props.onClearCachedData ?? (() => Promise.resolve())}
               />
             ) : null}
+            {props.section === "updates" ? <AppUpdateSettings /> : null}
           </div>
         </div>
         {confirmingSignOut ? (

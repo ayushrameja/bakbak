@@ -1582,10 +1582,22 @@ model; Jitsi's Apache/MIT notice and Xiph.Org's BSD 3-Clause notice ship under
    makes reruns idempotent. A manual workflow independently streams every
    stable release oldest-first in historical mode and advances current
    members' release read baseline.
-10. Desktop clients check the public GitHub Releases `latest.json` shortly after
-    startup. An available update is shown globally; installation and restart
-    require an explicit user action so an active conversation is not interrupted.
-    Windows uses Tauri's passive installer mode.
+10. Desktop clients check the public GitHub Releases `latest.json` three seconds
+    after startup through one renderer-owned update provider shared by the
+    global notice and Settings. Each request has a 60-second ceiling and a
+    failed check retries after two and five seconds before becoming a visible,
+    sanitized offline/timeout/service state. One check may run at a time.
+11. Settings includes an Updates section with installed/available versions,
+    persisted last-successful-check time, manual retry, signed download
+    progress, install-and-restart, a GitHub Releases fallback, and privacy-safe
+    copyable diagnostics containing only public build/update/connectivity
+    state. Raw request errors, account data, messages, credentials, and endpoint
+    responses are never copied or persisted.
+12. An available update is still shown globally; installation and restart
+    require an explicit user action so an active conversation is not
+    interrupted. Downloads receive a ten-minute ceiling. Windows uses Tauri's
+    passive installer mode, and a failed installation leaves the current app
+    untouched with both retry and manual-download recovery paths.
 
 Git tags and published Releases are the release source of truth. The tracked
 `0.2.0` version is the first-release floor. Release builds inject the resolved
