@@ -1,4 +1,4 @@
-import { CircleAlert, Hash, Volume2 } from "lucide-react";
+import { CircleAlert, Ellipsis, Hash, Volume2 } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -13,9 +13,10 @@ import { BakbakMark } from "../components/BakbakMark";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { PanelResizer } from "../components/PanelResizer";
 import { ProfilePopover } from "../components/ProfilePopover";
-import type {
-  LoadProfileMedia,
-  OpenProfile,
+import {
+  ProfileTrigger,
+  type LoadProfileMedia,
+  type OpenProfile,
 } from "../components/ProfileTrigger";
 import {
   UserContextMenu,
@@ -33,7 +34,6 @@ import {
   unreadChannelsAfterMessage,
 } from "../features/chat/channel-activity";
 import { ChatView, ConversationView } from "../features/chat/ChatView";
-import { DirectPersonPanel } from "../features/chat/DirectPersonPanel";
 import { PersonalSidebar } from "../features/chat/PersonalSidebar";
 import { hydrateDirectConversationAvatars } from "../features/chat/direct-conversation-media";
 import {
@@ -43,10 +43,7 @@ import {
 } from "../features/chat/message-content";
 import { prepareStickerUpload } from "../features/chat/message-media";
 import { optimisticMessageMedia } from "../features/chat/optimistic-message-media";
-import {
-  MemberPanel,
-  type MemberVoiceActivity,
-} from "../features/server/MemberPanel";
+import type { MemberVoiceActivity } from "../features/server/MemberPanel";
 import type { AppSpace } from "../features/server/app-space";
 import {
   applyAppearancePreference,
@@ -63,9 +60,7 @@ import { interfaceSoundController } from "../features/settings/interface-sounds"
 import {
   loadLayoutPreferences,
   DEFAULT_CONTEXT_PANEL_WIDTH,
-  DEFAULT_RIGHT_PANEL_WIDTH,
   MAX_SIDE_PANEL_WIDTH,
-  MIN_CONTENT_WIDTH,
   MIN_SIDE_PANEL_WIDTH,
   saveLayoutPreferences,
   type LayoutPreferences,
@@ -75,11 +70,6 @@ import {
   type ProfileSaveInput,
   type SettingsSection,
 } from "../features/settings/SettingsPage";
-import {
-  getCurrentSystemAccent,
-  subscribeSystemAccent,
-  type AppliedSystemAccent,
-} from "../features/settings/system-accent";
 import { Soundboard } from "../features/soundboard/Soundboard";
 import {
   shouldDismissSoundboardForEscape,
@@ -277,9 +267,6 @@ export default function App() {
   const [directSending, setDirectSending] = useState(false);
   const [directHistoryLoading, setDirectHistoryLoading] = useState(true);
   const [inviteGateOpen, setInviteGateOpen] = useState(false);
-  const [viewportWidth, setViewportWidth] = useState(() =>
-    typeof window === "undefined" ? 1280 : window.innerWidth,
-  );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [stickers, setStickers] = useState<Sticker[]>([]);
   const [sending, setSending] = useState(false);
@@ -289,9 +276,6 @@ export default function App() {
     useState<SettingsSection>("profile");
   const [appearancePreference, setAppearancePreference] =
     useState<AppearancePreference>(() => loadAppearancePreference());
-  const [systemAccent, setSystemAccent] = useState<AppliedSystemAccent>(() =>
-    getCurrentSystemAccent(),
-  );
   const [interfaceSoundPreferences, setInterfaceSoundPreferences] =
     useState<InterfaceSoundPreferences>(() => loadInterfaceSoundPreferences());
   const [layoutPreferences, setLayoutPreferences] = useState<LayoutPreferences>(
@@ -307,6 +291,7 @@ export default function App() {
   const [drafts, setDrafts] = useState<Record<string, MessageDraft>>({});
   const [screenShareDialogOpen, setScreenShareDialogOpen] = useState(false);
   const [openProfile, setOpenProfile] = useState<OpenProfileState | null>(null);
+  const [membersOverlayOpen, setMembersOverlayOpen] = useState(false);
   const [userContextMenu, setUserContextMenu] =
     useState<UserContextMenuRequest | null>(null);
   const [streamWatchRequest, setStreamWatchRequest] =
@@ -379,12 +364,6 @@ export default function App() {
   useAutoHideScrollbars();
 
   useEffect(() => {
-    const update = () => setViewportWidth(window.innerWidth);
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
-
-  useEffect(() => {
     voiceDeafenedRef.current = voice.deafened;
   }, [voice.deafened]);
 
@@ -395,8 +374,6 @@ export default function App() {
   useEffect(() => {
     interfaceSoundController.setPreferences(interfaceSoundPreferences);
   }, [interfaceSoundPreferences]);
-
-  useEffect(() => subscribeSystemAccent(setSystemAccent), []);
 
   const rememberAvatarUrl = useCallback(
     (userId: string, url: string | null) => {
@@ -1334,6 +1311,18 @@ export default function App() {
       null,
     [selectedChannelId, workspace],
   );
+  useEffect(() => {
+    if (!workspace || selectedChannel) return;
+    const fallback =
+      workspace.channels.find((channel) => channel.kind === "text") ??
+      workspace.channels[0];
+    const fallbackId = fallback?.id ?? "";
+    selectedChannelIdRef.current = fallbackId;
+    setSelectedChannelId(fallbackId);
+    setMessages(
+      fallback ? (channelThreadsRef.current.get(fallback.id) ?? []) : [],
+    );
+  }, [selectedChannel, workspace]);
   const selectedConversation = useMemo(
     () =>
       directConversations.find(
@@ -2705,6 +2694,7 @@ export default function App() {
   function handleSelectChannel(channel: Channel) {
     setOpenProfile(null);
     setUserContextMenu(null);
+    setMembersOverlayOpen(false);
     setStreamWatchRequest((current) =>
       current?.channelId === channel.id ? current : null,
     );
@@ -2731,6 +2721,7 @@ export default function App() {
   function handleSelectConversation(conversation: DirectConversation) {
     setOpenProfile(null);
     setUserContextMenu(null);
+    setMembersOverlayOpen(false);
     setStreamWatchRequest(null);
     setSoundboardOpen(false);
     selectedConversationIdRef.current = conversation.id;
@@ -2816,6 +2807,7 @@ export default function App() {
   function handleSelectSpace(space: AppSpace) {
     if (space === "server" && !workspace) return;
     setOpenProfile(null);
+    setMembersOverlayOpen(false);
     if (space !== "server") setStreamWatchRequest(null);
     setSoundboardOpen(false);
     transitionToSpace(space);
@@ -2834,34 +2826,23 @@ export default function App() {
     return (
       <div
         className="app-frame"
+        data-space={showSpaceSwitcher ? activeSpace : undefined}
         data-startup-assembly={showSpaceSwitcher ? startupAssembly : undefined}
       >
         <WindowTitlebar
           showSpaceSwitcher={showSpaceSwitcher}
-          activeSpace={activeSpace}
-          personalUnread={personalUnread}
-          serverUnread={unreadChannelIds.size > 0}
           callActive={voice.status !== "disconnected"}
           callStatus={voice.status}
           callChannelName={voice.channel?.name ?? null}
-          serverAvailable={Boolean(workspace)}
-          switchDisabled={blockingDialogOpen}
-          onSelectSpace={handleSelectSpace}
           {...(showSpaceSwitcher
             ? {
                 panelControls: {
                   leftPanelVisible: layoutPreferences.leftPanelVisible,
-                  rightPanelVisible: layoutPreferences.rightPanelVisible,
                   disabled: blockingDialogOpen,
                   onToggleLeftPanel: () =>
                     updateLayoutPreferences((current) => ({
                       ...current,
                       leftPanelVisible: !current.leftPanelVisible,
-                    })),
-                  onToggleRightPanel: () =>
-                    updateLayoutPreferences((current) => ({
-                      ...current,
-                      rightPanelVisible: !current.rightPanelVisible,
                     })),
                 },
               }
@@ -2940,40 +2921,13 @@ export default function App() {
       ].map((member) => [member.id, member]),
     ).values(),
   );
-  const reservedShellWidth = MIN_CONTENT_WIDTH + 30;
-  const contextMaximum = Math.max(
-    MIN_SIDE_PANEL_WIDTH,
-    Math.min(
-      MAX_SIDE_PANEL_WIDTH,
-      viewportWidth -
-        reservedShellWidth -
-        (layoutPreferences.rightPanelVisible
-          ? layoutPreferences.rightPanelWidth
-          : 0),
-    ),
-  );
-  const rightMaximum = Math.max(
-    MIN_SIDE_PANEL_WIDTH,
-    Math.min(
-      MAX_SIDE_PANEL_WIDTH,
-      viewportWidth -
-        reservedShellWidth -
-        (layoutPreferences.leftPanelVisible
-          ? layoutPreferences.contextPanelWidth
-          : 0),
-    ),
-  );
+  const contextMaximum = MAX_SIDE_PANEL_WIDTH;
   const contextPanelWidth = Math.min(
     layoutPreferences.contextPanelWidth,
     contextMaximum,
   );
-  const rightPanelWidth = Math.min(
-    layoutPreferences.rightPanelWidth,
-    rightMaximum,
-  );
   const shellStyle = {
     "--context-panel-width": `${contextPanelWidth}px`,
-    "--right-panel-width": `${rightPanelWidth}px`,
   } as CSSProperties;
 
   return renderAppFrame(
@@ -2982,9 +2936,6 @@ export default function App() {
       style={shellStyle}
       data-left-panel={
         layoutPreferences.leftPanelVisible ? "visible" : "hidden"
-      }
-      data-right-panel={
-        layoutPreferences.rightPanelVisible ? "visible" : "hidden"
       }
       data-space-transition={spaceTransitionRevision > 0 ? "true" : "false"}
     >
@@ -3007,6 +2958,7 @@ export default function App() {
               user={user}
               members={workspace.members}
               voiceOccupants={voiceOccupants}
+              memberVoiceActivities={memberVoiceActivities}
               unreadChannelIds={unreadChannelIds}
               voice={visibleVoice}
               mode={appConfig.dataMode}
@@ -3015,6 +2967,14 @@ export default function App() {
                 workspace.currentUserRole === "admin" &&
                 dataFreshness !== "offline"
               }
+              activeSpace={activeSpace}
+              personalUnread={personalUnread}
+              serverUnread={unreadChannelIds.size > 0}
+              serverAvailable={Boolean(workspace)}
+              switchDisabled={blockingDialogOpen}
+              membersOpen={membersOverlayOpen}
+              onMembersOpenChange={setMembersOverlayOpen}
+              onSelectSpace={handleSelectSpace}
               onSelect={handleSelectChannel}
               onPrepareVoiceChannel={voice.prepareVoiceChannel}
               onCreateChannel={(kind) => {
@@ -3030,6 +2990,7 @@ export default function App() {
               onOpenProfile={handleOpenProfile}
               onOpenUserContextMenu={handleOpenUserContextMenu}
               openProfileId={openProfile?.memberId ?? null}
+              onMessageMember={(member) => void handleMessageUser(member)}
               onWatchStream={(member, channel) =>
                 handleWatchStream(member, channel.id)
               }
@@ -3063,6 +3024,12 @@ export default function App() {
               inviteAvailable={!workspace}
               onOpenInvite={() => setInviteGateOpen(true)}
               readOnly={dataFreshness === "offline"}
+              activeSpace={activeSpace}
+              personalUnread={personalUnread}
+              serverUnread={unreadChannelIds.size > 0}
+              serverAvailable={Boolean(workspace)}
+              switchDisabled={blockingDialogOpen}
+              onSelectSpace={handleSelectSpace}
             />
           )}
         </div>
@@ -3090,6 +3057,12 @@ export default function App() {
               ? (selectedConversation?.otherMember ?? null)
               : null
           }
+          loadProfileMedia={loadProfileMedia}
+          onOpenProfile={handleOpenProfile}
+          onOpenUserContextMenu={handleOpenUserContextMenu}
+          openProfileId={openProfile?.memberId ?? null}
+          onOpenMembers={() => setMembersOverlayOpen(true)}
+          onOpenAudioSettings={() => openSettings("audio")}
         />
         <div
           className="content-stage content-stage--space-motion"
@@ -3278,59 +3251,6 @@ export default function App() {
           />
         ) : null}
       </main>
-      <PanelResizer
-        label="Resize details panel"
-        side="right"
-        enabled={layoutPreferences.rightPanelVisible}
-        value={rightPanelWidth}
-        minimum={MIN_SIDE_PANEL_WIDTH}
-        maximum={rightMaximum}
-        defaultValue={DEFAULT_RIGHT_PANEL_WIDTH}
-        onChange={(rightPanelWidth) =>
-          updateLayoutPreferences((current) => ({
-            ...current,
-            rightPanelWidth,
-          }))
-        }
-      />
-      <div
-        className="panel-slot panel-slot--right"
-        data-visible={layoutPreferences.rightPanelVisible ? "true" : "false"}
-        aria-hidden={layoutPreferences.rightPanelVisible ? undefined : true}
-        inert={layoutPreferences.rightPanelVisible ? undefined : true}
-      >
-        <div
-          className="panel-slot__motion panel-slot__motion--right"
-          key={`right-${activeSpace}-${spaceTransitionRevision}`}
-        >
-          {activeSpace === "personal" ? (
-            <DirectPersonPanel
-              member={selectedConversation?.otherMember ?? null}
-              loadProfileMedia={loadProfileMedia}
-              onOpenUserContextMenu={handleOpenUserContextMenu}
-              sharesServer={Boolean(
-                workspace?.members.some(
-                  (member) =>
-                    member.id === selectedConversation?.otherMember.id,
-                ),
-              )}
-            />
-          ) : workspace ? (
-            <MemberPanel
-              members={workspace.members}
-              voiceActivities={memberVoiceActivities}
-              loadProfileMedia={loadProfileMedia}
-              onOpenProfile={handleOpenProfile}
-              onOpenUserContextMenu={handleOpenUserContextMenu}
-              openProfileId={openProfile?.memberId ?? null}
-              currentUserId={user.id}
-              onWatchStream={(member, channelId) =>
-                handleWatchStream(member, channelId)
-              }
-            />
-          ) : null}
-        </div>
-      </div>
       {openProfile && openedProfileMember ? (
         <ProfilePopover
           member={openedProfileMember}
@@ -3435,7 +3355,6 @@ export default function App() {
           microphoneProcessingState={voice.microphoneProcessingState}
           interfaceSoundPreferences={interfaceSoundPreferences}
           appearancePreference={appearancePreference}
-          systemAccent={systemAccent}
           cacheStats={cacheStats}
           dataFreshness={dataFreshness}
           readOnly={dataFreshness === "offline"}
@@ -3491,34 +3410,134 @@ export default function App() {
 function TopBar({
   channel,
   directMember,
+  loadProfileMedia,
+  onOpenProfile,
+  onOpenUserContextMenu,
+  openProfileId,
+  onOpenMembers,
+  onOpenAudioSettings,
 }: {
   channel: Channel | null;
   directMember: ServerMember | null;
+  loadProfileMedia: LoadProfileMedia;
+  onOpenProfile: OpenProfile;
+  onOpenUserContextMenu?: OpenUserContextMenu | undefined;
+  openProfileId: string | null;
+  onOpenMembers?: () => void;
+  onOpenAudioSettings?: () => void;
 }) {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (
+        event.target instanceof Node &&
+        !moreMenuRef.current?.contains(event.target)
+      ) {
+        setMoreOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setMoreOpen(false);
+      moreButtonRef.current?.focus();
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [moreOpen]);
+
+  useEffect(() => {
+    setMoreOpen(false);
+  }, [channel?.id, directMember?.id]);
+
+  const openMembers = () => {
+    setMoreOpen(false);
+    onOpenMembers?.();
+  };
+  const openAudioSettings = () => {
+    setMoreOpen(false);
+    onOpenAudioSettings?.();
+  };
+
+  const identity = (
+    <>
+      {directMember ? (
+        <Avatar user={directMember} size="small" showStatus />
+      ) : channel?.kind === "voice" ? (
+        <Volume2 size={20} />
+      ) : (
+        <Hash size={20} />
+      )}
+      <div className="top-bar__channel-copy">
+        <strong>
+          {directMember?.displayName ?? channel?.name ?? "Personal"}
+        </strong>
+        {directMember ? (
+          <span>{`Private conversation · ${directMember.status}`}</span>
+        ) : channel?.kind === "voice" ? (
+          <span>{channel.topic}</span>
+        ) : null}
+      </div>
+    </>
+  );
   return (
     <header className="top-bar">
       <div className="top-bar__leading">
-        <div className="top-bar__channel">
-          {directMember ? (
-            <Avatar user={directMember} size="small" showStatus />
-          ) : channel?.kind === "voice" ? (
-            <Volume2 size={20} />
-          ) : (
-            <Hash size={20} />
-          )}
-          <div>
-            <strong>
-              {directMember?.displayName ?? channel?.name ?? "Personal"}
-            </strong>
-            <span>
-              {directMember
-                ? `Private conversation · ${directMember.status}`
-                : (channel?.topic ??
-                  "Private conversations, minus the ceremonial paperwork")}
-            </span>
+        {directMember ? (
+          <ProfileTrigger
+            className="top-bar__channel top-bar__channel--profile"
+            member={directMember}
+            loadMedia={loadProfileMedia}
+            onOpenProfile={onOpenProfile}
+            onOpenContextMenu={onOpenUserContextMenu}
+            expanded={openProfileId === directMember.id}
+            aria-label={`View ${directMember.displayName}'s profile`}
+          >
+            {() => identity}
+          </ProfileTrigger>
+        ) : (
+          <div className="top-bar__channel">{identity}</div>
+        )}
+      </div>
+      {channel ? (
+        <div className="top-bar__actions" aria-label="Channel actions">
+          <div className="top-bar__more" ref={moreMenuRef}>
+            <button
+              ref={moreButtonRef}
+              className="top-bar__action"
+              type="button"
+              aria-label="More channel actions"
+              aria-expanded={moreOpen}
+              aria-haspopup="menu"
+              onClick={() => setMoreOpen((open) => !open)}
+            >
+              <Ellipsis size={17} aria-hidden="true" />
+            </button>
+            {moreOpen ? (
+              <div className="top-bar__menu" role="menu">
+                <button type="button" role="menuitem" onClick={openMembers}>
+                  Show members
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={openAudioSettings}
+                >
+                  Audio &amp; video settings
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
-      </div>
+      ) : null}
     </header>
   );
 }

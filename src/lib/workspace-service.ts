@@ -39,6 +39,7 @@ interface ChannelRow {
   kind: "text" | "voice";
   purpose: "chat" | "system-releases" | "system-general";
   position: number;
+  archived_at: string | null;
 }
 
 interface ChannelCategoryRow {
@@ -46,6 +47,7 @@ interface ChannelCategoryRow {
   server_id: string;
   name: string;
   position: number;
+  archived_at: string | null;
 }
 
 interface MembershipRow {
@@ -136,14 +138,16 @@ export async function loadLiveWorkspace(
   const [categoryResult, channelResult, membershipResult] = await Promise.all([
     supabase
       .from("channel_categories")
-      .select("id,server_id,name,position")
+      .select("id,server_id,name,position,archived_at")
       .eq("server_id", server.id)
+      .is("archived_at", null)
       .order("position")
       .returns<ChannelCategoryRow[]>(),
     supabase
       .from("channels")
-      .select("id,server_id,category_id,name,kind,purpose,position")
+      .select("id,server_id,category_id,name,kind,purpose,position,archived_at")
       .eq("server_id", server.id)
+      .is("archived_at", null)
       .order("position")
       .returns<ChannelRow[]>(),
     supabase
@@ -200,6 +204,7 @@ export async function loadLiveWorkspace(
       serverId: category.server_id,
       name: category.name,
       position: category.position,
+      archivedAt: category.archived_at,
     }),
   );
 
@@ -211,6 +216,7 @@ export async function loadLiveWorkspace(
     kind: channel.kind,
     purpose: channel.purpose,
     position: channel.position,
+    archivedAt: channel.archived_at,
     topic:
       channel.purpose === "system-releases"
         ? "Published Bakbak releases and their notes."

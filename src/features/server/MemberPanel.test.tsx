@@ -77,15 +77,21 @@ describe("MemberPanel", () => {
     ).toEqual(["View Jo's profile", "View Mira's profile"]);
     expect(within(voiceGroup).getByText("Streaming in Crash")).toBeVisible();
     expect(within(voiceGroup).getByText("In Queue")).toBeVisible();
-    expect(screen.getByRole("heading", { name: "Online — 1" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Away — 1" })).toBeVisible();
     expect(
       screen.queryByRole("heading", { name: /Offline/ }),
     ).not.toBeInTheDocument();
     expect(screen.getAllByText("Jo")).toHaveLength(1);
   });
 
-  it("lazily resolves only the static cover poster and keeps its focal point", async () => {
-    const loadProfileMedia = vi.fn().mockResolvedValue("blob:member-cover");
+  it("autoplays a cover GIF over its static poster and keeps its focal point", async () => {
+    const loadProfileMedia = vi.fn((_: string, path: string | null) =>
+      Promise.resolve(
+        path?.endsWith("animation.gif")
+          ? "blob:member-animation"
+          : "blob:member-cover",
+      ),
+    );
     const coveredMember = createMember({
       id: "member-cover",
       displayName: "Cover Star",
@@ -113,7 +119,16 @@ describe("MemberPanel", () => {
     );
     expect(poster).toHaveAttribute("src", "blob:member-cover");
     expect(poster).toHaveStyle({ objectPosition: "72% 31%" });
-    expect(loadProfileMedia).toHaveBeenCalledTimes(1);
+    expect(
+      container.querySelector<HTMLImageElement>(
+        ".member-cover-poster__animation",
+      ),
+    ).toHaveAttribute("src", "blob:member-animation");
+    expect(loadProfileMedia).toHaveBeenCalledWith(
+      "profile-covers",
+      coveredMember.coverAnimationPath,
+    );
+    expect(loadProfileMedia).toHaveBeenCalledTimes(2);
   });
 
   it("falls back to a neutral row when cover loading fails", async () => {
@@ -136,12 +151,12 @@ describe("MemberPanel", () => {
     expect(screen.getByText("Cover Star")).toBeVisible();
   });
 
-  it("waits for hover or focus before resolving a GIPHY cover", async () => {
+  it("autoplays a visible GIPHY cover without hover", async () => {
     giphyState.resolve.mockResolvedValue({
       avatarPosterUrl: null,
       avatarAnimationUrl: null,
       coverPosterUrl: "https://media.giphy.test/cover.webp",
-      coverAnimationUrl: null,
+      coverAnimationUrl: "https://media.giphy.test/cover.gif",
     });
     const coveredMember = createMember({
       id: "member-giphy-cover",
@@ -151,14 +166,15 @@ describe("MemberPanel", () => {
     });
     const { container } = render(<MemberPanel members={[coveredMember]} />);
 
-    expect(giphyState.resolve).not.toHaveBeenCalled();
-    await userEvent.hover(
-      screen.getByRole("button", { name: "View Provider Cover's profile" }),
-    );
     await waitFor(() => expect(giphyState.resolve).toHaveBeenCalledOnce());
     expect(
       container.querySelector<HTMLImageElement>(".member-panel__cover img"),
     ).toHaveAttribute("src", "https://media.giphy.test/cover.webp");
+    expect(
+      container.querySelector<HTMLImageElement>(
+        ".member-cover-poster__animation",
+      ),
+    ).toHaveAttribute("src", "https://media.giphy.test/cover.gif");
   });
 
   it("renders one empty state when no groups exist", () => {

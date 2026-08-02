@@ -41,26 +41,19 @@ test("glass tokens and native-safe document underlays stay system adaptive", () 
   assert.match(html, /name="theme-color"[\s\S]*?content="#f4f4f4"/);
 });
 
-test("shell remains a flush five-track grid with persistent inert side slots", () => {
+test("signed-in shell uses one resizable sidebar and one rounded canvas", () => {
   assert.match(
     styles,
-    /grid-template-columns:[\s\S]*?var\(--left-panel-track\)[\s\S]*?var\(--left-divider-track\)[\s\S]*?minmax\(420px, 1fr\)[\s\S]*?var\(--right-divider-track\)[\s\S]*?var\(--right-panel-track\)/,
+    /grid-template-columns:\s*var\(--left-panel-track\) var\(--left-divider-track\)\s*minmax\(420px, 1fr\)/,
   );
   assert.match(styles, /--left-divider-track:\s*1px/);
-  assert.match(styles, /--right-divider-track:\s*1px/);
+  assert.match(styles, /--context-panel-width, 280px/);
   assert.match(
     styles,
-    /\.desktop-shell\[data-left-panel="hidden"\]\[data-right-panel\]/,
+    /\.content-shell\s*{[\s\S]*?border-radius:\s*var\(--radius-panel\)/,
   );
-  assert.match(
-    styles,
-    /\.desktop-shell\[data-left-panel\]\[data-right-panel="hidden"\]/,
-  );
-  assert.match(styles, /\.desktop-shell[\s\S]*?gap:\s*0;[\s\S]*?padding:\s*0;/);
-  assert.match(
-    styles,
-    /\.desktop-shell\[data-left-panel\]\[data-right-panel\]/,
-  );
+  assert.match(styles, /--conversation-canvas:\s*#171717/);
+  assert.match(styles, /--conversation-canvas:\s*#fbfbf8/);
   assert.match(styles, /transition:\s*grid-template-columns 220ms/);
   assert.match(
     styles,
@@ -76,15 +69,17 @@ test("shell remains a flush five-track grid with persistent inert side slots", (
   );
   assert.match(styles, /\.panel-resizer\s*{[\s\S]*?width:\s*9px/);
   assert.match(app, /className="panel-slot panel-slot--left"/);
-  assert.match(app, /className="panel-slot panel-slot--right"/);
-  assert.match(app, /aria-hidden=\{layoutPreferences\.leftPanelVisible/);
-  assert.match(app, /inert=\{layoutPreferences\.rightPanelVisible/);
+  assert.doesNotMatch(app, /panel-slot--right/);
+  assert.doesNotMatch(app, /rightPanelVisible|rightPanelWidth/);
   assert.match(app, /enabled=\{layoutPreferences\.leftPanelVisible\}/);
-  assert.match(app, /enabled=\{layoutPreferences\.rightPanelVisible\}/);
 });
 
 test("titlebar, space motion, startup assembly, and scroll activity retain their timing contracts", () => {
-  assert.match(titlebar, /window-titlebar__leading[\s\S]*?<SpaceSwitcher/);
+  assert.doesNotMatch(titlebar, /<SpaceSwitcher/);
+  assert.match(
+    app,
+    /data-space=\{showSpaceSwitcher \? activeSpace : undefined\}/,
+  );
   assert.match(titlebar, /"OG Nahan Gang"[\s\S]*?"Professional yappers"/);
   assert.match(titlebar, /window-titlebar__center window-titlebar__drag/);
   assert.match(titlebar, /TITLEBAR_MESSAGE_ROTATION_MS = 8_000/);
@@ -102,10 +97,8 @@ test("titlebar, space motion, startup assembly, and scroll activity retain their
     styles,
     /\.user-dock__cover\s*{[\s\S]*?position:\s*absolute[\s\S]*?opacity:\s*0\.42/,
   );
-  assert.match(styles, /\.space-switcher\s*{[\s\S]*?width:\s*232px/);
-  assert.match(styles, /padding-left:\s*88px/);
-  assert.match(styles, /space-enter-center 180ms 40ms/);
-  assert.match(styles, /space-enter-right 160ms 80ms/);
+  assert.match(styles, /\.unified-sidebar > \.space-switcher/);
+  assert.match(styles, /background 240ms ease/);
   assert.match(styles, /glass-assemble 200ms 30ms/);
   assert.match(styles, /glass-assemble 220ms 70ms/);
   assert.match(styles, /glass-assemble 200ms 110ms/);

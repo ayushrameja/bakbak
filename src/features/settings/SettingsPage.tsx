@@ -34,7 +34,6 @@ import type { CacheStats, DataFreshness } from "../../lib/local-cache";
 import { registerGiphyAction, type GiphyAsset } from "../../lib/giphy-service";
 import { resolveGiphyProfileMedia } from "../../lib/profile-giphy-media";
 import type { AppearancePreference } from "./appearance-preferences";
-import type { AppliedSystemAccent } from "./system-accent";
 import {
   AVATAR_BUCKET,
   COVER_BUCKET,
@@ -95,7 +94,6 @@ interface SettingsPageProps {
   microphoneProcessingState: MicrophoneProcessingState;
   interfaceSoundPreferences: InterfaceSoundPreferences;
   appearancePreference: AppearancePreference;
-  systemAccent: AppliedSystemAccent;
   cacheStats?: CacheStats;
   dataFreshness?: DataFreshness;
   readOnly?: boolean;
@@ -326,7 +324,6 @@ export function SettingsPage(props: SettingsPageProps) {
             {props.section === "appearance" ? (
               <AppearanceSettings
                 preference={props.appearancePreference}
-                systemAccent={props.systemAccent}
                 onChange={props.onAppearancePreferenceChange}
               />
             ) : null}
@@ -1862,20 +1859,11 @@ const APPEARANCE_OPTIONS: ReadonlyArray<{
 
 function AppearanceSettings({
   preference,
-  systemAccent,
   onChange,
 }: {
   preference: AppearancePreference;
-  systemAccent: AppliedSystemAccent;
   onChange: (preference: AppearancePreference) => void;
 }) {
-  const sourceDescription =
-    systemAccent.source === "macos"
-      ? "Following macOS Accent Color."
-      : systemAccent.source === "windows"
-        ? "Following the Windows accent color."
-        : "Using a neutral fallback in this preview.";
-
   return (
     <div className="settings-panel appearance-settings">
       <div className="settings-panel__heading">
@@ -1911,21 +1899,19 @@ function AppearanceSettings({
         </div>
       </fieldset>
       <div className="appearance-summary-grid">
-        <section className="appearance-summary-card appearance-accent-card">
-          <span
-            className="appearance-accent-swatch"
-            aria-label={`Current system accent ${systemAccent.color}`}
-            role="img"
-          />
-          <span>System accent</span>
-          <strong>{systemAccent.color.toUpperCase()}</strong>
-          <p>{sourceDescription} Bakbak updates it automatically.</p>
+        <section className="appearance-summary-card appearance-palette-card appearance-palette-card--bakbak">
+          <span className="appearance-palette-preview" aria-hidden="true" />
+          <span>Bakbak palette</span>
+          <strong>Honey &amp; teal</strong>
+          <p>Warm honey settles through moss and teal into midnight.</p>
         </section>
-        <section className="appearance-summary-card">
-          <Palette size={22} aria-hidden="true" />
-          <span>Surface</span>
-          <strong>Glass</strong>
-          <p>System material and translucent grayscale layers.</p>
+        <section className="appearance-summary-card appearance-palette-card appearance-palette-card--personal">
+          <span className="appearance-palette-preview" aria-hidden="true" />
+          <span>Personal palette</span>
+          <strong>Berry &amp; blue</strong>
+          <p>
+            Violet and berry shift into blue when conversations get private.
+          </p>
         </section>
       </div>
     </div>

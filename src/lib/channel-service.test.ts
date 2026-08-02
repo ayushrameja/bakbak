@@ -23,6 +23,7 @@ const channelState = vi.hoisted(() => {
     from: vi.fn(),
     select: vi.fn(),
     eq: vi.fn(),
+    is: vi.fn(),
     order: vi.fn(),
     returns: vi.fn(),
   };
@@ -45,6 +46,7 @@ const textRow = {
   kind: "text" as const,
   purpose: "chat" as const,
   position: 20,
+  archived_at: null,
 };
 
 const categoryRow = {
@@ -52,6 +54,7 @@ const categoryRow = {
   server_id: "server-1",
   name: "System",
   position: 0,
+  archived_at: null,
 };
 
 describe("channel service", () => {
@@ -68,7 +71,8 @@ describe("channel service", () => {
     channelState.single.mockResolvedValue({ data: textRow, error: null });
     channelState.from.mockReturnValue({ select: channelState.select });
     channelState.select.mockReturnValue({ eq: channelState.eq });
-    channelState.eq.mockReturnValue({ order: channelState.order });
+    channelState.eq.mockReturnValue({ is: channelState.is });
+    channelState.is.mockReturnValue({ order: channelState.order });
     channelState.order.mockReturnValue({ returns: channelState.returns });
     channelState.returns.mockResolvedValue({ data: [], error: null });
   });
@@ -89,6 +93,7 @@ describe("channel service", () => {
       purpose: "chat",
       position: 20,
       topic: "A private conversation for server members.",
+      archivedAt: null,
     });
     expect(channelState.rpc).toHaveBeenCalledWith("create_channel", {
       p_server_id: "server-1",
@@ -243,6 +248,7 @@ describe("channel service", () => {
         serverId: "server-1",
         name: "System",
         position: 0,
+        archivedAt: null,
       }),
     );
 
@@ -269,6 +275,12 @@ describe("channel service", () => {
 
     const added = makeChannel({ id: "channel-c", position: 40 });
     expect(reconcileChannels(current, added)).toHaveLength(3);
+    expect(
+      reconcileChannels(current, {
+        ...replaced,
+        archivedAt: "2026-08-01T00:00:00Z",
+      }),
+    ).toEqual([first]);
 
     const categories = [
       makeCategory({ id: "welcome", name: "Welcome", position: 10 }),
@@ -279,6 +291,12 @@ describe("channel service", () => {
         makeCategory({ id: "system", name: "System", position: 0 }),
       ).map((category) => category.name),
     ).toEqual(["System", "Welcome"]);
+    expect(
+      reconcileChannelCategories(categories, {
+        ...categories[0]!,
+        archivedAt: "2026-08-01T00:00:00Z",
+      }),
+    ).toEqual([]);
   });
 });
 

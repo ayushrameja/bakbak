@@ -189,28 +189,20 @@ test("published releases synchronize their version through a protected-branch PR
   assert.doesNotMatch(workflow, /gh pr merge/);
 });
 
-test("stable releases announce idempotently and history syncs oldest first", async () => {
-  const [releaseWorkflow, historyWorkflow] = await Promise.all([
-    readFile(
-      new URL("../.github/workflows/release.yml", import.meta.url),
-      "utf8",
-    ),
+test("ordinary release publication has no chat-announcement dependency", async () => {
+  const releaseWorkflow = await readFile(
+    new URL("../.github/workflows/release.yml", import.meta.url),
+    "utf8",
+  );
+
+  assert.doesNotMatch(releaseWorkflow, /^ {2}announce:/m);
+  assert.doesNotMatch(releaseWorkflow, /system-events/);
+  assert.doesNotMatch(releaseWorkflow, /BAKBAK_SYSTEM_EVENTS_SECRET/);
+  await assert.rejects(
     readFile(
       new URL("../.github/workflows/system-history.yml", import.meta.url),
       "utf8",
     ),
-  ]);
-
-  assert.match(releaseWorkflow, /announce:\n {4}needs: \[prepare, publish\]/);
-  assert.doesNotMatch(releaseWorkflow, /SYSTEM_CHANNELS_ENABLED/);
-  assert.doesNotMatch(historyWorkflow, /SYSTEM_CHANNELS_ENABLED/);
-  assert.match(releaseWorkflow, /x-bakbak-system-secret/);
-  assert.match(releaseWorkflow, /--retry 3/);
-  assert.match(releaseWorkflow, /releases\/tags\/\$RELEASE_TAG/);
-  assert.match(historyWorkflow, /workflow_dispatch:/);
-  assert.match(historyWorkflow, /jq --raw-output --slurp/);
-  assert.match(historyWorkflow, /draft == false and \.prerelease == false/);
-  assert.match(historyWorkflow, /sort_by\(\.published_at\)/);
-  assert.match(historyWorkflow, /historical: true/);
-  assert.match(historyWorkflow, /--retry 3/);
+    /ENOENT/,
+  );
 });

@@ -3,52 +3,34 @@ import {
   Minus,
   PanelLeftClose,
   PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
   Square,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type MouseEvent } from "react";
-import type { AppSpace } from "../features/server/app-space";
 import type { VoiceConnectionStatus } from "../features/voice/useVoiceRoom";
 import {
   createWindowChromeAdapter,
   type WindowChromeAdapter,
 } from "../lib/window-chrome";
-import { SpaceSwitcher } from "./SpaceSwitcher";
 
 interface WindowTitlebarProps {
   showSpaceSwitcher: boolean;
-  activeSpace: AppSpace;
-  personalUnread: boolean;
-  serverUnread: boolean;
   callActive: boolean;
   callStatus?: VoiceConnectionStatus;
   callChannelName?: string | null;
-  serverAvailable: boolean;
-  switchDisabled: boolean;
-  onSelectSpace: (space: AppSpace) => void;
   panelControls?: {
     leftPanelVisible: boolean;
-    rightPanelVisible: boolean;
     disabled: boolean;
     onToggleLeftPanel: () => void;
-    onToggleRightPanel: () => void;
   };
   chromeAdapter?: WindowChromeAdapter;
 }
 
 export function WindowTitlebar({
   showSpaceSwitcher,
-  activeSpace,
-  personalUnread,
-  serverUnread,
   callActive,
   callStatus,
   callChannelName,
-  serverAvailable,
-  switchDisabled,
-  onSelectSpace,
   panelControls,
   chromeAdapter,
 }: WindowTitlebarProps) {
@@ -124,17 +106,6 @@ export function WindowTitlebar({
       onDoubleClick={handleDoubleClick}
     >
       <div className="window-titlebar__leading">
-        {showSpaceSwitcher ? (
-          <SpaceSwitcher
-            activeSpace={activeSpace}
-            personalUnread={personalUnread}
-            serverUnread={serverUnread}
-            callActive={callActive}
-            serverAvailable={serverAvailable}
-            disabled={switchDisabled}
-            onSelect={onSelectSpace}
-          />
-        ) : null}
         <span className="window-titlebar__drag window-titlebar__drag--leading" />
       </div>
       <div
@@ -171,24 +142,6 @@ export function WindowTitlebar({
                 <PanelLeftClose size={18} />
               ) : (
                 <PanelLeftOpen size={18} />
-              )}
-            </button>
-            <button
-              type="button"
-              aria-label={
-                panelControls.rightPanelVisible
-                  ? "Hide member panel"
-                  : "Show member panel"
-              }
-              aria-controls="member-panel"
-              aria-expanded={panelControls.rightPanelVisible}
-              disabled={panelControls.disabled}
-              onClick={panelControls.onToggleRightPanel}
-            >
-              {panelControls.rightPanelVisible ? (
-                <PanelRightClose size={18} />
-              ) : (
-                <PanelRightOpen size={18} />
               )}
             </button>
           </div>

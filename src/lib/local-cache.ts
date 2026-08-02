@@ -24,6 +24,7 @@ export type CachedDestination =
 export interface CachedAccountState {
   key: string;
   schemaVersion: 2;
+  workspaceSchemaVersion: 3;
   userId: string;
   workspace: WorkspaceSnapshot | null;
   directConversations: DirectConversation[];
@@ -242,12 +243,45 @@ export class BakbakCache {
       const cached = (await requestResult(request)) as
         CachedAccountState | undefined;
       if (!cached) return null;
+      const workspaceIsCurrent = cached.workspaceSchemaVersion === 3;
+      if (!workspaceIsCurrent) {
+        const threads = (await requestResult(
+          database.transaction(THREAD_STORE).objectStore(THREAD_STORE).getAll(),
+        )) as CachedThread[];
+        const transaction = database.transaction(
+          [ACCOUNT_STORE, THREAD_STORE],
+          "readwrite",
+        );
+        threads
+          .filter(
+            (thread) => thread.userId === userId && thread.kind === "channel",
+          )
+          .forEach((thread) =>
+            transaction.objectStore(THREAD_STORE).delete(thread.key),
+          );
+        transaction.objectStore(ACCOUNT_STORE).put({
+          ...cached,
+          workspaceSchemaVersion: 3,
+          workspace: null,
+          lastDestination:
+            cached.lastDestination?.kind === "direct"
+              ? cached.lastDestination
+              : null,
+        });
+        await waitForTransaction(transaction);
+      }
       return {
         ...cached,
         schemaVersion: 2,
-        workspace: cached.workspace
-          ? normalizeWorkspaceForCache(cached.workspace)
-          : null,
+        workspaceSchemaVersion: 3,
+        workspace:
+          workspaceIsCurrent && cached.workspace
+            ? normalizeWorkspaceForCache(cached.workspace)
+            : null,
+        lastDestination:
+          workspaceIsCurrent || cached.lastDestination?.kind === "direct"
+            ? cached.lastDestination
+            : null,
         directConversations: normalizeDirectConversationsForCache(
           cached.directConversations,
         ),
@@ -256,7 +290,10 @@ export class BakbakCache {
   }
 
   async writeAccountState(
-    input: Omit<CachedAccountState, "key" | "schemaVersion" | "cachedAt">,
+    input: Omit<
+      CachedAccountState,
+      "key" | "schemaVersion" | "workspaceSchemaVersion" | "cachedAt"
+    >,
   ): Promise<void> {
     await this.withDatabase(async (database) => {
       const transaction = database.transaction(ACCOUNT_STORE, "readwrite");
@@ -264,6 +301,7 @@ export class BakbakCache {
         ...input,
         key: accountKey(input.userId),
         schemaVersion: 2,
+        workspaceSchemaVersion: 3,
         workspace: input.workspace
           ? normalizeWorkspaceForCache(input.workspace)
           : null,

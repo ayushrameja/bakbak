@@ -35,6 +35,7 @@ interface ProfileTriggerProps extends Omit<
   onOpenProfile: OpenProfile;
   onOpenContextMenu?: OpenUserContextMenu | undefined;
   expanded?: boolean;
+  autoPlayAnimation?: boolean;
   children: (state: ProfileTriggerRenderState) => ReactNode;
 }
 
@@ -44,6 +45,7 @@ export function ProfileTrigger({
   onOpenProfile,
   onOpenContextMenu,
   expanded = false,
+  autoPlayAnimation = false,
   children,
   onPointerEnter,
   onPointerLeave,
@@ -59,7 +61,7 @@ export function ProfileTrigger({
 
   useEffect(() => {
     if (
-      !engaged ||
+      (!engaged && !autoPlayAnimation) ||
       reducedMotion ||
       member.avatarAnimationUrl ||
       (!member.avatarAnimationPath && !member.avatarGiphyId)
@@ -81,6 +83,7 @@ export function ProfileTrigger({
       current = false;
     };
   }, [
+    autoPlayAnimation,
     engaged,
     loadMedia,
     member,
@@ -148,8 +151,10 @@ export function ProfileTrigger({
       onClick={(event) => onOpenProfile(member, event.currentTarget)}
     >
       {children({
-        animationUrl: member.avatarAnimationUrl ?? animationUrl,
-        animated: engaged && !reducedMotion,
+        animationUrl: reducedMotion
+          ? null
+          : (member.avatarAnimationUrl ?? animationUrl),
+        animated: (engaged || autoPlayAnimation) && !reducedMotion,
         engaged,
       })}
     </button>

@@ -224,7 +224,7 @@ set local "request.jwt.claims" = '{"sub":"91000000-0000-4000-8000-000000000001",
 select lives_ok(
   $$select public.heartbeat_presence_v3(
     '00000000-0000-4000-8000-000000000001',
-    '00000000-0000-4000-8000-000000000201',
+    '00000000-0000-4000-8000-000000000125',
     true
   )$$,
   'heartbeat v3 accepts LIVE in a valid voice room'
@@ -242,7 +242,7 @@ set local "request.jwt.claims" = '{"sub":"91000000-0000-4000-8000-000000000001",
 select lives_ok(
   $$select public.heartbeat_presence_v2(
     '00000000-0000-4000-8000-000000000001',
-    '00000000-0000-4000-8000-000000000201'
+    '00000000-0000-4000-8000-000000000125'
   )$$,
   'legacy heartbeat v2 remains compatible'
 );
@@ -270,7 +270,7 @@ select throws_ok(
 select throws_ok(
   $$select public.heartbeat_presence_v3(
     '00000000-0000-4000-8000-000000000001',
-    '00000000-0000-4000-8000-000000000101',
+    '00000000-0000-4000-8000-000000000122',
     true
   )$$,
   '22023',

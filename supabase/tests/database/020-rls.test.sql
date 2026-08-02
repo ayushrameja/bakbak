@@ -54,7 +54,7 @@ values
 insert into public.messages (channel_id, author_id, body)
 values
   (
-    '00000000-0000-4000-8000-000000000101',
+    '00000000-0000-4000-8000-000000000122',
     '20000000-0000-4000-8000-000000000001',
     'Visible to Bakbak members'
   ),
@@ -82,11 +82,11 @@ select is(
 select is((select count(*) from public.profiles), 2::bigint, 'member sees only co-member profiles');
 
 select lives_ok(
-  $$insert into public.messages (channel_id, body) values ('00000000-0000-4000-8000-000000000101', 'Allowed member message')$$,
+  $$insert into public.messages (channel_id, body) values ('00000000-0000-4000-8000-000000000122', 'Allowed member message')$$,
   'member can insert into an accessible text channel'
 );
 select lives_ok(
-  $$insert into public.messages (channel_id, body) values ('00000000-0000-4000-8000-000000000201', 'Not a voice message')$$,
+  $$insert into public.messages (channel_id, body) values ('00000000-0000-4000-8000-000000000125', 'Not a voice message')$$,
   'member can insert a message into an accessible voice channel'
 );
 select throws_ok(
@@ -106,11 +106,11 @@ select lives_ok(
   'member can publish a heartbeat for its server'
 );
 select lives_ok(
-  $$select public.heartbeat_presence_v2('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000201')$$,
+  $$select public.heartbeat_presence_v2('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000125')$$,
   'member can publish voice occupancy for an accessible voice channel'
 );
 select throws_ok(
-  $$select public.heartbeat_presence_v2('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000101')$$,
+  $$select public.heartbeat_presence_v2('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000122')$$,
   '22023',
   'Voice channel is invalid.',
   'member cannot publish a text channel as voice occupancy'
@@ -141,7 +141,7 @@ select is(
     from public.presence_heartbeats
     where server_id = '00000000-0000-4000-8000-000000000001'
   ),
-  '00000000-0000-4000-8000-000000000201'::uuid,
+  '00000000-0000-4000-8000-000000000125'::uuid,
   'voice occupancy records the validated voice channel'
 );
 select ok(
@@ -161,7 +161,7 @@ set local role authenticated;
 set local "request.jwt.claim.sub" = '20000000-0000-4000-8000-000000000002';
 set local "request.jwt.claims" = '{"sub":"20000000-0000-4000-8000-000000000002","role":"authenticated"}';
 select lives_ok(
-  $$select public.heartbeat_presence_v2('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000201')$$,
+  $$select public.heartbeat_presence_v2('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000125')$$,
   'repeated heartbeat for the same voice channel succeeds'
 );
 
@@ -203,7 +203,7 @@ select is((select count(*) from public.channels), 1::bigint, 'outsider sees only
 select is((select count(*) from public.messages), 1::bigint, 'outsider sees only its own server message');
 select is((select count(*) from public.profiles), 1::bigint, 'outsider cannot enumerate Bakbak profiles');
 select throws_ok(
-  $$insert into public.messages (channel_id, body) values ('00000000-0000-4000-8000-000000000101', 'Cross-server write')$$,
+  $$insert into public.messages (channel_id, body) values ('00000000-0000-4000-8000-000000000122', 'Cross-server write')$$,
   '42501',
   'new row violates row-level security policy for table "messages"',
   'outsider cannot write into the Bakbak server'
@@ -220,7 +220,7 @@ select throws_ok(
   'outsider cannot publish a heartbeat for the Bakbak server'
 );
 select throws_ok(
-  $$select public.heartbeat_presence_v2('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000201')$$,
+  $$select public.heartbeat_presence_v2('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000125')$$,
   '42501',
   'Server membership required.',
   'outsider cannot publish voice occupancy for the Bakbak server'

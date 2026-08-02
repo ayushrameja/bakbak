@@ -12,22 +12,18 @@ import {
 describe("layout preferences", () => {
   beforeEach(() => window.localStorage.clear());
 
-  it("shows both panels by default", () => {
+  it("shows the 280px sidebar by default", () => {
     expect(loadLayoutPreferences()).toEqual(DEFAULT_LAYOUT_PREFERENCES);
   });
 
-  it("persists the panels independently", () => {
+  it("persists sidebar visibility and width", () => {
     saveLayoutPreferences({
       leftPanelVisible: false,
-      rightPanelVisible: true,
       contextPanelWidth: 280,
-      rightPanelWidth: 320,
     });
     expect(loadLayoutPreferences()).toEqual({
       leftPanelVisible: false,
-      rightPanelVisible: true,
       contextPanelWidth: 280,
-      rightPanelWidth: 320,
     });
   });
 
@@ -42,33 +38,32 @@ describe("layout preferences", () => {
     expect(loadLayoutPreferences()).toEqual(DEFAULT_LAYOUT_PREFERENCES);
   });
 
-  it("migrates v1 visibility and clamps corrupt v2 widths", () => {
+  it("migrates v2 left settings and discards right-panel fields", () => {
     window.localStorage.setItem(
       LEGACY_LAYOUT_PREFERENCES_KEY,
       JSON.stringify({
         leftPanelVisible: false,
         rightPanelVisible: true,
+        contextPanelWidth: 320,
+        rightPanelWidth: 9000,
       }),
     );
     expect(loadLayoutPreferences()).toEqual({
-      ...DEFAULT_LAYOUT_PREFERENCES,
       leftPanelVisible: false,
+      contextPanelWidth: 320,
     });
 
     window.localStorage.setItem(
       LAYOUT_PREFERENCES_KEY,
       JSON.stringify({
         leftPanelVisible: true,
-        rightPanelVisible: true,
         contextPanelWidth: -900,
-        rightPanelWidth: 9000,
       }),
     );
     expect(loadLayoutPreferences()).toEqual({
       leftPanelVisible: true,
-      rightPanelVisible: true,
       contextPanelWidth: MIN_SIDE_PANEL_WIDTH,
-      rightPanelWidth: MAX_SIDE_PANEL_WIDTH,
     });
+    expect(MAX_SIDE_PANEL_WIDTH).toBe(340);
   });
 });

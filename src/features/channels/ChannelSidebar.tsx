@@ -1,22 +1,20 @@
 import {
-  ChevronDown,
+  ChevronRight,
   Hash,
-  LockKeyhole,
-  Megaphone,
   Pencil,
   Plus,
   Sparkles,
   Volume2,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Avatar } from "../../components/Avatar";
 import {
   ProfileTrigger,
   type LoadProfileMedia,
   type OpenProfile,
 } from "../../components/ProfileTrigger";
+import { SpaceSwitcher } from "../../components/SpaceSwitcher";
 import type { OpenUserContextMenu } from "../../components/UserContextMenu";
-import { APP_VERSION } from "../../lib/app-version";
 import type {
   AppUser,
   Channel,
@@ -27,26 +25,19 @@ import type {
   ServerMember,
   VoiceRoomOccupant,
 } from "../../lib/types";
+import type { AppSpace } from "../server/app-space";
+import { MemberCoverPoster } from "../server/MemberPanel";
+import { MembersOverlay } from "../server/MembersOverlay";
+import { selectActivityPreview } from "../server/member-presence";
+import type { MemberVoiceActivity } from "../server/MemberPanel";
 import { VoiceElapsedTime } from "../voice/VoiceElapsedTime";
 import { SidebarVoicePanel } from "../voice/SidebarVoicePanel";
 import { SidebarUserDock } from "../voice/SidebarUserDock";
 import type { useVoiceRoom } from "../voice/useVoiceRoom";
 import { compareVoiceRoomOccupants } from "../voice/voice-occupancy";
-import {
-  loadCollapsedChannelGroups,
-  saveCollapsedChannelGroups,
-} from "./channel-group-preferences";
 
 const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
 const ignoreProfileOpen: OpenProfile = () => undefined;
-const UNCATEGORIZED_TEXT_GROUP_ID = "uncategorized:text";
-const UNCATEGORIZED_VOICE_GROUP_ID = "uncategorized:voice";
-
-interface ChannelGroupModel {
-  id: string;
-  label: string;
-  channels: Channel[];
-}
 
 interface ChannelSidebarProps {
   server: Server;
@@ -56,121 +47,122 @@ interface ChannelSidebarProps {
   user: AppUser;
   members?: ServerMember[];
   voiceOccupants: VoiceRoomOccupant[];
+  memberVoiceActivities?: ReadonlyArray<MemberVoiceActivity>;
   unreadChannelIds: ReadonlySet<string>;
   voice: ReturnType<typeof useVoiceRoom>;
   mode: DataMode;
   soundboardOpen: boolean;
   canManageChannels: boolean;
+  activeSpace?: AppSpace;
+  personalUnread?: boolean;
+  serverUnread?: boolean;
+  serverAvailable?: boolean;
+  switchDisabled?: boolean;
+  onSelectSpace?: (space: AppSpace) => void;
   onSelect: (channel: Channel) => void;
   onPrepareVoiceChannel: (channel: Channel, immediate?: boolean) => void;
   onCreateChannel: (kind: ChannelKind) => void;
   onRenameChannel: (channel: Channel) => void;
   onOpenSettings: () => void;
+  membersOpen?: boolean;
+  onMembersOpenChange?: (open: boolean) => void;
   loadProfileMedia?: LoadProfileMedia;
   onOpenProfile?: OpenProfile;
   onOpenUserContextMenu?: OpenUserContextMenu | undefined;
   openProfileId?: string | null;
+  onMessageMember?: (member: ServerMember) => void;
   onWatchStream?: (member: ServerMember, channel: Channel) => void;
   onToggleSoundboard: () => void;
   onOpenScreenShare: () => void;
 }
 
 export function ChannelSidebar({
-  server,
-  categories,
   channels,
   selectedChannelId,
   user,
   members = [],
   voiceOccupants,
+  memberVoiceActivities = [],
   unreadChannelIds,
   voice,
   mode,
   soundboardOpen,
   canManageChannels,
+  activeSpace = "server",
+  personalUnread = false,
+  serverUnread = unreadChannelIds.size > 0,
+  serverAvailable = true,
+  switchDisabled = false,
+  onSelectSpace = () => undefined,
   onSelect,
   onPrepareVoiceChannel,
   onCreateChannel,
   onRenameChannel,
   onOpenSettings,
+  membersOpen,
+  onMembersOpenChange,
   loadProfileMedia = emptyProfileMediaLoader,
   onOpenProfile = ignoreProfileOpen,
   onOpenUserContextMenu,
   openProfileId = null,
+  onMessageMember = () => undefined,
   onWatchStream,
   onToggleSoundboard,
   onOpenScreenShare,
 }: ChannelSidebarProps) {
-  const channelGroups = useMemo<ChannelGroupModel[]>(() => {
-    const orderedCategories = [...categories].sort(
-      (left, right) =>
-        left.position - right.position || left.id.localeCompare(right.id),
-    );
-    const knownCategoryIds = new Set(
-      orderedCategories.map((category) => category.id),
-    );
-    const uncategorizedChannels = channels
-      .filter(
-        (channel) =>
-          channel.categoryId === null ||
-          !knownCategoryIds.has(channel.categoryId),
-      )
-      .sort(compareChannels);
-    const uncategorizedTextChannels = uncategorizedChannels.filter(
-      (channel) => channel.kind === "text",
-    );
-    const uncategorizedVoiceChannels = uncategorizedChannels.filter(
-      (channel) => channel.kind === "voice",
-    );
-    const groups = orderedCategories.map((category) => ({
-      id: category.id,
-      label: category.name,
-      channels: channels
-        .filter((channel) => channel.categoryId === category.id)
-        .sort(compareChannels),
-    }));
-
-    if (uncategorizedTextChannels.length > 0) {
-      groups.push({
-        id: UNCATEGORIZED_TEXT_GROUP_ID,
-        label: "Conversations",
-        channels: uncategorizedTextChannels,
-      });
-    }
-    if (uncategorizedVoiceChannels.length > 0) {
-      groups.push({
-        id: UNCATEGORIZED_VOICE_GROUP_ID,
-        label: "Voice rooms",
-        channels: uncategorizedVoiceChannels,
-      });
-    }
-    return groups;
-  }, [categories, channels]);
-  const channelGroupIds = useMemo(
-    () => channelGroups.map((group) => group.id),
-    [channelGroups],
-  );
-  const [collapsedGroups, setCollapsedGroups] = useState(() =>
-    loadCollapsedChannelGroups(server.id, channelGroupIds),
-  );
-
-  useEffect(() => {
-    setCollapsedGroups(loadCollapsedChannelGroups(server.id, channelGroupIds));
-  }, [channelGroupIds, server.id]);
-
-  const toggleGroup = (groupId: string) => {
-    setCollapsedGroups((current) => {
-      const next = {
-        ...current,
-        [groupId]: !current[groupId],
-      };
-      saveCollapsedChannelGroups(server.id, next);
-      return next;
-    });
+  const [localMembersOpen, setLocalMembersOpen] = useState(false);
+  const [channelCreateMenuOpen, setChannelCreateMenuOpen] = useState(false);
+  const channelCreateMenuRef = useRef<HTMLDivElement>(null);
+  const channelCreateButtonRef = useRef<HTMLButtonElement>(null);
+  const membersDialogOpen = membersOpen ?? localMembersOpen;
+  const setMembersOpen = (open: boolean) => {
+    if (onMembersOpenChange) onMembersOpenChange(open);
+    else setLocalMembersOpen(open);
   };
 
+  useEffect(() => {
+    if (!channelCreateMenuOpen) return;
+    channelCreateMenuRef.current
+      ?.querySelector<HTMLButtonElement>('[role="menuitem"]')
+      ?.focus();
+    const closeMenu = (event: KeyboardEvent | MouseEvent) => {
+      if (event instanceof KeyboardEvent && event.key === "Escape") {
+        event.preventDefault();
+        setChannelCreateMenuOpen(false);
+        channelCreateButtonRef.current?.focus();
+        return;
+      }
+      if (
+        event instanceof MouseEvent &&
+        event.target instanceof Node &&
+        !channelCreateMenuRef.current?.contains(event.target)
+      ) {
+        setChannelCreateMenuOpen(false);
+      }
+    };
+    document.addEventListener("keydown", closeMenu);
+    document.addEventListener("mousedown", closeMenu);
+    return () => {
+      document.removeEventListener("keydown", closeMenu);
+      document.removeEventListener("mousedown", closeMenu);
+    };
+  }, [channelCreateMenuOpen]);
+
+  const chooseChannelKind = (kind: ChannelKind) => {
+    setChannelCreateMenuOpen(false);
+    onCreateChannel(kind);
+  };
+  const orderedChannels = useMemo(
+    () => [...channels].sort(compareChannels),
+    [channels],
+  );
+  const previewMembers = useMemo(
+    () => selectActivityPreview(members, memberVoiceActivities, user.id),
+    [memberVoiceActivities, members, user.id],
+  );
   const membersById = new Map(members.map((member) => [member.id, member]));
   const currentMember = membersById.get(user.id) ?? { ...user, role: "member" };
+
   const profileForOccupant = (occupant: VoiceRoomOccupant): ServerMember =>
     membersById.get(occupant.userId) ?? {
       id: occupant.userId,
@@ -192,243 +184,247 @@ export function ChannelSidebar({
       status: "online",
       role: "member",
     };
-  const renderChannel = (channel: Channel) => {
-    if (channel.kind === "text") {
-      const systemChannel =
-        channel.purpose === "system-releases" ||
-        channel.purpose === "system-general";
-      return (
-        <div className="channel-row-wrap" key={channel.id}>
-          <button
-            className={`channel-row ${selectedChannelId === channel.id ? "active" : ""} ${unreadChannelIds.has(channel.id) ? "channel-row--unread" : ""}`}
-            type="button"
-            aria-current={selectedChannelId === channel.id ? "page" : undefined}
-            onClick={() => onSelect(channel)}
-          >
-            {channel.purpose === "system-releases" ? (
-              <Megaphone size={17} />
-            ) : channel.purpose === "system-general" ? (
-              <Sparkles size={17} />
-            ) : (
-              <Hash size={17} />
-            )}
-            <span>{channel.name}</span>
-            {systemChannel ? (
-              <LockKeyhole
-                className="channel-row__readonly"
-                size={12}
-                aria-label="Automation-only channel"
-              />
-            ) : null}
-          </button>
-          {canManageChannels && !systemChannel ? (
-            <button
-              className="channel-row-edit"
-              type="button"
-              aria-label={`Rename ${channel.name}`}
-              onClick={() => onRenameChannel(channel)}
-            >
-              <Pencil size={13} />
-            </button>
-          ) : null}
-        </div>
-      );
-    }
-
-    const occupants = voiceOccupants
-      .filter((occupant) => occupant.channelId === channel.id)
-      .sort(compareVoiceRoomOccupants);
-    const roomJoinedAt = occupants.reduce<string | null>(
-      (earliest, occupant) => {
-        if (!occupant.joinedAt || Number.isNaN(Date.parse(occupant.joinedAt))) {
-          return earliest;
-        }
-        return earliest === null ||
-          Date.parse(occupant.joinedAt) < Date.parse(earliest)
-          ? occupant.joinedAt
-          : earliest;
-      },
-      null,
-    );
-    const speakingUserIds =
-      voice.channel?.id === channel.id
-        ? new Set(
-            voice.participants
-              .filter((participant) => participant.isSpeaking)
-              .map((participant) => participant.id),
-          )
-        : new Set<string>();
-    return (
-      <div className="channel-row-wrap" key={channel.id}>
-        <div className="channel-row-stack">
-          <button
-            className={`channel-row ${selectedChannelId === channel.id ? "active" : ""}`}
-            type="button"
-            aria-current={selectedChannelId === channel.id ? "page" : undefined}
-            onPointerEnter={() => onPrepareVoiceChannel(channel)}
-            onFocus={() => onPrepareVoiceChannel(channel, true)}
-            onClick={() => onSelect(channel)}
-          >
-            <Volume2 size={17} />
-            <span>{channel.name}</span>
-            {roomJoinedAt ? (
-              <span
-                className="channel-voice-duration"
-                aria-label={`${channel.name} active time`}
-              >
-                <i className="live-dot" />
-                <VoiceElapsedTime joinedAt={roomJoinedAt} />
-              </span>
-            ) : null}
-          </button>
-          {canManageChannels ? (
-            <button
-              className="channel-row-edit"
-              type="button"
-              aria-label={`Rename ${channel.name}`}
-              onClick={() => onRenameChannel(channel)}
-            >
-              <Pencil size={13} />
-            </button>
-          ) : null}
-          {occupants.length > 0 ? (
-            <div className="channel-voice-people">
-              {occupants.map((occupant) => (
-                <div className="channel-voice-person" key={occupant.userId}>
-                  <ProfileTrigger
-                    className="channel-voice-person__profile"
-                    member={profileForOccupant(occupant)}
-                    loadMedia={loadProfileMedia}
-                    onOpenProfile={onOpenProfile}
-                    onOpenContextMenu={onOpenUserContextMenu}
-                    expanded={openProfileId === occupant.userId}
-                    aria-label={`View ${occupant.displayName}'s profile`}
-                  >
-                    {({ animationUrl, animated }) => (
-                      <>
-                        <span
-                          className={`channel-voice-person__avatar ${speakingUserIds.has(occupant.userId) ? "is-speaking" : ""}`}
-                        >
-                          <Avatar
-                            user={profileForOccupant(occupant)}
-                            size="small"
-                            animationUrl={animationUrl}
-                            animated={animated}
-                          />
-                        </span>
-                        <b>{occupant.displayName}</b>
-                      </>
-                    )}
-                  </ProfileTrigger>
-                  {occupant.isStreaming ? (
-                    <span className="channel-voice-person__stream-actions">
-                      <span className="channel-voice-person__live">LIVE</span>
-                      {occupant.userId !== user.id && onWatchStream ? (
-                        <button
-                          className="channel-voice-person__watch"
-                          type="button"
-                          aria-label={`Watch ${occupant.displayName}'s stream`}
-                          onClick={() =>
-                            onWatchStream(profileForOccupant(occupant), channel)
-                          }
-                        >
-                          Watch Stream
-                        </button>
-                      ) : null}
-                    </span>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      </div>
-    );
-  };
 
   return (
-    <aside className="channel-sidebar" id="context-panel">
-      <header
-        className="server-switcher server-brand"
-        aria-label={`${server.name} workspace brand`}
-      >
-        <div className="server-brand__wordmark">
-          <strong>Bakbak</strong>
-        </div>
-        <div
-          className="server-brand__release"
-          aria-label={`Beta release, version ${APP_VERSION}`}
-        >
-          <span className="server-brand__release-symbol" aria-hidden="true">
-            β
-          </span>
-          <span className="server-brand__release-dot" aria-hidden="true">
-            {" · "}
-          </span>
-          <span className="server-brand__release-version">v{APP_VERSION}</span>
-        </div>
-      </header>
-      <nav className="channel-nav" aria-label="Channels">
-        {canManageChannels ? (
-          <div
-            className="channel-create-actions"
-            aria-label="Channel management"
-          >
-            <button
-              type="button"
-              aria-label="Create text channel"
-              onClick={() => onCreateChannel("text")}
-            >
-              <Hash size={14} />
-              <span>Text</span>
-              <Plus size={13} />
-            </button>
-            <button
-              type="button"
-              aria-label="Create voice channel"
-              onClick={() => onCreateChannel("voice")}
-            >
-              <Volume2 size={14} />
-              <span>Voice</span>
-              <Plus size={13} />
-            </button>
-          </div>
-        ) : null}
-        {channelGroups.map((group) => {
-          const collapsed = Boolean(collapsedGroups[group.id]);
-          const containsSelected = group.channels.some(
-            (channel) => channel.id === selectedChannelId,
-          );
-          const unreadCount = group.channels.filter(
-            (channel) =>
-              channel.kind === "text" && unreadChannelIds.has(channel.id),
-          ).length;
-          const groupChannelIds = new Set(
-            group.channels.map((channel) => channel.id),
-          );
-          const voiceOccupantCount = voiceOccupants.filter((occupant) =>
-            groupChannelIds.has(occupant.channelId),
-          ).length;
+    <aside className="channel-sidebar unified-sidebar" id="context-panel">
+      <SpaceSwitcher
+        activeSpace={activeSpace}
+        personalUnread={personalUnread}
+        serverUnread={serverUnread}
+        callActive={voice.status !== "disconnected"}
+        serverAvailable={serverAvailable}
+        disabled={switchDisabled}
+        onSelect={onSelectSpace}
+      />
 
-          return (
-            <ChannelGroup
-              key={group.id}
-              groupId={group.id}
-              label={group.label}
-              collapsed={collapsed}
-              containsSelected={containsSelected}
-              unreadCount={unreadCount}
-              voiceOccupantCount={voiceOccupantCount}
-              onToggle={() => toggleGroup(group.id)}
+      <section
+        className="activity-preview"
+        aria-labelledby="activity-preview-title"
+      >
+        <header>
+          <span id="activity-preview-title">Activity</span>
+        </header>
+        {previewMembers.length === 0 ? (
+          <p className="activity-preview__empty">
+            Nobody else is here. A suspicious amount of productivity.
+          </p>
+        ) : null}
+        <div className="activity-preview__people">
+          {previewMembers.map((member) => (
+            <ProfileTrigger
+              key={member.id}
+              className="activity-preview__person"
+              data-status={member.status}
+              member={member}
+              loadMedia={loadProfileMedia}
+              onOpenProfile={onOpenProfile}
+              onOpenContextMenu={onOpenUserContextMenu}
+              expanded={openProfileId === member.id}
+              autoPlayAnimation
+              aria-label={`View ${member.displayName}'s profile`}
             >
-              {group.channels.map(renderChannel)}
-            </ChannelGroup>
-          );
-        })}
+              {({ animationUrl, animated, engaged }) => (
+                <>
+                  <MemberCoverPoster
+                    className="activity-preview__cover"
+                    rootSelector=".unified-sidebar"
+                    member={member}
+                    loadProfileMedia={loadProfileMedia}
+                    engaged={engaged}
+                    autoPlayAnimation
+                  />
+                  <Avatar
+                    user={member}
+                    size="small"
+                    showStatus
+                    animationUrl={animationUrl}
+                    animated={animated}
+                  />
+                  <span>{member.displayName}</span>
+                </>
+              )}
+            </ProfileTrigger>
+          ))}
+          <button
+            className="activity-preview__show-all"
+            type="button"
+            onClick={() => setMembersOpen(true)}
+          >
+            <span>Show all</span>
+            <ChevronRight size={14} aria-hidden="true" />
+          </button>
+        </div>
+      </section>
+
+      <nav className="channel-nav" aria-label="Channels">
+        <header className="channel-nav__header">
+          <span>Channels</span>
+          {canManageChannels ? (
+            <div className="channel-nav__actions">
+              <div ref={channelCreateMenuRef} className="channel-create-menu">
+                <button
+                  ref={channelCreateButtonRef}
+                  type="button"
+                  aria-label="Add channel"
+                  aria-haspopup="menu"
+                  aria-expanded={channelCreateMenuOpen}
+                  aria-controls="channel-create-menu"
+                  onClick={() => setChannelCreateMenuOpen((open) => !open)}
+                >
+                  <Plus size={15} />
+                </button>
+                {channelCreateMenuOpen ? (
+                  <div
+                    id="channel-create-menu"
+                    className="channel-create-menu__popover"
+                    role="menu"
+                    aria-label="Add channel"
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => chooseChannelKind("text")}
+                    >
+                      <Hash size={14} aria-hidden="true" />
+                      <span>Text channel</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => chooseChannelKind("voice")}
+                    >
+                      <Volume2 size={14} aria-hidden="true" />
+                      <span>Voice channel</span>
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+        </header>
+        <div className="channel-list">
+          {orderedChannels.map((channel) => {
+            const occupants = voiceOccupants
+              .filter((occupant) => occupant.channelId === channel.id)
+              .sort(compareVoiceRoomOccupants);
+            const roomJoinedAt = occupants.reduce<string | null>(
+              (earliest, occupant) =>
+                occupant.joinedAt &&
+                (!earliest ||
+                  Date.parse(occupant.joinedAt) < Date.parse(earliest))
+                  ? occupant.joinedAt
+                  : earliest,
+              null,
+            );
+            const isWelcome = channel.purpose === "system-general";
+            return (
+              <div className="channel-row-wrap" key={channel.id}>
+                <div className="channel-row-stack">
+                  <button
+                    className={`channel-row ${selectedChannelId === channel.id ? "active" : ""} ${channel.kind === "text" && unreadChannelIds.has(channel.id) ? "channel-row--unread" : ""}`}
+                    type="button"
+                    aria-current={
+                      selectedChannelId === channel.id ? "page" : undefined
+                    }
+                    onPointerEnter={() =>
+                      channel.kind === "voice"
+                        ? onPrepareVoiceChannel(channel)
+                        : undefined
+                    }
+                    onFocus={() =>
+                      channel.kind === "voice"
+                        ? onPrepareVoiceChannel(channel, true)
+                        : undefined
+                    }
+                    onClick={() => onSelect(channel)}
+                  >
+                    {isWelcome ? (
+                      <Sparkles size={16} />
+                    ) : channel.kind === "voice" ? (
+                      <Volume2 size={16} />
+                    ) : (
+                      <Hash size={16} />
+                    )}
+                    <span>{channel.name}</span>
+                    {roomJoinedAt ? (
+                      <span className="channel-voice-duration">
+                        <i className="live-dot" />
+                        <VoiceElapsedTime joinedAt={roomJoinedAt} />
+                      </span>
+                    ) : null}
+                  </button>
+                  {canManageChannels && !isWelcome ? (
+                    <button
+                      className="channel-row-edit"
+                      type="button"
+                      aria-label={`Rename ${channel.name}`}
+                      onClick={() => onRenameChannel(channel)}
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  ) : null}
+                  {occupants.length > 0 ? (
+                    <div className="channel-voice-people">
+                      {occupants.map((occupant) => {
+                        const member = profileForOccupant(occupant);
+                        return (
+                          <div
+                            className="channel-voice-person"
+                            key={occupant.userId}
+                          >
+                            <ProfileTrigger
+                              className="channel-voice-person__profile"
+                              member={member}
+                              loadMedia={loadProfileMedia}
+                              onOpenProfile={onOpenProfile}
+                              onOpenContextMenu={onOpenUserContextMenu}
+                              expanded={openProfileId === occupant.userId}
+                              aria-label={`View ${occupant.displayName}'s profile`}
+                            >
+                              {({ animationUrl, animated }) => (
+                                <>
+                                  <Avatar
+                                    user={member}
+                                    size="small"
+                                    animationUrl={animationUrl}
+                                    animated={animated}
+                                  />
+                                  <b>{occupant.displayName}</b>
+                                </>
+                              )}
+                            </ProfileTrigger>
+                            {occupant.isStreaming ? (
+                              <span className="channel-voice-person__stream-actions">
+                                <span className="channel-voice-person__live">
+                                  LIVE
+                                </span>
+                                {occupant.userId !== user.id &&
+                                onWatchStream ? (
+                                  <button
+                                    className="channel-voice-person__watch"
+                                    type="button"
+                                    onClick={() =>
+                                      onWatchStream(member, channel)
+                                    }
+                                  >
+                                    Watch Stream
+                                  </button>
+                                ) : null}
+                              </span>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </nav>
 
       <div className="sidebar-spacer" />
-
       <SidebarVoicePanel
         voice={voice}
         mode={mode}
@@ -436,7 +432,6 @@ export function ChannelSidebar({
         onToggleSoundboard={onToggleSoundboard}
         onOpenScreenShare={onOpenScreenShare}
       />
-
       <SidebarUserDock
         member={currentMember}
         voice={voice}
@@ -446,87 +441,27 @@ export function ChannelSidebar({
         openProfileId={openProfileId}
         onOpenSettings={onOpenSettings}
       />
+
+      {membersDialogOpen ? (
+        <MembersOverlay
+          members={members}
+          voiceActivities={memberVoiceActivities}
+          currentUserId={user.id}
+          loadProfileMedia={loadProfileMedia}
+          onOpenProfile={onOpenProfile}
+          onOpenUserContextMenu={onOpenUserContextMenu}
+          openProfileId={openProfileId}
+          onMessage={onMessageMember}
+          onWatchStream={(member, channelId) => {
+            const channel = channels.find(
+              (candidate) => candidate.id === channelId,
+            );
+            if (channel) onWatchStream?.(member, channel);
+          }}
+          onClose={() => setMembersOpen(false)}
+        />
+      ) : null}
     </aside>
-  );
-}
-
-function ChannelGroup({
-  groupId,
-  label,
-  collapsed,
-  containsSelected,
-  unreadCount,
-  voiceOccupantCount,
-  onToggle,
-  children,
-}: {
-  groupId: string;
-  label: string;
-  collapsed: boolean;
-  containsSelected: boolean;
-  unreadCount: number;
-  voiceOccupantCount: number;
-  onToggle: () => void;
-  children: React.ReactNode;
-}) {
-  const panelId = `channel-group-${groupId.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
-
-  return (
-    <section
-      className="channel-group"
-      aria-label={label}
-      data-collapsed={collapsed ? "true" : "false"}
-    >
-      <header>
-        <button
-          className={`channel-group__toggle ${collapsed && containsSelected ? "is-selected" : ""}`}
-          type="button"
-          aria-expanded={!collapsed}
-          aria-controls={panelId}
-          onClick={onToggle}
-        >
-          <ChevronDown
-            className="channel-group__chevron"
-            size={15}
-            aria-hidden="true"
-          />
-          <span className="channel-group__label">{label}</span>
-          {collapsed ? (
-            <span className="channel-group__summary">
-              {containsSelected ? (
-                <span className="visually-hidden">
-                  Selected channel inside.
-                </span>
-              ) : null}
-              {unreadCount > 0 ? (
-                <span
-                  className="channel-group__unread-summary"
-                  aria-label={`${unreadCount} unread ${
-                    unreadCount === 1 ? "channel" : "channels"
-                  }`}
-                >
-                  <i aria-hidden="true" />
-                </span>
-              ) : null}
-              {voiceOccupantCount > 0 ? (
-                <span
-                  className="channel-group__voice-summary"
-                  aria-label={`${voiceOccupantCount} ${
-                    voiceOccupantCount === 1 ? "person" : "people"
-                  } in voice`}
-                >
-                  <Volume2 size={12} aria-hidden="true" />
-                  <b aria-hidden="true">{voiceOccupantCount}</b>
-                </span>
-              ) : null}
-            </span>
-          ) : null}
-        </button>
-      </header>
-      <div className="channel-group__children" id={panelId} hidden={collapsed}>
-        {children}
-      </div>
-    </section>
   );
 }
 

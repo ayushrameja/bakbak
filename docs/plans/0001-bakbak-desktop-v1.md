@@ -280,6 +280,13 @@ deterministically ordered voice presence, Windows clipboard/private-image
 reliability, and listener-owned 200% speech gain. Its work packets remain
 separate during implementation and ship together only after the integrated
 macOS/Windows acceptance run passes.
+Plan 0034 replaces the signed-in five-track neutral/system-accent shell,
+Roundo typography, right-side member/details rail, connector-category room
+map, and release-announcement rooms with a Buzz-inspired unified gradient
+sidebar, Inter typography, one active Channels shelf, an accessible member
+overlay, archived historical rooms, and distinct Bakbak/Personal palettes. It
+preserves rich messaging, Personal DMs, voice, soundboard, profiles, settings,
+offline behavior, and authentication entry surfaces.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -483,6 +490,16 @@ macOS/Windows acceptance run passes.
 - [ ] Complete the cross-platform installed-client acceptance matrix.
 - [x] Update architecture, plan status, and the append-only progress log for
       plan 0014.
+- [x] Implement plan 0034's two-track signed-in shell, Inter Variable type
+      ramp, space-specific palettes, unified sidebar/member overlay, flat
+      seven-room mock layout, v3 layout preferences, and retired release-chat
+      automation.
+- [x] Add plan 0034's archival migration and active-row client/database
+      coverage.
+- [x] Approve and apply plan 0034's hosted archival migration and delete the
+      retired hosted `system-events` function.
+- [ ] Complete plan 0034's hosted two-client and installed macOS/Windows
+      acceptance matrix.
 
 ### Phase 6 — Distribution
 
@@ -519,10 +536,9 @@ macOS/Windows acceptance run passes.
   green.
 - Add focused tests with each behavior change rather than postponing all test
   work until distribution.
-- Reject chromatic first-party CSS/SVG colors outside plan 0020's explicitly
-  delimited brand block, retired theme machinery,
-  product text below 11 px/weight 500, unsupported Roundo weights, and changed
-  vendored font bytes in regression tests.
+- Keep the plan 0034 Bakbak and Personal palettes, rem type ramp, locally
+  bundled Inter Variable dependency, solid conversation canvases, reduced-
+  motion fallback, and two-track shell geometry under regression tests.
 
 ### Manual Apple Silicon macOS acceptance
 

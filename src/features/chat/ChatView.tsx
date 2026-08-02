@@ -1,7 +1,6 @@
 import {
   CirclePlus,
   ExternalLink,
-  LockKeyhole,
   Megaphone,
   MessageSquareReply,
   PartyPopper,
@@ -632,7 +631,7 @@ export function ConversationView({
               </span>
               <h2>
                 {target.kind === "channel"
-                  ? `Welcome to #${target.name}`
+                  ? `#${target.name}`
                   : `Your conversation with ${target.member.displayName}`}
               </h2>
               <p>
@@ -945,10 +944,10 @@ export function ConversationView({
 
       {automationOnly ? (
         <footer className="automation-only-footer">
-          <LockKeyhole size={16} aria-hidden="true" />
+          <Sparkles size={16} aria-hidden="true" />
           <span>
-            <strong>Automation-only channel</strong>
-            Bakbak posts verified updates here.
+            <strong>Welcome is automatic</strong>
+            Bakbak will introduce new friends here when they join.
           </span>
         </footer>
       ) : (
