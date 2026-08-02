@@ -1,7 +1,6 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { COVER_BUCKET } from "../../lib/profile-service";
 import type { ServerMember } from "../../lib/types";
 import { SidebarUserDock } from "./SidebarUserDock";
 import type { useVoiceRoom } from "./useVoiceRoom";
@@ -71,11 +70,12 @@ describe("SidebarUserDock", () => {
     expect(toggleDeafen).toHaveBeenCalledOnce();
   });
 
-  it("loads the static cover as a focal background without requesting animation", async () => {
+  it("keeps the compact dock free of profile cover artwork", () => {
     const loadProfileMedia = vi.fn().mockResolvedValue("blob:sidebar-cover");
     renderDock(createVoice(), {
       member: {
         ...member,
+        coverUrl: "blob:existing-cover",
         coverPath: "member-1/cover.webp",
         coverAnimationPath: "member-1/cover.gif",
         coverPositionX: 28,
@@ -84,28 +84,8 @@ describe("SidebarUserDock", () => {
       loadProfileMedia,
     });
 
-    await waitFor(() =>
-      expect(document.querySelector(".user-dock__cover img")).not.toBeNull(),
-    );
-    expect(loadProfileMedia).toHaveBeenCalledWith(
-      COVER_BUCKET,
-      "member-1/cover.webp",
-    );
-    expect(loadProfileMedia).toHaveBeenCalledTimes(1);
-    expect(document.querySelector(".user-dock__cover img")).toHaveStyle({
-      objectPosition: "28% 72%",
-    });
-  });
-
-  it("keeps a neutral dock when the cover download fails", async () => {
-    const loadProfileMedia = vi.fn().mockRejectedValue(new Error("no cover"));
-    renderDock(createVoice(), {
-      member: { ...member, coverPath: "member-1/missing.webp" },
-      loadProfileMedia,
-    });
-
-    await waitFor(() => expect(loadProfileMedia).toHaveBeenCalledOnce());
     expect(document.querySelector(".user-dock__cover")).toBeNull();
+    expect(loadProfileMedia).not.toHaveBeenCalled();
   });
 });
 

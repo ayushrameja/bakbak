@@ -172,10 +172,12 @@ generated interface sound pack, device-local sound controls, and typed
 communication event semantics are approved under
 `0009-signal-red-theme-and-interface-audio.md`.
 Cross-platform native video capture, 1080p/60 presenter controls, paused-source
-handling, gallery/focus/fullscreen call media, and soundboard ownership are
-approved under `0010-cross-platform-screen-share-and-focus.md`. Plan 0010
+handling, gallery/focus call media, and soundboard ownership were approved
+under `0010-cross-platform-screen-share-and-focus.md`. Plan 0010
 supersedes plan 0003's 1080p/15 ceiling and plan 0006's always-featured share
 layout while retaining their security and least-privilege companion boundary.
+Plan 0035 later retires participant expansion and renderer fullscreen while
+retaining explicit share focus.
 Collapsible System/Bakbak sections, account favorites, member-owned five-second
 uploads, the trusted management function, and responsive dialog sizing are
 approved under `0011-soundboard-categories-favorites-and-uploads.md`.
@@ -187,11 +189,12 @@ one-to-one DMs, resizable side panels, server-wide LIVE state, and explicit
 opt-in remote stream subscriptions are approved under
 `0014-bakbak-signature-shell-personal-dms-live-watching.md`.
 Per-source native audio isolation, Bakbak process-tree rejection, bounded
-Discord-like call tiles, reversible focus, informational LIVE state, and
-native-state-synchronized fullscreen are approved under
+Discord-like call tiles, reversible focus, informational LIVE state, and the
+original native-state-synchronized fullscreen behavior were approved under
 `0015-screen-share-reliability-and-call-layout.md`. Plan 0015 supersedes plan
 0014's sidebar Watch and pending cross-room watch flow while retaining explicit
-in-room subscription consent.
+in-room subscription consent. Plan 0035 supersedes its participant expansion,
+tile presentation, Back control, and renderer fullscreen behavior.
 The single neutral monochrome appearance and locally bundled Roundo typeface
 are approved under
 `0016-flat-monochrome-roundo.md`. Plan 0016 supersedes the visual theme and
@@ -287,6 +290,14 @@ sidebar, Inter typography, one active Channels shelf, an accessible member
 overlay, archived historical rooms, and distinct Bakbak/Personal palettes. It
 preserves rich messaging, Personal DMs, voice, soundboard, profiles, settings,
 offline behavior, and authentication entry surfaces.
+Plan 0035 removes the titlebar joke, moves its sidebar control to the leading
+platform-safe area, limits slower destination-directed Personal/Bakbak motion
+to sidebar content below the stationary switch, simplifies sidebar call status
+while retaining camera/share/soundboard shortcuts, removes server
+channel-header dividers, and replaces participant tiles with circular
+profile/camera clusters and orbits. Non-LIVE circles stay passive behind an
+above-avatar action tooltip; LIVE alone opens a control-free share stage whose
+media returns to people, with no participant expansion or renderer fullscreen.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -394,13 +405,15 @@ offline behavior, and authentication entry surfaces.
 - [x] Implement plan 0030's owned remote-audio gain path, RNNoise runtime
       handshake/fallback state, v4 default-on full-volume migration,
       process-tree capture isolation, Windows cursor/black-frame recovery, and
-      serialized macOS simple fullscreen.
+      the original serialized macOS simple-fullscreen behavior later retired
+      from the renderer by plan 0035.
 - [x] Implement plan 0032's native WebView2 process-group tracking, fail-closed
       Entire screen WASAPI exclusion, live audio-only downgrade, renderer
-      warning contract, and Windows pull-request CI.
+      warning contract, bidirectional application-tree rejection, and Windows
+      pull-request CI.
 - [ ] Complete plan 0030's installed macOS/Windows isolation, participant-gain,
-      RNNoise, Valorant Borderless Windowed, and ten-cycle macOS fullscreen
-      acceptance matrix.
+      RNNoise, and Valorant Borderless Windowed acceptance matrix. Plan 0035
+      retires the ten-cycle renderer-fullscreen gate.
 - [ ] Complete plan 0032's installed three-client Windows Entire screen and
       Application audio-isolation matrix.
 - [x] Implement plan 0033 Packet A's voice continuity reconciliation, bounded
@@ -431,11 +444,12 @@ offline behavior, and authentication entry surfaces.
 - [ ] Complete plan 0014's hosted DM and installed three-client LIVE/Watch
       acceptance matrices.
 - [x] Add plan 0015's per-source audio policy, compact responsive gallery,
-      media-first reversible focus with watched grid playback, fullscreen
-      reconciliation, and room-level sidebar activity treatment.
-- [ ] Complete plan 0015's installed macOS/Windows isolation, fullscreen, and
-      visual acceptance matrices, including plan 0030's safe capture recovery
-      and macOS simple-fullscreen rollback.
+      original media-first reversible focus, watched-grid playback, and
+      room-level sidebar activity treatment; plan 0035 later replaces its
+      renderer presentation while retaining the subscription lifecycle.
+- [ ] Complete plan 0015's installed macOS/Windows isolation and visual
+      acceptance matrices, including plan 0030's safe capture recovery. Plan
+      0035 retires the renderer fullscreen/rollback acceptance cases.
 - [x] Replace selectable appearances and their persistence with plan 0016's
       flat grayscale system-following CSS, local Roundo v2.0 family, and
       read-only Appearance summary.
@@ -500,6 +514,19 @@ offline behavior, and authentication entry surfaces.
       retired hosted `system-events` function.
 - [ ] Complete plan 0034's hosted two-client and installed macOS/Windows
       acceptance matrix.
+- [x] Implement plan 0035's simplified signed-in chrome, directional space
+      entry, and circular voice people view without changing backend or
+      LiveKit contracts.
+- [x] Refine plan 0035 with larger Activity/voice avatars, a cover-free compact
+      user dock, external participant action tooltips, static LIVE rings, and
+      reliable volume controls.
+- [x] Finalize plan 0035 with passive non-LIVE circles, LIVE-only share focus,
+      a control-free media-return stage, restored sidebar media shortcuts,
+      clearer room timers, and 345 ms sidebar-only directional motion.
+- [x] Repair plan 0035's tooltip volume path so native range input updates the
+      post-attachment LiveKit MediaStream gain for both attenuation and boost.
+- [ ] Complete plan 0035's light/dark two-resolution and installed
+      macOS/Windows multi-client visual/interaction acceptance matrix.
 
 ### Phase 6 — Distribution
 

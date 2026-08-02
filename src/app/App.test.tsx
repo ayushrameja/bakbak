@@ -38,7 +38,9 @@ describe("App navigation state", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Enter the preview" }),
     );
-    expect(screen.getByText("OG Nahan Gang")).toBeVisible();
+    expect(
+      document.querySelector(".window-titlebar__center"),
+    ).toBeEmptyDOMElement();
     expect(document.querySelector(".app-frame")).toHaveAttribute(
       "data-startup-assembly",
       expect.stringMatching(/running|complete/),
@@ -76,6 +78,7 @@ describe("App navigation state", () => {
     ).toBeNull();
 
     const topBar = document.querySelector<HTMLElement>(".top-bar")!;
+    expect(topBar).toHaveAttribute("data-context", "channel");
     expect(
       within(topBar).getByText("Chat", { selector: "strong" }),
     ).toBeVisible();
@@ -215,7 +218,7 @@ describe("App navigation state", () => {
     await waitFor(() =>
       expect(callRegion).toHaveTextContent("Voice connected"),
     );
-    expect(screen.getByText("Game #2: chaos connected")).toBeVisible();
+    expect(screen.queryByText(/chaos connected/i)).not.toBeInTheDocument();
     expect(screen.getByRole("group", { name: "User controls" })).toBeVisible();
   });
 
@@ -234,8 +237,8 @@ describe("App navigation state", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Personal" }));
     expect(document.querySelector(".desktop-shell")).toHaveAttribute(
-      "data-space-transition",
-      "true",
+      "data-space-direction",
+      "left",
     );
     expect(
       screen.getByRole("heading", { name: "Your conversations live here" }),
@@ -250,6 +253,10 @@ describe("App navigation state", () => {
     expect(
       screen.getByRole("button", { name: "Bakbak server" }),
     ).toHaveAttribute("aria-current", "page");
+    expect(document.querySelector(".desktop-shell")).toHaveAttribute(
+      "data-space-direction",
+      "right",
+    );
   });
 
   it("creates and sends a mock DM without a read-state render loop", async () => {

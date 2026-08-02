@@ -6,6 +6,14 @@ const styles = await readFile(
   new URL("../src/styles.css", import.meta.url),
   "utf8",
 );
+const screenShareStage = await readFile(
+  new URL("../src/features/voice/ScreenShareStage.tsx", import.meta.url),
+  "utf8",
+);
+const voiceRoom = await readFile(
+  new URL("../src/features/voice/VoiceRoom.tsx", import.meta.url),
+  "utf8",
+);
 
 test("focused media stays bounded and preserves the shared bottom edge", () => {
   assert.match(
@@ -20,24 +28,18 @@ test("focused media stays bounded and preserves the shared bottom edge", () => {
     styles,
     /\.voice-focus-layout \.screen-share-stage__media \.participant-video\s*\{[^}]*object-fit:\s*contain;/s,
   );
-  assert.match(
-    styles,
-    /\.screen-share-stage__controls,\s*\.voice-participant-stage__controls\s*\{[^}]*position:\s*absolute;[^}]*bottom:\s*14px;/s,
-  );
+  assert.match(screenShareStage, /onActivateMedia/);
 });
 
-test("fullscreen uses a fixed viewport overlay with a pinned bottom exit control", () => {
-  assert.match(
-    styles,
-    /\.voice-focus-layout\.is-fullscreen\s*\{[^}]*position:\s*fixed;[^}]*height:\s*100dvh;/s,
+test("focused shares use media activation without back or fullscreen chrome", () => {
+  assert.doesNotMatch(screenShareStage, /Back to people|onBack|fullscreen/i);
+  assert.doesNotMatch(
+    voiceRoom,
+    /voice-fullscreen|requestFullscreen|isFullscreen/,
   );
   assert.match(
-    styles,
-    /\.voice-focus-layout\.is-fullscreen\s*\{[^}]*grid-template-rows:\s*minmax\(0, 1fr\);[^}]*padding:\s*0;/s,
-  );
-  assert.match(
-    styles,
-    /\.voice-focus-layout\.is-fullscreen \.screen-share-stage__fullscreen-exit,\s*\.voice-focus-layout\.is-fullscreen \.voice-fullscreen-exit\s*\{[^}]*position:\s*fixed;[^}]*top:\s*auto;[^}]*bottom:\s*16px;/s,
+    screenShareStage,
+    /aria-label="Return focused screen share to people"/,
   );
 });
 

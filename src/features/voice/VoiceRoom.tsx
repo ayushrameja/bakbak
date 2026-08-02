@@ -1,20 +1,23 @@
 import {
-  ArrowLeft,
   CircleAlert,
-  Expand,
   LoaderCircle,
   Mic,
   MicOff,
   Monitor,
   PhoneCall,
   RefreshCw,
-  Shrink,
+  UserRound,
   Volume2,
   X,
 } from "lucide-react";
-import { Effect, EffectState, getCurrentWindow } from "@tauri-apps/api/window";
-import { isTauri } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import { Avatar } from "../../components/Avatar";
 import {
   ProfileTrigger,
@@ -22,26 +25,17 @@ import {
   type OpenProfile,
 } from "../../components/ProfileTrigger";
 import type { OpenUserContextMenu } from "../../components/UserContextMenu";
+import { resolveGiphyProfileMedia } from "../../lib/profile-giphy-media";
+import { AVATAR_BUCKET } from "../../lib/profile-service";
 import type { AppUser, Channel, ServerMember } from "../../lib/types";
+import { useReducedMotion } from "../../lib/use-reduced-motion";
 import { ParticipantVideo } from "./ParticipantVideo";
 import { ScreenShareStage } from "./ScreenShareStage";
-import {
-  enqueueFullscreenTransition,
-  isMacosVoiceFullscreen,
-  setMacosMediaFullscreen,
-} from "./voice-fullscreen";
 import type { useVoiceRoom } from "./useVoiceRoom";
 import type { VoiceParticipant, VoiceScreenShare } from "./useVoiceRoom";
 
 const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
 const ignoreProfileOpen: OpenProfile = () => undefined;
-const MACOS_GLASS_EFFECTS = {
-  effects: [Effect.UnderWindowBackground],
-  state: EffectState.FollowsWindowActiveState,
-};
-
-type MediaTarget =
-  { kind: "participant"; id: string } | { kind: "screen"; id: string };
 
 export interface StreamWatchRequest {
   requestId: number;
@@ -83,166 +77,28 @@ export function VoiceRoom({
   const isConnected = isThisRoom && voice.status === "connected";
   const isConnecting = isThisRoom && voice.status === "connecting";
   const isReconnecting = isThisRoom && voice.status === "reconnecting";
-  const [focusedTarget, setFocusedTarget] = useState<MediaTarget | null>(null);
-  const [fullscreen, setFullscreen] = useState(false);
-  const [fullscreenError, setFullscreenError] = useState<string | null>(null);
+  const [focusedShareId, setFocusedShareId] = useState<string | null>(null);
   const [diagnosticsCopyState, setDiagnosticsCopyState] = useState<
     "idle" | "copied" | "failed"
   >("idle");
-  const [fullscreenControlsVisible, setFullscreenControlsVisible] =
-    useState(true);
-  const fullscreenRef = useRef(false);
-  const fullscreenTransitionRef = useRef({ current: Promise.resolve() });
-  const fullscreenControlsTimerRef = useRef<number | null>(null);
   const handledStreamWatchRef = useRef<number | null>(null);
   const {
     participants: voiceParticipants,
     screenShares,
     stopWatchingScreenShare,
   } = voice;
-  const macosSimpleFullscreen = isMacosVoiceFullscreen(
-    typeof navigator === "undefined" ? "" : navigator.userAgent,
-  );
-
   useEffect(() => {
     setDiagnosticsCopyState("idle");
   }, [voice.voiceContinuityWarning]);
 
-  const applyFullscreenState = useCallback((next: boolean) => {
-    if (next) {
-      document.documentElement.dataset.voiceFullscreen = "true";
-    } else {
-      document.documentElement.removeAttribute("data-voice-fullscreen");
-    }
-    if (fullscreenRef.current === next) return;
-    fullscreenRef.current = next;
-    setFullscreen(next);
-  }, []);
-
-  const reconcileFullscreen = useCallback(async () => {
-    if (!isTauri()) {
-      applyFullscreenState(false);
-      return false;
-    }
-    if (macosSimpleFullscreen) return fullscreenRef.current;
-    try {
-      const actual = await getCurrentWindow().isFullscreen();
-      applyFullscreenState(actual);
-      return actual;
-    } catch {
-      applyFullscreenState(false);
-      return false;
-    }
-  }, [applyFullscreenState, macosSimpleFullscreen]);
-
-  const requestFullscreen = useCallback(
-    async (next: boolean) => {
-      if (!isTauri() || (next && !focusedTarget)) return;
-      setFullscreenError(null);
-      try {
-        await enqueueFullscreenTransition(
-          fullscreenTransitionRef.current,
-          async () => {
-            const currentWindow = getCurrentWindow();
-            if (macosSimpleFullscreen) {
-              await setMacosMediaFullscreen(
-                currentWindow,
-                document.documentElement,
-                next,
-                MACOS_GLASS_EFFECTS,
-              );
-              applyFullscreenState(next);
-              return;
-            }
-            await currentWindow.setFullscreen(next);
-          },
-        );
-      } catch {
-        if (macosSimpleFullscreen) applyFullscreenState(false);
-        setFullscreenError(
-          next
-            ? "Bakbak could not enter fullscreen."
-            : "Bakbak could not exit fullscreen.",
-        );
-      } finally {
-        if (!macosSimpleFullscreen) await reconcileFullscreen();
-      }
-    },
-    [
-      applyFullscreenState,
-      focusedTarget,
-      macosSimpleFullscreen,
-      reconcileFullscreen,
-    ],
-  );
-
-  const revealFullscreenControls = useCallback(() => {
-    if (!fullscreen) return;
-    setFullscreenControlsVisible(true);
-    if (fullscreenControlsTimerRef.current !== null) {
-      window.clearTimeout(fullscreenControlsTimerRef.current);
-    }
-    fullscreenControlsTimerRef.current = window.setTimeout(() => {
-      setFullscreenControlsVisible(false);
-      fullscreenControlsTimerRef.current = null;
-    }, 2_500);
-  }, [fullscreen]);
-
   useEffect(() => {
-    if (!isTauri()) return;
-    let disposed = false;
-    const unlisteners: Array<() => void> = [];
-    const sync = () => {
-      if (!disposed) void reconcileFullscreen();
-    };
-    void Promise.all([
-      getCurrentWindow().onResized(sync),
-      getCurrentWindow().onFocusChanged(sync),
-    ]).then((listeners) => {
-      if (disposed) listeners.forEach((unlisten) => unlisten());
-      else unlisteners.push(...listeners);
-    });
-    void reconcileFullscreen();
-    return () => {
-      disposed = true;
-      unlisteners.forEach((unlisten) => unlisten());
-    };
-  }, [reconcileFullscreen]);
-
-  useEffect(() => {
-    if (fullscreen) {
-      revealFullscreenControls();
-      return;
-    }
-    setFullscreenControlsVisible(true);
-    if (fullscreenControlsTimerRef.current !== null) {
-      window.clearTimeout(fullscreenControlsTimerRef.current);
-      fullscreenControlsTimerRef.current = null;
-    }
-  }, [fullscreen, revealFullscreenControls]);
-
-  useEffect(() => {
-    const targetStillExists =
-      focusedTarget?.kind === "participant"
-        ? voiceParticipants.some(
-            (participant) => participant.id === focusedTarget.id,
-          )
-        : focusedTarget?.kind === "screen"
-          ? screenShares.some((share) => share.id === focusedTarget.id)
-          : true;
+    const targetStillExists = focusedShareId
+      ? screenShares.some((share) => share.id === focusedShareId)
+      : true;
     if (isConnected && targetStillExists) return;
-    setFocusedTarget(null);
+    setFocusedShareId(null);
     stopWatchingScreenShare();
-    if (fullscreen) void requestFullscreen(false);
-  }, [
-    focusedTarget,
-    fullscreen,
-    isConnected,
-    requestFullscreen,
-    screenShares,
-    stopWatchingScreenShare,
-    voiceParticipants,
-  ]);
+  }, [focusedShareId, isConnected, screenShares, stopWatchingScreenShare]);
 
   useEffect(() => {
     if (
@@ -279,7 +135,7 @@ export function VoiceRoom({
     if (!share) return;
     handledStreamWatchRef.current = streamWatchRequest.requestId;
     voice.watchScreenShare(share.id);
-    setFocusedTarget({ kind: "screen", id: share.id });
+    setFocusedShareId(share.id);
     onStreamWatchHandled?.(streamWatchRequest.requestId, "opened");
   }, [
     channel.id,
@@ -308,73 +164,25 @@ export function VoiceRoom({
     voice.status,
   ]);
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && fullscreen) {
-        event.preventDefault();
-        void requestFullscreen(false);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [fullscreen, requestFullscreen]);
+  const returnToPeople = useCallback(() => setFocusedShareId(null), []);
 
-  useEffect(
-    () => () => {
-      document.documentElement.removeAttribute("data-voice-fullscreen");
-      if (fullscreenControlsTimerRef.current !== null) {
-        window.clearTimeout(fullscreenControlsTimerRef.current);
-      }
-      if (isTauri()) {
-        const currentWindow = getCurrentWindow();
-        void enqueueFullscreenTransition(fullscreenTransitionRef.current, () =>
-          macosSimpleFullscreen
-            ? setMacosMediaFullscreen(
-                currentWindow,
-                document.documentElement,
-                false,
-                MACOS_GLASS_EFFECTS,
-              )
-            : currentWindow.setFullscreen(false),
-        ).catch(() => undefined);
-      }
-    },
-    [macosSimpleFullscreen],
-  );
-
-  const returnToGallery = useCallback(() => {
-    setFocusedTarget(null);
-    if (fullscreen) void requestFullscreen(false);
-  }, [fullscreen, requestFullscreen]);
-
-  const focusTarget = (target: MediaTarget) => {
-    if (focusedTarget?.kind === target.kind && focusedTarget.id === target.id) {
-      returnToGallery();
-      return;
-    }
-    setFocusedTarget(target);
-    const share =
-      target.kind === "screen"
-        ? voice.screenShares.find((candidate) => candidate.id === target.id)
-        : null;
-    if (share && !share.isLocal) {
+  const focusShare = (share: VoiceScreenShare) => {
+    setFocusedShareId(share.id);
+    if (!share.isLocal) {
       voice.watchScreenShare(share.id);
-    } else {
-      voice.stopWatchingScreenShare();
     }
   };
 
-  const focusedParticipant =
-    focusedTarget?.kind === "participant"
-      ? (voice.participants.find(
-          (participant) => participant.id === focusedTarget.id,
-        ) ?? null)
-      : null;
-  const focusedShare =
-    focusedTarget?.kind === "screen"
-      ? (voice.screenShares.find((share) => share.id === focusedTarget.id) ??
-        null)
-      : null;
+  const focusedShare = focusedShareId
+    ? (voice.screenShares.find((share) => share.id === focusedShareId) ?? null)
+    : null;
+  const participantIds = new Set(
+    voiceParticipants.map((participant) => participant.id),
+  );
+  const orphanScreenShares = screenShares.filter(
+    (share) => !participantIds.has(share.ownerId),
+  );
+  const peopleCount = voiceParticipants.length + orphanScreenShares.length;
 
   return (
     <section
@@ -534,34 +342,38 @@ export function VoiceRoom({
               ) : null}
             </div>
           ) : null}
-          {focusedTarget ? (
+          {focusedShare ? (
+            <div className="voice-focus-layout">
+              <ScreenShareStage
+                share={focusedShare}
+                settings={voice.screenShareSettings}
+                settingsPending={voice.screenShareSettingsPending}
+                onActivateMedia={returnToPeople}
+                onUpdateSettings={(settings) =>
+                  void voice.updateScreenShareSettings(settings)
+                }
+              />
+            </div>
+          ) : (
             <div
-              className={`voice-focus-layout ${fullscreen ? "is-fullscreen" : ""} ${fullscreen && !fullscreenControlsVisible ? "controls-hidden" : ""}`}
-              onPointerMove={revealFullscreenControls}
-              onFocusCapture={revealFullscreenControls}
-              onKeyDown={revealFullscreenControls}
+              className="voice-people-gallery"
+              data-target-count={peopleCount}
+              data-layout={peopleGalleryLayout(peopleCount)}
             >
-              {focusedShare ? (
-                <ScreenShareStage
-                  share={focusedShare}
-                  settings={voice.screenShareSettings}
-                  settingsPending={voice.screenShareSettingsPending}
-                  fullscreen={fullscreen}
-                  fullscreenError={fullscreenError}
-                  onBack={returnToGallery}
-                  onActivateMedia={returnToGallery}
-                  onToggleFullscreen={() => void requestFullscreen(!fullscreen)}
-                  onUpdateSettings={(settings) =>
-                    void voice.updateScreenShareSettings(settings)
-                  }
-                />
-              ) : focusedParticipant ? (
-                <section
-                  className="voice-participant-stage"
-                  aria-label={`${focusedParticipant.displayName} focused`}
-                >
-                  <ParticipantCard
-                    participant={focusedParticipant}
+              {voice.participants.map((participant, index) => {
+                const share = screenShares.find(
+                  (candidate) => candidate.ownerId === participant.id,
+                );
+                return (
+                  <ParticipantOrb
+                    key={`participant:${participant.id}`}
+                    participant={participant}
+                    share={share ?? null}
+                    watchedShare={Boolean(
+                      share &&
+                      (share.isLocal ||
+                        voice.watchedScreenShareId === share.id),
+                    )}
                     members={members}
                     user={user}
                     voice={voice}
@@ -569,72 +381,27 @@ export function VoiceRoom({
                     onOpenProfile={onOpenProfile}
                     onOpenUserContextMenu={onOpenUserContextMenu}
                     openProfileId={openProfileId}
-                    onFocus={returnToGallery}
-                    focused
-                  />
-                  <div className="voice-participant-stage__controls">
-                    <button
-                      type="button"
-                      className="secondary-button voice-participant-stage__back"
-                      onClick={returnToGallery}
-                    >
-                      <ArrowLeft size={17} />
-                      Back to grid
-                    </button>
-                    <button
-                      type="button"
-                      className={`screen-share-stage__icon-button ${fullscreen ? "voice-fullscreen-exit" : ""}`}
-                      onClick={() => void requestFullscreen(!fullscreen)}
-                      aria-label={
-                        fullscreen ? "Exit fullscreen" : "Enter fullscreen"
+                    style={peopleOrbitStyle(index, peopleCount)}
+                    onFocusShare={() => {
+                      if (share) {
+                        focusShare(share);
                       }
-                    >
-                      {fullscreen ? <Shrink size={16} /> : <Expand size={16} />}
-                    </button>
-                  </div>
-                  {fullscreenError ? (
-                    <div className="voice-fullscreen-error" role="status">
-                      {fullscreenError}
-                    </div>
-                  ) : null}
-                </section>
-              ) : null}
-            </div>
-          ) : (
-            <div
-              className="voice-media-gallery"
-              data-target-count={
-                voice.participants.length + voice.screenShares.length
-              }
-              data-layout={mediaGalleryLayout(
-                voice.participants.length + voice.screenShares.length,
-              )}
-            >
-              {voice.participants.map((participant) => (
-                <ParticipantCard
-                  key={`participant:${participant.id}`}
-                  participant={participant}
-                  members={members}
-                  user={user}
-                  voice={voice}
-                  loadProfileMedia={loadProfileMedia}
-                  onOpenProfile={onOpenProfile}
-                  onOpenUserContextMenu={onOpenUserContextMenu}
-                  openProfileId={openProfileId}
-                  onFocus={() =>
-                    focusTarget({ kind: "participant", id: participant.id })
-                  }
-                />
-              ))}
-              {voice.screenShares.map((share) => (
-                <ScreenShareTile
+                    }}
+                  />
+                );
+              })}
+              {orphanScreenShares.map((share, index) => (
+                <OrphanShareOrb
                   key={`screen:${share.id}`}
                   share={share}
-                  localSourceLabel={voice.screenShareSourceLabel}
                   watched={
                     share.isLocal || voice.watchedScreenShareId === share.id
                   }
-                  onFocus={() => focusTarget({ kind: "screen", id: share.id })}
+                  style={peopleOrbitStyle(
+                    voiceParticipants.length + index,
+                    peopleCount,
+                  )}
+                  onFocus={() => focusShare(share)}
                 />
               ))}
             </div>
@@ -645,8 +412,10 @@ export function VoiceRoom({
   );
 }
 
-function ParticipantCard({
+function ParticipantOrb({
   participant,
+  share,
+  watchedShare,
   members,
   user,
   voice,
@@ -654,10 +423,12 @@ function ParticipantCard({
   onOpenProfile,
   onOpenUserContextMenu,
   openProfileId,
-  onFocus,
-  focused = false,
+  onFocusShare,
+  style,
 }: {
   participant: VoiceParticipant;
+  share: VoiceScreenShare | null;
+  watchedShare: boolean;
   members: ServerMember[];
   user: AppUser;
   voice: ReturnType<typeof useVoiceRoom>;
@@ -665,28 +436,76 @@ function ParticipantCard({
   onOpenProfile: OpenProfile;
   onOpenUserContextMenu?: OpenUserContextMenu | undefined;
   openProfileId: string | null;
-  onFocus?: () => void;
-  focused?: boolean;
+  onFocusShare: () => void;
+  style: CSSProperties;
 }) {
   const latestSound = participant.activeSounds.at(-1);
   const soundActive = participant.activeSounds.length > 0;
+  const cameraActive = Boolean(
+    participant.cameraEnabled && participant.cameraTrack,
+  );
   const member = members.find((candidate) => candidate.id === participant.id);
   const displayName = member?.displayName ?? participant.displayName;
+  const profileMember =
+    member ?? (participant.isLocal ? { ...user, role: "member" } : null);
   const avatarUser =
     member ??
     (participant.isLocal
-      ? { ...user, role: "member" }
+      ? user
       : {
           displayName,
           avatarUrl: null,
           status: "online" as const,
         });
-  const profileMember =
-    member ?? (participant.isLocal ? { ...user, role: "member" } : null);
+  const activityLabel = soundActive
+    ? participant.activeSounds.length > 1
+      ? `${participant.activeSounds.length} sounds playing`
+      : `Playing ${latestSound?.label ?? "sound"}`
+    : participant.isSpeaking
+      ? "Speaking"
+      : participant.isMuted
+        ? "Muted"
+        : "Listening";
+  const openContextMenuFromKeyboard = (
+    event: ReactKeyboardEvent<HTMLElement>,
+  ) => {
+    if (
+      event.defaultPrevented ||
+      !profileMember ||
+      !onOpenUserContextMenu ||
+      !(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))
+    ) {
+      return;
+    }
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    onOpenUserContextMenu(profileMember, event.currentTarget, {
+      clientX: rect.left,
+      clientY: rect.bottom,
+    });
+  };
+  const media =
+    cameraActive && participant.cameraTrack ? (
+      <ParticipantVideo
+        track={participant.cameraTrack}
+        local={participant.isLocal}
+        label={displayName}
+      />
+    ) : profileMember ? (
+      <ParticipantAvatar
+        member={profileMember}
+        loadProfileMedia={loadProfileMedia}
+      />
+    ) : (
+      <Avatar user={avatarUser} size="large" />
+    );
 
   return (
     <article
-      className={`participant-card ${focused ? "is-focused" : ""} ${participant.isSpeaking || soundActive ? "is-speaking" : ""} ${soundActive ? "is-soundboard-active" : ""}`}
+      className={`voice-participant-orb ${participant.isSpeaking ? "is-speaking" : ""} ${share ? "is-live" : ""} ${soundActive ? "is-sound-active" : ""}`}
+      style={style}
+      tabIndex={0}
+      aria-label={`${displayName}, ${activityLabel}${share ? ", live" : ""}`}
       onContextMenu={(event) => {
         if (
           event.defaultPrevented ||
@@ -701,217 +520,257 @@ function ParticipantCard({
           clientY: event.clientY,
         });
       }}
+      onKeyDown={openContextMenuFromKeyboard}
     >
-      {onFocus ? (
-        <button
-          className="participant-card__focus-control"
-          type="button"
-          aria-label={`${focused ? "Return from" : "Focus"} ${displayName}`}
-          onClick={onFocus}
-          onKeyDown={(event) => {
-            if (
-              profileMember &&
-              onOpenUserContextMenu &&
-              (event.key === "ContextMenu" ||
-                (event.shiftKey && event.key === "F10"))
-            ) {
-              event.preventDefault();
-              const rect = event.currentTarget.getBoundingClientRect();
-              onOpenUserContextMenu(profileMember, event.currentTarget, {
-                clientX: rect.left,
-                clientY: rect.bottom,
-              });
-            }
-          }}
-        />
-      ) : null}
-      <div className="participant-card__media">
-        {participant.cameraEnabled && participant.cameraTrack ? (
-          <>
-            <ParticipantVideo
-              track={participant.cameraTrack}
-              local={participant.isLocal}
-              label={displayName}
-            />
-            {latestSound ? (
-              <SoundEmoji
-                key={latestSound.eventId}
-                emoji={latestSound.emoji}
-                label={`${displayName} is playing ${latestSound.label}`}
-                count={participant.activeSounds.length}
-                maximum={voice.maxConcurrentSounds}
-                overlay
-              />
-            ) : null}
-          </>
-        ) : latestSound ? (
+      <div className="voice-participant-orb__visual">
+        <span className="voice-participant-orb__ring voice-participant-orb__ring--live" />
+        <span className="voice-participant-orb__ring voice-participant-orb__ring--speaking" />
+        {share ? (
+          <button
+            className="voice-participant-orb__media is-actionable"
+            type="button"
+            aria-label={`Watch ${displayName}'s live screen`}
+            onClick={onFocusShare}
+          >
+            {media}
+          </button>
+        ) : (
+          <span className="voice-participant-orb__media">{media}</span>
+        )}
+        {latestSound ? (
           <SoundEmoji
             key={latestSound.eventId}
             emoji={latestSound.emoji}
             label={`${displayName} is playing ${latestSound.label}`}
             count={participant.activeSounds.length}
             maximum={voice.maxConcurrentSounds}
+            blend
           />
-        ) : (
-          <div className="participant-card__avatar">
-            {profileMember ? (
-              <ProfileTrigger
-                className="participant-card__profile-avatar"
-                member={profileMember}
-                loadMedia={loadProfileMedia}
-                onOpenProfile={onOpenProfile}
-                onOpenContextMenu={onOpenUserContextMenu}
-                expanded={openProfileId === profileMember.id}
-                aria-label={`View ${displayName}'s profile`}
-              >
-                {({ animationUrl, animated }) => (
-                  <Avatar
-                    user={profileMember}
-                    size="large"
-                    animationUrl={animationUrl}
-                    animated={animated}
-                  />
-                )}
-              </ProfileTrigger>
-            ) : (
-              <Avatar user={avatarUser} size="large" />
-            )}
-            <span className="speaker-rings" />
-          </div>
-        )}
-      </div>
-      <div className="participant-card__identity">
-        {profileMember ? (
-          <ProfileTrigger
-            className="participant-card__profile-name"
-            member={profileMember}
-            loadMedia={loadProfileMedia}
-            onOpenProfile={onOpenProfile}
-            onOpenContextMenu={onOpenUserContextMenu}
-            expanded={openProfileId === profileMember.id}
+        ) : null}
+        {share ? (
+          <button
+            className="voice-participant-orb__live"
+            aria-label={`${displayName} is LIVE`}
+            type="button"
+            onClick={onFocusShare}
           >
-            {() => <strong>{displayName}</strong>}
-          </ProfileTrigger>
-        ) : (
-          <strong>{displayName}</strong>
-        )}
-        <span>
-          {soundActive
-            ? participant.activeSounds.length > 1
-              ? `${participant.activeSounds.length} sounds playing`
-              : `Playing ${latestSound?.label ?? "sound"}`
-            : participant.isSpeaking
-              ? "Speaking"
-              : participant.isMuted
-                ? "Muted"
-                : "Listening"}
-        </span>
+            <Monitor size={11} aria-hidden="true" /> LIVE
+          </button>
+        ) : null}
       </div>
-      <span
-        className={`participant-card__mic ${participant.isMuted ? "muted" : ""} ${soundActive && !participant.isMuted ? "active" : ""}`}
+      <div
+        className="voice-participant-orb__details"
+        role="group"
+        aria-label={`${displayName} controls`}
       >
-        {participant.isMuted ? <MicOff size={14} /> : <Mic size={14} />}
-      </span>
-      {!participant.isLocal ? (
-        <label
-          className="participant-volume"
-          aria-label={`${displayName} volume`}
-        >
-          <Volume2 size={14} />
-          <input
-            type="range"
-            min="0"
-            max="2"
-            step="0.05"
-            value={participant.volume}
-            aria-valuetext={`${Math.round(participant.volume * 100)}%${participant.volume > 1 ? " boosted" : ""}`}
-            title="Levels above 100% boost quiet participants and may also amplify background noise."
-            onInput={(event) =>
-              voice.setParticipantVolume(
-                participant.id,
-                Number(event.currentTarget.value),
-              )
-            }
-            onKeyDown={(event) => {
-              const direction =
-                event.key === "ArrowLeft" || event.key === "ArrowDown"
-                  ? -1
-                  : event.key === "ArrowRight" || event.key === "ArrowUp"
-                    ? 1
-                    : 0;
-              if (direction === 0) return;
-              event.preventDefault();
-              voice.setParticipantVolume(
-                participant.id,
-                Math.max(0, Math.min(2, participant.volume + direction * 0.05)),
-              );
-            }}
-          />
-          <output>{Math.round(participant.volume * 100)}%</output>
-        </label>
-      ) : null}
+        <span className="voice-participant-orb__summary">
+          <strong>{displayName}</strong>
+          <small>
+            {participant.isMuted ? <MicOff size={13} /> : <Mic size={13} />}
+            {activityLabel}
+          </small>
+        </span>
+        <span className="voice-participant-orb__actions">
+          {profileMember ? (
+            <ProfileTrigger
+              className="voice-participant-orb__action"
+              member={profileMember}
+              loadMedia={loadProfileMedia}
+              onOpenProfile={onOpenProfile}
+              onOpenContextMenu={onOpenUserContextMenu}
+              expanded={openProfileId === profileMember.id}
+              aria-label={`View ${displayName}'s profile`}
+              data-tooltip="View profile"
+            >
+              {() => <UserRound size={15} aria-hidden="true" />}
+            </ProfileTrigger>
+          ) : null}
+          {share ? (
+            <button
+              className="voice-participant-orb__action is-live"
+              type="button"
+              aria-label={`${share.isLocal || watchedShare ? "Focus" : "Watch"} ${displayName}'s screen share`}
+              data-tooltip={
+                share.isLocal || watchedShare ? "Open LIVE" : "Watch LIVE"
+              }
+              onClick={onFocusShare}
+            >
+              <Monitor size={15} aria-hidden="true" />
+            </button>
+          ) : null}
+        </span>
+        {!participant.isLocal ? (
+          <label
+            className="voice-participant-orb__volume"
+            aria-label={`${displayName} volume`}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <Volume2 size={13} />
+            <input
+              type="range"
+              min="0"
+              max="2"
+              step="0.05"
+              value={participant.volume}
+              aria-valuetext={`${Math.round(participant.volume * 100)}%${participant.volume > 1 ? " boosted" : ""}`}
+              title="Levels above 100% boost quiet participants and may also amplify background noise."
+              onInput={(event) =>
+                voice.setParticipantVolume(
+                  participant.id,
+                  Number(event.currentTarget.value),
+                )
+              }
+              onKeyDown={(event) => {
+                const direction =
+                  event.key === "ArrowLeft" || event.key === "ArrowDown"
+                    ? -1
+                    : event.key === "ArrowRight" || event.key === "ArrowUp"
+                      ? 1
+                      : 0;
+                if (direction === 0) return;
+                event.preventDefault();
+                voice.setParticipantVolume(
+                  participant.id,
+                  Math.max(
+                    0,
+                    Math.min(2, participant.volume + direction * 0.05),
+                  ),
+                );
+              }}
+            />
+            <output>{Math.round(participant.volume * 100)}%</output>
+          </label>
+        ) : null}
+      </div>
     </article>
   );
 }
 
-function ScreenShareTile({
+function ParticipantAvatar({
+  member,
+  loadProfileMedia,
+}: {
+  member: ServerMember;
+  loadProfileMedia: LoadProfileMedia;
+}) {
+  const reducedMotion = useReducedMotion();
+  const [resolvedAnimationUrl, setResolvedAnimationUrl] = useState<
+    string | null
+  >(null);
+  const { avatarAnimationPath, avatarAnimationUrl, avatarGiphyId } = member;
+
+  useEffect(() => {
+    setResolvedAnimationUrl(null);
+    if (
+      reducedMotion ||
+      avatarAnimationUrl ||
+      (!avatarAnimationPath && !avatarGiphyId)
+    ) {
+      return;
+    }
+
+    let current = true;
+    const animation = avatarGiphyId
+      ? resolveGiphyProfileMedia(
+          { avatarGiphyId, coverGiphyId: null },
+          { includeAvatarAnimation: true },
+        ).then((media) => media.avatarAnimationUrl)
+      : loadProfileMedia(AVATAR_BUCKET, avatarAnimationPath);
+    void animation
+      .then((url) => {
+        if (current) setResolvedAnimationUrl(url);
+      })
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, [
+    avatarAnimationPath,
+    avatarAnimationUrl,
+    avatarGiphyId,
+    loadProfileMedia,
+    reducedMotion,
+  ]);
+
+  return (
+    <Avatar
+      user={member}
+      size="large"
+      animationUrl={
+        reducedMotion ? null : (avatarAnimationUrl ?? resolvedAnimationUrl)
+      }
+      animated={!reducedMotion}
+    />
+  );
+}
+
+function OrphanShareOrb({
   share,
-  localSourceLabel,
   watched,
   onFocus,
+  style,
 }: {
   share: VoiceScreenShare;
-  localSourceLabel: string | null;
   watched: boolean;
   onFocus: () => void;
+  style: CSSProperties;
 }) {
   return (
-    <button
-      className="screen-share-tile"
-      type="button"
-      onClick={onFocus}
-      aria-label={
-        share.isLocal || watched
-          ? `Focus ${share.displayName}'s screen share`
-          : `Watch ${share.displayName}'s screen share`
-      }
+    <article
+      className="voice-participant-orb voice-participant-orb--orphan is-live"
+      style={style}
+      aria-label={`${share.displayName}, live screen share`}
     >
-      <span className="screen-share-tile__media">
-        {(share.isLocal || watched) && share.track ? (
-          <ParticipantVideo
-            track={share.track}
-            local={share.isLocal}
-            label={share.displayName}
-            kind="screen"
+      <div className="voice-participant-orb__visual">
+        <span className="voice-participant-orb__ring voice-participant-orb__ring--live" />
+        <button
+          className="voice-participant-orb__media"
+          type="button"
+          aria-label={`Open ${share.displayName}'s live screen`}
+          onClick={onFocus}
+        >
+          <Avatar
+            user={{
+              displayName: share.displayName,
+              avatarUrl: null,
+              status: "online",
+            }}
+            size="large"
           />
-        ) : (
-          <span className="screen-share-stage__waiting">
-            <Monitor size={30} />
-            <span>
-              {share.isLocal || watched
-                ? "Waiting for the first frame…"
-                : "Watch stream"}
-            </span>
-          </span>
-        )}
-        {share.paused ? (
-          <span className="screen-share-paused">
-            Source minimized or paused
-          </span>
-        ) : null}
-      </span>
-      <span className="screen-share-tile__identity">
-        <Monitor size={15} />
-        <span>
+        </button>
+        <button
+          className="voice-participant-orb__live"
+          aria-label={`${share.displayName} is LIVE`}
+          type="button"
+          onClick={onFocus}
+        >
+          <Monitor size={11} aria-hidden="true" /> LIVE
+        </button>
+      </div>
+      <div
+        className="voice-participant-orb__details"
+        role="group"
+        aria-label={`${share.displayName} live controls`}
+      >
+        <span className="voice-participant-orb__summary">
           <strong>{share.displayName}</strong>
           <small>
-            {share.isLocal && localSourceLabel
-              ? localSourceLabel
-              : "Shared screen"}
+            <Monitor size={13} /> Shared screen
           </small>
         </span>
-      </span>
-    </button>
+        <span className="voice-participant-orb__actions">
+          <button
+            className="voice-participant-orb__action is-live"
+            type="button"
+            aria-label={`${share.isLocal || watched ? "Focus" : "Watch"} ${share.displayName}'s screen share`}
+            data-tooltip={share.isLocal || watched ? "Open LIVE" : "Watch LIVE"}
+            onClick={onFocus}
+          >
+            <Monitor size={15} aria-hidden="true" />
+          </button>
+        </span>
+      </div>
+    </article>
   );
 }
 
@@ -921,16 +780,18 @@ function SoundEmoji({
   count,
   maximum,
   overlay = false,
+  blend = false,
 }: {
   emoji: string;
   label: string;
   count: number;
   maximum: number;
   overlay?: boolean;
+  blend?: boolean;
 }) {
   return (
     <span
-      className={`participant-card__sound-emoji ${overlay ? "is-overlay" : "is-avatar"}`}
+      className={`participant-card__sound-emoji ${overlay ? "is-overlay" : "is-avatar"} ${blend ? "is-blended" : ""}`}
       aria-label={label}
       role="img"
     >
@@ -954,12 +815,26 @@ function describeJoinStage(
   return "Preparing voice…";
 }
 
-function mediaGalleryLayout(
+function peopleGalleryLayout(
   targetCount: number,
-): "solo" | "pair" | "quad" | "six" | "many" {
+): "solo" | "cluster" | "orbit" | "wrap" {
   if (targetCount <= 1) return "solo";
-  if (targetCount === 2) return "pair";
-  if (targetCount <= 4) return "quad";
-  if (targetCount <= 6) return "six";
-  return "many";
+  if (targetCount <= 4) return "cluster";
+  if (targetCount <= 10) return "orbit";
+  return "wrap";
+}
+
+type OrbitStyle = CSSProperties & {
+  "--orbit-x"?: string;
+  "--orbit-y"?: string;
+};
+
+function peopleOrbitStyle(index: number, targetCount: number): OrbitStyle {
+  if (peopleGalleryLayout(targetCount) !== "orbit") return {};
+  const angle = -Math.PI / 2 + (index * Math.PI * 2) / targetCount;
+  const radius = 31;
+  return {
+    "--orbit-x": `${50 + Math.cos(angle) * radius}%`,
+    "--orbit-y": `${50 + Math.sin(angle) * radius}%`,
+  };
 }

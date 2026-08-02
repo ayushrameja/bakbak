@@ -3,16 +3,27 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const root = new URL("../", import.meta.url);
-const [styles, app, titlebar, panelResizer, chat, scrollbarHook, html] =
-  await Promise.all([
-    readFile(new URL("src/styles.css", root), "utf8"),
-    readFile(new URL("src/app/App.tsx", root), "utf8"),
-    readFile(new URL("src/components/WindowTitlebar.tsx", root), "utf8"),
-    readFile(new URL("src/components/PanelResizer.tsx", root), "utf8"),
-    readFile(new URL("src/features/chat/ChatView.tsx", root), "utf8"),
-    readFile(new URL("src/lib/use-auto-hide-scrollbars.ts", root), "utf8"),
-    readFile(new URL("index.html", root), "utf8"),
-  ]);
+const [
+  styles,
+  app,
+  titlebar,
+  panelResizer,
+  chat,
+  scrollbarHook,
+  sidebarUserDock,
+  voiceRoom,
+  html,
+] = await Promise.all([
+  readFile(new URL("src/styles.css", root), "utf8"),
+  readFile(new URL("src/app/App.tsx", root), "utf8"),
+  readFile(new URL("src/components/WindowTitlebar.tsx", root), "utf8"),
+  readFile(new URL("src/components/PanelResizer.tsx", root), "utf8"),
+  readFile(new URL("src/features/chat/ChatView.tsx", root), "utf8"),
+  readFile(new URL("src/lib/use-auto-hide-scrollbars.ts", root), "utf8"),
+  readFile(new URL("src/features/voice/SidebarUserDock.tsx", root), "utf8"),
+  readFile(new URL("src/features/voice/VoiceRoom.tsx", root), "utf8"),
+  readFile(new URL("index.html", root), "utf8"),
+]);
 
 test("glass tokens and native-safe document underlays stay system adaptive", () => {
   assert.match(styles, /--glass-canvas-neutral:\s*rgba\(0, 0, 0, 0\.64\)/);
@@ -74,15 +85,40 @@ test("signed-in shell uses one resizable sidebar and one rounded canvas", () => 
   assert.match(app, /enabled=\{layoutPreferences\.leftPanelVisible\}/);
 });
 
-test("titlebar, space motion, startup assembly, and scroll activity retain their timing contracts", () => {
+test("titlebar, directional space motion, startup assembly, and scroll activity retain their timing contracts", () => {
   assert.doesNotMatch(titlebar, /<SpaceSwitcher/);
   assert.match(
     app,
     /data-space=\{showSpaceSwitcher \? activeSpace : undefined\}/,
   );
-  assert.match(titlebar, /"OG Nahan Gang"[\s\S]*?"Professional yappers"/);
-  assert.match(titlebar, /window-titlebar__center window-titlebar__drag/);
-  assert.match(titlebar, /TITLEBAR_MESSAGE_ROTATION_MS = 8_000/);
+  assert.doesNotMatch(titlebar, /OG Nahan Gang|Professional yappers/);
+  assert.match(
+    titlebar,
+    /<div className="window-titlebar__center window-titlebar__drag" \/>/,
+  );
+  assert.match(
+    titlebar,
+    /window-titlebar__leading[\s\S]*?titlebar-panel-controls/,
+  );
+  assert.doesNotMatch(titlebar, /TITLEBAR_MESSAGE_ROTATION_MS/);
+  assert.match(
+    app,
+    /data-space-direction=\{spaceTransitionDirection \?\? undefined\}/,
+  );
+  assert.match(styles, /@keyframes space-enter-personal/);
+  assert.match(styles, /@keyframes space-enter-bakbak/);
+  assert.match(
+    styles,
+    /data-space-direction="left"[\s\S]*?> :not\(\.space-switcher\)[\s\S]*?space-enter-personal 345ms/,
+  );
+  assert.match(
+    styles,
+    /data-space-direction="right"[\s\S]*?> :not\(\.space-switcher\)[\s\S]*?space-enter-bakbak 345ms/,
+  );
+  assert.doesNotMatch(
+    styles,
+    /data-space-direction="(?:left|right)"[^{}]*\.(?:top-bar|content-stage--space-motion)/,
+  );
   assert.equal(titlebar.match(/onMouseDown=\{handleDrag\}/g)?.length, 1);
   assert.equal(
     titlebar.match(/onDoubleClick=\{handleDoubleClick\}/g)?.length,
@@ -93,9 +129,10 @@ test("titlebar, space motion, startup assembly, and scroll activity retain their
     styles,
     /\.member-panel__person \+ \.member-panel__person\s*{[\s\S]*?margin-top:\s*5px/,
   );
+  assert.doesNotMatch(sidebarUserDock, /SidebarUserCover|user-dock__cover/);
   assert.match(
     styles,
-    /\.user-dock__cover\s*{[\s\S]*?position:\s*absolute[\s\S]*?opacity:\s*0\.42/,
+    /\.app-frame\[data-space\] \.user-dock\s*{[\s\S]*?min-height:\s*56px/,
   );
   assert.match(styles, /\.unified-sidebar > \.space-switcher/);
   assert.match(styles, /background 240ms ease/);
@@ -124,5 +161,31 @@ test("conversation and identity footers share one vertical rhythm", () => {
   assert.match(
     styles,
     /\.user-dock\s*{[\s\S]*?min-height:\s*var\(--conversation-footer-height\)/,
+  );
+});
+
+test("activity and circular voice follow-up keeps its visual interaction contracts", () => {
+  assert.match(
+    styles,
+    /\.activity-preview__person\s*{[\s\S]*?min-height:\s*46px[\s\S]*?gap:\s*10px/,
+  );
+  assert.match(
+    styles,
+    /activity-preview__person\[data-status="online"\][\s\S]*?font-weight:\s*700/,
+  );
+  assert.match(styles, /--voice-orb-size:\s*clamp\(148px, 22vmin, 214px\)/);
+  assert.match(
+    styles,
+    /\.voice-participant-orb__ring--live\s*{[\s\S]*?box-shadow:\s*none/,
+  );
+  assert.doesNotMatch(styles, /@keyframes voice-live-ring/);
+  assert.match(
+    styles,
+    /\.voice-participant-orb__details\s*\{[\s\S]*?bottom:\s*calc\(100% \+ 18px\)/,
+  );
+  assert.doesNotMatch(voiceRoom, /Expand details|voice-participant-stage/);
+  assert.match(
+    styles,
+    /\.voice-participant-orb__action::after\s*{[\s\S]*?content:\s*attr\(data-tooltip\)/,
   );
 });

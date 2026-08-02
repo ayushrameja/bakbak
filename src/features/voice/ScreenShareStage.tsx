@@ -1,4 +1,4 @@
-import { ArrowLeft, Expand, Monitor, Shrink } from "lucide-react";
+import { Monitor } from "lucide-react";
 import { ParticipantVideo } from "./ParticipantVideo";
 import {
   SCREEN_SHARE_FRAME_RATES,
@@ -11,21 +11,13 @@ export function ScreenShareStage({
   share,
   settings,
   settingsPending,
-  fullscreen,
-  fullscreenError,
-  onBack,
   onActivateMedia,
-  onToggleFullscreen,
   onUpdateSettings,
 }: {
   share: VoiceScreenShare;
   settings: ScreenShareSettings;
   settingsPending: boolean;
-  fullscreen: boolean;
-  fullscreenError: string | null;
-  onBack: () => void;
   onActivateMedia: () => void;
-  onToggleFullscreen: () => void;
   onUpdateSettings: (settings: ScreenShareSettings) => void;
 }) {
   return (
@@ -34,7 +26,7 @@ export function ScreenShareStage({
         className="screen-share-stage__media"
         role="button"
         tabIndex={0}
-        aria-label="Return focused screen share to grid"
+        aria-label="Return focused screen share to people"
         onClick={onActivateMedia}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
@@ -59,23 +51,9 @@ export function ScreenShareStage({
         {share.paused ? (
           <div className="screen-share-paused">Source minimized or paused</div>
         ) : null}
-        {fullscreenError ? (
-          <div className="voice-fullscreen-error" role="status">
-            {fullscreenError}
-          </div>
-        ) : null}
       </div>
-      <div className="screen-share-stage__controls">
-        <button
-          className="secondary-button screen-share-stage__back"
-          type="button"
-          onClick={onBack}
-          aria-label="Back to grid"
-        >
-          <ArrowLeft size={17} />
-          Back to grid
-        </button>
-        {share.isLocal ? (
+      {share.isLocal ? (
+        <div className="screen-share-stage__controls">
           <div className="screen-share-stage__quality">
             <select
               aria-label="Live screen share resolution"
@@ -116,16 +94,8 @@ export function ScreenShareStage({
               ))}
             </select>
           </div>
-        ) : null}
-        <button
-          className={`screen-share-stage__icon-button ${fullscreen ? "screen-share-stage__fullscreen-exit" : ""}`}
-          type="button"
-          onClick={onToggleFullscreen}
-          aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-        >
-          {fullscreen ? <Shrink size={17} /> : <Expand size={17} />}
-        </button>
-      </div>
+        </div>
+      ) : null}
     </section>
   );
 }

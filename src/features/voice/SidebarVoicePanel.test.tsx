@@ -16,32 +16,30 @@ const channel: Channel = {
 };
 
 describe("SidebarVoicePanel", () => {
-  it("shows voice quality, accurately labelled backend latency, and actions", async () => {
+  it("shows connection status and restores the three compact call actions", async () => {
     const leave = vi.fn().mockResolvedValue(undefined);
     const toggleCamera = vi.fn().mockResolvedValue(undefined);
-    const stopScreenShare = vi.fn().mockResolvedValue(undefined);
+    const onOpenScreenShare = vi.fn();
     const onToggleSoundboard = vi.fn();
     render(
       <SidebarVoicePanel
         voice={
           {
             status: "connected",
-            connectionQuality: "good",
             channel,
+            leave,
             cameraEnabled: false,
             cameraPending: false,
-            screenShareEnabled: true,
+            toggleCamera,
+            screenShareEnabled: false,
             screenSharePending: false,
             screenShareAvailable: true,
-            leave,
-            toggleCamera,
-            stopScreenShare,
+            stopScreenShare: vi.fn().mockResolvedValue(undefined),
           } as unknown as ReturnType<typeof useVoiceRoom>
         }
-        mode="mock"
         soundboardOpen={false}
         onToggleSoundboard={onToggleSoundboard}
-        onOpenScreenShare={vi.fn()}
+        onOpenScreenShare={onOpenScreenShare}
       />,
     );
 
@@ -49,63 +47,49 @@ describe("SidebarVoicePanel", () => {
     expect(
       screen.getByRole("region", { name: "Current voice call" }),
     ).toHaveAttribute("data-state", "connected");
-    expect(screen.getByText("Good")).toBeVisible();
-    expect(
-      screen.getByRole("status", {
-        name: "Voice quality Good; backend latency Local",
-      }),
-    ).toBeVisible();
-    expect(screen.getByRole("button", { name: "Stop sharing" })).toHaveClass(
-      "is-selected",
-    );
     expect(screen.getByRole("button", { name: "Leave voice" })).toHaveClass(
       "sidebar-voice-panel__leave",
     );
     await userEvent.click(
       screen.getByRole("button", { name: "Turn camera on" }),
     );
-    await userEvent.click(screen.getByRole("button", { name: "Stop sharing" }));
+    await userEvent.click(screen.getByRole("button", { name: "Share screen" }));
     await userEvent.click(
       screen.getByRole("button", { name: "Open soundboard" }),
     );
+    expect(toggleCamera).toHaveBeenCalledOnce();
+    expect(onOpenScreenShare).toHaveBeenCalledOnce();
+    expect(onToggleSoundboard).toHaveBeenCalledOnce();
+
     await userEvent.click(screen.getByRole("button", { name: "Leave voice" }));
 
-    expect(toggleCamera).toHaveBeenCalledOnce();
-    expect(stopScreenShare).toHaveBeenCalledOnce();
-    expect(onToggleSoundboard).toHaveBeenCalledOnce();
     expect(leave).toHaveBeenCalledOnce();
   });
 
-  it("labels reconnecting and disables connection-dependent actions", () => {
-    render(
-      <SidebarVoicePanel
-        voice={
-          {
-            status: "reconnecting",
-            connectionQuality: "poor",
-            channel,
-            cameraEnabled: false,
-            cameraPending: false,
-            screenShareEnabled: false,
-            screenSharePending: false,
-            screenShareAvailable: true,
-            leave: vi.fn().mockResolvedValue(undefined),
-          } as unknown as ReturnType<typeof useVoiceRoom>
-        }
-        mode="mock"
-        soundboardOpen={false}
-        onToggleSoundboard={vi.fn()}
-        onOpenScreenShare={vi.fn()}
-      />,
-    );
+  it.each([
+    ["connecting", "Connecting"],
+    ["reconnecting", "Reconnecting"],
+    ["error", "Needs attention"],
+  ] as const)(
+    "labels the %s state and keeps disconnect available",
+    (status, label) => {
+      render(
+        <SidebarVoicePanel
+          voice={
+            {
+              status,
+              channel,
+              leave: vi.fn().mockResolvedValue(undefined),
+            } as unknown as ReturnType<typeof useVoiceRoom>
+          }
+          soundboardOpen={false}
+          onToggleSoundboard={vi.fn()}
+          onOpenScreenShare={vi.fn()}
+        />,
+      );
 
-    expect(screen.getAllByText("Reconnecting")).toHaveLength(2);
-    expect(
-      screen.getByRole("button", { name: "Turn camera on" }),
-    ).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Share screen" })).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: "Open soundboard" }),
-    ).toBeDisabled();
-  });
+      expect(screen.getByText(label)).toBeVisible();
+      expect(screen.getByRole("button", { name: "Leave voice" })).toBeEnabled();
+    },
+  );
 });

@@ -612,14 +612,61 @@ fn application_process_loopback_target(
                 .to_string(),
         );
     }
-    if process_is_in_tree(process_id, current_process_id, process_parents)
+    if process_trees_overlap_or_are_unproven(process_id, current_process_id, process_parents)
         || webview_proof.is_some_and(|proof| {
-            process_is_in_tree(process_id, proof.browser_process_id(), process_parents)
+            process_trees_overlap_or_are_unproven(
+                process_id,
+                proof.browser_process_id(),
+                process_parents,
+            )
         })
     {
         return Err("Bakbak cannot capture its own application audio.".to_string());
     }
     Ok(ProcessLoopbackTarget::IncludeProcessTree(process_id))
+}
+
+fn process_trees_overlap_or_are_unproven(
+    left_process_id: u32,
+    right_process_id: u32,
+    process_parents: &HashMap<u32, u32>,
+) -> bool {
+    left_process_id == 0
+        || right_process_id == 0
+        || !process_parents.contains_key(&left_process_id)
+        || !process_parents.contains_key(&right_process_id)
+        || process_is_in_tree(left_process_id, right_process_id, process_parents)
+        || process_is_in_tree(right_process_id, left_process_id, process_parents)
+}
+
+fn application_audio_availability_for(
+    process_loopback_supported: bool,
+    process_id: u32,
+    current_process_id: u32,
+    webview_proof: Option<&WebViewProcessProof>,
+    process_parents: &HashMap<u32, u32>,
+) -> (bool, Option<String>) {
+    if !process_loopback_supported {
+        return (false, process_loopback_unavailable_reason(false));
+    }
+    match application_process_loopback_target(
+        process_id,
+        current_process_id,
+        webview_proof,
+        process_parents,
+    ) {
+        Ok(_) => (true, None),
+        Err(error) => (
+            false,
+            Some(
+                error
+                    .strip_prefix("[audio-isolation-unavailable]")
+                    .unwrap_or(&error)
+                    .trim()
+                    .to_string(),
+            ),
+        ),
+    }
 }
 
 fn display_process_loopback_target(
@@ -911,13 +958,21 @@ fn enumerate_windows(
         };
         let mut pid = 0;
         unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+        let (audio_available, audio_unavailable_reason) = application_audio_availability_for(
+            context.audio_supported,
+            pid,
+            context.current_process_id,
+            context.webview_proof.as_ref(),
+            &context.process_parents,
+        );
         context.sources.push(ScreenShareSource {
             id: format!("window:{}", hwnd.0 as isize),
             kind: ScreenShareSourceKind::Application,
             label,
             application_label: process_label(pid),
-            audio_available: context.audio_supported,
-            audio_unavailable_reason: context.audio_unavailable_reason.clone(),
+            audio_available,
+            audio_unavailable_reason: audio_unavailable_reason
+                .or_else(|| context.audio_unavailable_reason.clone()),
             thumbnail_data_url: None,
         });
         BOOL(1)
@@ -1658,15 +1713,44 @@ mod tests {
 
     #[test]
     fn application_audio_keeps_selected_tree_and_rejects_bakbak_processes() {
-        let parents = HashMap::from([(10, 1), (11, 10), (20, 10), (21, 20), (22, 21), (30, 1)]);
+        let parents = HashMap::from([
+            (1, 0),
+            (10, 1),
+            (11, 10),
+            (20, 10),
+            (21, 20),
+            (22, 21),
+            (30, 1),
+        ]);
         let proof = WebViewProcessProof::for_test(20, [20, 21]);
         assert_eq!(
             application_process_loopback_target(30, 10, Some(&proof), &parents),
             Ok(ProcessLoopbackTarget::IncludeProcessTree(30))
         );
+        assert!(application_process_loopback_target(1, 10, Some(&proof), &parents).is_err());
         assert!(application_process_loopback_target(11, 10, Some(&proof), &parents).is_err());
         assert!(application_process_loopback_target(21, 10, Some(&proof), &parents).is_err());
         assert!(application_process_loopback_target(22, 10, Some(&proof), &parents).is_err());
+        assert!(application_process_loopback_target(99, 10, Some(&proof), &parents).is_err());
+    }
+
+    #[test]
+    fn application_picker_disables_audio_for_any_tree_that_contains_bakbak() {
+        let parents = HashMap::from([(1, 0), (10, 1), (20, 10), (21, 20), (30, 1)]);
+        let proof = WebViewProcessProof::for_test(20, [20, 21]);
+        assert_eq!(
+            application_audio_availability_for(true, 30, 10, Some(&proof), &parents),
+            (true, None)
+        );
+        let ancestor = application_audio_availability_for(true, 1, 10, Some(&proof), &parents);
+        assert!(!ancestor.0);
+        assert!(
+            ancestor
+                .1
+                .as_deref()
+                .is_some_and(|reason| reason.contains("cannot capture its own"))
+        );
+        assert!(!application_audio_availability_for(true, 99, 10, Some(&proof), &parents).0);
     }
 
     #[test]

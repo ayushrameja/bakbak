@@ -10,10 +10,11 @@ and phase completion belong in the numbered files under `docs/plans`.
 As of 2026-08-02, Bakbak has a complete local/mock product path and production
 Supabase and LiveKit adapters. The signed-in renderer uses a Buzz/Slack-inspired
 two-track shell: one space-specific gradient sidebar and one rounded solid
-conversation canvas. The always-present 48 px titlebar keeps the rotating idle
-or voice-aware joke at the true window centre without interrupting voice. The
-Personal/Bakbak segmented switch lives at the top of the sidebar; the titlebar
-retains one control for hiding or restoring that sidebar. Startup,
+conversation canvas. The always-present 48 px titlebar keeps its centre empty
+and draggable; its single sidebar visibility control sits in the leading area,
+after native macOS traffic lights and before the drag surface on other
+platforms. The Personal/Bakbak segmented switch lives at the top of the
+sidebar. Startup,
 authentication, invite, and startup-error screens retain their existing
 branded content beneath navigation-free titlebar chrome.
 
@@ -29,8 +30,12 @@ and account-scoped cache management.
 
 The Bakbak space uses a honey-to-moss/teal-to-midnight gradient and honey/teal
 interaction tokens. Personal uses a berry/violet-to-blue-to-midnight gradient
-and violet/blue tokens. Switching spaces cross-fades the gradient and accents
-over 240 ms; reduced motion applies the destination palette immediately. The
+and violet/blue tokens. Switching spaces updates the gradient and accents while
+only the destination sidebar content below the stationary space switch enters
+directionally over 345 ms: Personal moves left from the right and Bakbak moves
+right from the left. The channel header, conversation canvas, live application
+tree, and global call dock stay mounted and still; reduced motion applies the
+destination immediately. The
 conversation canvas is `#171717` in dark mode and near-white in light mode.
 Auto, Light, and Dark appearance choices remain device-local and apply before
 React mounts. Appearance Settings replaces the operating-system accent summary
@@ -58,12 +63,13 @@ prioritising people in voice, then online, away, and offline members with
 deterministic name order. A seventh flat row opens Show all in a centred
 focus-trapped overlay grouped as In Voice, Online, Away, and Offline, including
 the current user as You while preserving profile, DM, context, and
-stream-watching actions. Preview rows retain the former member-rail's lazy
-cover texture without adding a card background. Personal omits this server
-preview. The right member/details rail no longer exists; DM header identity
-opens the same profile surface. Category and channel snapshots request active
-rows only, archive Realtime reconciliation removes navigation rows, and an
-archived selection falls back to the first active room.
+stream-watching actions. Forty-six-pixel preview rows use 38 px avatars and
+more breathing room. Online names are bold and their lazy cover texture is
+clearer, while away/offline treatment remains quiet. Personal omits this
+server preview. The right member/details rail no longer exists; DM header
+identity opens the same profile surface. Category and channel snapshots
+request active rows only, archive Realtime reconciliation removes navigation
+rows, and an archived selection falls back to the first active room.
 
 Upgraded clients expose chat, structured individual mentions, account-synced
 unread emphasis, incoming-message sounds, and drafts only for text channels.
@@ -84,9 +90,8 @@ Each keeps its channel- or person-specific welcome introduction, followed by a
 plain message history or a compact accessible `No messages yet` status with
 target-specific first-message copy. Conversation rails, branches, grouped-row
 dots, terminal markers, decorative empty branches, and Quiet/Flowing labels
-are absent. Only chat-author avatars and their profile triggers are circular;
-member, profile, sidebar, and participant avatars retain their established
-shapes.
+are absent. Chat-author avatars and voice-room participant media are circular;
+member, profile, and sidebar avatar geometry retains its established shapes.
 A shared conversation scroll contract opens each channel or DM at the bottom
 without smooth motion. Within 96 px of the bottom, new rows pin immediately.
 Otherwise message appends preserve the viewport and increment a pluralized New
@@ -100,9 +105,10 @@ in the same thread. The shared Discord-shaped composer keeps attachment on the
 left, text in the flexible centre, and supported GIF, Bakbak sticker, searchable
 native emoji, and send actions on the right. Emoji insertion respects the
 current text selection and preserves structured mention ranges. In its resting
-state, the composer wrapper and sidebar user dock share a 68 px footer band;
-the 52 px message bar receives an even 8 px vertical inset so both surfaces
-share one centre line across the panel separator.
+state, the composer wrapper keeps its 68 px footer band and 52 px message bar.
+The sidebar user dock is a separate compact 56 px control row with no profile
+cover backdrop, keeping identity and call controls readable without competing
+artwork.
 Replies notify the other author by default, self/deleted/former-author
 notifications are disabled by the database, and author deletion leaves a
 scrubbed tombstone so read pointers and reply references remain valid. Message
@@ -132,8 +138,13 @@ explicit click and a permitted `i.ytimg.com` thumbnail.
 Voice rooms retain locally persisted microphone/speaker/camera selection,
 opt-in 720p camera calls, sidebar occupancy with elapsed timers, mute/deafen,
 listener-local 0–200% per-participant volume, remote-track audio/video
-rendering, autoplay recovery, reconnect/error states, and a unified
-participant/screen-share media gallery.
+rendering, autoplay recovery, and reconnect/error states. The people view uses
+one centred profile/camera circle, a two-to-four-person overlap cluster, a
+five-to-ten-person orbit, and a wrapped overflow fallback. Hover or keyboard
+focus reveals a forgiving above-avatar identity/action tooltip with profile,
+LIVE, and remote-volume controls without covering the avatar. Non-LIVE profile
+and camera circles are passive; only a LIVE circle or its LIVE action opens the
+owner's focused share.
 Microphone capture keeps WebRTC noise suppression and automatic gain control
 and defaults to a second device-local RNNoise stage in a 48 kHz AudioWorklet
 before LiveKit publication.
@@ -169,8 +180,11 @@ active call additionally expose a local mute toggle. Participant volume zero
 is applied across speech, soundboard, and share audio; unmute restores the last
 non-zero level—including a boosted level—or 100%. One remote-audio renderer
 owns every hidden speech, soundboard, and watched-share element with
-owner/source/base-gain metadata. Each subscribed element feeds one
-listener-owned Web Audio gain stage; all stages mix through one
+owner/source/base-gain metadata. LiveKit first attaches the remote stream, then
+the renderer feeds that concrete MediaStream into one listener-owned Web Audio
+gain stage; the companion element stays muted at zero volume so LiveKit
+playback recovery cannot create an unprocessed duplicate. Engines that reject
+the stream source retry an element-backed gain stage. All stages mix through one
 4×-oversampled soft limiter whose linear region ends at 90% and whose output
 ceiling is 98%. Participant gain ranges from 0 to 2, while
 source/global/base gains remain bounded to unity, so speech uses participant
@@ -192,8 +206,8 @@ cancellation, and RNNoise defaults are unchanged pending repeatable installed
 macOS/Windows input measurements.
 Selecting a voice channel immediately joins it; selecting another voice channel switches
 the active call without a pre-join or initial connection surface. An active call
-adds a sidebar control block with room, backend latency, normalized local
-LiveKit quality, camera, screen-share, soundboard, and disconnect actions. The
+adds a sidebar status block with connection state, room, disconnect, and a
+compact camera, screen-share, and soundboard action row. The
 user row retains mute, deafen, and settings. A centered global dock supplies
 direct microphone, camera, screen-share, soundboard, More, and disconnect
 actions across channel navigation; it reveals at connection, keyboard focus,
@@ -215,9 +229,17 @@ the active `n/5` counter immediately to its left. The drawer has no dedicated
 stop footer; the global voice dock remains the full bottom-bar treatment and
 keeps its compact stop action. Upgraded clients clamp remote activity to the
 newest five events.
-Participant tiles replace a camera-off
-avatar with the newest sound emoji or overlay it on camera video, with overlap
-counting and reduced-motion behavior. Deafen suppresses remote speech and local/incoming soundboard
+Participant circles autoplay GIF profiles unless reduced motion is requested,
+crop active cameras, and blend the newest sound emoji over either surface at
+20% opacity with overlap counting. Screen-share ownership adds a static red
+outer LIVE ring and squared red badge while the theme speaking ring remains
+independently visible; the LIVE circle and tooltip action focus/watch the
+share, and a share without a reconciled participant receives a fallback LIVE
+circle. The focused stage contains only the share media plus presenter quality
+controls when applicable; activating that media returns to the unchanged
+people view without a participant expansion, Back control, or renderer
+fullscreen mode. Deafen suppresses remote
+speech and local/incoming soundboard
 monitoring without blocking outbound soundboard audio. The selected speaker
 routes calls and soundboard audio; message alerts remain on system output. Mock
 mode exercises these interactions without credentials, a backend, or protected
@@ -453,8 +475,11 @@ The default is 1080p/60, the last successful quality is device-local, and source
 audio defaults on whenever matched audio is available for the selected source
 (not persisted). On macOS 14.2+, ScreenCaptureKit captures optional 48 kHz
 stereo audio from the selected application's proven process tree or a display
-filter that excludes Bakbak's proven process tree. A topology watchdog rebuilds
-the filter, and unsupported or unproven isolation remains video-only. Windows
+filter that excludes Bakbak's proven process tree. Application choices are
+rejected when either process tree contains the other, and capture falls back to
+video-only unless the stream configuration confirms current-app audio
+exclusion. A topology watchdog rebuilds the filter, and unsupported or
+unproven isolation remains video-only. Windows
 has direct
 free-threaded
 `Windows.Graphics.Capture`, D3D11 frame delivery and staging readback,
@@ -463,8 +488,10 @@ previews, and CPU BGRA scaling/color conversion to I420 for LiveKit. On Windows
 build 20348 or newer, WASAPI process loopback includes the selected
 application's process tree or excludes the proven WebView2 browser-process tree
 for a display. Tauri reads WebView2 process information from the native webview
-handle and refreshes it on process changes; older builds or an unverified tree
-keep video enabled and report why audio is unavailable. Cursor inclusion is
+handle and refreshes it on process changes. Application loopback is likewise
+disabled when the selected tree contains Bakbak, Bakbak contains the selected
+tree, or either ancestry is unproven. Older builds or an unverified tree keep
+video enabled and report why audio is unavailable. Cursor inclusion is
 checked as an independent capture capability. Sustained black/cursor-only application frames stop with a
 structured Entire screen retry and Borderless Windowed guidance; Bakbak never
 injects into or hooks a game.
@@ -559,7 +586,8 @@ bakbak/
 │       ├── 0031-giphy-profile-avatars-and-covers.md
 │       ├── 0032-windows-screen-share-audio-isolation.md
 │       ├── 0033-friend-test-voice-presence-and-media-stabilization.md
-│       └── 0034-buzz-inspired-unified-bakbak-redesign.md
+│       ├── 0034-buzz-inspired-unified-bakbak-redesign.md
+│       └── 0035-titlebar-space-motion-and-circular-voice-polish.md
 ├── public/
 │   ├── bakbak.svg                 # canonical favicon/native-icon source
 │   ├── fonts/roundo/              # pinned Roundo v2.0 variable WOFF2
@@ -605,12 +633,10 @@ architectural placeholder folders are not used.
 
 The renderer uses a titlebar, two-track desktop layout, and modal layer:
 
-1. The 48 px titlebar owns window drag behavior and a deterministic eight-second
-   idle joke cycle in an independent centre grid track. Connecting, connected,
-   reconnecting, and failed voice states replace the line immediately with
-   room-aware copy. Its only signed-in layout control hides or restores the
-   sidebar; Windows controls remain at the trailing edge and voice fullscreen
-   temporarily removes the titlebar.
+1. The 48 px titlebar keeps an empty, draggable centre. Its only signed-in
+   layout control hides or restores the sidebar from the leading platform-safe
+   area after macOS traffic-light clearance and at the far left on Windows or
+   the web. Renderer-owned Windows controls remain at the trailing edge.
 2. The 280 px default gradient sidebar begins with the Personal/Bakbak
    segmented switch. Bakbak then shows a flat Activity preview of six members
    plus a Show all row, followed by one flat Channels shelf; admins use one
@@ -618,11 +644,10 @@ The renderer uses a titlebar, two-track desktop layout, and modal layer:
    rename actions stay centered on their channel rows. Personal shows its
    heading, New message, and DM list without duplicating server presence.
    Active-call controls and the current-user dock stay pinned at the bottom in
-   both spaces. The active-call card uses a compact connected status/quality
-   stack, isolated leave action, and three equal media/sound controls. The dock
-   is a compact, flat Buzz-like identity row with a profile trigger, semantic
-   presence label, and Settings/voice controls; profile cover media remains a
-   quiet texture rather than a card background.
+   both spaces. The active-call card uses a compact connection state/room
+   block, isolated leave action, and three equal camera/share/soundboard
+   controls. The dock is a 56 px, cover-free Buzz-like identity row with a
+   profile trigger, semantic presence label, and Settings/voice controls.
    One resizer keeps the track within 248–340 px, and the hidden slot remains
    mounted but inert.
 3. The flexible rounded solid canvas contains the contextual header and text or
@@ -644,14 +669,14 @@ The renderer uses a titlebar, two-track desktop layout, and modal layer:
    channel switches the active call. Hover/focus can prepare one candidate room
    without media or presence side effects; click consumes that work and shows a
    compact stage loader instead of a blank canvas. A disconnected room offers
-   a concise rejoin action instead of going blank. After connection, people and
-   active shares share one centered, count-aware 16:9 gallery. Tiles are
-   bounded from 520 px for one target through 240–300 px auto-fit tiles for
-   seven or more. Clicking either opens a single media-first focused stage with
-   bottom-overlay Back/fullscreen controls and no metadata header or people
-   strip. Clicking the active media or Back to grid returns to the gallery;
-   watched share playback continues there, while target loss also clears its
-   subscription.
+   a concise rejoin action instead of going blank. After connection, the people
+   view uses one centred circular participant, an overlapping two-to-four
+   cluster, a five-to-ten orbit, and a compact wrapping fallback above ten.
+   Normal profile and camera circles are passive while their above-avatar
+   tooltip exposes identity, profile, and listener-volume actions. A LIVE
+   circle or LIVE action opens its share in a media-only focused stage; clicking
+   that media returns to the people view. Watched share playback continues in
+   the LIVE circle, while target loss also clears its subscription.
 7. Shared dialogs use compact/default/wide widths, responsive viewport padding,
    and a `100dvh`-bounded grid with a fixed header, internally scrollable body,
    and sticky wrapping footer actions. Buttons stack at narrow widths. The
@@ -757,10 +782,9 @@ connected. Sanitized lifecycle states and failures are printed to the Tauri
 terminal and DevTools without tokens or captured-source labels. Media
 diagnostics contain only OS/build, source kind, capture backend, cursor
 capability, audio-isolation mode, and stable failure code.
-On macOS, focused-call fullscreen clears native glass, enters an opaque media
-stage, and uses Tauri simple fullscreen instead of creating a new macOS Space.
-Transitions are serialized and timeout with rollback; every exit path restores
-the under-window glass effect in cleanup. Windows retains native fullscreen.
+Focused voice media stays inside the normal application window on every
+platform. The renderer does not request native fullscreen or alter the native
+glass/material lifecycle when a share is focused.
 The native Rust LiveKit/WebRTC dependencies are macOS and Windows target
 dependencies. ScreenCaptureKit remains macOS-only; Windows links
 Windows.Graphics.Capture, D3D11, and WASAPI process-loopback support.
@@ -1315,21 +1339,24 @@ An invite-management UI is deferred until post-v1.
    layers may deliver less to a viewer.
 5. On macOS 14.2+, application filters include only the selected application's
    proven process tree and display filters exclude Bakbak's process tree.
-   ScreenCaptureKit supplies the matched audio for that same filter, and the
-   filter is rebuilt after relevant process-topology changes. macOS 14.0–14.1
-   and any unproven isolation are video-only. Windows build 20348 or newer
-   includes only the selected application process tree or excludes the one
-   proven WebView2 browser root and all of its reported descendants for Entire
-   screen. Tauri obtains that group through the native webview's
-   `GetProcessInfos`, refreshes it through `ProcessInfosChanged`, and keeps all
-   process identifiers native-only and out of logs. Enumeration and start-time
-   validation reject both Tauri-host and WebView2-group application processes.
+   ScreenCaptureKit's current-app-audio exclusion is asserted before native
+   audio starts, and application capture rejects both descendants and ancestors
+   of Bakbak. The filter is rebuilt after relevant process-topology changes.
+   macOS 14.0–14.1 and any unproven isolation are video-only. Windows build
+   20348 or newer includes only a selected application tree proven disjoint
+   from Bakbak, or excludes the one proven WebView2 browser root and all of its
+   reported descendants for Entire screen. Tauri obtains that group through
+   the native webview's `GetProcessInfos`, refreshes it through
+   `ProcessInfosChanged`, and keeps all process identifiers native-only and out
+   of logs. Enumeration and start-time validation reject both Tauri-host and
+   WebView2-group application processes.
    The exact WebView2 snapshot is checked again before WASAPI activation and
    throughout the share. A topology change or proof loss stops audio frames
    first, unpublishes only screen audio, retains video, and emits
    `audio-isolation-unavailable`; no path broadens to ordinary system loopback.
-   Session and lifecycle payloads carry `audioUnavailableReason`, and successful
-   display diagnostics use `exclude-webview2-process-tree`.
+   Session and lifecycle payloads carry `audioUnavailableReason`. Successful
+   display diagnostics use `exclude-bakbak-process-tree` on macOS and
+   `exclude-webview2-process-tree` on Windows.
    `screen_share_audio` publication starts only after isolated capture succeeds.
 6. A two-second gap without a complete frame mutes the publication, keeps the
    viewer's last frame visible, and reports “Source minimized or paused.”
@@ -1342,11 +1369,11 @@ An invite-management UI is deferred until post-v1.
 7. Companion participants are merged into their owner's UI state and omitted
    from ordinary participant cards. Every remote screen video/audio publication
    is immediately unsubscribed. `watchedScreenShareId` is the sole subscription
-   gate: selecting an in-room share tile unsubscribes the previous remote share
+   gate: selecting an in-room LIVE circle unsubscribes the previous remote share
    first, then subscribes the selected high-quality video and source audio. The
-   watched share remains subscribed when focus returns to the gallery, where
-   the same live track continues inside its tile; selecting a person, switching
-   shares, target loss, disconnect, or leave performs the corresponding cleanup.
+   watched share remains subscribed when focus returns to people, where the
+   same live track continues inside its LIVE circle; switching shares, target
+   loss, disconnect, or leave performs the corresponding cleanup.
    The presenter's own companion video remains subscribed locally while its
    companion source audio is always forced unsubscribed.
    Deafen, selected output, and owner volume still apply to watched audio.
@@ -1363,20 +1390,12 @@ An invite-management UI is deferred until post-v1.
    room. This is plan 0028's narrow supersession of plan 0015's
    informational-only/cross-room restriction; plan 0015's isolation,
    source-audio, explicit-subscription, and cleanup contracts remain active.
-9. Focused people and shares use one `minmax(0, 1fr)` media stage without a
-   metadata header or people filmstrip. Shared media uses `object-fit: contain`
-   against a black canvas, while Back to grid and fullscreen sit above its
-   bottom corners; local quality controls share that overlay. On macOS,
-   fullscreen is an opaque stage plus Tauri simple fullscreen with serialized,
-   time-bounded transitions and native-glass restoration in every cleanup path.
-   Windows keeps the native fullscreen operation and reconciles it with
-   Tauri's actual `isFullscreen()` after requests, resize/focus events, Escape,
-   target loss, disconnect, and teardown.
-   Exit fullscreen stays pinned at the bottom while secondary controls hide
-   after 2.5 seconds idle. Escape retains focus; active media or Back to grid
-   exits fullscreen and clears focus without interrupting a watched share.
-   Failures surface non-blocking status while renderer state returns to the
-   actual native value.
+9. A focused share uses one `minmax(0, 1fr)` media stage without a metadata
+   header, people filmstrip, Back control, or fullscreen mode. Shared media uses
+   `object-fit: contain` against a black canvas and local presenter quality
+   controls share that surface. Activating the focused media returns to people
+   without interrupting the watched share; target loss, disconnect, and
+   teardown clear focus and perform the existing subscription cleanup.
 10. Explicit stop, voice leave, source termination, terminal native-room
     disconnect, or main-window close releases capture immediately and closes the
     companion. Multiple app instances may present concurrently, but each app

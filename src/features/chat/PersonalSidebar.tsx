@@ -8,7 +8,6 @@ import type {
 import type { OpenUserContextMenu } from "../../components/UserContextMenu";
 import type {
   AppUser,
-  DataMode,
   DirectConversation,
   ServerMember,
 } from "../../lib/types";
@@ -30,11 +29,10 @@ interface PersonalSidebarProps {
   conversations: DirectConversation[];
   selectedConversationId: string | null;
   voice: ReturnType<typeof useVoiceRoom>;
-  mode: DataMode;
-  soundboardOpen: boolean;
   onSelect: (conversation: DirectConversation) => void;
   onStartConversation: (member: ServerMember) => Promise<void>;
   onOpenSettings: () => void;
+  soundboardOpen: boolean;
   onToggleSoundboard: () => void;
   onOpenScreenShare: () => void;
   loadProfileMedia: LoadProfileMedia;
@@ -58,11 +56,10 @@ export function PersonalSidebar({
   conversations,
   selectedConversationId,
   voice,
-  mode,
-  soundboardOpen,
   onSelect,
   onStartConversation,
   onOpenSettings,
+  soundboardOpen,
   onToggleSoundboard,
   onOpenScreenShare,
   loadProfileMedia,
@@ -193,7 +190,6 @@ export function PersonalSidebar({
       <div className="sidebar-spacer" />
       <SidebarVoicePanel
         voice={voice}
-        mode={mode}
         soundboardOpen={soundboardOpen}
         onToggleSoundboard={onToggleSoundboard}
         onOpenScreenShare={onOpenScreenShare}

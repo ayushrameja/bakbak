@@ -48,11 +48,10 @@ function renderSidebar() {
           deafened: false,
         } as unknown as ReturnType<typeof useVoiceRoom>
       }
-      mode="mock"
-      soundboardOpen={false}
       onSelect={vi.fn()}
       onStartConversation={vi.fn().mockResolvedValue(undefined)}
       onOpenSettings={vi.fn()}
+      soundboardOpen={false}
       onToggleSoundboard={vi.fn()}
       onOpenScreenShare={vi.fn()}
       loadProfileMedia={vi.fn().mockResolvedValue(null)}
