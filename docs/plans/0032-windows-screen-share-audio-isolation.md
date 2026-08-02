@@ -18,6 +18,9 @@ not confused with ordinary speaker-to-microphone echo.
       `IncludeProcessTree` capture.
 - [x] Reject application sources owned by the Tauri host tree or the WebView2
       process group.
+- [x] Reject audio for ancestor application trees that could include Bakbak,
+      fail closed when either ancestry cannot be proven, and expose that
+      source as video-only in the picker.
 - [x] Keep Entire screen video available without audio on Windows builds older
       than 20348 or whenever WebView2 isolation cannot be proven.
 - [x] Revalidate the exact WebView2 topology immediately before WASAPI

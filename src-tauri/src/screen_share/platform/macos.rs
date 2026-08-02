@@ -308,7 +308,7 @@ fn is_shareable_application(application: &SCRunningApplication, windows: &[SCWin
         return false;
     }
     if application.bundle_identifier() == BAKBAK_BUNDLE_IDENTIFIER
-        || process_is_in_current_tree(application.process_id())
+        || process_tree_overlaps_current(application.process_id())
     {
         return false;
     }
@@ -342,6 +342,19 @@ fn process_is_proven_in_tree(process_id: i32, root_process_id: i32) -> bool {
 
 fn process_is_in_current_tree(process_id: i32) -> bool {
     process_is_in_tree_with(process_id, std::process::id() as i32, parent_process_id)
+}
+
+fn process_tree_overlaps_current(process_id: i32) -> bool {
+    process_trees_overlap_with(process_id, std::process::id() as i32, parent_process_id)
+}
+
+fn process_trees_overlap_with(
+    left_process_id: i32,
+    right_process_id: i32,
+    mut parent_of: impl FnMut(i32) -> Option<i32>,
+) -> bool {
+    process_is_in_tree_with_policy(left_process_id, right_process_id, &mut parent_of, true)
+        || process_is_in_tree_with_policy(right_process_id, left_process_id, &mut parent_of, true)
 }
 
 fn process_is_in_tree_with(
@@ -523,12 +536,19 @@ async fn start_capture_attempt(
     audio_source: Option<NativeAudioSource>,
     capture_audio: bool,
 ) -> Result<CaptureSession, String> {
+    let isolated_audio_requested = capture_audio && audio_source.is_some();
     let configuration = stream_configuration(
         prepared.width,
         prepared.height,
         prepared.settings.frame_rate,
-        capture_audio && audio_source.is_some(),
+        isolated_audio_requested,
     );
+    if isolated_audio_requested && !configuration.excludes_current_process_audio() {
+        return Err(
+            "[audio-isolation-unavailable] macOS did not enable Bakbak audio exclusion."
+                .to_string(),
+        );
+    }
 
     let (audio_sender, mut audio_receiver) = mpsc::channel::<OwnedAudioFrame>(8);
     let audio_task = audio_source.map(|source| {
@@ -600,7 +620,7 @@ async fn start_capture_attempt(
         return Err(error);
     }
 
-    let audio_active = capture_audio && audio_task.is_some();
+    let audio_active = isolated_audio_requested && audio_task.is_some();
     let topology_task = audio_active.then(|| {
         start_topology_watchdog(
             stream.clone(),
@@ -951,6 +971,25 @@ mod tests {
         assert!(process_is_in_tree_with_policy(12, 10, lookup, false));
         assert!(!process_is_in_tree_with_policy(20, 10, lookup, false));
         assert!(!process_is_in_tree_with_policy(30, 10, lookup, false));
+    }
+
+    #[test]
+    fn rejects_application_trees_that_contain_bakbak_in_either_direction() {
+        let parents = [(10, 1), (11, 10), (12, 11), (20, 1)]
+            .into_iter()
+            .collect::<std::collections::HashMap<_, _>>();
+        let lookup = |process_id| parents.get(&process_id).copied();
+        assert!(process_trees_overlap_with(12, 10, lookup));
+        assert!(process_trees_overlap_with(10, 12, lookup));
+        assert!(!process_trees_overlap_with(20, 12, lookup));
+        assert!(process_trees_overlap_with(30, 12, lookup));
+    }
+
+    #[test]
+    fn native_audio_configuration_excludes_bakbak_output() {
+        let configuration = stream_configuration(1920, 1080, 60, true);
+        assert!(configuration.captures_audio());
+        assert!(configuration.excludes_current_process_audio());
     }
 
     #[test]

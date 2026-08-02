@@ -917,16 +917,32 @@ fn capture_diagnostics(
         source_kind,
         capture_backend,
         cursor_capability,
-        audio_isolation_mode: if audio_published {
-            match source_kind {
-                ScreenShareSourceKind::Application => "include-process-tree",
-                ScreenShareSourceKind::Display => "exclude-webview2-process-tree",
-                ScreenShareSourceKind::Window => "source-filtered",
-            }
-        } else {
-            "video-only"
-        },
+        audio_isolation_mode: capture_audio_isolation_mode(source_kind, audio_published),
         failure_code,
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn capture_audio_isolation_mode(
+    source_kind: ScreenShareSourceKind,
+    audio_published: bool,
+) -> &'static str {
+    if !audio_published {
+        return "video-only";
+    }
+    match source_kind {
+        ScreenShareSourceKind::Application => "include-process-tree",
+        ScreenShareSourceKind::Display => {
+            #[cfg(target_os = "macos")]
+            {
+                "exclude-bakbak-process-tree"
+            }
+            #[cfg(target_os = "windows")]
+            {
+                "exclude-webview2-process-tree"
+            }
+        }
+        ScreenShareSourceKind::Window => "source-filtered",
     }
 }
 
@@ -1023,5 +1039,22 @@ mod tests {
         assert!(!serialized.contains("sourceLabel"));
         assert!(!serialized.contains("token"));
         assert!(!serialized.contains("audioContent"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn reports_the_macos_bakbak_audio_exclusion_mode() {
+        assert_eq!(
+            capture_audio_isolation_mode(ScreenShareSourceKind::Display, true),
+            "exclude-bakbak-process-tree"
+        );
+        assert_eq!(
+            capture_audio_isolation_mode(ScreenShareSourceKind::Application, true),
+            "include-process-tree"
+        );
+        assert_eq!(
+            capture_audio_isolation_mode(ScreenShareSourceKind::Display, false),
+            "video-only"
+        );
     }
 }

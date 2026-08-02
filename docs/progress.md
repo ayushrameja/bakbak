@@ -6826,3 +6826,57 @@ aarch64-apple-darwin --bundles app,dmg` plus
 - **Next:** Complete the remaining Plan 0035 installed two-client acceptance
   matrix, prioritizing LIVE share activation, pointer volume perception, and
   reduced-motion/sidebar-width combinations.
+
+## 2026-08-02 — Harden cross-platform screen-audio self-exclusion
+
+- **Completed:** Audited the complete renderer/native screen-share path and
+  confirmed the original macOS display filter and Windows WebView2
+  `ExcludeProcessTree` implementation remain present. Closed an application
+  capture gap on both platforms by rejecting a selected tree when it contains
+  Bakbak, is contained by Bakbak, or cannot be proven disjoint. Windows now
+  exposes those unsafe application sources as video-only in the picker. macOS
+  additionally verifies that ScreenCaptureKit accepted current-app audio
+  exclusion before starting native audio and otherwise retries video-only.
+  Corrected macOS diagnostics from the Windows-specific WebView2 label to
+  `exclude-bakbak-process-tree`, and added an OS-independent source contract
+  covering both native policies plus the renderer's audio-free fallback.
+- **Decisions:** Isolation remains fail-closed: no failure or unknown ancestry
+  falls back to unrestricted system loopback. Entire-screen Windows capture
+  still excludes the proven WebView2 browser root, macOS display capture still
+  combines the Bakbak application filter with current-app audio exclusion, and
+  application capture includes only a tree proven disjoint from Bakbak. No
+  Supabase, LiveKit token, RLS, database, or public renderer contract changed.
+- **Validation:**
+  - Focused renderer screen-share suite — passed 3 files and 60 tests.
+  - Cross-platform source isolation contract — passed 3/3.
+  - Native macOS Cargo suite — passed 20/20 tests, including the actual
+    ScreenCaptureKit exclusion configuration and bidirectional tree policy.
+  - Full Vitest — passed 85 files and 478 tests.
+  - Full Node contract suite — passed 48/48.
+  - Direct Prettier, Rustfmt, ESLint, renderer TypeScript, node TypeScript, and
+    locked native macOS Cargo checks — passed.
+  - `node scripts/set-version.mjs --check` — passed at synchronized version
+    1.5.1.
+  - Direct Vite production build — passed; the existing large-chunk warning
+    remains non-blocking.
+  - `cargo build --locked --release --manifest-path src-tauri/Cargo.toml` —
+    passed the optimized native macOS build.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist` and the
+    available generic and Apple Silicon Tauri bundle directories.
+  - `git diff --check` — passed.
+  - Windows cross-target Cargo check on macOS — failed before Bakbak compiled
+    because the host lacks MSVC `lib.exe` and Windows CRT headers; the existing
+    changed-native-files Windows CI gate remains required.
+  - Direct Tauri bundle attempts with normal and CI/update-skip environments —
+    interrupted after the host stalled at its installed-package version lookup;
+    the direct optimized Cargo build passed, but no fresh bundle is claimed.
+- **Documentation updated:** Updated the architecture contract, plans 0030 and
+  0032, the active v1 plan, and this canonical progress log.
+- **Known limitations:** Automated checks prove policy selection, fail-closed
+  transitions, renderer routing, and the native macOS configuration, but they
+  cannot prove what reaches another person's speakers. The installed muted-
+  presenter two-client test remains mandatory on macOS and Windows, including
+  Entire screen, Application, stop/restart, and explicitly selected output.
+- **Next:** Run the Windows native CI job, then complete the installed
+  two-client matrix with the presenter microphone muted so digital loopback is
+  measured separately from ordinary speaker-to-microphone echo.

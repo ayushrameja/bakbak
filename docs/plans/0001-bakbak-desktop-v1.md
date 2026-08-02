@@ -409,7 +409,8 @@ media returns to people, with no participant expansion or renderer fullscreen.
       from the renderer by plan 0035.
 - [x] Implement plan 0032's native WebView2 process-group tracking, fail-closed
       Entire screen WASAPI exclusion, live audio-only downgrade, renderer
-      warning contract, and Windows pull-request CI.
+      warning contract, bidirectional application-tree rejection, and Windows
+      pull-request CI.
 - [ ] Complete plan 0030's installed macOS/Windows isolation, participant-gain,
       RNNoise, and Valorant Borderless Windowed acceptance matrix. Plan 0035
       retires the ten-cycle renderer-fullscreen gate.

@@ -31,6 +31,9 @@ always roll back, and `Keep other audio at full volume` must default on.
       the filter when process topology changes, and remain video-only when the
       isolation policy cannot be proven. macOS 14.0–14.1 and older supported
       systems remain video-only.
+- [x] Reject an application source when its process tree either contains
+      Bakbak or is contained by Bakbak, and assert that ScreenCaptureKit has
+      enabled current-app audio exclusion before accepting native audio.
 - [x] On Windows, require a proven Bakbak process-tree root before display
       loopback, check the cursor-capture API result, return focus to application
       capture best-effort, and stop sustained black/cursor-only application
@@ -69,6 +72,8 @@ always roll back, and `Keep other audio at full volume` must default on.
 - [x] Process inclusion/exclusion, black-frame classification, structured
       recovery, sanitized diagnostics, fullscreen sequencing/rollback, and
       effect restoration have focused tests.
+- [x] Cross-platform source contracts prevent renderer fallback audio or a
+      native refactor from dropping the macOS/Windows exclusion primitives.
 - [x] Pass the final repository, native, local app bundle, diff, and secret checks
       recorded in `docs/progress.md`.
 

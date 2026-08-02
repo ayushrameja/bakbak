@@ -472,8 +472,11 @@ The default is 1080p/60, the last successful quality is device-local, and source
 audio defaults on whenever matched audio is available for the selected source
 (not persisted). On macOS 14.2+, ScreenCaptureKit captures optional 48 kHz
 stereo audio from the selected application's proven process tree or a display
-filter that excludes Bakbak's proven process tree. A topology watchdog rebuilds
-the filter, and unsupported or unproven isolation remains video-only. Windows
+filter that excludes Bakbak's proven process tree. Application choices are
+rejected when either process tree contains the other, and capture falls back to
+video-only unless the stream configuration confirms current-app audio
+exclusion. A topology watchdog rebuilds the filter, and unsupported or
+unproven isolation remains video-only. Windows
 has direct
 free-threaded
 `Windows.Graphics.Capture`, D3D11 frame delivery and staging readback,
@@ -482,8 +485,10 @@ previews, and CPU BGRA scaling/color conversion to I420 for LiveKit. On Windows
 build 20348 or newer, WASAPI process loopback includes the selected
 application's process tree or excludes the proven WebView2 browser-process tree
 for a display. Tauri reads WebView2 process information from the native webview
-handle and refreshes it on process changes; older builds or an unverified tree
-keep video enabled and report why audio is unavailable. Cursor inclusion is
+handle and refreshes it on process changes. Application loopback is likewise
+disabled when the selected tree contains Bakbak, Bakbak contains the selected
+tree, or either ancestry is unproven. Older builds or an unverified tree keep
+video enabled and report why audio is unavailable. Cursor inclusion is
 checked as an independent capture capability. Sustained black/cursor-only application frames stop with a
 structured Entire screen retry and Borderless Windowed guidance; Bakbak never
 injects into or hooks a game.
@@ -1331,21 +1336,24 @@ An invite-management UI is deferred until post-v1.
    layers may deliver less to a viewer.
 5. On macOS 14.2+, application filters include only the selected application's
    proven process tree and display filters exclude Bakbak's process tree.
-   ScreenCaptureKit supplies the matched audio for that same filter, and the
-   filter is rebuilt after relevant process-topology changes. macOS 14.0–14.1
-   and any unproven isolation are video-only. Windows build 20348 or newer
-   includes only the selected application process tree or excludes the one
-   proven WebView2 browser root and all of its reported descendants for Entire
-   screen. Tauri obtains that group through the native webview's
-   `GetProcessInfos`, refreshes it through `ProcessInfosChanged`, and keeps all
-   process identifiers native-only and out of logs. Enumeration and start-time
-   validation reject both Tauri-host and WebView2-group application processes.
+   ScreenCaptureKit's current-app-audio exclusion is asserted before native
+   audio starts, and application capture rejects both descendants and ancestors
+   of Bakbak. The filter is rebuilt after relevant process-topology changes.
+   macOS 14.0–14.1 and any unproven isolation are video-only. Windows build
+   20348 or newer includes only a selected application tree proven disjoint
+   from Bakbak, or excludes the one proven WebView2 browser root and all of its
+   reported descendants for Entire screen. Tauri obtains that group through
+   the native webview's `GetProcessInfos`, refreshes it through
+   `ProcessInfosChanged`, and keeps all process identifiers native-only and out
+   of logs. Enumeration and start-time validation reject both Tauri-host and
+   WebView2-group application processes.
    The exact WebView2 snapshot is checked again before WASAPI activation and
    throughout the share. A topology change or proof loss stops audio frames
    first, unpublishes only screen audio, retains video, and emits
    `audio-isolation-unavailable`; no path broadens to ordinary system loopback.
-   Session and lifecycle payloads carry `audioUnavailableReason`, and successful
-   display diagnostics use `exclude-webview2-process-tree`.
+   Session and lifecycle payloads carry `audioUnavailableReason`. Successful
+   display diagnostics use `exclude-bakbak-process-tree` on macOS and
+   `exclude-webview2-process-tree` on Windows.
    `screen_share_audio` publication starts only after isolated capture succeeds.
 6. A two-second gap without a complete frame mutes the publication, keeps the
    viewer's last frame visible, and reports “Source minimized or paused.”
