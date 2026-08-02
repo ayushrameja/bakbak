@@ -6674,3 +6674,155 @@ aarch64-apple-darwin --bundles app,dmg` plus
   stalls before native build output; no installed bundle is claimed.
 - **Next:** Continue the Plan 0034 hosted two-client and installed
   macOS/Windows visual acceptance matrix.
+
+## 2026-08-02 — Titlebar, space motion, and circular voice-room polish
+
+- **Completed:** Removed rotating titlebar copy and moved the sidebar toggle to
+  the leading platform-safe area; simplified Personal and Bakbak call status;
+  removed server channel-header dividers; added directional 230 ms space
+  transitions; and replaced the voice gallery with accessible solo, cluster,
+  orbit, and overflow circular layouts. Circular participants retain animated
+  profiles, camera focus/back, profile and context actions, remote volume,
+  simultaneous speaking/LIVE rings, orphan-share access, and blended
+  soundboard activity.
+- **Decisions:** Kept one live application and voice tree while animating only
+  destination presentation; kept the global voice dock as the sole default
+  media-control surface; derived LIVE from an owned screen share without wire
+  changes; and retained the existing focused media stage for camera/share
+  watching. Reduced motion disables the new movement and animated rings.
+- **Validation:**
+  - Focused Plan 0035 Vitest suite — passed 7 files and 67 tests.
+  - `pnpm test` — passed 86 Vitest files / 485 tests and 44/44 node contract
+    tests.
+  - `pnpm build` — passed renderer/node TypeScript checks and the Vite
+    production build; the existing large-chunk warning remains non-blocking.
+  - Direct Prettier, ESLint, renderer TypeScript, and node TypeScript checks —
+    passed.
+  - Standalone `pnpm format:check`, `pnpm lint`, and the first standalone
+    `pnpm typecheck` attempts — interrupted after host-side no-output stalls;
+    their direct repository binaries passed, and `pnpm build` subsequently ran
+    the same `pnpm typecheck` script successfully.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist` and the
+    available generic and Apple Silicon Tauri bundle directories.
+  - `git diff --check` — passed.
+  - In-app browser at 1280×800 and 1024×680 — passed for blank titlebar,
+    leading collapse control, divider removal, three-person circular cluster,
+    keyboard details, stable active call, and both directional space states;
+    browser console contained no warnings or errors.
+  - `pnpm tauri build` — interrupted after 60 seconds with no output from the
+    host-side native build path; no installed bundle is claimed.
+- **Documentation updated:** Added Plan 0035, linked its implementation from
+  the v1 plan, updated the renderer architecture contract, updated the shell
+  contract test, and appended this progress entry.
+- **Known limitations:** The complete installed macOS/Windows, two-client,
+  reduced-motion, light/dark, hidden/minimum/maximum sidebar, and 1/2/4/5/10
+  participant visual matrix remains pending. The native build could not be
+  verified on this host because it stalled before emitting build output.
+- **Next:** Complete the remaining Plan 0035 installed visual matrix alongside
+  the existing Plan 0034 multi-client and platform acceptance work.
+
+## 2026-08-02 — Refine Activity and reversible circular voice controls
+
+- **Completed:** Increased Activity rows to 46 px with 38 px avatars, wider
+  gaps, bold online names, and clearer online cover art while preserving quiet
+  offline treatment. Removed the current-user dock cover and reduced the dock
+  to 56 px. Roughly doubled solo/cluster participant circles, replaced the
+  avatar-obscuring hover card with an external tooltip-style action popover,
+  and added a circular expanded participant stage with identity, microphone,
+  profile, LIVE, and 0–200% volume controls.
+- **Decisions:** Kept the underlying participant/share focus state and LiveKit
+  wire contracts unchanged. A normal primary circle expands its participant;
+  a LIVE primary circle opens the owned share directly; explicit popover
+  actions expose both paths. Clicking expanded participant media or focused
+  share media returns to people. LIVE keeps a visual badge but uses a static
+  red ring with no pulse/glow animation. Range input now uses React's change
+  path and remains isolated from media/profile activation.
+- **Validation:**
+  - Focused ChannelSidebar, SidebarUserDock, and VoiceRoom Vitest suite —
+    passed 3 files and 46 tests.
+  - `pnpm test` — passed 86 Vitest files / 485 tests and 45/45 node contract
+    tests.
+  - Direct renderer and node TypeScript checks — passed; `pnpm build` also ran
+    the same nested `pnpm typecheck` successfully.
+  - `pnpm build` — passed the production renderer build; the existing
+    large-chunk warning remains non-blocking.
+  - Direct Prettier and ESLint checks — passed.
+  - `node scripts/set-version.mjs --check` — passed at synchronized version
+    1.5.1.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist` and the
+    available generic and Apple Silicon Tauri bundle directories.
+  - `git diff --check` — passed.
+  - In-app mock browser at 1280×720 — passed for larger Activity rows, compact
+    cover-free user dock, three-person cluster, keyboard-revealed action
+    popover and per-action tooltip, participant expansion/click-back, and live
+    volume output changes; browser console contained no warnings or errors.
+  - Standalone `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and
+    `pnpm version:check` attempts — interrupted after host-side no-output
+    stalls; their direct repository commands passed, and `pnpm build` verified
+    the typecheck script.
+  - `pnpm tauri build` — interrupted after 60 seconds with no output from the
+    host-side native build path; no installed bundle is claimed.
+- **Documentation updated:** Updated the renderer architecture contract, Plan
+  0035 accepted behavior, the active v1 plan, the shell contract tests, and
+  this canonical progress log.
+- **Known limitations:** Real two-client listener-volume perception, LIVE
+  capture/watch, installed macOS/Windows behavior, and the complete Plan 0035
+  light/dark/resolution/participant-count matrix still require human
+  acceptance. The native build remains blocked by the existing host-side
+  no-output stall.
+- **Next:** Run the remaining Plan 0035 two-client installed acceptance matrix,
+  paying particular attention to pointer-driven 0–200% gain and repeated
+  participant/share enter-return navigation.
+
+## 2026-08-02 — Simplify LIVE activation and restore sidebar shortcuts
+
+- **Completed:** Removed participant expansion and its action, made non-LIVE
+  profile/camera circles passive, and kept LIVE circles/badges as the sole
+  direct share-focus targets. Moved the participant action tooltip above its
+  circle with a larger pointer bridge and slower dismissal. Removed Back and
+  fullscreen controls plus the renderer voice-fullscreen implementation; the
+  focused share media now returns directly to people. Restored camera,
+  screen-share, and soundboard shortcuts to both sidebar call cards, aligned
+  the room timer to a clearer trailing slot, changed LIVE to a compact solid-red
+  badge, and limited the directional space transition to sidebar contents below
+  the stationary switch with a 345 ms duration.
+- **Decisions:** Preserved the existing LiveKit share subscription, profile,
+  context-menu, GIF, soundboard overlay, and 0–200% listener-gain contracts.
+  LIVE remains derived only from owned screen share. The global dock remains
+  the complete call surface while the sidebar intentionally duplicates the
+  three discovery-friendly media actions.
+- **Validation:**
+  - Focused App, ChannelSidebar, PersonalSidebar, SidebarVoicePanel,
+    VoiceRoom, and ScreenShareStage Vitest suite — passed 6 files and 60 tests.
+  - Full Vitest — passed 85 files and 478 tests.
+  - Node contract suite — passed 45/45.
+  - Direct Prettier, ESLint, renderer TypeScript, and node TypeScript checks —
+    passed.
+  - `node scripts/set-version.mjs --check` — passed at synchronized version
+    1.5.1.
+  - Direct Vite production build — passed; the existing large-chunk warning
+    remains non-blocking.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist` and the
+    available generic and Apple Silicon Tauri bundle directories.
+  - `git diff --check` — passed.
+  - In-app mock browser at 1280×720 — passed for restored sidebar actions,
+    passive non-LIVE media, above-avatar keyboard tooltip and profile action,
+    keyboard listener-volume changes, trailing timer treatment, and both
+    sidebar-only directions with a stationary switch/header/canvas.
+  - Standalone `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and
+    `pnpm version:check` attempts — interrupted after repeatable host-side
+    no-output stalls; their exact direct repository commands passed.
+  - Direct Tauri build — interrupted after roughly 70 seconds after only
+    reporting its installed-package version lookup; no installed bundle is
+    claimed.
+- **Documentation updated:** Updated Plan 0035, the active v1 plan, the
+  renderer architecture contract, and this canonical progress log.
+- **Known limitations:** Real two-client pointer-driven listener gain, camera,
+  LIVE capture/watch/media-return, installed macOS/Windows behavior, and the
+  complete light/dark/resolution/sidebar-width/participant-count matrix still
+  require human acceptance. The browser tool validated keyboard range changes
+  but could not synthesize a reliable range-pointer drag. The native build
+  remains blocked by the host-side package-lookup stall.
+- **Next:** Complete the remaining Plan 0035 installed two-client acceptance
+  matrix, prioritizing LIVE share activation, pointer volume perception, and
+  reduced-motion/sidebar-width combinations.

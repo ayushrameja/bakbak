@@ -1,14 +1,11 @@
 import { HeadphoneOff, Headphones, Mic, MicOff, Settings } from "lucide-react";
-import { useEffect, useState } from "react";
 import { Avatar } from "../../components/Avatar";
-import { ProfileMediaImage } from "../../components/ProfileMediaImage";
 import {
   ProfileTrigger,
   type LoadProfileMedia,
   type OpenProfile,
 } from "../../components/ProfileTrigger";
 import type { OpenUserContextMenu } from "../../components/UserContextMenu";
-import { COVER_BUCKET } from "../../lib/profile-service";
 import type { ServerMember } from "../../lib/types";
 import type { useVoiceRoom } from "./useVoiceRoom";
 
@@ -49,7 +46,6 @@ export function SidebarUserDock({
       role="group"
       aria-label="User controls"
     >
-      <SidebarUserCover member={member} loadProfileMedia={loadProfileMedia} />
       <ProfileTrigger
         className="user-dock__profile"
         member={member}
@@ -112,47 +108,5 @@ export function SidebarUserDock({
         <Settings size={17} />
       </button>
     </div>
-  );
-}
-
-function SidebarUserCover({
-  member,
-  loadProfileMedia,
-}: {
-  member: ServerMember;
-  loadProfileMedia: LoadProfileMedia;
-}) {
-  const [coverUrl, setCoverUrl] = useState(member.coverUrl);
-
-  useEffect(() => {
-    setCoverUrl(member.coverUrl);
-    if (member.coverUrl || !member.coverPath) return;
-    let current = true;
-    void loadProfileMedia(COVER_BUCKET, member.coverPath)
-      .then((url) => {
-        if (current) setCoverUrl(url);
-      })
-      .catch(() => undefined);
-    return () => {
-      current = false;
-    };
-  }, [loadProfileMedia, member.coverPath, member.coverUrl, member.id]);
-
-  if (!coverUrl) return null;
-  return (
-    <span className="user-dock__cover" aria-hidden="true">
-      <ProfileMediaImage
-        bucket={COVER_BUCKET}
-        loadMedia={loadProfileMedia}
-        path={member.coverPath}
-        src={coverUrl}
-        alt=""
-        loading="lazy"
-        draggable={false}
-        style={{
-          objectPosition: `${member.coverPositionX}% ${member.coverPositionY}%`,
-        }}
-      />
-    </span>
   );
 }

@@ -70,8 +70,6 @@ function renderSidebar(
       status: "disconnected",
       channel: null,
     } as unknown as ReturnType<typeof useVoiceRoom>,
-    mode: "mock",
-    soundboardOpen: false,
     canManageChannels: false,
     activeSpace: "server",
     personalUnread: false,
@@ -83,12 +81,13 @@ function renderSidebar(
     onCreateChannel: vi.fn(),
     onRenameChannel: vi.fn(),
     onOpenSettings: vi.fn(),
+    soundboardOpen: false,
+    onToggleSoundboard: vi.fn(),
+    onOpenScreenShare: vi.fn(),
     onOpenProfile: vi.fn(),
     onOpenUserContextMenu: vi.fn(),
     onMessageMember: vi.fn(),
     onWatchStream: vi.fn(),
-    onToggleSoundboard: vi.fn(),
-    onOpenScreenShare: vi.fn(),
     ...overrides,
   };
   return { props, ...render(<ChannelSidebar {...props} />) };
@@ -305,6 +304,30 @@ describe("ChannelSidebar unified navigation", () => {
     expect(addChannel).toHaveFocus();
   });
 
+  it("keeps the room timer in its dedicated trailing slot", () => {
+    const joinedAt = new Date(Date.now() - 9 * 60_000 - 44_000).toISOString();
+    renderSidebar({
+      voiceOccupants: [
+        {
+          userId: mira.id,
+          displayName: mira.displayName,
+          avatarUrl: mira.avatarUrl,
+          channelId: "game-1",
+          joinedAt,
+          isStreaming: false,
+        },
+      ],
+    });
+
+    const row = screen.getByText("Game #1").closest("button")!;
+    const duration = row.querySelector(".channel-voice-duration");
+    expect(duration).not.toBeNull();
+    expect(duration?.querySelector("time")).toHaveAttribute(
+      "dateTime",
+      joinedAt,
+    );
+  });
+
   it("keeps active-call and current-user controls pinned in the footer", () => {
     renderSidebar({
       voice: {
@@ -323,6 +346,13 @@ describe("ChannelSidebar unified navigation", () => {
     });
     expect(document.querySelector(".sidebar-voice-panel")).not.toBeNull();
     expect(document.querySelector(".user-dock")).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Turn camera on" }),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Share screen" })).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Open soundboard" }),
+    ).toBeVisible();
     expect(screen.getByRole("button", { name: "Settings" })).toBeVisible();
   });
 });

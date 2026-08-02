@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { WindowChromeAdapter } from "../lib/window-chrome";
-import { TITLEBAR_MESSAGE_ROTATION_MS, WindowTitlebar } from "./WindowTitlebar";
+import { WindowTitlebar } from "./WindowTitlebar";
 
 function createAdapter(
   platform: WindowChromeAdapter["platform"],
@@ -36,13 +36,7 @@ function createAdapter(
 }
 
 function renderTitlebar(adapter: WindowChromeAdapter) {
-  return render(
-    <WindowTitlebar
-      showSpaceSwitcher
-      callActive={false}
-      chromeAdapter={adapter}
-    />,
-  );
+  return render(<WindowTitlebar showSpaceSwitcher chromeAdapter={adapter} />);
 }
 
 describe("WindowTitlebar", () => {
@@ -82,12 +76,12 @@ describe("WindowTitlebar", () => {
     },
   );
 
-  it("keeps the status joke centered and moves space navigation out of chrome", () => {
+  it("keeps the titlebar center empty and moves space navigation out of chrome", () => {
     const { adapter } = createAdapter("macos");
     const { container } = renderTitlebar(adapter);
-    expect(screen.getByText("OG Nahan Gang").parentElement).toHaveClass(
-      "window-titlebar__center",
-    );
+    expect(
+      container.querySelector(".window-titlebar__center"),
+    ).toBeEmptyDOMElement();
     expect(
       screen.queryByRole("navigation", { name: "Bakbak spaces" }),
     ).toBeNull();
@@ -97,35 +91,12 @@ describe("WindowTitlebar", () => {
     );
   });
 
-  it("rotates idle jokes and switches immediately to voice context", () => {
-    vi.useFakeTimers();
-    const { adapter } = createAdapter("web");
-    const view = renderTitlebar(adapter);
-    act(() => {
-      vi.advanceTimersByTime(TITLEBAR_MESSAGE_ROTATION_MS);
-    });
-    expect(screen.getByText("Professional yappers")).toBeVisible();
-    view.rerender(
-      <WindowTitlebar
-        showSpaceSwitcher
-        callActive
-        callStatus="connected"
-        callChannelName="Game #1"
-        chromeAdapter={adapter}
-      />,
-    );
-    expect(screen.getByText("Game #1: chaos connected")).toBeVisible();
-    view.unmount();
-    vi.useRealTimers();
-  });
-
-  it("keeps only one sidebar visibility control in the trailing chrome", async () => {
+  it("keeps only one sidebar visibility control in the leading chrome", async () => {
     const onToggleLeftPanel = vi.fn();
     const { adapter } = createAdapter("web");
     render(
       <WindowTitlebar
         showSpaceSwitcher
-        callActive={false}
         panelControls={{
           leftPanelVisible: true,
           disabled: false,
@@ -135,6 +106,16 @@ describe("WindowTitlebar", () => {
       />,
     );
     expect(screen.queryByRole("button", { name: /member panel/i })).toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "Hide channel panel" })
+        .closest(".window-titlebar__leading"),
+    ).not.toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "Hide channel panel" })
+        .closest(".window-titlebar__trailing"),
+    ).toBeNull();
     await userEvent.click(
       screen.getByRole("button", { name: "Hide channel panel" }),
     );
@@ -144,13 +125,11 @@ describe("WindowTitlebar", () => {
   it("keeps the pre-shell titlebar free of status and navigation", () => {
     const { adapter } = createAdapter("web");
     render(
-      <WindowTitlebar
-        showSpaceSwitcher={false}
-        callActive={false}
-        chromeAdapter={adapter}
-      />,
+      <WindowTitlebar showSpaceSwitcher={false} chromeAdapter={adapter} />,
     );
-    expect(screen.queryByText("OG Nahan Gang")).toBeNull();
+    expect(
+      document.querySelector(".window-titlebar__center"),
+    ).toBeEmptyDOMElement();
     expect(screen.queryByRole("group", { name: "Panel controls" })).toBeNull();
   });
 });

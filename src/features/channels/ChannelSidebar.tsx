@@ -20,7 +20,6 @@ import type {
   Channel,
   ChannelCategory,
   ChannelKind,
-  DataMode,
   Server,
   ServerMember,
   VoiceRoomOccupant,
@@ -50,8 +49,6 @@ interface ChannelSidebarProps {
   memberVoiceActivities?: ReadonlyArray<MemberVoiceActivity>;
   unreadChannelIds: ReadonlySet<string>;
   voice: ReturnType<typeof useVoiceRoom>;
-  mode: DataMode;
-  soundboardOpen: boolean;
   canManageChannels: boolean;
   activeSpace?: AppSpace;
   personalUnread?: boolean;
@@ -64,6 +61,9 @@ interface ChannelSidebarProps {
   onCreateChannel: (kind: ChannelKind) => void;
   onRenameChannel: (channel: Channel) => void;
   onOpenSettings: () => void;
+  soundboardOpen: boolean;
+  onToggleSoundboard: () => void;
+  onOpenScreenShare: () => void;
   membersOpen?: boolean;
   onMembersOpenChange?: (open: boolean) => void;
   loadProfileMedia?: LoadProfileMedia;
@@ -72,8 +72,6 @@ interface ChannelSidebarProps {
   openProfileId?: string | null;
   onMessageMember?: (member: ServerMember) => void;
   onWatchStream?: (member: ServerMember, channel: Channel) => void;
-  onToggleSoundboard: () => void;
-  onOpenScreenShare: () => void;
 }
 
 export function ChannelSidebar({
@@ -85,8 +83,6 @@ export function ChannelSidebar({
   memberVoiceActivities = [],
   unreadChannelIds,
   voice,
-  mode,
-  soundboardOpen,
   canManageChannels,
   activeSpace = "server",
   personalUnread = false,
@@ -99,6 +95,9 @@ export function ChannelSidebar({
   onCreateChannel,
   onRenameChannel,
   onOpenSettings,
+  soundboardOpen,
+  onToggleSoundboard,
+  onOpenScreenShare,
   membersOpen,
   onMembersOpenChange,
   loadProfileMedia = emptyProfileMediaLoader,
@@ -107,8 +106,6 @@ export function ChannelSidebar({
   openProfileId = null,
   onMessageMember = () => undefined,
   onWatchStream,
-  onToggleSoundboard,
-  onOpenScreenShare,
 }: ChannelSidebarProps) {
   const [localMembersOpen, setLocalMembersOpen] = useState(false);
   const [channelCreateMenuOpen, setChannelCreateMenuOpen] = useState(false);
@@ -427,7 +424,6 @@ export function ChannelSidebar({
       <div className="sidebar-spacer" />
       <SidebarVoicePanel
         voice={voice}
-        mode={mode}
         soundboardOpen={soundboardOpen}
         onToggleSoundboard={onToggleSoundboard}
         onOpenScreenShare={onOpenScreenShare}

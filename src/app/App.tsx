@@ -281,7 +281,9 @@ export default function App() {
   const [layoutPreferences, setLayoutPreferences] = useState<LayoutPreferences>(
     () => loadLayoutPreferences(),
   );
-  const [spaceTransitionRevision, setSpaceTransitionRevision] = useState(0);
+  const [spaceTransitionDirection, setSpaceTransitionDirection] = useState<
+    "left" | "right" | null
+  >(null);
   const [startupAssembly, setStartupAssembly] = useState<
     "pending" | "running" | "complete"
   >("pending");
@@ -2420,6 +2422,10 @@ export default function App() {
     () => setSoundboardOpen((open) => !open),
     [],
   );
+  const openScreenShare = useCallback(() => {
+    setOpenProfile(null);
+    setScreenShareDialogOpen(true);
+  }, []);
 
   async function handleSaveProfile(input: ProfileSaveInput) {
     if (!user) throw new Error("Sign in before editing your profile.");
@@ -2686,7 +2692,7 @@ export default function App() {
 
   function transitionToSpace(space: AppSpace) {
     if (space !== activeSpace) {
-      setSpaceTransitionRevision((current) => current + 1);
+      setSpaceTransitionDirection(space === "personal" ? "left" : "right");
     }
     setActiveSpace(space);
   }
@@ -2831,9 +2837,6 @@ export default function App() {
       >
         <WindowTitlebar
           showSpaceSwitcher={showSpaceSwitcher}
-          callActive={voice.status !== "disconnected"}
-          callStatus={voice.status}
-          callChannelName={voice.channel?.name ?? null}
           {...(showSpaceSwitcher
             ? {
                 panelControls: {
@@ -2937,7 +2940,7 @@ export default function App() {
       data-left-panel={
         layoutPreferences.leftPanelVisible ? "visible" : "hidden"
       }
-      data-space-transition={spaceTransitionRevision > 0 ? "true" : "false"}
+      data-space-direction={spaceTransitionDirection ?? undefined}
     >
       <div
         className="panel-slot panel-slot--left"
@@ -2947,7 +2950,7 @@ export default function App() {
       >
         <div
           className="panel-slot__motion panel-slot__motion--left"
-          key={`left-${activeSpace}-${spaceTransitionRevision}`}
+          key={`left-${activeSpace}`}
         >
           {activeSpace === "server" && workspace && selectedChannel ? (
             <ChannelSidebar
@@ -2961,8 +2964,6 @@ export default function App() {
               memberVoiceActivities={memberVoiceActivities}
               unreadChannelIds={unreadChannelIds}
               voice={visibleVoice}
-              mode={appConfig.dataMode}
-              soundboardOpen={soundboardOpen}
               canManageChannels={
                 workspace.currentUserRole === "admin" &&
                 dataFreshness !== "offline"
@@ -2986,6 +2987,9 @@ export default function App() {
                 setChannelDialog({ mode: "rename", channel });
               }}
               onOpenSettings={() => openSettings("profile")}
+              soundboardOpen={soundboardOpen}
+              onToggleSoundboard={toggleSoundboard}
+              onOpenScreenShare={openScreenShare}
               loadProfileMedia={loadProfileMedia}
               onOpenProfile={handleOpenProfile}
               onOpenUserContextMenu={handleOpenUserContextMenu}
@@ -2994,11 +2998,6 @@ export default function App() {
               onWatchStream={(member, channel) =>
                 handleWatchStream(member, channel.id)
               }
-              onToggleSoundboard={toggleSoundboard}
-              onOpenScreenShare={() => {
-                setOpenProfile(null);
-                setScreenShareDialogOpen(true);
-              }}
             />
           ) : (
             <PersonalSidebar
@@ -3007,16 +3006,12 @@ export default function App() {
               conversations={directConversations}
               selectedConversationId={selectedConversationId}
               voice={visibleVoice}
-              mode={appConfig.dataMode}
-              soundboardOpen={soundboardOpen}
               onSelect={handleSelectConversation}
               onStartConversation={handleStartConversation}
               onOpenSettings={() => openSettings("profile")}
+              soundboardOpen={soundboardOpen}
               onToggleSoundboard={toggleSoundboard}
-              onOpenScreenShare={() => {
-                setOpenProfile(null);
-                setScreenShareDialogOpen(true);
-              }}
+              onOpenScreenShare={openScreenShare}
               loadProfileMedia={loadProfileMedia}
               onOpenProfile={handleOpenProfile}
               onOpenUserContextMenu={handleOpenUserContextMenu}
@@ -3066,7 +3061,7 @@ export default function App() {
         />
         <div
           className="content-stage content-stage--space-motion"
-          key={`content-${activeSpace}-${spaceTransitionRevision}`}
+          key={`content-${activeSpace}`}
         >
           {appError ? (
             <div className="app-alert" role="alert">
@@ -3244,10 +3239,7 @@ export default function App() {
             }
             onToggleSoundboard={toggleSoundboard}
             onOpenDevices={() => openSettings("audio")}
-            onOpenScreenShare={() => {
-              setOpenProfile(null);
-              setScreenShareDialogOpen(true);
-            }}
+            onOpenScreenShare={openScreenShare}
           />
         ) : null}
       </main>
@@ -3489,7 +3481,10 @@ function TopBar({
     </>
   );
   return (
-    <header className="top-bar">
+    <header
+      className="top-bar"
+      data-context={channel ? "channel" : directMember ? "direct" : "home"}
+    >
       <div className="top-bar__leading">
         {directMember ? (
           <ProfileTrigger
