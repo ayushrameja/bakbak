@@ -7080,3 +7080,72 @@ aarch64-apple-darwin --bundles app,dmg` plus
   rollback/manual recovery on real Apple Silicon macOS and Windows x64 clients.
   Set `ELECTRON_MIGRATION_REHEARSED=true` and publish only after that matrix
   passes.
+
+## 2026-08-09 — Fix local Electron development startup
+
+- **Completed:** Bound the Vite development server explicitly to
+  `127.0.0.1:1420` and changed `desktop:dev` to wait for that TCP listener
+  before starting Electron. Added a contract test that keeps the Vite host,
+  readiness check, and Electron development URL aligned.
+- **Decisions:** Kept the existing IPv4 development origin trusted by the main
+  process. An explicit loopback bind is deterministic across macOS hosts where
+  `localhost` may otherwise bind only to IPv6 and leave the Electron launcher
+  waiting forever on `127.0.0.1`.
+- **Validation:**
+  - Reproduced the original startup state — Vite listened only on IPv6
+    `[::1]:1420`, while `wait-on http://127.0.0.1:1420` remained blocked and no
+    Electron process started.
+  - Corrected `pnpm desktop:dev` smoke — passed: Vite listened on IPv4
+    `127.0.0.1:1420`; the readiness gate advanced; and the Electron main, GPU,
+    network, renderer, audio, and video-capture processes stayed alive.
+  - Direct Prettier and zero-warning ESLint checks — passed.
+  - Direct renderer, Node/Vite, and Electron TypeScript checks — passed.
+  - Direct Vitest — passed 85 files / 481 tests.
+  - Direct Node contract suite — passed 50/50 tests, including the new aligned
+    desktop-development-origin contract.
+  - `node scripts/set-version.mjs --check` — passed at version `1.6.1`.
+  - Direct Vite production build — passed; the existing large-chunk warnings
+    remain non-blocking.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist`,
+    `electron-dist`, and `release`.
+  - `git diff --check` — passed.
+- **Documentation updated:** Updated the Electron shell development-origin
+  contract in `docs/architecture.md` and this canonical progress log.
+- **Known limitations:** None for local desktop startup; production signing and
+  installed updater-migration rehearsals remain tracked by the migration entry
+  above.
+- **Next:** Continue the Electron PR and installed updater-migration validation.
+
+## 2026-08-09 — Redesign authentication welcome
+
+- **Completed:** Replaced the small floating authentication card with a
+  responsive two-part Bakbak welcome: a honey-to-teal private-room story and a
+  focused sign-in/invite panel. Added field icons, explicit password
+  visibility, accessible tab semantics, compact invite density, a narrow-window
+  form-only layout, and regression coverage for live and mock flows.
+- **Decisions:** Kept all authentication service behavior, browser autofill,
+  native validation, invite-only messaging, and navigation-free desktop chrome
+  unchanged. Removed transformed form ancestors and overflow-producing
+  decorative nodes so Electron validation UI stays anchored and neither login
+  mode creates hidden scrollbars.
+- **Validation:**
+  - Direct Prettier and zero-warning ESLint checks — passed.
+  - Direct renderer, Node/Vite, and Electron TypeScript checks — passed.
+  - Direct Vitest — passed 86 files / 483 tests, including new live-mode tab,
+    password-visibility, invite-field, and credential-free mock-entry coverage.
+  - Direct Node contract suite — passed 50/50 tests.
+  - `node scripts/set-version.mjs --check` — passed at version `1.6.1`.
+  - Direct Vite production build — passed; the existing large-chunk warnings
+    remain non-blocking.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist`,
+    `electron-dist`, and `release`.
+  - Local browser visual checks — passed at the default 1280×720 viewport for
+    sign-in and the denser invite form, and at 760×720 for the form-only
+    breakpoint. DOM measurements confirmed zero horizontal or vertical page
+    overflow, and the password textbox retained the concise accessible name.
+  - `git diff --check` — passed.
+- **Documentation updated:** Updated the current authentication experience in
+  `docs/architecture.md` and this canonical progress log.
+- **Known limitations:** None identified for the redesigned authentication
+  surface.
+- **Next:** Continue the Electron PR and installed updater-migration validation.

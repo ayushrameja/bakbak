@@ -14,9 +14,12 @@ conversation canvas. The always-present 48 px titlebar keeps its centre empty
 and draggable; its single sidebar visibility control sits in the leading area,
 after native macOS traffic lights and before the drag surface on other
 platforms. The Personal/Bakbak segmented switch lives at the top of the
-sidebar. Startup,
-authentication, invite, and startup-error screens retain their existing
-branded content beneath navigation-free titlebar chrome.
+sidebar. Startup and startup-error screens retain branded content beneath
+navigation-free titlebar chrome. Authentication uses a responsive split
+welcome surface: a honey-to-teal private-room story beside a focused sign-in or
+invite form at desktop widths, collapsing to the form and compact Bakbak
+lockup on narrow windows. Sign-in and invite mode preserve native autofill and
+validation, explicit password visibility, and keyboard-accessible tabs.
 
 macOS retains native overlay traffic lights and an active-state-following
 `underWindowBackground` material. Windows uses renderer-owned controls and
@@ -711,7 +714,10 @@ Cmd/Ctrl `-`, and Cmd/Ctrl `0` zoom commands.
 The renderer runs with `contextIsolation`, sandboxing, and web security enabled,
 with Node.js integration disabled. Production content is served from the secure
 standard `app://bakbak` protocol rather than `file://`; development accepts only
-the fixed localhost Vite origin. Navigation, popups, webviews, permission
+the fixed `http://127.0.0.1:1420` Vite origin. Vite binds that exact IPv4
+loopback address and the desktop launcher waits for its TCP listener before
+starting Electron, avoiding an IPv6 `localhost` bind that Electron cannot
+reach. Navigation, popups, webviews, permission
 requests, and every IPC sender are checked against the current main frame and
 trusted origin. External opening accepts only HTTP(S). The preload exposes
 individual typed methods for window controls, native accent state, external
