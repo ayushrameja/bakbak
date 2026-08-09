@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppUser, Channel, Server, ServerMember } from "../../lib/types";
 import type { useVoiceRoom } from "../voice/useVoiceRoom";
 import { ChannelSidebar } from "./ChannelSidebar";
@@ -94,6 +94,8 @@ function renderSidebar(
 }
 
 describe("ChannelSidebar unified navigation", () => {
+  beforeEach(() => window.localStorage.clear());
+
   it("renders one flat Channels list in the accepted exact order", () => {
     renderSidebar();
     const nav = screen.getByRole("navigation", { name: "Channels" });
@@ -165,6 +167,36 @@ describe("ChannelSidebar unified navigation", () => {
         .getByLabelText("Mira, online")
         .querySelector(".avatar__status--online"),
     ).not.toBeNull();
+  });
+
+  it("collapses Activity without moving Channels and restores the saved choice", async () => {
+    const firstView = renderSidebar();
+    const collapse = screen.getByRole("button", {
+      name: "Collapse Activity",
+    });
+    expect(collapse).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.getByRole("button", { name: "View Mira's profile" }),
+    ).toBeVisible();
+
+    await userEvent.click(collapse);
+    expect(
+      screen.getByRole("button", { name: "Expand Activity" }),
+    ).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByRole("button", { name: "View Mira's profile" }),
+    ).toBeNull();
+    expect(screen.getByRole("navigation", { name: "Channels" })).toBeVisible();
+
+    firstView.unmount();
+    renderSidebar();
+    const restored = screen.getByRole("button", { name: "Expand Activity" });
+    expect(restored).toHaveAttribute("aria-expanded", "false");
+    restored.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(
+      screen.getByRole("button", { name: "View Mira's profile" }),
+    ).toBeVisible();
   });
 
   it("autoplays avatar and cover GIFs in Activity rows", () => {

@@ -1,4 +1,5 @@
 import {
+  ChevronDown,
   ChevronRight,
   Hash,
   Pencil,
@@ -34,6 +35,10 @@ import { SidebarVoicePanel } from "../voice/SidebarVoicePanel";
 import { SidebarUserDock } from "../voice/SidebarUserDock";
 import type { useVoiceRoom } from "../voice/useVoiceRoom";
 import { compareVoiceRoomOccupants } from "../voice/voice-occupancy";
+import {
+  loadActivityPreviewCollapsed,
+  saveActivityPreviewCollapsed,
+} from "./activity-preview-preference";
 
 const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
 const ignoreProfileOpen: OpenProfile = () => undefined;
@@ -75,6 +80,7 @@ interface ChannelSidebarProps {
 }
 
 export function ChannelSidebar({
+  server,
   channels,
   selectedChannelId,
   user,
@@ -108,6 +114,9 @@ export function ChannelSidebar({
   onWatchStream,
 }: ChannelSidebarProps) {
   const [localMembersOpen, setLocalMembersOpen] = useState(false);
+  const [activityCollapsed, setActivityCollapsed] = useState(() =>
+    loadActivityPreviewCollapsed(user.id, server.id),
+  );
   const [channelCreateMenuOpen, setChannelCreateMenuOpen] = useState(false);
   const channelCreateMenuRef = useRef<HTMLDivElement>(null);
   const channelCreateButtonRef = useRef<HTMLButtonElement>(null);
@@ -116,6 +125,10 @@ export function ChannelSidebar({
     if (onMembersOpenChange) onMembersOpenChange(open);
     else setLocalMembersOpen(open);
   };
+
+  useEffect(() => {
+    setActivityCollapsed(loadActivityPreviewCollapsed(user.id, server.id));
+  }, [server.id, user.id]);
 
   useEffect(() => {
     if (!channelCreateMenuOpen) return;
@@ -148,6 +161,11 @@ export function ChannelSidebar({
   const chooseChannelKind = (kind: ChannelKind) => {
     setChannelCreateMenuOpen(false);
     onCreateChannel(kind);
+  };
+  const toggleActivityPreview = () => {
+    const nextCollapsed = !activityCollapsed;
+    setActivityCollapsed(nextCollapsed);
+    saveActivityPreviewCollapsed(user.id, server.id, nextCollapsed);
   };
   const orderedChannels = useMemo(
     () => [...channels].sort(compareChannels),
@@ -197,59 +215,72 @@ export function ChannelSidebar({
       <section
         className="activity-preview"
         aria-labelledby="activity-preview-title"
+        data-collapsed={activityCollapsed}
       >
         <header>
-          <span id="activity-preview-title">Activity</span>
-        </header>
-        {previewMembers.length === 0 ? (
-          <p className="activity-preview__empty">
-            Nobody else is here. A suspicious amount of productivity.
-          </p>
-        ) : null}
-        <div className="activity-preview__people">
-          {previewMembers.map((member) => (
-            <ProfileTrigger
-              key={member.id}
-              className="activity-preview__person"
-              data-status={member.status}
-              member={member}
-              loadMedia={loadProfileMedia}
-              onOpenProfile={onOpenProfile}
-              onOpenContextMenu={onOpenUserContextMenu}
-              expanded={openProfileId === member.id}
-              autoPlayAnimation
-              aria-label={`View ${member.displayName}'s profile`}
-            >
-              {({ animationUrl, animated, engaged }) => (
-                <>
-                  <MemberCoverPoster
-                    className="activity-preview__cover"
-                    rootSelector=".unified-sidebar"
-                    member={member}
-                    loadProfileMedia={loadProfileMedia}
-                    engaged={engaged}
-                    autoPlayAnimation
-                  />
-                  <Avatar
-                    user={member}
-                    size="small"
-                    showStatus
-                    animationUrl={animationUrl}
-                    animated={animated}
-                  />
-                  <span>{member.displayName}</span>
-                </>
-              )}
-            </ProfileTrigger>
-          ))}
           <button
-            className="activity-preview__show-all"
+            className="activity-preview__toggle"
             type="button"
-            onClick={() => setMembersOpen(true)}
+            aria-label={`${activityCollapsed ? "Expand" : "Collapse"} Activity`}
+            aria-expanded={!activityCollapsed}
+            aria-controls="activity-preview-content"
+            onClick={toggleActivityPreview}
           >
-            <span>Show all</span>
-            <ChevronRight size={14} aria-hidden="true" />
+            <span id="activity-preview-title">Activity</span>
+            <ChevronDown size={14} aria-hidden="true" />
           </button>
+        </header>
+        <div id="activity-preview-content" hidden={activityCollapsed}>
+          {previewMembers.length === 0 ? (
+            <p className="activity-preview__empty">
+              Nobody else is here. A suspicious amount of productivity.
+            </p>
+          ) : null}
+          <div className="activity-preview__people">
+            {previewMembers.map((member) => (
+              <ProfileTrigger
+                key={member.id}
+                className="activity-preview__person"
+                data-status={member.status}
+                member={member}
+                loadMedia={loadProfileMedia}
+                onOpenProfile={onOpenProfile}
+                onOpenContextMenu={onOpenUserContextMenu}
+                expanded={openProfileId === member.id}
+                autoPlayAnimation
+                aria-label={`View ${member.displayName}'s profile`}
+              >
+                {({ animationUrl, animated, engaged }) => (
+                  <>
+                    <MemberCoverPoster
+                      className="activity-preview__cover"
+                      rootSelector=".unified-sidebar"
+                      member={member}
+                      loadProfileMedia={loadProfileMedia}
+                      engaged={engaged}
+                      autoPlayAnimation
+                    />
+                    <Avatar
+                      user={member}
+                      size="small"
+                      showStatus
+                      animationUrl={animationUrl}
+                      animated={animated}
+                    />
+                    <span>{member.displayName}</span>
+                  </>
+                )}
+              </ProfileTrigger>
+            ))}
+            <button
+              className="activity-preview__show-all"
+              type="button"
+              onClick={() => setMembersOpen(true)}
+            >
+              <span>Show all</span>
+              <ChevronRight size={14} aria-hidden="true" />
+            </button>
+          </div>
         </div>
       </section>
 

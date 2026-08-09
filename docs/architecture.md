@@ -78,14 +78,16 @@ and new voice rooms after the last voice room.
 
 The sidebar previews up to six other members regardless of online status,
 prioritising people in voice, then online, away, and offline members with
-deterministic name order. A seventh flat row opens Show all in a centred
-focus-trapped overlay grouped as In Voice, Online, Away, and Offline, including
-the current user as You while preserving profile, DM, context, and
-stream-watching actions. Forty-six-pixel preview rows use 38 px avatars and
-more breathing room. Online names are bold and their lazy cover texture is
-clearer, while away/offline treatment remains quiet. Personal omits this
-server preview. The right member/details rail no longer exists; DM header
-identity opens the same profile surface. Category and channel snapshots
+deterministic name order. Its Activity header is an accessible disclosure that
+defaults open and remembers its collapsed state per account and server on the
+device. A seventh flat row opens Show all in a centred focus-trapped overlay
+grouped as In Voice, Online, Away, and Offline, including the current user as
+You while preserving profile, DM, context, and stream-watching actions.
+Forty-six-pixel preview rows use 38 px avatars and more breathing room. Online
+names are bold and their lazy cover texture is clearer, while away/offline
+treatment remains quiet. Personal omits this server preview. The right
+member/details rail no longer exists; DM header identity opens the same profile
+surface. Category and channel snapshots
 request active rows only, archive Realtime reconciliation removes navigation
 rows, and an archived selection falls back to the first active room.
 
@@ -158,7 +160,9 @@ opt-in 720p camera calls, sidebar occupancy with elapsed timers, mute/deafen,
 listener-local 0–200% per-participant volume, remote-track audio/video
 rendering, autoplay recovery, and reconnect/error states. The people view uses
 one centred profile/camera circle, a two-to-four-person overlap cluster, a
-five-to-ten-person orbit, and a wrapped overflow fallback. Hover or keyboard
+normal centred wrapping row for five to ten people, and a denser wrapping
+fallback above ten. Participant circles are 20% larger than their original
+circular-layout sizes. Hover or keyboard
 focus reveals a forgiving above-avatar identity/action tooltip with profile,
 LIVE, and remote-volume controls without covering the avatar. Non-LIVE profile
 and camera circles are passive; only a LIVE circle or its LIVE action opens the
@@ -632,10 +636,11 @@ The renderer uses a titlebar, two-track desktop layout, and modal layer:
    area after macOS traffic-light clearance and at the far left on Windows or
    the web. Renderer-owned Windows controls remain at the trailing edge.
 2. The 280 px default gradient sidebar begins with the Personal/Bakbak
-   segmented switch. Bakbak then shows a flat Activity preview of six members
-   plus a Show all row, followed by one flat Channels shelf; admins use one
-   plus control to choose a text or voice channel from a small menu, while
-   rename actions stay centered on their channel rows. Personal shows its
+   segmented switch. Bakbak then shows a default-open, locally remembered
+   collapsible Activity preview of six members plus a Show all row, followed by
+   one flat Channels shelf; admins use one plus control to choose a text or
+   voice channel from a small menu, while rename actions stay centered on their
+   channel rows. Personal shows its
    heading, New message, and DM list without duplicating server presence.
    Active-call controls and the current-user dock stay pinned at the bottom in
    both spaces. The active-call card uses a compact connection state/room
@@ -665,7 +670,9 @@ The renderer uses a titlebar, two-track desktop layout, and modal layer:
    compact stage loader instead of a blank canvas. A disconnected room offers
    a concise rejoin action instead of going blank. After connection, the people
    view uses one centred circular participant, an overlapping two-to-four
-   cluster, a five-to-ten orbit, and a compact wrapping fallback above ten.
+   cluster, a normal centred wrapping row for five to ten people, and a denser
+   wrapping fallback above ten. Every participant circle is 20% larger than its
+   original circular-layout size.
    Normal profile and camera circles are passive while their above-avatar
    tooltip exposes identity, profile, and listener-volume actions. A LIVE
    circle or LIVE action opens its share in a media-only focused stage; clicking
@@ -1454,6 +1461,9 @@ Interface cues deliberately bypass the selected call output.
 Soundboard section collapse state is stored independently per server under
 `bakbak.soundboardSections.v1:<server ID>` and never syncs; favorite rows sync
 through Supabase instead.
+Activity disclosure state is stored per account and server under
+`bakbak.activityPreviewCollapsed.v1:<user ID>:<server ID>`, defaults expanded,
+and never syncs.
 Legacy channel-category collapse state may remain under
 `bakbak.channelCategories.v1:<server ID>`, but the sole Channels shelf is flat
 and non-collapsible, so the redesigned shell neither reads nor writes it.

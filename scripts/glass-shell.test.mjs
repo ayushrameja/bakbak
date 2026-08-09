@@ -188,7 +188,21 @@ test("activity and circular voice follow-up keeps its visual interaction contrac
     styles,
     /activity-preview__person\[data-status="online"\][\s\S]*?font-weight:\s*700/,
   );
-  assert.match(styles, /--voice-orb-size:\s*clamp\(148px, 22vmin, 214px\)/);
+  assert.match(
+    styles,
+    /activity-preview\[data-collapsed="true"\][\s\S]*?transform:\s*rotate\(-90deg\)/,
+  );
+  assert.match(
+    styles,
+    /--voice-orb-size:\s*clamp\(177\.6px, 26\.4vmin, 256\.8px\)/,
+  );
+  assert.match(
+    styles,
+    /\[data-layout="wrap"\][\s\S]*?--voice-orb-size:\s*clamp\(122\.4px, 18vmin, 177\.6px\)/,
+  );
+  assert.match(styles, /\[data-layout="dense"\][\s\S]*?flex-wrap:\s*wrap/);
+  assert.doesNotMatch(styles, /\[data-layout="orbit"\]/);
+  assert.doesNotMatch(voiceRoom, /peopleOrbitStyle|--orbit-[xy]/);
   assert.match(
     styles,
     /\.voice-participant-orb__ring--live\s*{[\s\S]*?box-shadow:\s*none/,

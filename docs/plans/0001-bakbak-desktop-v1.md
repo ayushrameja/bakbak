@@ -291,12 +291,15 @@ sidebar, Inter typography, one active Channels shelf, an accessible member
 overlay, archived historical rooms, and distinct Bakbak/Personal palettes. It
 preserves rich messaging, Personal DMs, voice, soundboard, profiles, settings,
 offline behavior, and authentication entry surfaces.
+Its Activity preview is default-open and collapsible, with device-local state
+scoped independently to the signed-in account and server.
 Plan 0035 removes the titlebar joke, moves its sidebar control to the leading
 platform-safe area, limits slower destination-directed Personal/Bakbak motion
 to sidebar content below the stationary switch, simplifies sidebar call status
 while retaining camera/share/soundboard shortcuts, removes server
 channel-header dividers, and replaces participant tiles with circular
-profile/camera clusters and orbits. Non-LIVE circles stay passive behind an
+profile/camera clusters plus normal wrapping rows from five people onward.
+Participant circles are 20% larger. Non-LIVE circles stay passive behind an
 above-avatar action tooltip; LIVE alone opens a control-free share stage whose
 media returns to people, with no participant expansion or renderer fullscreen.
 

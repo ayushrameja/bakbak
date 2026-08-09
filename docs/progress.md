@@ -7254,3 +7254,107 @@ aarch64-apple-darwin --bundles app,dmg` plus
   the distribution acceptance matrix.
 - **Next:** Restart the desktop app, visually confirm backdrop visibility on a
   supported native host, then continue updater-migration validation.
+
+## 2026-08-09 — Normalize larger voice-call layouts
+
+- **Completed:** Removed the five-to-ten-person orbit and its absolute
+  coordinate generation. Calls now keep the existing centred solo and
+  two-to-four-person overlap layouts, use a normal centred wrapping row for
+  five to ten people, and retain a denser wrapping fallback above ten.
+  Increased every participant-circle size clamp by exactly 20% at regular and
+  compact breakpoints, including the former orbit sizing now used by the
+  five-to-ten-person row.
+- **Decisions:** Kept participant media, LIVE/speaking rings, hover and keyboard
+  controls, volume, sound activity, and screen-share behavior unchanged. Kept
+  a separate dense layout above ten so very large calls do not inherit the
+  roomier five-to-ten sizing.
+- **Validation:**
+  - Focused Prettier check of all eight changed implementation, regression,
+    architecture, plan, and progress files — passed.
+  - `vitest run src/features/voice/VoiceRoom.test.tsx` — passed 1 file / 30
+    tests, including 1–4 unchanged layout selection, 5/10 wrapping rows, the
+    above-ten dense fallback, and the absence of inline orbit positioning.
+  - `node --test scripts/glass-shell.test.mjs` — passed 5/5 contracts,
+    including exact 1.2× circle clamps, wrapping behavior, and removal of orbit
+    CSS/coordinate generation.
+  - Local mock-browser visual check — passed for the available three-person
+    default cluster at 1280×720: circles measured 190.08 px square, every orb
+    remained in relative document flow, page overflow measured 0 px on both
+    axes, and the console contained no warnings or errors.
+  - `pnpm test` — passed 88 Vitest files / 489 tests and 50/50 Node contract
+    tests.
+  - `pnpm version:check` — passed at version `1.6.1`.
+  - `pnpm security:scan` — passed for `dist`, `electron-dist`, and `release`.
+  - `pnpm check` / `pnpm format:check` — failed on nine pre-existing,
+    unrelated formatting violations in shell/sidebar-theme files; no listed
+    violation is in this task's implementation or documentation files.
+  - `pnpm lint` — failed on ten pre-existing unsafe-`any` errors in
+    `SettingsPage.test.tsx` and `SidebarGradientPicker.test.tsx`.
+  - `pnpm typecheck` — failed on eight pre-existing possibly-undefined point
+    errors in `SidebarGradientPicker.tsx`.
+  - `pnpm build` and `pnpm desktop:build` — failed at their shared typecheck
+    gate on those same pre-existing `SidebarGradientPicker.tsx` errors, before
+    bundling or packaging.
+  - `git diff --check` — passed; the changed diff contained no service-role,
+    LiveKit secret, bearer-token, or private-key pattern.
+- **Documentation updated:** Updated `docs/architecture.md`, the active v1 plan,
+  plan 0035's accepted voice layout, and this canonical progress log.
+- **Known limitations:** The local mock call exposes three participants, so the
+  five/ten-person row is covered by component and source-contract regression
+  tests but not a live five-person browser screenshot. Unrelated sidebar-theme
+  formatting, lint, and TypeScript failures currently prevent a fully green
+  repository build and desktop package.
+- **Next:** Resolve the existing sidebar-theme validation failures, then observe
+  five- and ten-person wrapping rows in an installed multi-client call at both
+  supported viewport sizes.
+
+## 2026-08-09 — Make sidebar Activity collapsible
+
+- **Completed:** Turned the Bakbak sidebar Activity title into an accessible
+  disclosure control with a directional chevron. Activity defaults expanded,
+  collapses to its 28 px header without hiding or moving Channels, and restores
+  the saved choice after the sidebar or app is reopened. Added a versioned
+  device-local preference scoped independently by signed-in account and server.
+- **Decisions:** Kept the existing six-person ordering, profile/media behavior,
+  Show all modal, member actions, and presence data flow unchanged. Stored only
+  the convenience boolean locally; no profile, Supabase, or layout-preference
+  contract changed.
+- **Validation:**
+  - Focused Prettier and zero-warning ESLint checks for all changed Activity
+    implementation, regression, style, architecture, and plan files — passed.
+  - Focused Vitest — passed 2 files / 17 tests, including default-expanded
+    behavior, click and keyboard disclosure, Channels remaining available,
+    remount restoration, account/server isolation, and unavailable-storage
+    fallback.
+  - Focused Node source contracts — passed 10/10 tests across the glass-shell
+    and appearance suites.
+  - Local mock-browser interaction at 1280×720 — passed: Activity collapsed
+    from 366 px to a 28 px header, Channels moved to 132 px from the viewport
+    top, the content became hidden, re-entering the mock app restored the
+    collapsed state, document overflow stayed 0 px on both axes, and the
+    console contained no warnings or errors.
+  - `pnpm test` — passed 89 Vitest files / 494 tests and 50/50 Node contract
+    tests.
+  - `pnpm version:check` — passed at version `1.6.1`.
+  - `pnpm security:scan` — passed for `dist`, `electron-dist`, and `release`.
+  - `pnpm format:check` — failed on the same nine pre-existing unrelated
+    formatting violations recorded by the preceding voice-layout task; every
+    file changed for Activity passes focused formatting.
+  - `pnpm lint` — failed on the same ten pre-existing unsafe-`any` errors in
+    `SettingsPage.test.tsx` and `SidebarGradientPicker.test.tsx`; focused lint
+    for the Activity implementation passes.
+  - `pnpm typecheck` — failed on the same eight pre-existing
+    possibly-undefined point errors in `SidebarGradientPicker.tsx`.
+  - `pnpm build` and `pnpm desktop:build` — failed at their shared typecheck
+    gate on those same pre-existing `SidebarGradientPicker.tsx` errors, before
+    bundling or packaging.
+  - `git diff --check` — passed; the changed diff contained no service-role,
+    LiveKit secret, bearer-token, or private-key pattern.
+- **Documentation updated:** Updated `docs/architecture.md`, the active v1 plan,
+  plan 0034's Activity contract, and this canonical progress log.
+- **Known limitations:** The current unrelated sidebar-theme formatting, lint,
+  and TypeScript failures still prevent a fully green repository build and
+  desktop package. Installed macOS/Windows observation remains part of the
+  broader shell acceptance matrix.
+- **Next:** Resolve the existing sidebar-theme validation failures, then include
+  the Activity disclosure in the installed light/dark sidebar acceptance pass.

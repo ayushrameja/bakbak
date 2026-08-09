@@ -728,9 +728,9 @@ describe("VoiceRoom", () => {
     [2, "cluster"],
     [3, "cluster"],
     [4, "cluster"],
-    [5, "orbit"],
-    [10, "orbit"],
-    [11, "wrap"],
+    [5, "wrap"],
+    [10, "wrap"],
+    [11, "dense"],
   ])("uses the %s-target circular people layout", (count, layout) => {
     const participants = Array.from({ length: count }, (_, index) =>
       participant(`participant-${index}`),
@@ -750,9 +750,9 @@ describe("VoiceRoom", () => {
     );
   });
 
-  it("positions five participants around the orbit", () => {
+  it("keeps larger calls in normal document flow without orbit positioning", () => {
     const participants = Array.from({ length: 5 }, (_, index) =>
-      participant(`orbit-${index}`),
+      participant(`wrap-${index}`),
     );
     const { container } = render(
       <VoiceRoom
@@ -764,11 +764,11 @@ describe("VoiceRoom", () => {
     );
 
     const orbs = container.querySelectorAll<HTMLElement>(
-      ".voice-people-gallery[data-layout='orbit'] .voice-participant-orb",
+      ".voice-people-gallery[data-layout='wrap'] .voice-participant-orb",
     );
     expect(orbs).toHaveLength(5);
-    expect(orbs[0]?.style.getPropertyValue("--orbit-x")).not.toBe("");
-    expect(orbs[0]?.style.getPropertyValue("--orbit-y")).not.toBe("");
+    expect(orbs[0]).not.toHaveAttribute("style");
+    expect(orbs[4]).not.toHaveAttribute("style");
   });
 
   it("shows simultaneous speaking and LIVE rings on the share owner", async () => {
