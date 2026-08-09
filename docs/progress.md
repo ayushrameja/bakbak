@@ -7483,3 +7483,51 @@ supabase/functions/livekit-token/index.ts` — passed.
 - **Next:** Retry the released app's voice room. If another packaged Edge
   Function feature reports the same fetch-level error, probe its Electron
   preflight and redeploy that function's current bundle separately.
+
+## 2026-08-09 — Reject signature-breaking macOS updater metadata
+
+- **Completed:** Traced the Electron updater loop to 228 AppleDouble `._*`
+  files materialized inside the installed 1.7.0 app by the transitional Tauri
+  archive, which invalidated Electron's sealed framework resources. Updated the
+  macOS release job to verify the source app's nested code signature and create
+  the legacy `.app.tar.gz` without macOS sidecars or extended attributes. Added
+  a Linux publication boundary that rejects AppleDouble/`__MACOSX` metadata,
+  traversal, extra roots, and missing Bakbak executable or Info.plist entries
+  before a GitHub Release draft can be created.
+- **Decisions:** Kept Electron's normal ZIP/DMG output unchanged because the
+  downloaded 1.7.1 ZIP matched `latest-mac.yml`, extracted with zero sidecars,
+  and passed strict code-signature validation. Put the archive verifier before
+  draft creation so a bad compatibility payload cannot become public even if
+  the macOS creation flag regresses. Disabled extended attributes as well as
+  AppleDouble generation because neither is required to preserve the app's
+  file-based code signature.
+- **Validation:**
+  - Focused Node contracts — passed 13/13 across release-version/workflow and
+    legacy macOS archive validation, including clean bundle acceptance plus
+    AppleDouble, `__MACOSX`, traversal, extra-root, and incomplete-bundle
+    rejection.
+  - `pnpm check` — the first run failed only because the updated workflow
+    contract test needed formatting; after formatting, the final exact-tree run
+    passed formatting, zero-warning lint, renderer/Node/Electron typechecks, 89
+    Vitest files / 502 tests, 53/53 Node contracts, version validation at
+    `1.7.1`, the production renderer build, and bundle secret scanning.
+  - `pnpm desktop:build` — passed the renderer and Electron compilation, native
+    dependency rebuild, ad-hoc-signed Apple Silicon app packaging, ZIP/DMG
+    generation, and block maps. Local notarization remained skipped because no
+    notarization credentials were configured.
+  - Corrected legacy archive rehearsal — the source app passed
+    `codesign --verify --deep --strict`; the no-metadata/no-xattr tar contained
+    601 clean `Bakbak.app` entries, retained the executable and Info.plist, and
+    enumerated without an AppleDouble entry.
+- **Documentation updated:** Updated the desktop release/update contract in
+  `docs/architecture.md`, Phase 6 acceptance in the active v1 plan, and this
+  canonical progress log.
+- **Known limitations:** Existing 1.7.0 installations already polluted by the
+  old Tauri archive cannot repair their invalid bundle through Squirrel and
+  need one manual DMG replacement. Developer ID signing/notarization remains
+  required before treating macOS distribution as production-ready. The fixed
+  GitHub-hosted archive and installed Tauri-to-Electron path still require
+  post-merge observation.
+- **Next:** Publish the repair branch, pass the native PR matrix, merge it with
+  the default patch bump, inspect every v1.7.2 updater artifact, then rehearse a
+  clean Tauri installation upgrading through the corrected archive.

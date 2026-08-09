@@ -147,7 +147,8 @@ jobs:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           artifact="release/Bakbak-${RELEASE_VERSION}-macos-arm64.app.tar.gz"
-          tar -czf "$artifact" -C release/mac-arm64 Bakbak.app
+          codesign --verify --deep --strict release/mac-arm64/Bakbak.app
+          tar --no-mac-metadata --no-xattrs -czf "$artifact" -C release/mac-arm64 Bakbak.app
           pnpm dlx @tauri-apps/cli@2.11.4 signer sign "$artifact"
       - name: Sign legacy Windows updater payload
         if: matrix.id == 'windows-x64'
@@ -189,11 +190,13 @@ jobs:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         shell: bash
         run: |
+          mac_archive="release-assets/Bakbak-${RELEASE_VERSION}-macos-arm64.app.tar.gz"
+          tar -tzf "$mac_archive" | node scripts/verify-legacy-macos-archive.mjs
           node scripts/create-legacy-updater-manifest.mjs \
             --version "$RELEASE_VERSION" \
             --repository "$GITHUB_REPOSITORY" \
             --tag "$RELEASE_TAG" \
-            --mac-artifact "release-assets/Bakbak-${RELEASE_VERSION}-macos-arm64.app.tar.gz" \
+            --mac-artifact "$mac_archive" \
             --windows-artifact "release-assets/Bakbak-${RELEASE_VERSION}-windows-x64-setup.exe" \
             --output release-assets/latest.json
           node scripts/verify-updater-manifest.mjs release-assets/latest.json "$RELEASE_VERSION"

@@ -163,7 +163,15 @@ test("release builds only Apple Silicon macOS and Windows Electron installers", 
   assert.match(workflow, /latest-mac\.yml/);
   assert.match(workflow, /latest\.yml/);
   assert.match(workflow, /create-legacy-updater-manifest\.mjs/);
-  assert.match(workflow, /-C release\/mac-arm64 Bakbak\.app/);
+  assert.match(
+    workflow,
+    /codesign --verify --deep --strict release\/mac-arm64\/Bakbak\.app/,
+  );
+  assert.match(
+    workflow,
+    /tar --no-mac-metadata --no-xattrs -czf "\$artifact" -C release\/mac-arm64 Bakbak\.app/,
+  );
+  assert.match(workflow, /verify-legacy-macos-archive\.mjs/);
   assert.match(workflow, /pnpm dlx @tauri-apps\/cli@2\.11\.4 signer sign/);
   assert.match(workflow, /migration_rehearsal_passed:/);
   assert.match(workflow, /vars\.ELECTRON_MIGRATION_REHEARSED == 'true'/);

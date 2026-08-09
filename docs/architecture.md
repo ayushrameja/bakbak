@@ -1554,10 +1554,16 @@ model; Jitsi's Apache/MIT notice and Xiph.Org's BSD 3-Clause notice ship under
    electron-builder produces an Apple Silicon DMG/ZIP with
    `latest-mac.yml` and a Windows x64 NSIS installer with `latest.yml`. Intel
    macOS builds ended at v0.4.0.
-6. For the first shell-transition release, the macOS job archives the Electron
-   `.app` as `.app.tar.gz`, the release jobs sign that archive and the NSIS
-   executable with the existing Tauri updater key through a pinned signing CLI,
-   and the publish job generates legacy `latest.json`. This compatibility
+6. For the shell transition, the macOS job first verifies the Electron app's
+   nested code-signature seal, then archives the `.app` as `.app.tar.gz` with
+   macOS metadata sidecars and extended attributes disabled. The release jobs
+   sign that archive and the NSIS executable with the existing Tauri updater
+   key through a pinned signing CLI, and the publish job generates legacy
+   `latest.json`. Before a draft can
+   be created, the Linux publish boundary enumerates the macOS archive and
+   rejects AppleDouble/`__MACOSX` metadata, traversal, extra roots, or a missing
+   Bakbak executable/Info.plist. This keeps a Tauri extractor from materializing
+   `._*` files inside Electron's sealed framework resources. The compatibility
    signer is release tooling only; no Rust or Tauri runtime ships.
 7. The workflow holds the GitHub Release as a draft until it verifies exactly
    one Apple Silicon DMG, one ZIP, one NSIS setup executable, no Intel macOS
