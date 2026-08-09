@@ -13,6 +13,8 @@ const [
   sidebarUserDock,
   voiceRoom,
   html,
+  main,
+  electronMain,
 ] = await Promise.all([
   readFile(new URL("src/styles.css", root), "utf8"),
   readFile(new URL("src/app/App.tsx", root), "utf8"),
@@ -23,6 +25,8 @@ const [
   readFile(new URL("src/features/voice/SidebarUserDock.tsx", root), "utf8"),
   readFile(new URL("src/features/voice/VoiceRoom.tsx", root), "utf8"),
   readFile(new URL("index.html", root), "utf8"),
+  readFile(new URL("src/main.tsx", root), "utf8"),
+  readFile(new URL("electron/main.ts", root), "utf8"),
 ]);
 
 test("glass tokens and native-safe document underlays stay system adaptive", () => {
@@ -48,6 +52,11 @@ test("glass tokens and native-safe document underlays stay system adaptive", () 
     styles,
     /html\[data-window-material="native"\][\s\S]*?background:\s*transparent/,
   );
+  assert.match(main, /dataset\.windowMaterial = isDesktopRuntime\(\)/);
+  assert.match(electronMain, /backgroundColor:\s*"#00000000"/);
+  assert.match(electronMain, /transparent:\s*true/);
+  assert.match(electronMain, /vibrancy:\s*"under-window"/);
+  assert.match(electronMain, /setBackgroundMaterial\("mica"\)/);
   assert.match(html, /name="theme-color"[\s\S]*?content="#000000"/);
   assert.match(html, /name="theme-color"[\s\S]*?content="#f4f4f4"/);
 });
@@ -119,12 +128,18 @@ test("titlebar, directional space motion, startup assembly, and scroll activity 
     styles,
     /data-space-direction="(?:left|right)"[^{}]*\.(?:top-bar|content-stage--space-motion)/,
   );
-  assert.equal(titlebar.match(/onMouseDown=\{handleDrag\}/g)?.length, 1);
-  assert.equal(
-    titlebar.match(/onDoubleClick=\{handleDoubleClick\}/g)?.length,
-    1,
+  assert.doesNotMatch(
+    titlebar,
+    /handleDrag|handleDoubleClick|isTitlebarControl/,
   );
-  assert.match(titlebar, /isTitlebarControl\(event\.target\)/);
+  assert.match(
+    styles,
+    /\.window-titlebar\s*\{[\s\S]*?-webkit-app-region:\s*drag/,
+  );
+  assert.match(
+    styles,
+    /\.window-titlebar button,[\s\S]*?-webkit-app-region:\s*no-drag/,
+  );
   assert.match(
     styles,
     /\.member-panel__person \+ \.member-panel__person\s*{[\s\S]*?margin-top:\s*5px/,
@@ -173,7 +188,21 @@ test("activity and circular voice follow-up keeps its visual interaction contrac
     styles,
     /activity-preview__person\[data-status="online"\][\s\S]*?font-weight:\s*700/,
   );
-  assert.match(styles, /--voice-orb-size:\s*clamp\(148px, 22vmin, 214px\)/);
+  assert.match(
+    styles,
+    /activity-preview\[data-collapsed="true"\][\s\S]*?transform:\s*rotate\(-90deg\)/,
+  );
+  assert.match(
+    styles,
+    /--voice-orb-size:\s*clamp\(177\.6px, 26\.4vmin, 256\.8px\)/,
+  );
+  assert.match(
+    styles,
+    /\[data-layout="wrap"\][\s\S]*?--voice-orb-size:\s*clamp\(122\.4px, 18vmin, 177\.6px\)/,
+  );
+  assert.match(styles, /\[data-layout="dense"\][\s\S]*?flex-wrap:\s*wrap/);
+  assert.doesNotMatch(styles, /\[data-layout="orbit"\]/);
+  assert.doesNotMatch(voiceRoom, /peopleOrbitStyle|--orbit-[xy]/);
   assert.match(
     styles,
     /\.voice-participant-orb__ring--live\s*{[\s\S]*?box-shadow:\s*none/,

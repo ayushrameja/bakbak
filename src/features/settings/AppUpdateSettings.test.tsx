@@ -1,27 +1,33 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { BakbakDesktopBridge } from "../../lib/desktop-runtime";
 import { AppUpdateProvider } from "./AppUpdateProvider";
 import { AppUpdateSettings } from "./AppUpdateSettings";
 
 const mocks = vi.hoisted(() => ({
   check: vi.fn(),
-  isTauri: vi.fn(),
-  openUrl: vi.fn(),
-  relaunch: vi.fn(),
+  openExternal: vi.fn(),
   writeText: vi.fn<(value: string) => Promise<void>>(),
 }));
 
-vi.mock("@tauri-apps/api/core", () => ({ isTauri: mocks.isTauri }));
-vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: mocks.openUrl }));
-vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: mocks.relaunch }));
-vi.mock("@tauri-apps/plugin-updater", () => ({ check: mocks.check }));
+function installDesktopBridge(): void {
+  window.bakbakDesktop = {
+    platform: "macos",
+    updates: {
+      check: mocks.check,
+      downloadAndInstall: vi.fn(),
+      onProgress: () => () => undefined,
+    },
+    external: { open: mocks.openExternal },
+  } as unknown as BakbakDesktopBridge;
+}
 
 describe("AppUpdateSettings", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     window.localStorage.clear();
-    mocks.isTauri.mockReturnValue(true);
-    mocks.openUrl.mockResolvedValue(undefined);
+    installDesktopBridge();
+    mocks.openExternal.mockResolvedValue(undefined);
     mocks.writeText.mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -32,6 +38,7 @@ describe("AppUpdateSettings", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
+    Reflect.deleteProperty(window, "bakbakDesktop");
     Reflect.deleteProperty(navigator, "clipboard");
   });
 
@@ -49,7 +56,7 @@ describe("AppUpdateSettings", () => {
     });
 
     expect(mocks.check).toHaveBeenCalledTimes(3);
-    expect(mocks.check).toHaveBeenNthCalledWith(1, { timeout: 60_000 });
+    expect(mocks.check).toHaveBeenNthCalledWith(1, 60_000);
     expect(
       screen.getByText("The update service did not respond"),
     ).toBeVisible();
@@ -58,13 +65,17 @@ describe("AppUpdateSettings", () => {
       screen.getByRole("button", { name: "Open GitHub releases" }),
     );
     await act(async () => Promise.resolve());
-    expect(mocks.openUrl).toHaveBeenCalledWith(
+    expect(mocks.openExternal).toHaveBeenCalledWith(
       "https://github.com/ayushrameja/bakbak/releases",
     );
   });
 
   it("reports a successful manual check and persists its time", async () => {
-    mocks.check.mockResolvedValue(null);
+    mocks.check.mockResolvedValue({
+      supported: true,
+      available: false,
+      version: null,
+    });
     render(
       <AppUpdateProvider autoCheck={false} retryDelaysMs={[]}>
         <AppUpdateSettings />

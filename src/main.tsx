@@ -6,9 +6,13 @@ import {
   applyAppearancePreference,
   loadAppearancePreference,
 } from "./features/settings/appearance-preferences";
+import { isDesktopRuntime } from "./lib/desktop-runtime";
 import "./styles.css";
 
 function renderApp(): void {
+  document.documentElement.dataset.windowMaterial = isDesktopRuntime()
+    ? "native"
+    : "fallback";
   applyAppearancePreference(loadAppearancePreference());
 
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

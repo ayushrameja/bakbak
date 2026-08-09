@@ -6992,3 +6992,396 @@ aarch64-apple-darwin --bundles app,dmg` plus
   link to friends who do not receive the old startup popup, then validate
   automatic and manual `1.6.1 -> later patch` updates on installed Apple Silicon
   macOS and Windows x64 clients.
+
+## 2026-08-09 — Replace Tauri with an Electron prototype
+
+- **Completed:** Removed the Rust workspace, Cargo configuration, Tauri source,
+  capabilities, plugins, and package dependencies. Added a hardened Electron
+  main/preload boundary with a sandboxed renderer, secure `app://bakbak`
+  protocol, typed narrow bridge, native window/accent/link/update controls,
+  Chromium screen-source selection, and Electron updater lifecycle. Moved
+  screen-share publication to renderer-owned LiveKit tracks while keeping its
+  short-lived token out of the main process. Added electron-builder DMG/ZIP and
+  NSIS packaging for Apple Silicon macOS and Windows x64, Electron YAML update
+  metadata, signed legacy Tauri manifest generation, compiled-bundle secret
+  scanning, and Electron-only PR/candidate/release workflows. Added a Windows
+  NSIS shim that keeps `%LOCALAPPDATA%\Bakbak`, translates Tauri's passive and
+  restart arguments, and removes its obsolete uninstaller/registry material.
+  The first public Electron release is gated on an explicit installed migration
+  rehearsal.
+- **Decisions:** Preserved `com.bakbak.desktop`, product/release identity,
+  macOS 12.3 minimum, Apple Silicon and Windows x64 targets, and the existing
+  GitHub latest-release endpoint. Kept the old Tauri minisign key only in pinned
+  release tooling so installed Tauri clients can verify the transition payload;
+  no Rust or Tauri runtime ships. macOS uses `Bakbak.app`, while Windows retains
+  `bakbak.exe` for the legacy install path. Electron does not attempt a brittle
+  WebView2-to-Chromium local-storage copy; cloud data stays authoritative and a
+  one-time sign-in is acceptable. Native process-tree screen-audio isolation was
+  not claimed after moving capture to Chromium.
+- **Validation:**
+  - Direct Prettier check — passed for every tracked supported file after
+    resolving one non-idempotent multiline Markdown code span.
+  - Direct zero-warning ESLint — passed.
+  - Direct renderer, Node/Vite, and Electron TypeScript checks — passed.
+  - Direct Vitest — passed 85 files / 481 tests.
+  - Direct Node contract suite — passed 49/49 tests, including packaging,
+    architecture, workflow, updater-manifest, and Windows migration-shim
+    contracts.
+  - `node scripts/set-version.mjs --check` — passed at tracked version `1.6.0`.
+  - Direct Vite production build — passed; the existing 1.46 MB application and
+    1.93 MB RNNoise worklet chunk warnings remain non-blocking.
+  - `pnpm check` — passed once after the core migration at 85/481 Vitest and
+    47/47 Node tests. The final rerun hit the existing package-manager
+    no-output stall and was stopped after 60 seconds; every exact underlying
+    formatter, linter, three-project typecheck, 85/481 Vitest, expanded 49/49
+    Node, version, production-build, and secret-scan command passed afterward.
+  - `pnpm desktop:build` — passed the initial Apple Silicon Electron package.
+    The final direct electron-builder rebuild passed with `Bakbak.app`, one
+    129 MB DMG, one 145 MB ZIP, blockmaps, and `latest-mac.yml`.
+  - Direct electron-builder Windows cross-package — passed with a 107 MB NSIS
+    installer, blockmap, and `latest.yml`; `file` confirmed the packaged app is
+    PE32+ x86-64. The first NSIS compile exposed a missing LogicLib include; it
+    was fixed and the exact build then exited successfully.
+  - `codesign --verify --deep --strict` — passed for the ad-hoc hardened ARM64
+    `Bakbak.app`; `file` confirmed its main executable is Mach-O arm64.
+  - Legacy macOS updater archive inspection — passed with one top-level
+    `Bakbak.app`; the pinned Tauri updater source confirms it strips that first
+    component before replacing the existing bundle path.
+  - Packaged launch smoke — Electron loaded the renderer and began its updater
+    check without a main/renderer crash. The check returned the expected 404
+    because the current published Tauri release has `latest.json` but no
+    Electron `latest-mac.yml` yet.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist`,
+    `electron-dist`, and both packaged release trees.
+  - `git diff --check` — passed.
+  - GitHub-hosted PR/candidate/release matrices — skipped because this local
+    task did not push or dispatch workflows.
+  - Installed Tauri-to-Electron and later Electron update rehearsals — skipped;
+    they require real installed Apple Silicon macOS and Windows x64 clients plus
+    a signed staged release newer than the current Tauri tag.
+- **Documentation updated:** Updated `AGENTS.md`, `README.md`, the architecture
+  source of truth, the active desktop-v1 plan, and this canonical progress log
+  for the Electron boundary, commands, distribution bridge, release gate, and
+  accepted limitations.
+- **Known limitations:** The compatibility artifacts and both native installers
+  compile, but the updater handoff is not accepted until installed clients prove
+  `Tauri -> first Electron -> later Electron` on both platforms. Current macOS
+  output is ad-hoc signed and unnotarized; Windows output is unsigned, so
+  Developer ID/notarization and Windows code signing remain production
+  blockers. Existing users may need one sign-in after Chromium takes over local
+  storage. Chromium capture no longer proves the former native process-tree
+  audio isolation, so echo and source-audio behavior need the installed matrix.
+  The local `1.6.0` prototype is below the currently published Tauri release and
+  must never be published as-is; the release workflow will resolve a newer
+  version once the migration gate opens.
+- **Next:** Run the Electron PR and stabilization-candidate matrices on GitHub,
+  inspect both exact-revision artifacts, configure production OS signing, then
+  rehearse the signed latest-Tauri-to-Electron-to-Electron sequence with
+  rollback/manual recovery on real Apple Silicon macOS and Windows x64 clients.
+  Set `ELECTRON_MIGRATION_REHEARSED=true` and publish only after that matrix
+  passes.
+
+## 2026-08-09 — Fix local Electron development startup
+
+- **Completed:** Bound the Vite development server explicitly to
+  `127.0.0.1:1420` and changed `desktop:dev` to wait for that TCP listener
+  before starting Electron. Added a contract test that keeps the Vite host,
+  readiness check, and Electron development URL aligned.
+- **Decisions:** Kept the existing IPv4 development origin trusted by the main
+  process. An explicit loopback bind is deterministic across macOS hosts where
+  `localhost` may otherwise bind only to IPv6 and leave the Electron launcher
+  waiting forever on `127.0.0.1`.
+- **Validation:**
+  - Reproduced the original startup state — Vite listened only on IPv6
+    `[::1]:1420`, while `wait-on http://127.0.0.1:1420` remained blocked and no
+    Electron process started.
+  - Corrected `pnpm desktop:dev` smoke — passed: Vite listened on IPv4
+    `127.0.0.1:1420`; the readiness gate advanced; and the Electron main, GPU,
+    network, renderer, audio, and video-capture processes stayed alive.
+  - Direct Prettier and zero-warning ESLint checks — passed.
+  - Direct renderer, Node/Vite, and Electron TypeScript checks — passed.
+  - Direct Vitest — passed 85 files / 481 tests.
+  - Direct Node contract suite — passed 50/50 tests, including the new aligned
+    desktop-development-origin contract.
+  - `node scripts/set-version.mjs --check` — passed at version `1.6.1`.
+  - Direct Vite production build — passed; the existing large-chunk warnings
+    remain non-blocking.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist`,
+    `electron-dist`, and `release`.
+  - `git diff --check` — passed.
+- **Documentation updated:** Updated the Electron shell development-origin
+  contract in `docs/architecture.md` and this canonical progress log.
+- **Known limitations:** None for local desktop startup; production signing and
+  installed updater-migration rehearsals remain tracked by the migration entry
+  above.
+- **Next:** Continue the Electron PR and installed updater-migration validation.
+
+## 2026-08-09 — Redesign authentication welcome
+
+- **Completed:** Replaced the small floating authentication card with a
+  responsive two-part Bakbak welcome: a honey-to-teal private-room story and a
+  focused sign-in/invite panel. Added field icons, explicit password
+  visibility, accessible tab semantics, compact invite density, a narrow-window
+  form-only layout, and regression coverage for live and mock flows.
+- **Decisions:** Kept all authentication service behavior, browser autofill,
+  native validation, invite-only messaging, and navigation-free desktop chrome
+  unchanged. Removed transformed form ancestors and overflow-producing
+  decorative nodes so Electron validation UI stays anchored and neither login
+  mode creates hidden scrollbars.
+- **Validation:**
+  - Direct Prettier and zero-warning ESLint checks — passed.
+  - Direct renderer, Node/Vite, and Electron TypeScript checks — passed.
+  - Direct Vitest — passed 86 files / 483 tests, including new live-mode tab,
+    password-visibility, invite-field, and credential-free mock-entry coverage.
+  - Direct Node contract suite — passed 50/50 tests.
+  - `node scripts/set-version.mjs --check` — passed at version `1.6.1`.
+  - Direct Vite production build — passed; the existing large-chunk warnings
+    remain non-blocking.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist`,
+    `electron-dist`, and `release`.
+  - Local browser visual checks — passed at the default 1280×720 viewport for
+    sign-in and the denser invite form, and at 760×720 for the form-only
+    breakpoint. DOM measurements confirmed zero horizontal or vertical page
+    overflow, and the password textbox retained the concise accessible name.
+  - `git diff --check` — passed.
+- **Documentation updated:** Updated the current authentication experience in
+  `docs/architecture.md` and this canonical progress log.
+- **Known limitations:** None identified for the redesigned authentication
+  surface.
+- **Next:** Continue the Electron PR and installed updater-migration validation.
+
+## 2026-08-09 — Simplify entry and loading surfaces
+
+- **Completed:** Reworked the authentication redesign into the signed-in app's
+  minimal rail-and-canvas geometry, removing the marketing headline, feature
+  list, fake member activity, security topline, and duplicate privacy footer.
+  Replaced the full-screen animated word scene with the same quiet shell and one
+  bounded progress cue. Made the navigation-free titlebar transparent over the
+  entry gradient so its color belongs to the page like the main app.
+- **Decisions:** Reused the server shell's 280 px rail, 8 px outer inset,
+  16 px rounded canvas, honey-to-teal gradient, and dark/light conversation
+  colors. Kept authentication fields, invite switching, password visibility,
+  autofill, validation, and service behavior unchanged.
+- **Validation:**
+  - Direct Prettier and zero-warning ESLint checks — passed.
+  - Direct renderer, Node/Vite, and Electron TypeScript checks — passed.
+  - Direct Vitest — passed 86 files / 483 tests, including the revised loading
+    structure, entry-surface frame state, and minimal authentication flows.
+  - Direct Node contract suite — passed 50/50 tests, including the new shared
+    rail/canvas loading geometry and bounded-motion contracts.
+  - `node scripts/set-version.mjs --check` — passed at version `1.6.1`.
+  - Direct Vite production build — passed; the existing large-chunk warnings
+    remain non-blocking.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist`,
+    `electron-dist`, and `release`.
+  - Local browser visual checks — passed for desktop sign-in, desktop invite,
+    the 760×720 compact breakpoint, and the transient loading scene. They also
+    caught and corrected inherited flex alignment that initially shrank the
+    loading canvas; final DOM measurements showed zero page overflow.
+  - `git diff --check` — passed.
+- **Documentation updated:** Updated the current entry, loading, and titlebar
+  contract in `docs/architecture.md` and appended this correction to the
+  canonical progress log.
+- **Known limitations:** None identified for the simplified entry surfaces.
+- **Next:** Continue the Electron PR and installed updater-migration validation.
+
+## 2026-08-09 — Add per-space sidebar themes
+
+- **Completed:** Added independent, account-scoped Personal and Bakbak sidebar
+  themes with solid or three-color gradient modes, darker/lighter adjustment,
+  bounded transparency, none/dots/grain texture, live previews, and per-space
+  reset. Added a focus-trapped one-time post-login setup prompt with Skip and
+  Save actions, then reused the same editor in Settings → Appearance.
+- **Decisions:** Kept preferences device-local under
+  `bakbak.sidebarThemes.v1:<user ID>` so accounts sharing a machine do not
+  inherit each other's choices. Skip records completion with defaults, and the
+  parser restores safe per-space defaults for corrupt or out-of-range values.
+  User colors affect the sidebar/titlebar background only; fixed semantic
+  space accents continue to protect control contrast.
+- **Validation:**
+  - `pnpm check` — passed formatting, zero-warning lint, renderer/Node/Electron
+    typechecks, all tests, version check, production renderer build, and bundle
+    secret scan.
+  - `pnpm test` — passed 87 Vitest files / 487 tests and 50/50 Node contract
+    tests, including per-account persistence, malformed-value recovery,
+    gradient generation, Settings interaction, and one-time Skip coverage.
+  - Local browser visual and interaction checks — passed at 1280×800 for the
+    onboarding prompt, independent Bakbak/Personal tabs, dots on the live
+    Personal sidebar/titlebar, immediate Save application, and the reusable
+    Appearance Settings editor.
+  - `git diff --check` — passed.
+- **Documentation updated:** Updated `docs/architecture.md`, the active v1 plan,
+  appearance source-contract tests, and this canonical progress log.
+- **Known limitations:** Sidebar themes intentionally do not sync between
+  devices. Installed macOS/Windows visual observation remains part of the
+  broader Electron acceptance matrix.
+- **Next:** Continue the Electron PR and installed updater-migration validation.
+
+## 2026-08-09 — Refine the sidebar picker and native transparency
+
+- **Completed:** Replaced the compact hex-box color controls with an Arc-like
+  dotted blend field containing three click-to-recolor, pointer-draggable color
+  points. Added keyboard point movement, darker/lighter shortcuts, and eight
+  one-click presets below the field. Gradient point placement now determines
+  direction and the middle stop. Repaired the transparency path through the
+  renderer document, Electron BrowserWindow, macOS under-window vibrancy, and
+  Windows Mica.
+- **Decisions:** Kept old `bakbak.sidebarThemes.v1:<user ID>` records compatible
+  by supplying bounded default point positions when the new field is absent.
+  Native material is enabled only in Electron; browser/mock mode retains an
+  opaque underlay. Windows keeps its frameless requirement for transparent
+  windows, and Mica remains available only where Electron supports it.
+- **Validation:**
+  - `pnpm check` — passed formatting, zero-warning lint, renderer/Node/Electron
+    typechecks, full tests, version check, production renderer build, and bundle
+    secret scan.
+  - `pnpm test` — passed 88 Vitest files / 489 tests and all 50 Node contract
+    tests.
+  - Focused renderer tests — passed for preset application, three color inputs,
+    Alt+Arrow point movement, malformed-point fallback, directional gradient
+    generation, and 45% transparency alpha.
+  - Focused Node contracts — passed for native renderer material selection,
+    transparent Electron window configuration, macOS vibrancy, Windows Mica,
+    and the new picker source contract.
+  - Local browser visual checks — passed at 1280×800 in both first-login and
+    Settings layouts; all color points, presets, controls, Skip, and Save remain
+    visible in onboarding, with internal scrolling retained in Settings.
+- **Documentation updated:** Updated the current native-material and picker
+  contracts in `docs/architecture.md`, the active v1 plan, and this log.
+- **Known limitations:** Browser QA cannot display a native desktop backdrop.
+  The Electron process must be fully restarted to observe the BrowserWindow
+  transparency change; installed macOS/Windows material observation remains in
+  the distribution acceptance matrix.
+- **Next:** Restart the desktop app, visually confirm backdrop visibility on a
+  supported native host, then continue updater-migration validation.
+
+## 2026-08-09 — Normalize larger voice-call layouts
+
+- **Completed:** Removed the five-to-ten-person orbit and its absolute
+  coordinate generation. Calls now keep the existing centred solo and
+  two-to-four-person overlap layouts, use a normal centred wrapping row for
+  five to ten people, and retain a denser wrapping fallback above ten.
+  Increased every participant-circle size clamp by exactly 20% at regular and
+  compact breakpoints, including the former orbit sizing now used by the
+  five-to-ten-person row.
+- **Decisions:** Kept participant media, LIVE/speaking rings, hover and keyboard
+  controls, volume, sound activity, and screen-share behavior unchanged. Kept
+  a separate dense layout above ten so very large calls do not inherit the
+  roomier five-to-ten sizing.
+- **Validation:**
+  - Focused Prettier check of all eight changed implementation, regression,
+    architecture, plan, and progress files — passed.
+  - `vitest run src/features/voice/VoiceRoom.test.tsx` — passed 1 file / 30
+    tests, including 1–4 unchanged layout selection, 5/10 wrapping rows, the
+    above-ten dense fallback, and the absence of inline orbit positioning.
+  - `node --test scripts/glass-shell.test.mjs` — passed 5/5 contracts,
+    including exact 1.2× circle clamps, wrapping behavior, and removal of orbit
+    CSS/coordinate generation.
+  - Local mock-browser visual check — passed for the available three-person
+    default cluster at 1280×720: circles measured 190.08 px square, every orb
+    remained in relative document flow, page overflow measured 0 px on both
+    axes, and the console contained no warnings or errors.
+  - `pnpm test` — passed 88 Vitest files / 489 tests and 50/50 Node contract
+    tests.
+  - `pnpm version:check` — passed at version `1.6.1`.
+  - `pnpm security:scan` — passed for `dist`, `electron-dist`, and `release`.
+  - `pnpm check` / `pnpm format:check` — failed on nine pre-existing,
+    unrelated formatting violations in shell/sidebar-theme files; no listed
+    violation is in this task's implementation or documentation files.
+  - `pnpm lint` — failed on ten pre-existing unsafe-`any` errors in
+    `SettingsPage.test.tsx` and `SidebarGradientPicker.test.tsx`.
+  - `pnpm typecheck` — failed on eight pre-existing possibly-undefined point
+    errors in `SidebarGradientPicker.tsx`.
+  - `pnpm build` and `pnpm desktop:build` — failed at their shared typecheck
+    gate on those same pre-existing `SidebarGradientPicker.tsx` errors, before
+    bundling or packaging.
+  - `git diff --check` — passed; the changed diff contained no service-role,
+    LiveKit secret, bearer-token, or private-key pattern.
+- **Documentation updated:** Updated `docs/architecture.md`, the active v1 plan,
+  plan 0035's accepted voice layout, and this canonical progress log.
+- **Known limitations:** The local mock call exposes three participants, so the
+  five/ten-person row is covered by component and source-contract regression
+  tests but not a live five-person browser screenshot. Unrelated sidebar-theme
+  formatting, lint, and TypeScript failures currently prevent a fully green
+  repository build and desktop package.
+- **Next:** Resolve the existing sidebar-theme validation failures, then observe
+  five- and ten-person wrapping rows in an installed multi-client call at both
+  supported viewport sizes.
+
+## 2026-08-09 — Make sidebar Activity collapsible
+
+- **Completed:** Turned the Bakbak sidebar Activity title into an accessible
+  disclosure control with a directional chevron. Activity defaults expanded,
+  collapses to its 28 px header without hiding or moving Channels, and restores
+  the saved choice after the sidebar or app is reopened. Added a versioned
+  device-local preference scoped independently by signed-in account and server.
+- **Decisions:** Kept the existing six-person ordering, profile/media behavior,
+  Show all modal, member actions, and presence data flow unchanged. Stored only
+  the convenience boolean locally; no profile, Supabase, or layout-preference
+  contract changed.
+- **Validation:**
+  - Focused Prettier and zero-warning ESLint checks for all changed Activity
+    implementation, regression, style, architecture, and plan files — passed.
+  - Focused Vitest — passed 2 files / 17 tests, including default-expanded
+    behavior, click and keyboard disclosure, Channels remaining available,
+    remount restoration, account/server isolation, and unavailable-storage
+    fallback.
+  - Focused Node source contracts — passed 10/10 tests across the glass-shell
+    and appearance suites.
+  - Local mock-browser interaction at 1280×720 — passed: Activity collapsed
+    from 366 px to a 28 px header, Channels moved to 132 px from the viewport
+    top, the content became hidden, re-entering the mock app restored the
+    collapsed state, document overflow stayed 0 px on both axes, and the
+    console contained no warnings or errors.
+  - `pnpm test` — passed 89 Vitest files / 494 tests and 50/50 Node contract
+    tests.
+  - `pnpm version:check` — passed at version `1.6.1`.
+  - `pnpm security:scan` — passed for `dist`, `electron-dist`, and `release`.
+  - `pnpm format:check` — failed on the same nine pre-existing unrelated
+    formatting violations recorded by the preceding voice-layout task; every
+    file changed for Activity passes focused formatting.
+  - `pnpm lint` — failed on the same ten pre-existing unsafe-`any` errors in
+    `SettingsPage.test.tsx` and `SidebarGradientPicker.test.tsx`; focused lint
+    for the Activity implementation passes.
+  - `pnpm typecheck` — failed on the same eight pre-existing
+    possibly-undefined point errors in `SidebarGradientPicker.tsx`.
+  - `pnpm build` and `pnpm desktop:build` — failed at their shared typecheck
+    gate on those same pre-existing `SidebarGradientPicker.tsx` errors, before
+    bundling or packaging.
+  - `git diff --check` — passed; the changed diff contained no service-role,
+    LiveKit secret, bearer-token, or private-key pattern.
+- **Documentation updated:** Updated `docs/architecture.md`, the active v1 plan,
+  plan 0034's Activity contract, and this canonical progress log.
+- **Known limitations:** The current unrelated sidebar-theme formatting, lint,
+  and TypeScript failures still prevent a fully green repository build and
+  desktop package. Installed macOS/Windows observation remains part of the
+  broader shell acceptance matrix.
+- **Next:** Resolve the existing sidebar-theme validation failures, then include
+  the Activity disclosure in the installed light/dark sidebar acceptance pass.
+
+## 2026-08-09 — Repair PR 54 validation failures
+
+- **Completed:** Fixed the gradient picker's strict tuple-indexing errors by
+  restricting color-point operations to the three valid theme indices. Replaced
+  unsafe JSON and nested matcher values in the related tests with typed theme
+  reads and callback assertions. Applied the repository formatter to all nine
+  files reported by the CI formatting gate.
+- **Decisions:** Preserved the three-point theme schema and picker behavior
+  instead of weakening `noUncheckedIndexedAccess` or adding non-null assertions.
+  Treated the formatter and lint failures as part of the same repair because the
+  validation job would remain red after fixing TypeScript alone.
+- **Validation:**
+  - `pnpm check` — passed formatting, zero-warning lint, renderer/Node/Electron
+    typechecks, 89 Vitest files / 494 tests, 50/50 Node contract tests, version
+    validation at `1.6.1`, production renderer build, and bundle secret scan.
+  - `pnpm desktop:build` — passed the renderer and Electron compilation, native
+    dependency rebuild, ad-hoc-signed macOS Apple Silicon app packaging, ZIP and
+    DMG generation, and block-map generation.
+  - `git diff --check` — passed.
+- **Documentation updated:** Appended this canonical progress entry; no behavior,
+  architecture, setup, or accepted-scope contract changed.
+- **Known limitations:** Windows x64 packaging cannot run on this macOS host and
+  remains covered by PR CI. Local macOS notarization was skipped because no
+  notarization credentials were configured, as expected for a local build.
+- **Next:** Commit and push this repair, then confirm all three PR 54 CI jobs pass
+  on the updated head.

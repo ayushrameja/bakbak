@@ -26,16 +26,17 @@ test("candidate workflow builds two exact-revision installers without publishing
     /ref: \$\{\{ needs\.prepare\.outputs\.source_sha \}\}/,
   );
   assert.match(workflow, /test "\$\(git rev-parse HEAD\)" = "\$REQUESTED_SHA"/);
-  assert.match(workflow, /name: macOS Apple Silicon\n {12}platform: macos-26/);
-  assert.match(workflow, /--target aarch64-apple-darwin --bundles app,dmg/);
-  assert.match(workflow, /name: Windows x64\n {12}platform: windows-latest/);
-  assert.match(workflow, /args: --bundles nsis/);
-  assert.match(workflow, /src-tauri\/tauri\.local\.conf\.json/);
+  assert.match(workflow, /name: macOS Apple Silicon\n {12}runner: macos-26/);
+  assert.match(workflow, /builder_args: --mac --arm64/);
+  assert.match(workflow, /name: Windows x64\n {12}runner: windows-latest/);
+  assert.match(workflow, /builder_args: --win --x64/);
+  assert.match(workflow, /pnpm exec electron-builder/);
+  assert.match(workflow, /release\/\*\.dmg/);
+  assert.match(workflow, /release\/\*\.exe/);
   assert.match(workflow, /node scripts\/check-bundle-secrets\.mjs/);
   assert.match(workflow, /actions\/upload-artifact@v4/);
   assert.match(workflow, /retention-days: 7/);
-  assert.doesNotMatch(workflow, /TAURI_SIGNING_PRIVATE_KEY/);
-  assert.doesNotMatch(workflow, /tauri-action/);
+  assert.doesNotMatch(workflow, /SIGNING_PRIVATE_KEY|tauri-action|cargo|rust/i);
   assert.doesNotMatch(workflow, /gh release|contents: write/);
 });
 

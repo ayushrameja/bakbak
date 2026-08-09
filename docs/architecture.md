@@ -7,30 +7,47 @@ and phase completion belong in the numbered files under `docs/plans`.
 
 ## Current implementation state
 
-As of 2026-08-02, Bakbak has a complete local/mock product path and production
+As of 2026-08-09, Bakbak has a complete local/mock product path and production
 Supabase and LiveKit adapters. The signed-in renderer uses a Buzz/Slack-inspired
 two-track shell: one space-specific gradient sidebar and one rounded solid
 conversation canvas. The always-present 48 px titlebar keeps its centre empty
 and draggable; its single sidebar visibility control sits in the leading area,
 after native macOS traffic lights and before the drag surface on other
 platforms. The Personal/Bakbak segmented switch lives at the top of the
-sidebar. Startup,
-authentication, invite, and startup-error screens retain their existing
-branded content beneath navigation-free titlebar chrome.
+sidebar. Authentication and loading reuse that same app geometry: a quiet
+280 px honey-to-teal rail, an 8 px outer inset, and one rounded solid canvas.
+The transparent navigation-free titlebar reveals the same gradient as the
+page, matching the signed-in shell instead of introducing a separate header
+surface. Authentication keeps only the Bakbak lockup, a short private-space
+label, and the focused sign-in/invite form; narrow windows collapse to the
+canvas and compact lockup. Loading shows the same empty shell with one bounded
+progress cue. Sign-in and invite mode preserve native autofill and validation,
+explicit password visibility, and keyboard-accessible tabs.
 
 macOS retains native overlay traffic lights and an active-state-following
-`underWindowBackground` material. Windows uses renderer-owned controls and
-applies Mica on build 22000 or newer; Windows 10 and browser/mock mode use an
-opaque CSS underlay. The sidebar defaults to 280 px, resizes from 248–340 px,
+`under-window` vibrancy material. The Electron BrowserWindow and renderer root
+are transparent so sidebar gradient alpha reveals that material. Windows uses
+renderer-owned controls and applies Mica on Windows 11 22H2 or newer; older
+Windows keeps the transparent frameless backing without Mica. Browser/mock
+mode uses an opaque CSS underlay. The sidebar defaults to 280 px, resizes from
+248–340 px,
 and leaves a 420 px minimum conversation canvas. V3 layout preferences persist
 only sidebar visibility and width, migrate v2's left-side fields, and discard
 the retired right-panel fields. Settings remains a centred, focus-trapped
 in-app modal with internal scrolling, active-call controls, confirmed logout,
 and account-scoped cache management.
 
-The Bakbak space uses a honey-to-moss/teal-to-midnight gradient and honey/teal
-interaction tokens. Personal uses a berry/violet-to-blue-to-midnight gradient
-and violet/blue tokens. Switching spaces updates the gradient and accents while
+The Bakbak space defaults to a honey-to-teal-to-midnight gradient and Personal
+defaults to berry-to-violet-to-midnight. Each signed-in account can independently
+replace either sidebar with a solid color or three-stop gradient, make it darker
+or lighter, add up to 45% transparency, and choose no texture, dots, or grain.
+The gradient picker places three draggable, click-to-recolor points on the live
+field; their positions determine gradient direction and the middle stop.
+Alt+Arrow provides keyboard positioning, and eight one-click presets sit below
+the field.
+The interaction accents remain the space-owned honey/teal and violet/blue tokens
+so control contrast does not depend on a user-selected background. Switching
+spaces updates the gradient and accents while
 only the destination sidebar content below the stationary space switch enters
 directionally over 345 ms: Personal moves left from the right and Bakbak moves
 right from the left. The channel header, conversation canvas, live application
@@ -38,8 +55,9 @@ tree, and global call dock stay mounted and still; reduced motion applies the
 destination immediately. The
 conversation canvas is `#171717` in dark mode and near-white in light mode.
 Auto, Light, and Dark appearance choices remain device-local and apply before
-React mounts. Appearance Settings replaces the operating-system accent summary
-with read-only Bakbak and Personal palette previews.
+React mounts. Appearance Settings includes the same live per-space sidebar
+editor used by the one-time, skippable setup prompt shown after each account's
+first completed sign-in on a device.
 
 Inter Variable is bundled locally at weights 400–700 with `Inter`,
 `Avenir Next`, `Segoe UI`, and `sans-serif` fallbacks. The rem-based scale uses
@@ -60,14 +78,16 @@ and new voice rooms after the last voice room.
 
 The sidebar previews up to six other members regardless of online status,
 prioritising people in voice, then online, away, and offline members with
-deterministic name order. A seventh flat row opens Show all in a centred
-focus-trapped overlay grouped as In Voice, Online, Away, and Offline, including
-the current user as You while preserving profile, DM, context, and
-stream-watching actions. Forty-six-pixel preview rows use 38 px avatars and
-more breathing room. Online names are bold and their lazy cover texture is
-clearer, while away/offline treatment remains quiet. Personal omits this
-server preview. The right member/details rail no longer exists; DM header
-identity opens the same profile surface. Category and channel snapshots
+deterministic name order. Its Activity header is an accessible disclosure that
+defaults open and remembers its collapsed state per account and server on the
+device. A seventh flat row opens Show all in a centred focus-trapped overlay
+grouped as In Voice, Online, Away, and Offline, including the current user as
+You while preserving profile, DM, context, and stream-watching actions.
+Forty-six-pixel preview rows use 38 px avatars and more breathing room. Online
+names are bold and their lazy cover texture is clearer, while away/offline
+treatment remains quiet. Personal omits this server preview. The right
+member/details rail no longer exists; DM header identity opens the same profile
+surface. Category and channel snapshots
 request active rows only, archive Realtime reconciliation removes navigation
 rows, and an archived selection falls back to the first active room.
 
@@ -121,7 +141,7 @@ for installed-client compatibility; v2 sends generate `[Image]`, `[Video]`,
 
 Plain-text segments in channel messages and Personal DMs recognize `http://`,
 `https://`, and `www.` URLs without disturbing mention segments or trailing
-punctuation. Links open through Tauri's system-browser opener, with a
+punctuation. Links open through Electron's validated system-browser bridge, with a
 `noopener` browser fallback. After a committed send—or once per session for
 loaded history—the renderer asynchronously requests one preview without
 delaying the message. The authenticated `link-preview` function re-reads the
@@ -140,7 +160,9 @@ opt-in 720p camera calls, sidebar occupancy with elapsed timers, mute/deafen,
 listener-local 0–200% per-participant volume, remote-track audio/video
 rendering, autoplay recovery, and reconnect/error states. The people view uses
 one centred profile/camera circle, a two-to-four-person overlap cluster, a
-five-to-ten-person orbit, and a wrapped overflow fallback. Hover or keyboard
+normal centred wrapping row for five to ten people, and a denser wrapping
+fallback above ten. Participant circles are 20% larger than their original
+circular-layout sizes. Hover or keyboard
 focus reveals a forgiving above-avatar identity/action tooltip with profile,
 LIVE, and remote-volume controls without covering the avatar. Non-LIVE profile
 and camera circles are passive; only a LIVE circle or its LIVE action opens the
@@ -458,67 +480,42 @@ sound. Natural completion of the final overlapping clip hard-mutes and flushes
 the same monitor stream but keeps the shared `AudioContext` and LiveKit
 publication alive, avoiding renegotiation before the next sound. Receiver-side
 soundboard elements mirror LiveKit mute/unmute state and hard-mute immediately
-on a synchronized stop event, preventing a retained final WebKit frame from
+on a synchronized stop event, preventing a retained final media frame from
 remaining audible. The final Arc-plus-native
 voice, video, device, soundboard, reconnect, and crash-expiry rehearsal remains
 open for human observation.
 
-Installed macOS 14+ and Windows clients share one Bakbak Entire screen /
-Application picker before capture starts. macOS enumerates displays and running
-applications asynchronously through ScreenCaptureKit with a bounded wait;
-resolved filters use ScreenCaptureKit's point-to-pixel metadata so Retina
-application capture retains its actual pixel dimensions. Windows uses
-privacy-filtered native monitor/window handles, and the renderer never guesses
-a process from a window title. A separate least-privilege LiveKit room publishes
-H.264 video with presenter-selected 480p/720p/1080p and 15/30/60-fps ceilings.
-The default is 1080p/60, the last successful quality is device-local, and source
-audio defaults on whenever matched audio is available for the selected source
-(not persisted). On macOS 14.2+, ScreenCaptureKit captures optional 48 kHz
-stereo audio from the selected application's proven process tree or a display
-filter that excludes Bakbak's proven process tree. Application choices are
-rejected when either process tree contains the other, and capture falls back to
-video-only unless the stream configuration confirms current-app audio
-exclusion. A topology watchdog rebuilds the filter, and unsupported or
-unproven isolation remains video-only. Windows
-has direct
-free-threaded
-`Windows.Graphics.Capture`, D3D11 frame delivery and staging readback,
-resize/quality frame-pool reconfiguration, time-bounded in-memory picker
-previews, and CPU BGRA scaling/color conversion to I420 for LiveKit. On Windows
-build 20348 or newer, WASAPI process loopback includes the selected
-application's process tree or excludes the proven WebView2 browser-process tree
-for a display. Tauri reads WebView2 process information from the native webview
-handle and refreshes it on process changes. Application loopback is likewise
-disabled when the selected tree contains Bakbak, Bakbak contains the selected
-tree, or either ancestry is unproven. Older builds or an unverified tree keep
-video enabled and report why audio is unavailable. Cursor inclusion is
-checked as an independent capture capability. Sustained black/cursor-only application frames stop with a
-structured Entire screen retry and Borderless Windowed guidance; Bakbak never
-injects into or hooks a game.
-Source termination, terminal LiveKit disconnect, voice leave, explicit stop,
-and main-window close tear down capture and the companion.
-Linking ScreenCaptureKit directly makes macOS 12.3 the desktop bundle minimum;
-macOS 12.3–13 retain the video-only WebView fallback.
+Installed Apple Silicon macOS and Windows x64 clients share one Bakbak Entire
+screen / Application picker before capture starts. Electron enumerates Chromium
+desktop-capture sources in the trusted main process and returns bounded source
+metadata plus in-memory thumbnails through a narrow preload bridge. The
+renderer keeps the short-lived screen-share token, connects the least-privilege
+companion LiveKit room, creates the Chromium capture tracks, and publishes H.264
+video with presenter-selected 480p/720p/1080p and 15/30/60-fps ceilings. The
+default is 1080p/60 and the last successful quality is device-local. Audio is
+published only when requested and Chromium returns a system-audio track.
+`restrictOwnAudio` is requested, but the old Rust process-tree isolation proof
+does not exist in the Electron prototype; installed echo and application-audio
+isolation are therefore mandatory acceptance checks. Source termination,
+terminal LiveKit disconnect, voice leave, explicit stop, and window teardown
+disconnect the companion and release capture tracks. The desktop bundle minimum
+remains macOS 12.3.
 
-The Tauri metadata, window sizing, Content Security Policy, minimal capability
-set, Bakbak icons, microphone/camera/screen-capture purpose strings, audio-input
-plus camera entitlements, and signed updater are configured. GitHub Actions
-validate pull requests on Linux plus a dedicated Windows runner that checks and
-tests native Rust, and prepare versioned macOS Apple Silicon and Windows x64
-releases. The release build pins Tauri Action v1.0.0 by immutable commit.
-Updater manifest verification accepts Tauri's generic platform keys together
-with the bundle-specific `darwin-aarch64-app` and `windows-x86_64-nsis`
-aliases, validates every included alias has a URL and signature, and rejects
-all other targets. The macOS release job uses an explicit macOS 26 arm64 host
-because the transitive `apple-metal` Swift bridge requires macOS 26 SDK
-symbols; the built application's deployment minimum remains macOS 12.3. Bakbak
-v0.4.0 is the final Intel macOS release, and the release workflow rejects Intel
-DMGs, updater bundles, and manifest targets without remotely disabling older
-clients.
-Release version synchronization accepts both LF and Windows CRLF Cargo lockfile
-line endings. A hardened-runtime macOS application can be ad-hoc signed locally;
-Developer ID signing/notarization and Windows code signing remain deferred as
-approved.
+Electron owns application metadata, secure window creation, the custom
+`app://bakbak` renderer protocol, CSP, least-privilege permission handling,
+icons, macOS purpose strings/entitlements, and updates. GitHub Actions validate
+the renderer and Electron process on Ubuntu and package an Apple Silicon
+DMG/ZIP plus Windows x64 NSIS installer on native runners. Electron clients use
+`latest-mac.yml` and `latest.yml`. During the shell transition, the release also
+creates a Tauri-signed `.app.tar.gz` and signature for macOS, signs the same
+Windows NSIS executable, and generates `latest.json` with the generic and
+bundle-specific aliases accepted by existing Tauri clients. Tauri is used only
+as a pinned transitional signing CLI in release automation; no Tauri runtime or
+Rust source remains. The application ID stays `com.bakbak.desktop`, the product
+name stays `Bakbak`, and GitHub Releases remains the update channel. Bakbak
+v0.4.0 remains the final Intel macOS release. Developer ID
+signing/notarization, Windows code signing, and installed old-client migration
+rehearsals remain required before a production Electron release.
 
 ## Technology stack
 
@@ -527,7 +524,7 @@ approved.
 | Package/tooling      | pnpm, TypeScript                  | Dependency management and strict static types                                             |
 | Renderer             | React, Vite                       | Desktop UI, local interaction state, and stale-while-revalidate restoration               |
 | Local read cache     | IndexedDB                         | User-scoped workspace, recent messages, and bounded authenticated profile/message posters |
-| Desktop shell        | Tauri 2, Rust                     | Native window, packaging, capabilities, and later tray/desktop integrations               |
+| Desktop shell        | Electron, electron-builder        | Sandboxed window, typed preload bridge, packaging, and updates                            |
 | Identity/data        | Supabase Auth, Postgres, Realtime | Accounts, membership, channels, messages, invites, and realtime chat                      |
 | Trusted backend      | Supabase Edge Functions           | Voice tokens, managed media, System events, and authenticated safe link metadata          |
 | Object media         | Supabase Storage                  | Private sound, profile, message, video, and sticker objects with RLS-filtered access      |
@@ -536,7 +533,7 @@ approved.
 | Validation/testing   | Zod, Vitest, Testing Library      | Boundary validation and unit/component tests                                              |
 
 There is one pnpm application, not a frontend/backend monorepo. `package.json`
-pins pnpm `11.3.0` through `packageManager` so local installs and GitHub Actions
+pins pnpm `11.17.0` through `packageManager` so local installs and GitHub Actions
 use the same package-manager release. Supabase assets live alongside the app for
 local development and deployment.
 
@@ -549,6 +546,7 @@ bakbak/
 ├── AGENTS.md
 ├── .github/
 │   └── workflows/                 # Pull-request validation and desktop releases
+├── build/                          # Bundle icons and macOS entitlements
 ├── docs/
 │   ├── architecture.md
 │   ├── progress.md
@@ -596,6 +594,7 @@ bakbak/
 │       ├── ffmpeg/                # lazy reduced LGPL core and license
 │       └── rnnoise/               # bundled RNNoise/Jitsi license notices
 ├── scripts/                       # checks, release/audio generation, reduced-core build
+├── electron/                      # trusted main process and sandboxed preload
 ├── third_party/roundo/             # Roundo source record and SIL OFL notice
 ├── src/
 │   ├── app/                       # application shell, routing, providers
@@ -611,7 +610,6 @@ bakbak/
 │   ├── lib/                       # Supabase clients, adapters, types, and mock data
 │   ├── styles.css                 # desktop design system and layout
 │   └── main.tsx
-├── src-tauri/                     # Rust entrypoints, capabilities, icons, bundle config
 ├── third_party/
 │   └── ffmpeg-soundboard/         # pinned reduced-core recipe and notices
 └── supabase/
@@ -638,10 +636,11 @@ The renderer uses a titlebar, two-track desktop layout, and modal layer:
    area after macOS traffic-light clearance and at the far left on Windows or
    the web. Renderer-owned Windows controls remain at the trailing edge.
 2. The 280 px default gradient sidebar begins with the Personal/Bakbak
-   segmented switch. Bakbak then shows a flat Activity preview of six members
-   plus a Show all row, followed by one flat Channels shelf; admins use one
-   plus control to choose a text or voice channel from a small menu, while
-   rename actions stay centered on their channel rows. Personal shows its
+   segmented switch. Bakbak then shows a default-open, locally remembered
+   collapsible Activity preview of six members plus a Show all row, followed by
+   one flat Channels shelf; admins use one plus control to choose a text or
+   voice channel from a small menu, while rename actions stay centered on their
+   channel rows. Personal shows its
    heading, New message, and DM list without duplicating server presence.
    Active-call controls and the current-user dock stay pinned at the bottom in
    both spaces. The active-call card uses a compact connection state/room
@@ -671,7 +670,9 @@ The renderer uses a titlebar, two-track desktop layout, and modal layer:
    compact stage loader instead of a blank canvas. A disconnected room offers
    a concise rejoin action instead of going blank. After connection, the people
    view uses one centred circular participant, an overlapping two-to-four
-   cluster, a five-to-ten orbit, and a compact wrapping fallback above ten.
+   cluster, a normal centred wrapping row for five to ten people, and a denser
+   wrapping fallback above ten. Every participant circle is 20% larger than its
+   original circular-layout size.
    Normal profile and camera circles are passive while their above-avatar
    tooltip exposes identity, profile, and listener-volume actions. A LIVE
    circle or LIVE action opens its share in a media-only focused stage; clicking
@@ -722,79 +723,53 @@ tokens, authorization headers, LiveKit tokens, service credentials, presence
 authority, or pending optimistic sends. A backend denial purges inaccessible
 cached scopes.
 
-### Tauri shell
+### Electron shell
 
-Tauri owns the native window, capabilities, application identity, and desktop
-bundles. V1 should expose the smallest capability set needed by the renderer.
-The shared main-window geometry remains 1280×800 with a 1024×680 minimum,
-resizing, and label `main` across the base, macOS, and Windows configurations.
-macOS uses the overlay titlebar with hidden native title and a 16 px horizontal,
-24 px vertical traffic-light inset that centres the controls in the 48 px bar.
-The base Tauri config enables `macOSPrivateApi` so plain cross-platform Cargo
-checks validate the matching `macos-private-api` feature; the macOS override
-also retains that allowlist while applying a transparent window, native shadow,
-and the `underWindowBackground` effect with active/inactive-state following.
-Windows disables native decorations while retaining the native shadow and
-transparent webview, exposes renderer minimize, toggle-maximize, close, drag, and
-maximize-state reconciliation through an injectable adapter, and applies Mica
-from Rust only when `windows-version` reports build 22000 or newer. Before
-React loads, Rust injects `data-window-material="native|fallback"`; native
-material makes document roots transparent, while Windows 10, browser preview,
-and unsupported platforms retain an opaque grayscale underlay. Acrylic is not
-used. The Windows override intentionally omits `noRedirectionBitmap` because
-the released Tauri 2.11 configuration schema rejects that unreleased option;
-the existing opaque pre-render fallback continues to cover startup. Capabilities
-grant window operations only to the main window. Linux custom chrome and native
-material remain deferred. The macOS private material API makes Mac App Store
-distribution unsupported; Bakbak targets private distribution.
-The main window enables Tauri's built-in interface zoom hotkeys, providing
-Cmd/Ctrl `+`, Cmd/Ctrl `-`, and Cmd/Ctrl `0` through the narrowly scoped
-webview-zoom capability.
-The `get_system_accent` command returns RGB bytes and a
-`macos | windows | fallback` source. macOS converts
-`NSColor.controlAccentColor` to sRGB and observes
-`NSSystemColorsDidChangeNotification`; Windows reads
-`UISettings.GetColorValue(Accent)` and retains `ColorValuesChanged`. Both emit
-`system-accent-changed` for the application lifetime. Browser/mock and
-unsupported hosts use the renderer's neutral fallback.
-Native commands are not an authorization substitute for Supabase RLS or Edge
-Function validation. The updater capability may check, download, and install a
-manifest-signed update, while the process capability is narrowed to restart.
-The committed updater public key verifies artifacts; its password-protected
-private key must exist only in release infrastructure and an operator backup.
-The main Tauri configuration always creates signed updater artifacts, while
-`tauri.local.conf.json` disables only those artifacts for local app-only builds
-that do not have access to the protected release key.
-Screen-capture commands are restricted to the main Bakbak window. Native code
-receives only the public LiveKit URL and a five-minute member-authorized token,
-never an API signing secret. On macOS it owns shareable-content enumeration,
-ScreenCaptureKit stream, frame/audio conversion, native LiveKit companion, and
-deterministic teardown; enumeration and revalidation use the asynchronous
-framework API with a five-second ceiling, and captured source names are not
-logged.
-The ScreenCaptureKit-to-LiveKit zero-copy boundary transfers its owned
-`CVPixelBuffer` retain into LiveKit's macOS native frame wrapper exactly once;
-Rust must not release that transferred retain again. A share is reported as
-active only after capture registration succeeds and the first usable video
-frame arrives. If no frame arrives within five seconds, native capture is
-stopped and the renderer receives a retryable error while voice remains
-connected. Sanitized lifecycle states and failures are printed to the Tauri
-terminal and DevTools without tokens or captured-source labels. Media
-diagnostics contain only OS/build, source kind, capture backend, cursor
-capability, audio-isolation mode, and stable failure code.
-Focused voice media stays inside the normal application window on every
-platform. The renderer does not request native fullscreen or alter the native
-glass/material lifecycle when a share is focused.
-The native Rust LiveKit/WebRTC dependencies are macOS and Windows target
-dependencies. ScreenCaptureKit remains macOS-only; Windows links
-Windows.Graphics.Capture, D3D11, and WASAPI process-loopback support.
-The pinned macOS WebRTC archive stores several runtime-only bridges in
-Objective-C category objects, which the static linker would normally omit.
-The Bakbak build extracts and explicitly links the reviewed category members
-from that archive, including the `NSString` conversion and private video-codec
-bridges. It does not use the broad `-ObjC` flag because that also force-loads
-unrelated ScreenCaptureKit Swift archives and produces duplicate bridge
-symbols.
+Electron owns the native window, application identity, desktop bundle, update
+client, source enumeration, and operating-system integrations. The main window
+keeps the established 1280×800 geometry with a 1024×680 minimum. macOS uses a
+hidden-inset titlebar with native traffic lights; Windows uses the renderer
+titlebar and Electron's Mica background material. CSS application drag regions
+replace imperative drag IPC. The native application menu retains Cmd/Ctrl `+`,
+Cmd/Ctrl `-`, and Cmd/Ctrl `0` zoom commands.
+
+The renderer runs with `contextIsolation`, sandboxing, and web security enabled,
+with Node.js integration disabled. Production content is served from the secure
+standard `app://bakbak` protocol rather than `file://`; development accepts only
+the fixed `http://127.0.0.1:1420` Vite origin. Vite binds that exact IPv4
+loopback address and the desktop launcher waits for its TCP listener before
+starting Electron, avoiding an IPv6 `localhost` bind that Electron cannot
+reach. Navigation, popups, webviews, permission
+requests, and every IPC sender are checked against the current main frame and
+trusted origin. External opening accepts only HTTP(S). The preload exposes
+individual typed methods for window controls, native accent state, external
+links, relaunch/settings, screen-source selection, and updates; it never exposes
+`ipcRenderer` or a generic channel API. Native calls remain convenience
+boundaries, not substitutes for Supabase RLS or Edge Function authorization.
+
+The application ID remains `com.bakbak.desktop`, and Electron stores its data
+under the stable application-specific user-data directory. Existing Tauri
+WebView local storage is not automatically imported into Chromium storage, so
+the first Electron launch may require one sign-in even when the installer
+handoff succeeds. Browser/mock and unsupported hosts use renderer fallbacks.
+The main process reads the native accent and emits bounded accent-change events.
+
+Windows packages retain Tauri's current-user `%LOCALAPPDATA%\Bakbak` install
+directory. The NSIS compatibility include recognizes Tauri's `/P /R /UPDATE`
+invocation, runs the bridge install passively, restarts the replacement only
+after success, and removes the legacy `uninstall.exe`, WebView2 loader, and
+Tauri registry entries after Electron's own files and uninstaller exist. Later
+Electron updates use the same directory and electron-builder registry identity.
+
+`electron-updater` performs explicit check, download, progress, and
+install/restart operations against GitHub Releases. It is disabled for unpacked
+builds and unsupported platforms. Source capture is prepared with a 30-second,
+single-use selection bound to the trusted renderer and a user gesture. The
+short-lived LiveKit screen-share token never crosses into the main process;
+the renderer uses it directly to establish the companion room. Sanitized media
+diagnostics contain OS/build, source kind, capture backend, cursor capability,
+audio-isolation mode, and stable failure code. Focused voice media stays inside
+the normal application window and does not request native fullscreen.
 
 ### Supabase
 
@@ -1016,10 +991,10 @@ An invite-management UI is deferred until post-v1.
 1. The renderer imports locally installed Inter Variable before mounting React.
    A validated `auto | light | dark` preference applies before
    React mounts; Auto delegates to CSS `prefers-color-scheme`, so operating-
-   system changes continue to apply live. Rust supplies the pre-render
-   native/fallback material marker; fallback
-   mode uses an opaque system-coloured document underlay and native mode makes
-   only the document roots transparent. Dark canvas/panel/strong bases use
+   system changes continue to apply live. The Electron window starts with the
+   opaque fallback document underlay; Windows applies Mica at the native window
+   layer, while unsupported hosts retain the same deterministic fallback. Dark
+   canvas/panel/strong bases use
    64/72/84% black; light bases use 60/72/84% white. Accent mixes of 6/5/3%
    unify those surfaces while keeping wallpaper bleed subordinate. Primary
    chrome uses 24 px blur and 120% saturation, never a filter on user/live
@@ -1033,24 +1008,32 @@ An invite-management UI is deferred until post-v1.
    52 px composer, and restrained 10/14/16/18 px curves. Hover transitions use
    color and border changes; reduced motion disables transitions and press
    scaling.
-2. Profile edits validate a trimmed 1–50 character display name, a
+2. Sidebar theme preferences are stored per account under
+   `bakbak.sidebarThemes.v1:<user ID>`. Each record contains independent
+   Personal and Bakbak solid/gradient colors, brightness, transparency, and
+   texture plus three bounded gradient points and the one-time setup completion
+   flag. Parsing clamps numeric values and rejects malformed colors or points.
+   Older v1 records receive default point positions. Skip keeps the defaults
+   and records completion; the full editor remains available in Appearance
+   Settings.
+3. Profile edits validate a trimmed 1–50 character display name, a
    190-character plain-text description, integer 0–100 cover coordinates, and
    optional PNG/JPEG/WebP/GIF media. Avatars are limited to 5 MiB, covers to 10
    MiB, and every decoded image to 16 megapixels and 8192 px on either side.
    Separate Avatar and Cover actions open the existing attributed GIPHY search
    in GIF-only, target-aware mode.
-3. The renderer decodes each upload before storage and paints a bounded static
+4. The renderer decodes each upload before storage and paints a bounded static
    poster: at most 512 px on the avatar long edge or 1600 px on the cover long
    edge, encoded as WebP with PNG fallback. GIF uploads retain the original
    animation beside the poster; other animated formats are flattened.
-4. Changed poster/animation objects upload to
+5. Changed poster/animation objects upload to
    `<user UUID>/<generated UUID>` before one profile-row update. Any failure
    removes every newly uploaded object. Success mirrors the display name into
    Auth metadata and best-effort deletes replaced/removed objects. Choosing
    GIPHY instead writes only its bounded asset ID, clears the field's upload
    paths/legacy URL, and then removes replaced private objects; choosing an
    upload or removal clears the corresponding provider ID.
-5. A memory plus user-scoped IndexedDB bucket/path cache deduplicates
+6. A memory plus user-scoped IndexedDB bucket/path cache deduplicates
    authenticated downloads and revokes object URLs on replacement, account
    change, clearing, and teardown. Workspace metadata publishes before avatar
    posters hydrate progressively. Activity and expanded member rows request
@@ -1070,10 +1053,10 @@ An invite-management UI is deferred until post-v1.
    posters, use the session-deduplicated provider adapter for attention-driven
    animation and cover loads, and fall back to initials/no cover on API or
    rendition failure.
-6. Cover framing uses a fixed 3:1 preview. Pointer drag or keyboard arrows
+7. Cover framing uses a fixed 3:1 preview. Pointer drag or keyboard arrows
    update integer focal coordinates; Shift moves by a larger step and Reset
    returns to 50/50.
-7. Audio settings retain the persisted device selectors, soundboard volume,
+8. Audio settings retain the persisted device selectors, soundboard volume,
    enhanced-cleanup switch, selected voice effect, and interface-sound
    master/volume/category preferences in four spaced Voice Input, Voice Output,
    Video, and App Sounds categories. Opening settings does not request media.
@@ -1085,7 +1068,7 @@ An invite-management UI is deferred until post-v1.
    temporary resources and release them when stopped or unmounted. Preview
    buttons activate and play one modern interface-sound category representative
    through the system output.
-8. Settings is a modal overlay over the current canvas. It traps focus, restores
+9. Settings is a modal overlay over the current canvas. It traps focus, restores
    the opener on close, exposes compact active-call controls, and confirms
    logout. Closing discards staged profile edits and revokes preview URLs; a
    failed save leaves the draft intact for retry. A failed logout leaves the
@@ -1313,59 +1296,38 @@ An invite-management UI is deferred until post-v1.
 ### Desktop screen share
 
 1. A connected installed client opens a renderer confirmation with Entire
-   screen / Application tabs on macOS 14+ and Windows. Source audio defaults on
-   when matched audio is available; the presenter can turn it off with a
-   switch. `ScreenShareSource.audioUnavailableReason` is authoritative for the
-   selected source: the picker disables and clears audio when that reason is
-   present. The confirmation exposes independent 480p/720p/1080p and 15/30/60-fps
-   controls, defaults to 1080p/60 on first use, and persists only the last
-   successful quality under `bakbak.screenSharePreferences.v1`. Browser clients
-   have no share UI and force every screen publication unsubscribed.
-2. For native capture, the renderer requests `{ channelId, purpose:
-"screen_share" }`. The function repeats authentication, membership, and
-   voice-channel checks, then signs a five-minute companion identity tied to
-   the same room and owner.
-3. Tauri validates that the caller is the main window, resolves the selected
-   macOS display/application or privacy-filtered Windows source handle, and
-   connects a second LiveKit room using only the returned public URL and token.
-   It never receives a signing key.
-4. macOS applies live ScreenCaptureKit configuration updates. Windows uses a
-   free-threaded D3D11 frame pool, throttles to the selected cap, recreates on
-   source-size/quality changes, reads frames back for CPU BGRA-to-I420
-   conversion, and retains the same companion identity. Moving Windows scaling
-   and color conversion fully onto the GPU remains an acceptance/performance
-   follow-up. The presenter ceiling uses 0.8–8 Mbps H.264
+   screen / Application tabs. Electron's trusted main process enumerates screen
+   and window sources and returns bounded labels and thumbnails through the
+   typed preload bridge. The confirmation exposes independent
+   480p/720p/1080p and 15/30/60-fps controls, defaults to 1080p/60 on first use,
+   and persists only the last successful quality under
+   `bakbak.screenSharePreferences.v1`. Browser clients have no share UI and
+   force every screen publication unsubscribed.
+2. The renderer requests `{ channelId, purpose: "screen_share" }`. The function
+   repeats authentication, membership, and voice-channel checks, then signs a
+   five-minute companion identity tied to the same room and owner.
+3. The renderer sends only `{ sourceId, includeAudio }` to the main process.
+   Electron validates the current main frame and origin, records a single-use
+   30-second selection, and satisfies the next user-gesture display-media
+   request for exactly that enumerated source. The token and LiveKit URL do not
+   enter desktop IPC.
+4. The renderer connects the companion `Room` with `autoSubscribe: false`,
+   creates local screen tracks, and publishes H.264 screen video plus optional
+   `ScreenShareAudio`. The presenter ceiling uses the existing 0.8–8 Mbps
    encoding limits across the nine quality combinations; LiveKit adaptive
-   layers may deliver less to a viewer.
-5. On macOS 14.2+, application filters include only the selected application's
-   proven process tree and display filters exclude Bakbak's process tree.
-   ScreenCaptureKit's current-app-audio exclusion is asserted before native
-   audio starts, and application capture rejects both descendants and ancestors
-   of Bakbak. The filter is rebuilt after relevant process-topology changes.
-   macOS 14.0–14.1 and any unproven isolation are video-only. Windows build
-   20348 or newer includes only a selected application tree proven disjoint
-   from Bakbak, or excludes the one proven WebView2 browser root and all of its
-   reported descendants for Entire screen. Tauri obtains that group through
-   the native webview's `GetProcessInfos`, refreshes it through
-   `ProcessInfosChanged`, and keeps all process identifiers native-only and out
-   of logs. Enumeration and start-time validation reject both Tauri-host and
-   WebView2-group application processes.
-   The exact WebView2 snapshot is checked again before WASAPI activation and
-   throughout the share. A topology change or proof loss stops audio frames
-   first, unpublishes only screen audio, retains video, and emits
-   `audio-isolation-unavailable`; no path broadens to ordinary system loopback.
-   Session and lifecycle payloads carry `audioUnavailableReason`. Successful
-   display diagnostics use `exclude-bakbak-process-tree` on macOS and
-   `exclude-webview2-process-tree` on Windows.
-   `screen_share_audio` publication starts only after isolated capture succeeds.
-6. A two-second gap without a complete frame mutes the publication, keeps the
-   viewer's last frame visible, and reports “Source minimized or paused.”
-   Capture automatically unmutes when a complete frame returns.
-   Windows application capture separately classifies sustained black or
-   cursor-only frames, stops with `capture-black`, and offers one-click retry
-   with Entire screen plus Borderless Windowed instructions. Cursor API failure
-   returns `cursor-unavailable`; isolation failure uses
-   `audio-isolation-unavailable`.
+   layers may deliver less to a viewer. Live quality changes apply media-track
+   constraints and sender encoding limits.
+5. System audio is requested only when the presenter enables it and is
+   published only when Chromium returns an audio track. Chromium's
+   `restrictOwnAudio` constraint is requested, but it is a best-effort browser
+   control rather than the removed Rust process-tree proof. The first Electron
+   release therefore cannot claim selected-process or Bakbak-process exclusion
+   until installed macOS and Windows tests demonstrate it. A missing or failed
+   audio track leaves video live and reports a bounded unavailable reason.
+6. Explicit stop, source-track end, terminal companion disconnect, voice leave,
+   and window teardown disconnect the companion room. Structured capture
+   failures remain sanitized and never include the short-lived token or source
+   content.
 7. Companion participants are merged into their owner's UI state and omitted
    from ordinary participant cards. Every remote screen video/audio publication
    is immediately unsubscribed. `watchedScreenShareId` is the sole subscription
@@ -1499,6 +1461,9 @@ Interface cues deliberately bypass the selected call output.
 Soundboard section collapse state is stored independently per server under
 `bakbak.soundboardSections.v1:<server ID>` and never syncs; favorite rows sync
 through Supabase instead.
+Activity disclosure state is stored per account and server under
+`bakbak.activityPreviewCollapsed.v1:<user ID>:<server ID>`, defaults expanded,
+and never syncs.
 Legacy channel-category collapse state may remain under
 `bakbak.channelCategories.v1:<server ID>`, but the sole Channels shelf is flat
 and non-collapsible, so the redesigned shell neither reads nor writes it.
@@ -1507,6 +1472,9 @@ Appearance stores only `auto`, `light`, or `dark` under
 `bakbak.appearancePreferences.*` entries remain inert rather than receiving a
 cleanup migration. The native system-accent bridge remains dormant for desktop
 compatibility; no accent preference or system-accent summary is exposed.
+Per-account sidebar themes use `bakbak.sidebarThemes.v1:<user ID>` and never
+leave the device; defaults restore independently for Personal and Bakbak when a
+record is absent or malformed.
 It stores `{ enabled, volume, categories }` under
 `bakbak.interfaceSoundPreferences.v1`; the default is enabled at 55% with
 Messages, Voice, Screen share, and Status enabled. Interface sounds lazily
@@ -1533,41 +1501,46 @@ model; Jitsi's Apache/MIT notice and Xiph.Org's BSD 3-Clause notice ship under
 
 ### Desktop release and update
 
-1. Pull requests run formatting, lint, strict TypeScript, renderer/unit tests,
-   release-script tests, version synchronization, production build, secret
-   scan, and a locked Rust check.
+1. Pull requests run formatting, lint, strict renderer/main/preload TypeScript,
+   renderer and Node contract tests, version synchronization, production build,
+   and secret scan on Ubuntu. A native packaging matrix also builds the Apple
+   Silicon DMG/ZIP and Windows x64 NSIS installer so PRs cannot merge with a
+   shell that exists only in theory.
 2. A pull request receives the `stabilization:candidate` label only when its
-   head is ready for installed acceptance. The label-triggered candidate
-   workflow validates and checks out that exact 40-character revision, runs
-   the complete renderer and locked Rust check/test gates, then builds an
-   Apple Silicon DMG and Windows x64 NSIS installer with the live public
-   renderer configuration. A manual dispatch can build another exact revision
-   after the workflow exists on `main`.
-3. Candidate updater artifacts are disabled. The workflow scans both generic
-   and target-specific compiled bundle directories, then uploads private
-   seven-day Actions artifacts named with the same short revision. Each
-   contains an installer plus bounded provenance containing the app version,
-   full revision, platform, and workflow run. It has read-only repository
-   permissions and cannot create or publish a GitHub Release.
-4. A merge to `main` resolves the next stable SemVer from the newest `v*` tag.
-   Patch is the default; `release:minor` and `release:major` labels override it,
-   while `release:skip` suppresses documentation-only releases. The resolver
+   head is ready for installed acceptance. The label-triggered workflow checks
+   out and verifies that exact 40-character revision, runs the integrated
+   Electron gate, then builds an Apple Silicon DMG and Windows x64 NSIS
+   installer with the live public renderer configuration. A manual dispatch can
+   build another exact revision after the workflow exists on `main`.
+3. Candidate workflows never publish a release. They scan the compiled bundles
+   and upload private seven-day artifacts named with the same short revision.
+   Each contains one installer plus bounded provenance containing the app
+   version, full revision, platform, and workflow run.
+4. A merge to `main` resolves the next stable SemVer from the newest `v*` tag
+   only after the non-secret `ELECTRON_MIGRATION_REHEARSED=true` repository
+   variable records the installed transition gate. Until then, only a manual
+   dispatch with an explicit rehearsal confirmation may continue. Patch is the
+   default; `release:minor` and `release:major` labels override it, while
+   `release:skip` suppresses documentation-only releases. The resolver
    regression fixes the `v0.16.0 + release:major` boundary at `v1.0.0`; source
    package versions are not changed manually before that isolated release
    checkout.
-5. The release checkout synchronizes the calculated version across
-   `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`.
-6. Tauri Action builds macOS `aarch64` and Windows `x86_64` installers with the
-   production renderer configuration. Update artifacts are signed with the
-   separate Tauri updater key. Intel macOS builds ended at v0.4.0.
+5. The release checkout writes the calculated version to `package.json`, then
+   electron-builder produces an Apple Silicon DMG/ZIP with
+   `latest-mac.yml` and a Windows x64 NSIS installer with `latest.yml`. Intel
+   macOS builds ended at v0.4.0.
+6. For the first shell-transition release, the macOS job archives the Electron
+   `.app` as `.app.tar.gz`, the release jobs sign that archive and the NSIS
+   executable with the existing Tauri updater key through a pinned signing CLI,
+   and the publish job generates legacy `latest.json`. This compatibility
+   signer is release tooling only; no Rust or Tauri runtime ships.
 7. The workflow holds the GitHub Release as a draft until it verifies exactly
-   one Apple Silicon DMG, one NSIS setup executable, no Intel macOS artifacts,
-   and one signed `latest.json` entry for each supported target. Unexpected or
-   duplicate targets fail manifest verification.
-8. After publication, the workflow synchronizes the released version across
-   `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`, then
-   updates the Bakbak package entry in `src-tauri/Cargo.lock`. It pushes an
-   attempt-scoped branch, then a tested Node boundary discovers or creates its
+   one Apple Silicon DMG, one ZIP, one NSIS setup executable, no Intel macOS
+   artifacts, Electron's two updater metadata files, and the version-matched
+   signed legacy manifest for both supported targets.
+8. After publication, the workflow synchronizes the released version in
+   `package.json`. It pushes an attempt-scoped branch, then a tested Node
+   boundary discovers or creates its
    protected-branch-compatible PR through GitHub's REST API. Creation and merge
    tolerate empty, malformed, rate-limited, and server-error responses with
    three bounded attempts and a branch-specific lookup after every uncertain
@@ -1582,11 +1555,13 @@ model; Jitsi's Apache/MIT notice and Xiph.Org's BSD 3-Clause notice ship under
    makes reruns idempotent. A manual workflow independently streams every
    stable release oldest-first in historical mode and advances current
    members' release read baseline.
-10. Desktop clients check the public GitHub Releases `latest.json` three seconds
-    after startup through one renderer-owned update provider shared by the
-    global notice and Settings. Each request has a 60-second ceiling and a
-    failed check retries after two and five seconds before becoming a visible,
-    sanitized offline/timeout/service state. One check may run at a time.
+10. Electron clients ask the trusted main process to check GitHub Releases three
+    seconds after startup. `electron-updater` selects `latest-mac.yml` or
+    `latest.yml`; one renderer-owned provider is shared by the global notice and
+    Settings. Each request has a 60-second ceiling and retries after two and
+    five seconds before becoming a visible sanitized state. One check may run
+    at a time. Existing Tauri installations continue to request `latest.json`
+    until the transitional update replaces their shell.
 11. Settings includes an Updates section with installed/available versions,
     persisted last-successful-check time, manual retry, signed download
     progress, install-and-restart, a GitHub Releases fallback, and privacy-safe
@@ -1595,14 +1570,13 @@ model; Jitsi's Apache/MIT notice and Xiph.Org's BSD 3-Clause notice ship under
     responses are never copied or persisted.
 12. An available update is still shown globally; installation and restart
     require an explicit user action so an active conversation is not
-    interrupted. Downloads receive a ten-minute ceiling. Windows uses Tauri's
-    passive installer mode, and a failed installation leaves the current app
-    untouched with both retry and manual-download recovery paths.
+    interrupted. Downloads receive a ten-minute ceiling, and failed checks or
+    downloads retain retry and manual-release recovery paths.
 
-Git tags and published Releases are the release source of truth. The tracked
-`0.2.0` version is the first-release floor. Release builds inject the resolved
-version in their isolated checkouts, and successful publication then advances
-the tracked local-development version through an automated PR on `main`.
+Git tags and published Releases are the release source of truth. Release builds
+inject the resolved version in isolated checkouts, and successful publication
+then advances the tracked local-development version through an automated PR on
+`main`.
 
 ## Backend contracts
 
@@ -1793,10 +1767,13 @@ store.
 
 Candidate and release workflows read the service-facing renderer values from
 GitHub Actions repository variables, force `VITE_DATA_MODE=live`, and inject
-the exact public `VITE_BUILD_REVISION` selected for that build. Releases read
-`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` from
-GitHub Actions secrets. The updater key/password are never Vite variables,
-renderer inputs, release assets, or committed files.
+the exact public `VITE_BUILD_REVISION` selected for that build. Transitional
+releases read `TAURI_SIGNING_PRIVATE_KEY` and
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` from GitHub Actions secrets only to sign
+the payload accepted by existing Tauri updater clients. The key/password are
+never Vite variables, Electron renderer inputs, release assets, or committed
+files. Future Electron releases use electron-builder update metadata and must
+use configured operating-system signing identities before public distribution.
 
 ## Validation strategy
 
@@ -1811,8 +1788,9 @@ pnpm version:check
 pnpm build
 ```
 
-Run `pnpm tauri build` when validating platform integration or a distributable
-bundle. Database phases add Supabase migration/RLS and Storage-policy tests;
+Run `pnpm desktop:build` when validating platform integration or a
+distributable bundle. Database phases add Supabase migration/RLS and
+Storage-policy tests;
 profile/channel work specifically covers avatar/cover owner, shared-member,
 cross-server and outsider access, field validation, plus admin/member channel
 RPC behavior. Ordered channel-layout work also covers exact category/room
@@ -1828,16 +1806,11 @@ System/link work additionally runs exact-layout and automation-only pgTAP,
 release-secret/idempotency and preview SSRF/redirect/timeout/size Deno tests,
 renderer URL/card/Realtime-side-effect checks, deterministic deafen-WAV tests,
 and multi-zoom dark/light connector alignment observation.
-Screen-sharing work additionally runs the Deno token suite, focused Rust tests,
-`cargo check --locked`, macOS and Windows native builds, compiled secret scans,
-and the bidirectional installed-client matrix in plan 0003. Artifact sizes are
-recorded before and after the native LiveKit dependency is shipped. Pull
-requests always run the Ubuntu validation job. A lightweight changed-file job
-runs in parallel and starts the Windows native Cargo check/test job only when
-`src-tauri/**` or `.github/workflows/ci.yml` changes; manual workflow dispatch
-always starts it. The Windows job remains conditionally present inside the
-always-triggered workflow so a skipped job completes successfully instead of
-leaving a future required workflow pending.
+Screen-sharing work additionally runs the Deno token suite, focused renderer
+and main/preload boundary tests, native macOS and Windows packages, compiled
+secret scans, and the bidirectional installed-client matrix in plan 0003. Pull
+requests always run the Ubuntu validation job and the native packaging matrix
+for both supported targets.
 
 The stabilization-candidate workflow runs only when its exact label is added
 to a pull request or when an operator manually supplies a full commit SHA. It
@@ -1847,13 +1820,13 @@ and manifests carry one shared revision; any later source change invalidates
 both artifacts and requires a fresh run.
 
 GitHub release validation additionally requires successful Apple Silicon macOS
-and Windows x64 native builds, updater signatures for both targets, exactly one
-ARM64 DMG, one NSIS executable, no Intel macOS artifact, and a complete
-version-matched `latest.json` containing only the two supported targets. A
-release remains a draft when any platform or manifest check fails. Ubuntu
-validation runners install Tauri's WebKitGTK, GLib-transitive,
-AppIndicator, SVG, X11 automation, OpenSSL, and compiler development packages
-before invoking Cargo.
+and Windows x64 packages, one ARM64 DMG and ZIP, one NSIS executable, no Intel
+macOS artifact, Electron's `latest-mac.yml` and `latest.yml`, and a complete
+version-matched signed legacy `latest.json` containing only the two supported
+targets. A release remains a draft when any platform or manifest check fails.
+Before the first Electron release, installed Tauri 1.6.0 clients and installed
+Electron clients must both complete their respective update paths on real
+Apple Silicon macOS and Windows x64 machines.
 
 Security validation must scan built renderer and desktop artifacts for forbidden
 service-role or LiveKit secret values. Record commands, results, and skipped
@@ -1878,7 +1851,8 @@ that it has passed.
   before release acceptance.
 - Plan 0034 supersedes plan 0016's active typography and plan 0026's visible
   system-accent treatment with bundled Inter Variable and distinct Bakbak and
-  Personal palettes. Auto/Light/Dark remains the only appearance choice.
+  Personal palettes. Auto/Light/Dark remains the global canvas choice; the
+  sidebar palettes can now be customized independently per signed-in account.
   Installed macOS/Windows glyph, clipping, native material, and offline-font
   observation remain required.
 - Plan 0006's centered settings modal, sidebar call controls, and simplified
@@ -1941,12 +1915,12 @@ that it has passed.
   soundboard track as a second microphone-source track and distinguishes it by
   `bakbak-soundboard`; speech is independently named `bakbak-microphone` so mute
   and reuse never depend on publication order.
-- macOS 14+ native video and matched source audio are implemented. Older macOS
-  retains the WebView fallback. Windows native picker, WGC video, and gated
-  process/display-matched audio are implemented, but a Windows machine still
-  must complete the installed-client isolation matrix. Cross-platform
-  two-account verification and before/after installer-size measurements remain
-  required by plans 0003 and 0010.
+- Electron desktop capture publishes screen/window video and optional Chromium
+  system audio on both supported targets. The former Rust
+  ScreenCaptureKit/WGC/WASAPI process-tree isolation implementation has been
+  removed. Chromium's `restrictOwnAudio` request is best effort, so echo,
+  application-only audio, black/protected content, teardown, and cross-platform
+  two-account behavior require a fresh installed-client matrix.
 - The current production renderer is roughly 406 kB compressed; LiveKit and
   Supabase can be lazy-loaded in a later performance pass if startup profiling
   shows a meaningful benefit.
@@ -1956,11 +1930,17 @@ that it has passed.
 - The Windows release job produces an unsigned x64 NSIS installer until a
   Windows code-signing identity is configured, so SmartScreen warnings are
   expected during the initial friend test.
-- GitHub Actions has the public renderer variables and updater-signing secrets.
-  The release matrix now builds an updater-enabled app plus one DMG on the
-  explicit macOS 26 arm64 host and an NSIS installer on Windows. The
-  Apple-Silicon-only asset/manifest checks still need a hosted run; v0.4.0 is
-  the preserved final Intel release.
+- GitHub Actions now defines PR, candidate, and release Electron packaging for
+  Apple Silicon macOS and Windows x64. The workflows and manifest contracts are
+  covered by source tests, and both installers compile locally on an Apple
+  Silicon host, but the matrix still needs a hosted run. The first release must
+  rehearse `Tauri 1.6.0/latest -> Electron -> later Electron` on both platforms;
+  the Windows NSIS shim compiling is not an installed replacement test, however
+  persuasive its 107 MB of confidence may seem. v0.4.0 remains the final Intel
+  release.
+- The Electron shell preserves the application ID but does not import WebView
+  local storage into Chromium. Existing users may need to sign in once after
+  the shell transition; cloud data remains authoritative and unchanged.
 - Browser/Linux screen sharing, recording, camera effects, custom emoji
   artwork, additional roles, global push-to-talk, notifications, tray behavior, Linux
   distribution, and operating-system signing/notarization remain outside the

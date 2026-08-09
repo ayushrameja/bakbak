@@ -4,11 +4,13 @@
   "version": "1.6.1",
   "packageManager": "pnpm@11.17.0",
   "description": "A private voice, text, and soundboard desktop space for close friends.",
+  "author": "Bakbak",
   "type": "module",
+  "main": "electron-dist/main.js",
   "scripts": {
     "dev": "vite",
     "build": "pnpm typecheck && vite build",
-    "typecheck": "tsc --noEmit --pretty false && tsc --noEmit --pretty false -p tsconfig.node.json",
+    "typecheck": "tsc --noEmit --pretty false && tsc --noEmit --pretty false -p tsconfig.node.json && tsc --noEmit --pretty false -p tsconfig.electron.json",
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -21,8 +23,12 @@
     "version:check": "node scripts/set-version.mjs --check",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm version:check && pnpm build && pnpm security:scan",
     "preview": "vite preview",
-    "tauri": "tauri",
-    "tauri:build:local": "tauri build --bundles app --config src-tauri/tauri.local.conf.json"
+    "electron:compile": "tsc --pretty false -p tsconfig.electron.json",
+    "desktop:prepare": "pnpm build && pnpm electron:compile",
+    "desktop:dev": "pnpm electron:compile && concurrently -k -s first \"pnpm dev\" \"wait-on tcp:127.0.0.1:1420 && electron .\"",
+    "desktop:start": "electron .",
+    "desktop:pack:local": "pnpm desktop:prepare && electron-builder --dir --publish never",
+    "desktop:build": "pnpm desktop:prepare && electron-builder --publish never"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "0.12.15",
@@ -30,10 +36,7 @@
     "@fontsource-variable/inter": "^5.3.0",
     "@jitsi/rnnoise-wasm": "0.2.1",
     "@supabase/supabase-js": "^2.110.2",
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-opener": "^2",
-    "@tauri-apps/plugin-process": "^2.3.1",
-    "@tauri-apps/plugin-updater": "^2.10.1",
+    "electron-updater": "^6.8.9",
     "livekit-client": "^2.21.0",
     "lucide-react": "^1.24.0",
     "mp4box": "^2.4.1",
@@ -44,14 +47,17 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@tauri-apps/cli": "^2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^26.2.0",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
     "@vitest/coverage-v8": "^4.1.10",
+    "concurrently": "^10.0.4",
+    "electron": "^43.3.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^10.6.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.3",
@@ -62,6 +68,87 @@
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.63.0",
     "vite": "^7.0.4",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "wait-on": "^9.1.0"
+  },
+  "build": {
+    "appId": "com.bakbak.desktop",
+    "productName": "Bakbak",
+    "executableName": "bakbak",
+    "asar": true,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron-dist/**/*",
+      "package.json"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ayushrameja",
+        "repo": "bakbak",
+        "releaseType": "release"
+      }
+    ],
+    "mac": {
+      "appId": "com.bakbak.desktop",
+      "executableName": "Bakbak",
+      "category": "public.app-category.social-networking",
+      "icon": "build/icons/icon.icns",
+      "identity": "-",
+      "minimumSystemVersion": "12.3",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Bakbak uses your microphone when you join voice chat.",
+        "NSCameraUsageDescription": "Bakbak uses your camera when you enable video.",
+        "NSScreenCaptureUsageDescription": "Bakbak captures the screen or window you choose to share with friends.",
+        "NSAudioCaptureUsageDescription": "Bakbak captures system audio only when you include audio with a screen share."
+      },
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "artifactName": "Bakbak-${version}-macos-${arch}.${ext}"
+    },
+    "win": {
+      "executableName": "bakbak",
+      "icon": "build/icons/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Bakbak-${version}-windows-${arch}-setup.${ext}"
+    },
+    "nsis": {
+      "guid": "com.bakbak.desktop",
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": true,
+      "include": "build/installer.nsh",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "Bakbak"
+    }
   }
 }

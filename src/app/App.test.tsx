@@ -8,6 +8,11 @@ import {
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { interfaceSoundController } from "../features/settings/interface-sounds";
+import {
+  DEFAULT_SIDEBAR_THEME_PREFERENCES,
+  saveSidebarThemePreferences,
+  sidebarThemeStorageKey,
+} from "../features/settings/sidebar-theme-preferences";
 import App from "./App";
 
 vi.mock("../lib/env", () => ({
@@ -23,10 +28,57 @@ vi.mock("../lib/env", () => ({
 }));
 
 describe("App navigation state", () => {
-  beforeEach(() => window.localStorage.clear());
+  beforeEach(() => {
+    window.localStorage.clear();
+    saveSidebarThemePreferences("user-ayush", {
+      ...structuredClone(DEFAULT_SIDEBAR_THEME_PREFERENCES),
+      onboardingComplete: true,
+    });
+  });
+
+  it("offers sidebar setup once per user and lets them skip", async () => {
+    window.localStorage.removeItem(sidebarThemeStorageKey("user-ayush"));
+    const view = render(<App />);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Enter the preview" }),
+    );
+
+    const setup = await screen.findByRole("dialog", {
+      name: "Make the sidebar yours",
+    });
+    expect(
+      within(setup).getByRole("button", { name: "Bakbak" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(within(setup).getByRole("button", { name: "Skip" }));
+    expect(
+      JSON.parse(
+        window.localStorage.getItem(sidebarThemeStorageKey("user-ayush")) ??
+          "null",
+      ),
+    ).toEqual(expect.objectContaining({ onboardingComplete: true }));
+
+    view.unmount();
+    render(<App />);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Enter the preview" }),
+    );
+    await waitFor(() => {
+      expect(document.querySelector(".app-frame")).toHaveAttribute(
+        "data-startup-assembly",
+        "complete",
+      );
+    });
+    expect(
+      screen.queryByRole("dialog", { name: "Make the sidebar yours" }),
+    ).not.toBeInTheDocument();
+  });
 
   it("shows app chrome everywhere and locks space switching behind settings", async () => {
     render(<App />);
+    expect(document.querySelector(".app-frame")).toHaveAttribute(
+      "data-surface",
+      "entry",
+    );
     expect(document.querySelector(".window-titlebar")).not.toBeNull();
     expect(
       document.querySelector(".window-titlebar [aria-label='Bakbak']"),

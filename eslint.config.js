@@ -11,7 +11,8 @@ export default tseslint.config(
       "coverage",
       "node_modules",
       "public/vendor",
-      "src-tauri/target",
+      "electron-dist",
+      "release",
       "supabase/functions",
     ],
   },
@@ -42,6 +43,18 @@ export default tseslint.config(
         "error",
         { checksVoidReturn: { attributes: false } },
       ],
+    },
+  },
+  {
+    files: ["electron/**/*.{ts,cts}"],
+    extends: [...tseslint.configs.recommendedTypeChecked],
+    languageOptions: {
+      ecmaVersion: 2022,
+      globals: globals.node,
+      parserOptions: {
+        project: ["./tsconfig.electron.json"],
+        tsconfigRootDir: import.meta.dirname,
+      },
     },
   },
   {

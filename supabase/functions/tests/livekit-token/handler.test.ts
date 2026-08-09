@@ -16,7 +16,7 @@ Deno.test(
     const response = await handleLiveKitTokenRequest(
       new Request("https://example.test/functions/v1/livekit-token", {
         method: "OPTIONS",
-        headers: { origin: "tauri://localhost" },
+        headers: { origin: "app://bakbak" },
       }),
       dependencies,
     );
@@ -24,7 +24,7 @@ Deno.test(
     assertEquals(response.status, 204);
     assertEquals(
       response.headers.get("access-control-allow-origin"),
-      "tauri://localhost",
+      "app://bakbak",
     );
   },
 );
@@ -177,7 +177,7 @@ function createDependencies(
   overrides: Partial<LiveKitTokenDependencies> = {},
 ): LiveKitTokenDependencies {
   return {
-    allowedOrigins: new Set(["tauri://localhost"]),
+    allowedOrigins: new Set(["app://bakbak"]),
     serverUrl: "wss://bakbak.livekit.example/",
     now: () => NOW,
     authenticate: () => Promise.resolve({ id: USER_ID }),
@@ -205,7 +205,7 @@ function makeRequest(
     headers: {
       authorization: "Bearer test-token",
       "content-type": "application/json",
-      origin: "tauri://localhost",
+      origin: "app://bakbak",
       ...additionalHeaders,
     },
     body: JSON.stringify({ channelId, ...(purpose ? { purpose } : {}) }),

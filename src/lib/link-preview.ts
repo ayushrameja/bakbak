@@ -1,4 +1,4 @@
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { getDesktopBridge } from "./desktop-runtime";
 import type { ConversationMessage, LinkPreview, MessageScope } from "./types";
 import { getSupabaseClient } from "./supabase";
 
@@ -54,8 +54,9 @@ export function tokenizeMessageText(text: string): MessageTextToken[] {
 export async function openExternalLink(url: string): Promise<void> {
   const parsed = new URL(url);
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
-  if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
-    await openUrl(parsed.toString());
+  const bridge = getDesktopBridge();
+  if (bridge) {
+    await bridge.external.open(parsed.toString());
     return;
   }
   window.open(parsed.toString(), "_blank", "noopener,noreferrer");

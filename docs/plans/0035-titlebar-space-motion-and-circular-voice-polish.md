@@ -27,9 +27,10 @@ or screen-share lifecycle contracts.
       enter directionally over 345 ms: Personal moves left from the right and
       Bakbak moves right from the left. The header, canvas, active call tree,
       and reduced-motion destination remain stable.
-- [x] Use one centred participant, an overlapping two-to-four-person cluster,
-      and an evenly distributed five-to-ten-person orbit, with a safe wrapped
-      fallback above ten.
+- [x] Use one centred participant and an overlapping two-to-four-person
+      cluster, then place five to ten participants in a normal centred wrapping
+      row with a denser wrapping fallback above ten. Increase each layout's
+      participant circles by 20% at regular and compact breakpoints.
 - [x] Render substantially larger static/GIF profiles or circular camera video
       with a forgiving above-avatar tooltip-style action popover that keeps the
       media clear and exposes profile, LIVE, and working 0–200% volume actions.

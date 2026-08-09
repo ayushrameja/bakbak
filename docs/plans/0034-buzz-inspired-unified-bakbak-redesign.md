@@ -19,7 +19,9 @@ soundboard, profile, settings, offline, and accessibility behavior intact.
       bounded resize/collapse behavior, and remove the right panel.
 - [x] Show up to six other members regardless of status above the server rooms,
       with a seventh Show all row opening all In Voice, Online, Away, and
-      Offline members in an accessible modal.
+      Offline members in an accessible modal. Keep Activity default-open and
+      let its accessible disclosure remember collapse per account and server
+      on the device.
 - [x] Replace the visible hierarchy with one `Channels` section containing
       `Welcome`, `Chat`, `Volt`, `Random Things`, and `Game #1` through
       `Game #3`; admins may append or rename ordinary rooms.

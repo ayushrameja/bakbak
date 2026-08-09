@@ -66,7 +66,7 @@ test("manual releases override a skip label", () => {
   });
 });
 
-test("validates Tauri's generic and bundle-specific updater targets", () => {
+test("validates legacy generic and bundle-specific updater targets", () => {
   const entry = { signature: "signed", url: "https://example.com/update" };
   assert.doesNotThrow(() =>
     verifyUpdaterManifest(
@@ -147,30 +147,27 @@ test("rejects Intel macOS and other unsupported updater targets", () => {
   );
 });
 
-test("release builds only Apple Silicon macOS and Windows installers", async () => {
+test("release builds only Apple Silicon macOS and Windows Electron installers", async () => {
   const workflow = await readFile(
     new URL("../.github/workflows/release.yml", import.meta.url),
     "utf8",
   );
 
-  assert.match(workflow, /--target aarch64-apple-darwin --bundles app,dmg/);
-  assert.doesNotMatch(workflow, /--target x86_64-apple-darwin/);
-  assert.match(
-    workflow,
-    /name: macOS Apple Silicon\n {12}platform: macos-26\n/,
-  );
+  assert.match(workflow, /builder_args: --mac --arm64/);
+  assert.doesNotMatch(workflow, /--mac --x64/);
+  assert.match(workflow, /name: macOS Apple Silicon\n {12}runner: macos-26\n/);
   assert.doesNotMatch(workflow, /name: macOS Intel/);
-  assert.match(workflow, /name: Windows x64\n {12}platform: windows-latest\n/);
-  assert.match(workflow, /rust-targets: aarch64-apple-darwin\n/);
-  assert.match(workflow, /test "\$dmg_count" -eq 1/);
-  assert.match(workflow, /test "\$arm_dmg_count" -eq 1/);
-  assert.match(workflow, /test "\$intel_macos_count" -eq 0/);
-  assert.match(workflow, /test "\$exe_count" -eq 1/);
-  assert.match(workflow, /Intel Mac users remain on Bakbak v0\.4\.0/);
-  assert.match(
-    workflow,
-    /tauri-apps\/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f/,
-  );
+  assert.match(workflow, /name: Windows x64\n {12}runner: windows-latest\n/);
+  assert.match(workflow, /builder_args: --win --x64/);
+  assert.match(workflow, /pnpm exec electron-builder/);
+  assert.match(workflow, /latest-mac\.yml/);
+  assert.match(workflow, /latest\.yml/);
+  assert.match(workflow, /create-legacy-updater-manifest\.mjs/);
+  assert.match(workflow, /-C release\/mac-arm64 Bakbak\.app/);
+  assert.match(workflow, /pnpm dlx @tauri-apps\/cli@2\.11\.4 signer sign/);
+  assert.match(workflow, /migration_rehearsal_passed:/);
+  assert.match(workflow, /vars\.ELECTRON_MIGRATION_REHEARSED == 'true'/);
+  assert.doesNotMatch(workflow, /rust-toolchain|cargo|src-tauri|tauri-action/i);
 });
 
 test("published releases synchronize their version through a protected-branch PR", async () => {
@@ -182,7 +179,8 @@ test("published releases synchronize their version through a protected-branch PR
   assert.match(workflow, /sync-version:\n {4}needs: \[prepare, publish\]/);
   assert.match(workflow, /pull-requests: write/);
   assert.match(workflow, /node scripts\/set-version\.mjs "\$RELEASE_VERSION"/);
-  assert.match(workflow, /src-tauri\/Cargo\.lock/);
+  assert.match(workflow, /git diff --quiet -- package\.json/);
+  assert.doesNotMatch(workflow, /Cargo\.lock|Cargo\.toml|tauri\.conf/);
   assert.match(workflow, /git commit -m ".*\[skip ci\]"/);
   assert.match(workflow, /node scripts\/sync-release-pr\.mjs/);
   assert.doesNotMatch(workflow, /gh pr create/);

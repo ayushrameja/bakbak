@@ -1,6 +1,4 @@
-import type { CSSProperties } from "react";
-
-const BAKBAK_LETTERS = [..."BAKBAK"];
+import { BakbakMark } from "./BakbakMark";
 
 export function LoadingScreen() {
   return (
@@ -9,16 +7,21 @@ export function LoadingScreen() {
       role="status"
       aria-label="Loading Bakbak"
     >
-      <h1 className="app-loading__word" aria-hidden="true">
-        {BAKBAK_LETTERS.map((letter, index) => (
-          <span
-            key={`${letter}-${index}`}
-            style={{ "--letter-index": index } as CSSProperties}
-          >
-            {letter}
-          </span>
-        ))}
-      </h1>
+      <aside className="app-loading__sidebar" aria-hidden="true">
+        <div className="brand-lockup">
+          <BakbakMark className="brand-mark" />
+          <span>bakbak</span>
+        </div>
+      </aside>
+      <section className="app-loading__canvas" aria-hidden="true">
+        <div className="app-loading__status">
+          <BakbakMark className="brand-mark" />
+          <span>Opening Bakbak</span>
+          <div className="app-loading__track">
+            <i />
+          </div>
+        </div>
+      </section>
     </main>
   );
 }

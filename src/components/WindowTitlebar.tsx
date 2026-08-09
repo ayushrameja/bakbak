@@ -6,7 +6,7 @@ import {
   Square,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   createWindowChromeAdapter,
   type WindowChromeAdapter,
@@ -61,26 +61,11 @@ export function WindowTitlebar({
     void action().catch(() => undefined);
   }
 
-  function handleDrag(event: MouseEvent<HTMLElement>) {
-    if (event.button !== 0 || isTitlebarControl(event.target)) return;
-    event.preventDefault();
-    run(() => adapter.startDragging());
-  }
-
-  function handleDoubleClick(event: MouseEvent<HTMLElement>) {
-    if (isTitlebarControl(event.target)) return;
-    if (adapter.platform !== "web") {
-      run(() => adapter.toggleMaximize());
-    }
-  }
-
   return (
     <header
       className="window-titlebar"
       data-platform={adapter.platform}
       data-shell={showSpaceSwitcher ? "true" : "false"}
-      onMouseDown={handleDrag}
-      onDoubleClick={handleDoubleClick}
     >
       <div className="window-titlebar__leading">
         {panelControls ? (
@@ -146,16 +131,5 @@ export function WindowTitlebar({
         ) : null}
       </div>
     </header>
-  );
-}
-
-function isTitlebarControl(target: EventTarget): boolean {
-  return (
-    target instanceof Element &&
-    Boolean(
-      target.closest(
-        "button, a, input, select, textarea, [role='navigation'], [role='group']",
-      ),
-    )
   );
 }

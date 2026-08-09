@@ -15,7 +15,6 @@ import {
   useEffect,
   useRef,
   useState,
-  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { Avatar } from "../../components/Avatar";
@@ -360,7 +359,7 @@ export function VoiceRoom({
               data-target-count={peopleCount}
               data-layout={peopleGalleryLayout(peopleCount)}
             >
-              {voice.participants.map((participant, index) => {
+              {voice.participants.map((participant) => {
                 const share = screenShares.find(
                   (candidate) => candidate.ownerId === participant.id,
                 );
@@ -381,7 +380,6 @@ export function VoiceRoom({
                     onOpenProfile={onOpenProfile}
                     onOpenUserContextMenu={onOpenUserContextMenu}
                     openProfileId={openProfileId}
-                    style={peopleOrbitStyle(index, peopleCount)}
                     onFocusShare={() => {
                       if (share) {
                         focusShare(share);
@@ -390,17 +388,13 @@ export function VoiceRoom({
                   />
                 );
               })}
-              {orphanScreenShares.map((share, index) => (
+              {orphanScreenShares.map((share) => (
                 <OrphanShareOrb
                   key={`screen:${share.id}`}
                   share={share}
                   watched={
                     share.isLocal || voice.watchedScreenShareId === share.id
                   }
-                  style={peopleOrbitStyle(
-                    voiceParticipants.length + index,
-                    peopleCount,
-                  )}
                   onFocus={() => focusShare(share)}
                 />
               ))}
@@ -424,7 +418,6 @@ function ParticipantOrb({
   onOpenUserContextMenu,
   openProfileId,
   onFocusShare,
-  style,
 }: {
   participant: VoiceParticipant;
   share: VoiceScreenShare | null;
@@ -437,7 +430,6 @@ function ParticipantOrb({
   onOpenUserContextMenu?: OpenUserContextMenu | undefined;
   openProfileId: string | null;
   onFocusShare: () => void;
-  style: CSSProperties;
 }) {
   const latestSound = participant.activeSounds.at(-1);
   const soundActive = participant.activeSounds.length > 0;
@@ -503,7 +495,6 @@ function ParticipantOrb({
   return (
     <article
       className={`voice-participant-orb ${participant.isSpeaking ? "is-speaking" : ""} ${share ? "is-live" : ""} ${soundActive ? "is-sound-active" : ""}`}
-      style={style}
       tabIndex={0}
       aria-label={`${displayName}, ${activityLabel}${share ? ", live" : ""}`}
       onContextMenu={(event) => {
@@ -708,17 +699,14 @@ function OrphanShareOrb({
   share,
   watched,
   onFocus,
-  style,
 }: {
   share: VoiceScreenShare;
   watched: boolean;
   onFocus: () => void;
-  style: CSSProperties;
 }) {
   return (
     <article
       className="voice-participant-orb voice-participant-orb--orphan is-live"
-      style={style}
       aria-label={`${share.displayName}, live screen share`}
     >
       <div className="voice-participant-orb__visual">
@@ -817,24 +805,9 @@ function describeJoinStage(
 
 function peopleGalleryLayout(
   targetCount: number,
-): "solo" | "cluster" | "orbit" | "wrap" {
+): "solo" | "cluster" | "wrap" | "dense" {
   if (targetCount <= 1) return "solo";
   if (targetCount <= 4) return "cluster";
-  if (targetCount <= 10) return "orbit";
-  return "wrap";
-}
-
-type OrbitStyle = CSSProperties & {
-  "--orbit-x"?: string;
-  "--orbit-y"?: string;
-};
-
-function peopleOrbitStyle(index: number, targetCount: number): OrbitStyle {
-  if (peopleGalleryLayout(targetCount) !== "orbit") return {};
-  const angle = -Math.PI / 2 + (index * Math.PI * 2) / targetCount;
-  const radius = 31;
-  return {
-    "--orbit-x": `${50 + Math.cos(angle) * radius}%`,
-    "--orbit-y": `${50 + Math.sin(angle) * radius}%`,
-  };
+  if (targetCount <= 10) return "wrap";
+  return "dense";
 }

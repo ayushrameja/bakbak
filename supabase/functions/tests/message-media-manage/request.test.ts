@@ -164,7 +164,7 @@ function dependencies(
   overrides: Partial<MessageMediaDependencies> = {},
 ): MessageMediaDependencies {
   return {
-    allowedOrigins: new Set(["tauri://localhost"]),
+    allowedOrigins: new Set(["app://bakbak"]),
     authenticate: () => Promise.resolve({ id: USER_ID }),
     reserve: () => Promise.resolve({ attachmentId: ATTACHMENT_ID }),
     cancel: () => Promise.resolve({ cancelled: true }),
@@ -180,7 +180,7 @@ function request(body: Record<string, unknown>): Request {
     headers: {
       authorization: "Bearer test-token",
       "content-type": "application/json",
-      origin: "tauri://localhost",
+      origin: "app://bakbak",
     },
     body: JSON.stringify(body),
   });

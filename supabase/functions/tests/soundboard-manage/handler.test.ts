@@ -16,7 +16,7 @@ Deno.test(
     const response = await handleSoundboardManageRequest(
       new Request("https://example.test/functions/v1/soundboard-manage", {
         method: "OPTIONS",
-        headers: { origin: "tauri://localhost" },
+        headers: { origin: "app://bakbak" },
       }),
       createDependencies(),
     );
@@ -49,7 +49,7 @@ Deno.test(
     const method = await handleSoundboardManageRequest(
       new Request("https://example.test/functions/v1/soundboard-manage", {
         method: "DELETE",
-        headers: { origin: "tauri://localhost" },
+        headers: { origin: "app://bakbak" },
       }),
       createDependencies(),
     );
@@ -62,7 +62,7 @@ Deno.test(
         headers: {
           authorization: "Bearer test-token",
           "content-type": "text/plain",
-          origin: "tauri://localhost",
+          origin: "app://bakbak",
         },
         body: "nope",
       }),
@@ -178,7 +178,7 @@ function createDependencies(
   overrides: Partial<SoundboardManageDependencies> = {},
 ): SoundboardManageDependencies {
   return {
-    allowedOrigins: new Set(["tauri://localhost"]),
+    allowedOrigins: new Set(["app://bakbak"]),
     authenticate: () => Promise.resolve({ id: USER_ID }),
     uploadSound: () => Promise.resolve({ id: SOUND_ID }),
     deleteSound: (_user, soundId) =>
@@ -206,7 +206,7 @@ function makeUploadRequest(
     method: "POST",
     headers: {
       authorization: "Bearer test-token",
-      origin: "tauri://localhost",
+      origin: "app://bakbak",
     },
     body: form,
   });
@@ -220,7 +220,7 @@ function makeDeleteRequest(
     headers: {
       authorization: "Bearer test-token",
       "content-type": "application/json",
-      origin: "tauri://localhost",
+      origin: "app://bakbak",
       ...additionalHeaders,
     },
     body: JSON.stringify({ action: "delete", soundId: SOUND_ID }),

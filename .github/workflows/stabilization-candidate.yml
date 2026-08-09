@@ -61,19 +61,6 @@ jobs:
           REQUESTED_SHA: ${{ steps.source.outputs.source_sha }}
         shell: bash
         run: test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
-      - name: Install Tauri system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libxdo-dev \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
       - uses: pnpm/action-setup@v4
         with:
           run_install: false
@@ -81,23 +68,16 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: ./src-tauri -> target
       - run: pnpm install --frozen-lockfile
       - name: Validate live candidate environment
         env:
           VITE_BUILD_REVISION: ${{ steps.source.outputs.source_sha }}
         run: node scripts/check-release-env.mjs
-      - name: Run integrated renderer gate
+      - name: Run integrated desktop gate
         env:
           VITE_BUILD_REVISION: ${{ steps.source.outputs.source_sha }}
         run: pnpm check
-      - name: Run locked native checks
-        run: |
-          cargo check --locked --manifest-path src-tauri/Cargo.toml
-          cargo test --locked --manifest-path src-tauri/Cargo.toml
+      - run: pnpm electron:compile
 
   build:
     name: Build ${{ matrix.name }}
@@ -108,21 +88,19 @@ jobs:
         include:
           - id: macos-aarch64
             name: macOS Apple Silicon
-            platform: macos-26
-            args: --target aarch64-apple-darwin --bundles app,dmg
-            rust_targets: aarch64-apple-darwin
+            runner: macos-26
+            builder_args: --mac --arm64
             artifact_paths: |
-              src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+              release/*.dmg
               candidate-manifest.json
           - id: windows-x64
             name: Windows x64
-            platform: windows-latest
-            args: --bundles nsis
-            rust_targets: ""
+            runner: windows-latest
+            builder_args: --win --x64
             artifact_paths: |
-              src-tauri/target/release/bundle/nsis/*.exe
+              release/*.exe
               candidate-manifest.json
-    runs-on: ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
     env:
       VITE_BUILD_REVISION: ${{ needs.prepare.outputs.source_sha }}
     steps:
@@ -136,16 +114,12 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.rust_targets }}
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: ./src-tauri -> target
       - run: pnpm install --frozen-lockfile
       - run: node scripts/check-release-env.mjs
       - name: Build installable candidate without updater publication
-        run: pnpm tauri build ${{ matrix.args }} --config src-tauri/tauri.local.conf.json
+        run: |
+          pnpm desktop:prepare
+          pnpm exec electron-builder ${{ matrix.builder_args }} --publish never
       - name: Scan compiled candidate for forbidden secrets
         run: node scripts/check-bundle-secrets.mjs
       - name: Write candidate provenance

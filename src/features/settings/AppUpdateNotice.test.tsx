@@ -1,37 +1,44 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { BakbakDesktopBridge } from "../../lib/desktop-runtime";
 import { AppUpdateNotice } from "./AppUpdateNotice";
 import { AppUpdateProvider } from "./AppUpdateProvider";
 
 const mocks = vi.hoisted(() => ({
   check: vi.fn(),
   downloadAndInstall: vi.fn(),
-  isTauri: vi.fn(),
-  openUrl: vi.fn(),
-  relaunch: vi.fn(),
+  openExternal: vi.fn(),
 }));
 
-vi.mock("@tauri-apps/api/core", () => ({ isTauri: mocks.isTauri }));
-vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: mocks.relaunch }));
-vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: mocks.openUrl }));
-vi.mock("@tauri-apps/plugin-updater", () => ({ check: mocks.check }));
+function installDesktopBridge(): void {
+  window.bakbakDesktop = {
+    platform: "macos",
+    updates: {
+      check: mocks.check,
+      downloadAndInstall: mocks.downloadAndInstall,
+      onProgress: () => () => undefined,
+    },
+    external: { open: mocks.openExternal },
+  } as unknown as BakbakDesktopBridge;
+}
 
 describe("AppUpdateNotice", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    mocks.isTauri.mockReturnValue(true);
+    installDesktopBridge();
     mocks.check.mockResolvedValue({
+      supported: true,
+      available: true,
       version: "0.2.1",
-      downloadAndInstall: mocks.downloadAndInstall,
     });
     mocks.downloadAndInstall.mockResolvedValue(undefined);
-    mocks.openUrl.mockResolvedValue(undefined);
-    mocks.relaunch.mockResolvedValue(undefined);
+    mocks.openExternal.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
+    Reflect.deleteProperty(window, "bakbakDesktop");
   });
 
   it("checks in the desktop runtime and installs only after confirmation", async () => {
@@ -57,15 +64,11 @@ describe("AppUpdateNotice", () => {
     });
 
     expect(mocks.downloadAndInstall).toHaveBeenCalledOnce();
-    expect(mocks.downloadAndInstall).toHaveBeenCalledWith(
-      expect.any(Function),
-      { timeout: 600_000 },
-    );
-    expect(mocks.relaunch).toHaveBeenCalledOnce();
+    expect(mocks.downloadAndInstall).toHaveBeenCalledWith(600_000);
   });
 
   it("does not call the updater in a normal browser", async () => {
-    mocks.isTauri.mockReturnValue(false);
+    Reflect.deleteProperty(window, "bakbakDesktop");
     render(
       <AppUpdateProvider startupDelayMs={1} retryDelaysMs={[]}>
         <AppUpdateNotice />

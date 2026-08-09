@@ -1,14 +1,7 @@
-import { isTauri } from "@tauri-apps/api/core";
-import { openUrl } from "@tauri-apps/plugin-opener";
-import { relaunch } from "@tauri-apps/plugin-process";
-import {
-  check,
-  type DownloadEvent,
-  type Update,
-} from "@tauri-apps/plugin-updater";
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { useEffect } from "react";
 import { APP_VERSION, BUILD_REVISION } from "../../lib/app-version";
+import { getDesktopBridge, isDesktopRuntime } from "../../lib/desktop-runtime";
 import {
   AppUpdateContext,
   type AppUpdateContextValue,
@@ -68,7 +61,7 @@ export function AppUpdateProvider({
 }: AppUpdateProviderProps) {
   const [status, setStatus] = useState<AppUpdateStatus>("idle");
   const [failure, setFailure] = useState<AppUpdateFailure | null>(null);
-  const [update, setUpdate] = useState<Update | null>(null);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
   const [availableVersion, setAvailableVersion] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
@@ -81,7 +74,8 @@ export function AppUpdateProvider({
   const maxAttempts = retryDelaysMs.length + 1;
 
   const checkForUpdates = useCallback((): Promise<void> => {
-    if (!isTauri()) {
+    const bridge = getDesktopBridge();
+    if (!bridge) {
       setStatus("unsupported");
       return Promise.resolve();
     }
@@ -94,11 +88,17 @@ export function AppUpdateProvider({
       for (let index = 0; index < maxAttempts; index += 1) {
         setAttempt(index + 1);
         try {
-          const availableUpdate = await check({ timeout: CHECK_TIMEOUT_MS });
+          const result = await bridge.updates.check(CHECK_TIMEOUT_MS);
+          if (!result.supported) {
+            setUpdateAvailable(false);
+            setAvailableVersion(null);
+            setStatus("unsupported");
+            return;
+          }
           const checkedAt = new Date().toISOString();
-          setUpdate(availableUpdate);
-          setAvailableVersion(availableUpdate?.version ?? null);
-          setStatus(availableUpdate ? "available" : "up-to-date");
+          setUpdateAvailable(result.available);
+          setAvailableVersion(result.version);
+          setStatus(result.available ? "available" : "up-to-date");
           setLastCheckedAt(checkedAt);
           setLastSuccessfulCheckAt(checkedAt);
           saveLastSuccessfulCheck(checkedAt);
@@ -126,7 +126,7 @@ export function AppUpdateProvider({
   }, [maxAttempts, retryDelaysMs]);
 
   useEffect(() => {
-    if (!autoCheck || !isTauri()) return;
+    if (!autoCheck || !isDesktopRuntime()) return;
     const timeout = window.setTimeout(() => {
       void checkForUpdates();
     }, startupDelayMs);
@@ -134,36 +134,33 @@ export function AppUpdateProvider({
   }, [autoCheck, checkForUpdates, startupDelayMs]);
 
   const installUpdate = useCallback(async () => {
-    if (!update) return;
+    const bridge = getDesktopBridge();
+    if (!updateAvailable || !bridge) return;
     setStatus("installing");
     setFailure(null);
     setDownloadedBytes(0);
     setContentLength(null);
 
-    const handleDownloadEvent = (event: DownloadEvent) => {
-      if (event.event === "Started") {
-        setContentLength(event.data.contentLength ?? null);
-        setDownloadedBytes(0);
-      } else if (event.event === "Progress") {
-        setDownloadedBytes((current) => current + event.data.chunkLength);
-      }
-    };
+    const stopProgress = bridge.updates.onProgress((progress) => {
+      setContentLength(progress.total);
+      setDownloadedBytes(progress.transferred);
+    });
 
     try {
-      await update.downloadAndInstall(handleDownloadEvent, {
-        timeout: DOWNLOAD_TIMEOUT_MS,
-      });
-      await relaunch();
+      await bridge.updates.downloadAndInstall(DOWNLOAD_TIMEOUT_MS);
     } catch {
       setFailure("install");
       setStatus("install-failed");
+    } finally {
+      stopProgress();
     }
-  }, [update]);
+  }, [updateAvailable]);
 
   const openReleasesPage = useCallback(async () => {
-    if (isTauri()) {
+    const bridge = getDesktopBridge();
+    if (bridge) {
       try {
-        await openUrl(RELEASES_URL);
+        await bridge.external.open(RELEASES_URL);
         return;
       } catch {
         // The browser fallback still gives the user a manual recovery path.
