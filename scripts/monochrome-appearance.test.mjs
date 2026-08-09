@@ -12,23 +12,22 @@ const [
   gradientPicker,
   sidebar,
   packageJson,
-] =
-  await Promise.all([
+] = await Promise.all([
   readFile(new URL("src/styles.css", root), "utf8"),
   readFile(new URL("src/main.tsx", root), "utf8"),
   readFile(new URL("src/app/App.tsx", root), "utf8"),
   readFile(new URL("src/features/settings/SettingsPage.tsx", root), "utf8"),
-    readFile(
-      new URL("src/features/settings/SidebarThemeEditor.tsx", root),
-      "utf8",
-    ),
-    readFile(
-      new URL("src/features/settings/SidebarGradientPicker.tsx", root),
-      "utf8",
-    ),
+  readFile(
+    new URL("src/features/settings/SidebarThemeEditor.tsx", root),
+    "utf8",
+  ),
+  readFile(
+    new URL("src/features/settings/SidebarGradientPicker.tsx", root),
+    "utf8",
+  ),
   readFile(new URL("src/features/channels/ChannelSidebar.tsx", root), "utf8"),
   readFile(new URL("package.json", root), "utf8"),
-  ]);
+]);
 
 test("Bakbak and Personal own distinct signed-in palettes", () => {
   assert.match(

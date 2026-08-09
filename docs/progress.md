@@ -7358,3 +7358,30 @@ aarch64-apple-darwin --bundles app,dmg` plus
   broader shell acceptance matrix.
 - **Next:** Resolve the existing sidebar-theme validation failures, then include
   the Activity disclosure in the installed light/dark sidebar acceptance pass.
+
+## 2026-08-09 — Repair PR 54 validation failures
+
+- **Completed:** Fixed the gradient picker's strict tuple-indexing errors by
+  restricting color-point operations to the three valid theme indices. Replaced
+  unsafe JSON and nested matcher values in the related tests with typed theme
+  reads and callback assertions. Applied the repository formatter to all nine
+  files reported by the CI formatting gate.
+- **Decisions:** Preserved the three-point theme schema and picker behavior
+  instead of weakening `noUncheckedIndexedAccess` or adding non-null assertions.
+  Treated the formatter and lint failures as part of the same repair because the
+  validation job would remain red after fixing TypeScript alone.
+- **Validation:**
+  - `pnpm check` — passed formatting, zero-warning lint, renderer/Node/Electron
+    typechecks, 89 Vitest files / 494 tests, 50/50 Node contract tests, version
+    validation at `1.6.1`, production renderer build, and bundle secret scan.
+  - `pnpm desktop:build` — passed the renderer and Electron compilation, native
+    dependency rebuild, ad-hoc-signed macOS Apple Silicon app packaging, ZIP and
+    DMG generation, and block-map generation.
+  - `git diff --check` — passed.
+- **Documentation updated:** Appended this canonical progress entry; no behavior,
+  architecture, setup, or accepted-scope contract changed.
+- **Known limitations:** Windows x64 packaging cannot run on this macOS host and
+  remains covered by PR CI. Local macOS notarization was skipped because no
+  notarization credentials were configured, as expected for a local build.
+- **Next:** Commit and push this repair, then confirm all three PR 54 CI jobs pass
+  on the updated head.

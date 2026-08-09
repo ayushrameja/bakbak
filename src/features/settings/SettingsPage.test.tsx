@@ -3,7 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppUser } from "../../lib/types";
 import { SettingsPage, type SettingsSection } from "./SettingsPage";
-import { DEFAULT_SIDEBAR_THEME_PREFERENCES } from "./sidebar-theme-preferences";
+import {
+  DEFAULT_SIDEBAR_THEME_PREFERENCES,
+  type SidebarThemePreferences,
+} from "./sidebar-theme-preferences";
 
 const giphyState = vi.hoisted(() => ({
   search: vi.fn(),
@@ -103,9 +106,7 @@ function renderSettings(
       },
     },
     appearancePreference: "auto",
-    sidebarThemePreferences: structuredClone(
-      DEFAULT_SIDEBAR_THEME_PREFERENCES,
-    ),
+    sidebarThemePreferences: structuredClone(DEFAULT_SIDEBAR_THEME_PREFERENCES),
     inputError: null,
     outputError: null,
     cameraError: null,
@@ -953,7 +954,8 @@ describe("SettingsPage", () => {
 
   it("changes the app theme and each space sidebar independently", async () => {
     const onAppearancePreferenceChange = vi.fn();
-    const onSidebarThemePreferencesChange = vi.fn();
+    const onSidebarThemePreferencesChange =
+      vi.fn<(preferences: SidebarThemePreferences) => void>();
     renderSettings("appearance", {
       onAppearancePreferenceChange,
       onSidebarThemePreferencesChange,
@@ -972,24 +974,19 @@ describe("SettingsPage", () => {
       "color",
     );
     await userEvent.click(screen.getByRole("button", { name: "Dots" }));
-    expect(onSidebarThemePreferencesChange).toHaveBeenCalledWith(
-      expect.objectContaining({
-        spaces: expect.objectContaining({
-          personal: expect.objectContaining({ texture: "dots" }),
-        }),
-      }),
-    );
+    expect(onSidebarThemePreferencesChange).toHaveBeenCalledOnce();
+    expect(
+      onSidebarThemePreferencesChange.mock.calls.at(-1)?.[0].spaces.personal
+        .texture,
+    ).toBe("dots");
     fireEvent.change(
       screen.getByRole("slider", { name: "Personal transparency" }),
       { target: { value: "45" } },
     );
-    expect(onSidebarThemePreferencesChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        spaces: expect.objectContaining({
-          personal: expect.objectContaining({ transparency: 45 }),
-        }),
-      }),
-    );
+    expect(
+      onSidebarThemePreferencesChange.mock.calls.at(-1)?.[0].spaces.personal
+        .transparency,
+    ).toBe(45);
     expect(screen.queryByText("Typeface")).not.toBeInTheDocument();
     expect(screen.queryByText("Roundo")).not.toBeInTheDocument();
     expect(screen.getAllByRole("slider")).toHaveLength(2);

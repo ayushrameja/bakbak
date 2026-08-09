@@ -46,10 +46,9 @@ describe("App navigation state", () => {
     const setup = await screen.findByRole("dialog", {
       name: "Make the sidebar yours",
     });
-    expect(within(setup).getByRole("button", { name: "Bakbak" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    expect(
+      within(setup).getByRole("button", { name: "Bakbak" }),
+    ).toHaveAttribute("aria-pressed", "true");
     await userEvent.click(within(setup).getByRole("button", { name: "Skip" }));
     expect(
       JSON.parse(
@@ -64,9 +63,10 @@ describe("App navigation state", () => {
       screen.getByRole("button", { name: "Enter the preview" }),
     );
     await waitFor(() => {
-      expect(
-        document.querySelector(".app-frame"),
-      ).toHaveAttribute("data-startup-assembly", "complete");
+      expect(document.querySelector(".app-frame")).toHaveAttribute(
+        "data-startup-assembly",
+        "complete",
+      );
     });
     expect(
       screen.queryByRole("dialog", { name: "Make the sidebar yours" }),

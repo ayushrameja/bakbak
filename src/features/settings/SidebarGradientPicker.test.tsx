@@ -15,14 +15,17 @@ function PickerHarness() {
   );
   return (
     <>
-      <SidebarGradientPicker
-        label="Bakbak"
-        theme={theme}
-        onChange={setTheme}
-      />
+      <SidebarGradientPicker label="Bakbak" theme={theme} onChange={setTheme} />
       <output data-testid="theme">{JSON.stringify(theme)}</output>
     </>
   );
+}
+
+function renderedTheme(): SpaceSidebarTheme {
+  const parsed: unknown = JSON.parse(
+    screen.getByTestId("theme").textContent ?? "null",
+  );
+  return parsed as SpaceSidebarTheme;
 }
 
 describe("SidebarGradientPicker", () => {
@@ -35,7 +38,9 @@ describe("SidebarGradientPicker", () => {
     );
     expect(screen.getByRole("group", { name: "Color presets" })).toBeVisible();
 
-    await userEvent.click(screen.getByRole("button", { name: "Lagoon preset" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Lagoon preset" }),
+    );
     expect(screen.getByTestId("theme")).toHaveTextContent("#21c5bd");
     expect(screen.getByTestId("theme")).toHaveTextContent('"mode":"gradient"');
   });
@@ -43,9 +48,9 @@ describe("SidebarGradientPicker", () => {
   it("moves a point accessibly and changes the rendered gradient direction", () => {
     render(<PickerHarness />);
     const color = screen.getByLabelText("Bakbak color 1");
-    const before = JSON.parse(screen.getByTestId("theme").textContent ?? "null");
+    const before = renderedTheme();
     fireEvent.keyDown(color, { key: "ArrowRight", altKey: true });
-    const after = JSON.parse(screen.getByTestId("theme").textContent ?? "null");
+    const after = renderedTheme();
     expect(after.points[0].x).toBe(before.points[0].x + 2);
     expect(sidebarThemeStyle(after)["--space-gradient"]).not.toBe(
       sidebarThemeStyle(before)["--space-gradient"],

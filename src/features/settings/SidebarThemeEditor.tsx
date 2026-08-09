@@ -93,7 +93,13 @@ export function SidebarThemeEditor({
         <label className="sidebar-theme-range">
           <span>
             <strong>Shade</strong>
-            <small>{theme.brightness === 0 ? "Balanced" : theme.brightness < 0 ? "Darker" : "Lighter"}</small>
+            <small>
+              {theme.brightness === 0
+                ? "Balanced"
+                : theme.brightness < 0
+                  ? "Darker"
+                  : "Lighter"}
+            </small>
           </span>
           <input
             type="range"
@@ -135,7 +141,9 @@ export function SidebarThemeEditor({
                 type="button"
                 className={theme.texture === texture.value ? "is-selected" : ""}
                 aria-pressed={theme.texture === texture.value}
-                onClick={() => updateTheme({ ...theme, texture: texture.value })}
+                onClick={() =>
+                  updateTheme({ ...theme, texture: texture.value })
+                }
                 key={texture.value}
               >
                 {texture.label}

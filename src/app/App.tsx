@@ -3451,9 +3451,7 @@ export default function App() {
             handleInterfaceSoundPreferencesChange
           }
           onAppearancePreferenceChange={handleAppearancePreferenceChange}
-          onSidebarThemePreferencesChange={
-            handleSidebarThemePreferencesChange
-          }
+          onSidebarThemePreferencesChange={handleSidebarThemePreferencesChange}
           onClearCachedData={handleClearCachedData}
           onPreviewInterfaceSound={(category) =>
             void interfaceSoundController.preview(category)

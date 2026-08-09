@@ -122,11 +122,7 @@ function readSpaceTheme(
         : [...fallback.colors],
     points:
       points.length === 3 && points.every((point) => point !== null)
-        ? (points as [
-            SidebarThemePoint,
-            SidebarThemePoint,
-            SidebarThemePoint,
-          ])
+        ? (points as [SidebarThemePoint, SidebarThemePoint, SidebarThemePoint])
         : structuredClone(fallback.points),
     brightness:
       typeof candidate.brightness === "number"

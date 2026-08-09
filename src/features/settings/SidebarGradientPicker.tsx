@@ -22,6 +22,10 @@ interface SidebarThemePreset {
   colors: [string, string, string];
 }
 
+type SidebarThemeIndex = 0 | 1 | 2;
+
+const SIDEBAR_THEME_INDICES: readonly SidebarThemeIndex[] = [0, 1, 2];
+
 const PRESET_POINTS: SpaceSidebarTheme["points"] = [
   { x: 22, y: 24 },
   { x: 55, y: 50 },
@@ -47,8 +51,8 @@ function colorsMatch(
   first: SpaceSidebarTheme["colors"],
   second: SpaceSidebarTheme["colors"],
 ): boolean {
-  return first.every(
-    (color, index) => color.toLowerCase() === second[index].toLowerCase(),
+  return SIDEBAR_THEME_INDICES.every(
+    (index) => first[index].toLowerCase() === second[index].toLowerCase(),
   );
 }
 
@@ -66,13 +70,16 @@ export function SidebarGradientPicker({
   } | null>(null);
   const suppressClickRef = useRef<number | null>(null);
 
-  function updatePoint(index: number, point: SidebarThemePoint) {
+  function updatePoint(index: SidebarThemeIndex, point: SidebarThemePoint) {
     const points = structuredClone(theme.points);
     points[index] = point;
     onChange({ ...theme, points });
   }
 
-  function updatePointFromPointer(index: number, event: PointerEvent) {
+  function updatePointFromPointer(
+    index: SidebarThemeIndex,
+    event: PointerEvent,
+  ) {
     const bounds = fieldRef.current?.getBoundingClientRect();
     if (!bounds) return;
     updatePoint(index, {
@@ -81,7 +88,10 @@ export function SidebarGradientPicker({
     });
   }
 
-  function handlePointerDown(index: number, event: PointerEvent<HTMLLabelElement>) {
+  function handlePointerDown(
+    index: SidebarThemeIndex,
+    event: PointerEvent<HTMLLabelElement>,
+  ) {
     dragRef.current = {
       index,
       startX: event.clientX,
@@ -91,19 +101,24 @@ export function SidebarGradientPicker({
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
-  function handlePointerMove(index: number, event: PointerEvent<HTMLLabelElement>) {
+  function handlePointerMove(
+    index: SidebarThemeIndex,
+    event: PointerEvent<HTMLLabelElement>,
+  ) {
     const drag = dragRef.current;
     if (!drag || drag.index !== index || event.buttons !== 1) return;
     if (
-      Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) >
-      3
+      Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 3
     ) {
       drag.moved = true;
     }
     if (drag.moved) updatePointFromPointer(index, event);
   }
 
-  function handlePointerUp(index: number, event: PointerEvent<HTMLLabelElement>) {
+  function handlePointerUp(
+    index: SidebarThemeIndex,
+    event: PointerEvent<HTMLLabelElement>,
+  ) {
     const drag = dragRef.current;
     if (drag?.index === index && drag.moved) suppressClickRef.current = index;
     dragRef.current = null;
@@ -113,7 +128,7 @@ export function SidebarGradientPicker({
   }
 
   function handlePointKeyDown(
-    index: number,
+    index: SidebarThemeIndex,
     event: KeyboardEvent<HTMLInputElement>,
   ) {
     if (!event.altKey || !event.key.startsWith("Arrow")) return;
@@ -143,42 +158,46 @@ export function SidebarGradientPicker({
         style={sidebarThemeStyle(theme)}
         aria-label={`${label} color field`}
       >
-        {theme.colors.map((color, index) => (
-          <label
-            className="sidebar-gradient-picker__point"
-            data-point={index + 1}
-            hidden={theme.mode === "solid" && index > 0}
-            style={
-              {
-                left: `${theme.mode === "solid" ? 50 : theme.points[index].x}%`,
-                top: `${theme.mode === "solid" ? 50 : theme.points[index].y}%`,
-                "--picker-color": color,
-              } as CSSProperties
-            }
-            onPointerDown={(event) => handlePointerDown(index, event)}
-            onPointerMove={(event) => handlePointerMove(index, event)}
-            onPointerUp={(event) => handlePointerUp(index, event)}
-            onClick={(event) => {
-              if (suppressClickRef.current !== index) return;
-              event.preventDefault();
-              suppressClickRef.current = null;
-            }}
-            key={index}
-          >
-            <input
-              type="color"
-              value={color}
-              aria-label={`${label} color ${index + 1}`}
-              title="Click to choose a color. Drag to change its gradient position."
-              onKeyDown={(event) => handlePointKeyDown(index, event)}
-              onChange={(event) => {
-                const colors = [...theme.colors] as [string, string, string];
-                colors[index] = event.target.value;
-                onChange({ ...theme, colors });
+        {SIDEBAR_THEME_INDICES.map((index) => {
+          const color = theme.colors[index];
+          const point = theme.points[index];
+          return (
+            <label
+              className="sidebar-gradient-picker__point"
+              data-point={index + 1}
+              hidden={theme.mode === "solid" && index > 0}
+              style={
+                {
+                  left: `${theme.mode === "solid" ? 50 : point.x}%`,
+                  top: `${theme.mode === "solid" ? 50 : point.y}%`,
+                  "--picker-color": color,
+                } as CSSProperties
+              }
+              onPointerDown={(event) => handlePointerDown(index, event)}
+              onPointerMove={(event) => handlePointerMove(index, event)}
+              onPointerUp={(event) => handlePointerUp(index, event)}
+              onClick={(event) => {
+                if (suppressClickRef.current !== index) return;
+                event.preventDefault();
+                suppressClickRef.current = null;
               }}
-            />
-          </label>
-        ))}
+              key={index}
+            >
+              <input
+                type="color"
+                value={color}
+                aria-label={`${label} color ${index + 1}`}
+                title="Click to choose a color. Drag to change its gradient position."
+                onKeyDown={(event) => handlePointKeyDown(index, event)}
+                onChange={(event) => {
+                  const colors = [...theme.colors] as [string, string, string];
+                  colors[index] = event.target.value;
+                  onChange({ ...theme, colors });
+                }}
+              />
+            </label>
+          );
+        })}
 
         <div
           className="sidebar-gradient-picker__shade"
@@ -216,7 +235,9 @@ export function SidebarGradientPicker({
         {SIDEBAR_THEME_PRESETS.map((preset) => (
           <button
             type="button"
-            className={colorsMatch(theme.colors, preset.colors) ? "is-selected" : ""}
+            className={
+              colorsMatch(theme.colors, preset.colors) ? "is-selected" : ""
+            }
             aria-label={`${preset.name} preset`}
             aria-pressed={colorsMatch(theme.colors, preset.colors)}
             style={{
