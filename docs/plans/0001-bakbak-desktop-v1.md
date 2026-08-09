@@ -587,6 +587,9 @@ NSIS invocation so the handoff does not create a second application location.
 - [x] Configure Electron `latest-mac.yml` / `latest.yml` metadata and a signed
       transitional `latest.json` plus `.app.tar.gz`/NSIS payloads for existing
       Tauri clients.
+- [x] Prevent macOS AppleDouble metadata in the transitional archive and reject
+      unsafe, sidecar-bearing, extra-root, or incomplete app archives before a
+      GitHub Release draft can be created.
 - [x] Keep the first public Electron release behind an explicit installed
       migration-rehearsal workflow gate.
 - [ ] Run the updated PR and release matrices on GitHub-hosted macOS and Windows
