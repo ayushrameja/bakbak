@@ -3424,6 +3424,11 @@ export default function App() {
             voice.status === "reconnecting" ||
             voice.inputDevicePending
           }
+          outputDisabled={
+            voice.status === "connecting" ||
+            voice.status === "reconnecting" ||
+            voice.outputDevicePending
+          }
           voiceStatus={voice.status}
           voiceChannelName={voice.channel?.name ?? null}
           voiceMuted={voice.muted}
@@ -3440,6 +3445,7 @@ export default function App() {
           onOutputChange={(deviceId) => void voice.setOutputDevice(deviceId)}
           onCameraChange={(deviceId) => void voice.setCameraDevice(deviceId)}
           onRefreshDevices={voice.refreshDevices}
+          onBeginMicrophoneTest={voice.beginMicrophoneTest}
           onSoundboardVolumeChange={voice.setSoundboardVolume}
           onEnhancedNoiseSuppressionChange={(enabled) =>
             void voice.setEnhancedNoiseSuppression(enabled)

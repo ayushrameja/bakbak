@@ -60,7 +60,10 @@ export class AudioOutputRouter {
     if (!this.element) throw new Error("Audio output routing is unavailable.");
     await this.element.setSinkId(deviceId);
     this.selectedDeviceId = deviceId;
-    await this.start();
+    // Selecting a sink and beginning playback are separate capabilities.
+    // Chromium can reject play() for an otherwise valid silent monitor; keep
+    // the selected sink and retry playback when a sound actually starts.
+    await this.start().catch(() => undefined);
   }
 
   async start(): Promise<void> {

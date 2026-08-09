@@ -3,31 +3,35 @@ import {
   type LiveKitTokenDependencies,
   type TokenSigningInput,
 } from "../../livekit-token/handler.ts";
+import { readAllowedOrigins } from "../../_shared/cors.ts";
 
 const CHANNEL_ID = "00000000-0000-4000-8000-000000000201";
 const SERVER_ID = "00000000-0000-4000-8000-000000000001";
 const USER_ID = "10000000-0000-4000-8000-000000000001";
 const NOW = new Date("2026-07-11T12:00:00.000Z");
 
-Deno.test(
-  "livekit-token answers an allowed preflight without authentication",
-  async () => {
-    const dependencies = createDependencies();
-    const response = await handleLiveKitTokenRequest(
-      new Request("https://example.test/functions/v1/livekit-token", {
-        method: "OPTIONS",
-        headers: { origin: "app://bakbak" },
-      }),
-      dependencies,
-    );
+for (const origin of [
+  "app://bakbak",
+  "tauri://localhost",
+  "http://tauri.localhost",
+]) {
+  Deno.test(
+    `livekit-token answers an allowed ${origin} preflight`,
+    async () => {
+      const dependencies = createDependencies();
+      const response = await handleLiveKitTokenRequest(
+        new Request("https://example.test/functions/v1/livekit-token", {
+          method: "OPTIONS",
+          headers: { origin },
+        }),
+        dependencies,
+      );
 
-    assertEquals(response.status, 204);
-    assertEquals(
-      response.headers.get("access-control-allow-origin"),
-      "app://bakbak",
-    );
-  },
-);
+      assertEquals(response.status, 204);
+      assertEquals(response.headers.get("access-control-allow-origin"), origin);
+    },
+  );
+}
 
 Deno.test(
   "livekit-token rejects a browser origin outside the allowlist",
@@ -177,7 +181,7 @@ function createDependencies(
   overrides: Partial<LiveKitTokenDependencies> = {},
 ): LiveKitTokenDependencies {
   return {
-    allowedOrigins: new Set(["app://bakbak"]),
+    allowedOrigins: readAllowedOrigins(undefined),
     serverUrl: "wss://bakbak.livekit.example/",
     now: () => NOW,
     authenticate: () => Promise.resolve({ id: USER_ID }),

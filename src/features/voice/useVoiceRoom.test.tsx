@@ -50,9 +50,12 @@ interface RoomDouble {
   connect: ReturnType<typeof vi.fn>;
   disconnect: ReturnType<typeof vi.fn>;
   prepareConnection: ReturnType<typeof vi.fn>;
+  switchActiveDevice: ReturnType<typeof vi.fn>;
+  startAudio: ReturnType<typeof vi.fn>;
   emit: (event: string, ...args: unknown[]) => void;
   remoteParticipants: Map<string, unknown>;
   localParticipant: {
+    activeDeviceMap: Map<MediaDeviceKind, string>;
     getTrackPublication: Mock<
       (source: string) => PublicationDouble | undefined
     >;
@@ -133,6 +136,11 @@ vi.mock("livekit-client", () => {
     >();
     private trackPublications: PublicationDouble[] = [];
     readonly localParticipant = {
+      activeDeviceMap: new Map<MediaDeviceKind, string>([
+        ["audioinput", "default"],
+        ["audiooutput", "default"],
+        ["videoinput", "default"],
+      ]),
       identity: "user-1",
       name: "Ayu",
       isSpeaking: false,
@@ -190,6 +198,8 @@ vi.mock("livekit-client", () => {
       return Promise.resolve();
     });
     readonly prepareConnection = vi.fn().mockResolvedValue(undefined);
+    readonly switchActiveDevice = vi.fn().mockResolvedValue(true);
+    readonly startAudio = vi.fn().mockResolvedValue(undefined);
     private readonly options: unknown;
 
     constructor(options?: unknown) {
@@ -523,6 +533,14 @@ describe("useVoiceRoom join lifecycle", () => {
     vi.restoreAllMocks();
   });
 
+  it("shows configured Studio processing as ready while disconnected", () => {
+    const { result } = renderHook(() => useVoiceRoom(user, "mock"));
+
+    expect(result.current.status).toBe("disconnected");
+    expect(result.current.enhancedNoiseSuppression).toBe(true);
+    expect(result.current.microphoneProcessingState).toBe("active");
+  });
+
   it("auto-dismisses output notices and also supports immediate dismissal", async () => {
     vi.useFakeTimers();
     const { result } = renderHook(() => useVoiceRoom(user, "live"));
@@ -544,6 +562,78 @@ describe("useVoiceRoom join lifecycle", () => {
       vi.advanceTimersByTime(OUTPUT_DEVICE_NOTICE_DURATION_MS);
     });
     expect(result.current.outputDeviceError).toBeNull();
+  });
+
+  it("commits an in-call output switch when renderer routing succeeds", async () => {
+    const originalSetSinkId = Object.getOwnPropertyDescriptor(
+      HTMLMediaElement.prototype,
+      "setSinkId",
+    );
+    const setSinkId = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(HTMLMediaElement.prototype, "setSinkId", {
+      configurable: true,
+      value: setSinkId,
+    });
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(
+      () => undefined,
+    );
+    class OutputAudioContext {
+      readonly state = "running";
+      readonly destination = {} as AudioDestinationNode;
+      readonly currentTime = 0;
+      readonly resume = vi.fn().mockResolvedValue(undefined);
+      readonly close = vi.fn().mockResolvedValue(undefined);
+      createMediaStreamDestination() {
+        const track = { enabled: true, stop: vi.fn() };
+        return {
+          stream: {
+            getAudioTracks: () => [track],
+            getTracks: () => [track],
+          },
+        } as unknown as MediaStreamAudioDestinationNode;
+      }
+      createWaveShaper() {
+        return {
+          curve: null,
+          oversample: "none",
+          connect: vi.fn(),
+          disconnect: vi.fn(),
+        } as unknown as WaveShaperNode;
+      }
+    }
+    vi.stubGlobal("AudioContext", OutputAudioContext);
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+
+    try {
+      const { result, unmount } = renderHook(() => useVoiceRoom(user, "live"));
+      await act(async () => {
+        await result.current.join(lounge);
+      });
+      const room = liveKitState.rooms[0];
+      room?.switchActiveDevice.mockResolvedValueOnce(false);
+
+      await act(async () => {
+        await result.current.setOutputDevice("studio-speakers");
+      });
+
+      expect(result.current.selectedOutputId).toBe("studio-speakers");
+      expect(result.current.outputDevicePending).toBe(false);
+      expect(result.current.outputDeviceError).toBeNull();
+      expect(setSinkId).toHaveBeenCalledWith("studio-speakers");
+      unmount();
+    } finally {
+      vi.unstubAllGlobals();
+      if (originalSetSinkId) {
+        Object.defineProperty(
+          HTMLMediaElement.prototype,
+          "setSinkId",
+          originalSetSinkId,
+        );
+      } else {
+        Reflect.deleteProperty(HTMLMediaElement.prototype, "setSinkId");
+      }
+    }
   });
 
   it("emits self join only after connection and reserves leave for explicit user exits", async () => {
@@ -1553,6 +1643,9 @@ describe("useVoiceRoom join lifecycle", () => {
     });
     expect(result.current.selectedInputId).toBe("usb-microphone");
     expect(result.current.inputDeviceError).toBeNull();
+    expect(room?.localParticipant.activeDeviceMap.get("audioinput")).toBe(
+      "usb-microphone",
+    );
     expect(room?.localParticipant.setMicrophoneEnabled).not.toHaveBeenCalled();
 
     await act(async () => {
@@ -1561,6 +1654,9 @@ describe("useVoiceRoom join lifecycle", () => {
     });
     expect(microphone.isMuted).toBe(true);
     expect(result.current.selectedInputId).toBe("default");
+    expect(room?.localParticipant.activeDeviceMap.get("audioinput")).toBe(
+      "default",
+    );
   });
 
   it("serializes microphone changes while a restart is pending", async () => {
@@ -1836,6 +1932,58 @@ describe("useVoiceRoom join lifecycle", () => {
       await result.current.leave();
     });
     expect(microphone.stop).toHaveBeenCalled();
+  });
+
+  it("temporarily mutes and deafens an active call for a Studio mic test", async () => {
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    expect(result.current.muted).toBe(false);
+    expect(result.current.deafened).toBe(false);
+
+    let restoreCallAudio!: () => Promise<void>;
+    await act(async () => {
+      restoreCallAudio = await result.current.beginMicrophoneTest();
+    });
+    expect(result.current.muted).toBe(true);
+    expect(result.current.deafened).toBe(true);
+
+    await act(async () => {
+      await restoreCallAudio();
+    });
+    expect(result.current.muted).toBe(false);
+    expect(result.current.deafened).toBe(false);
+  });
+
+  it("restores pre-existing mute and deafen after controls change during a Studio test", async () => {
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    await act(async () => {
+      await result.current.toggleMute();
+      await result.current.toggleDeafen();
+    });
+    let restoreCallAudio!: () => Promise<void>;
+    await act(async () => {
+      restoreCallAudio = await result.current.beginMicrophoneTest();
+      await result.current.toggleMute();
+      await result.current.toggleDeafen();
+    });
+    expect(result.current.muted).toBe(false);
+    expect(result.current.deafened).toBe(false);
+
+    await act(async () => {
+      await restoreCallAudio();
+    });
+
+    expect(result.current.muted).toBe(true);
+    expect(result.current.deafened).toBe(true);
   });
 
   it("keeps the current state and reports an error when speech mute fails", async () => {

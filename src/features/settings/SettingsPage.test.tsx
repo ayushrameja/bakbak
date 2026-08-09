@@ -111,6 +111,7 @@ function renderSettings(
     outputError: null,
     cameraError: null,
     inputDisabled: false,
+    outputDisabled: false,
     outputSelectionSupported: false,
     voiceStatus: "disconnected",
     voiceChannelName: null,
@@ -123,6 +124,7 @@ function renderSettings(
     onOutputChange: vi.fn(),
     onCameraChange: vi.fn(),
     onRefreshDevices: vi.fn().mockResolvedValue(undefined),
+    onBeginMicrophoneTest: vi.fn().mockResolvedValue(() => Promise.resolve()),
     onSoundboardVolumeChange: vi.fn(),
     onEnhancedNoiseSuppressionChange: vi.fn(),
     onMacosKeepOtherAudioFullVolumeChange: vi.fn(),
@@ -557,7 +559,9 @@ describe("SettingsPage", () => {
     });
 
     await userEvent.click(
-      screen.getByRole("switch", { name: /Bakbak noise cleanup/i }),
+      screen.getByRole("switch", {
+        name: /Bakbak Studio noise suppression/i,
+      }),
     );
     expect(onEnhancedNoiseSuppressionChange).toHaveBeenCalledWith(false);
 
@@ -581,7 +585,9 @@ describe("SettingsPage", () => {
     });
 
     expect(
-      screen.getByRole("switch", { name: /Bakbak noise cleanup/i }),
+      screen.getByRole("switch", {
+        name: /Bakbak Studio noise suppression/i,
+      }),
     ).toBeDisabled();
     expect(
       screen.queryByRole("switch", {
@@ -594,6 +600,7 @@ describe("SettingsPage", () => {
   });
 
   it("uses the selected macOS echo mode for microphone tests", async () => {
+    const restoreCallAudio = vi.fn().mockResolvedValue(undefined);
     const getUserMedia = vi
       .fn()
       .mockRejectedValue(new Error("test capture stopped"));
@@ -605,6 +612,7 @@ describe("SettingsPage", () => {
       selectedInputId: "studio-mic",
       macosFullVolumeModeAvailable: true,
       macosKeepOtherAudioFullVolume: true,
+      onBeginMicrophoneTest: vi.fn().mockResolvedValue(restoreCallAudio),
     });
 
     await userEvent.click(
@@ -621,6 +629,7 @@ describe("SettingsPage", () => {
         sampleRate: 48_000,
       },
     });
+    await waitFor(() => expect(restoreCallAudio).toHaveBeenCalledOnce());
   });
 
   it("cancels a pending mic test before changing its input or capture mode", async () => {
@@ -733,6 +742,8 @@ describe("SettingsPage", () => {
 
   it("plays the processed microphone back through the selected output", async () => {
     const onRefreshDevices = vi.fn().mockResolvedValue(undefined);
+    const restoreCallAudio = vi.fn().mockResolvedValue(undefined);
+    const onBeginMicrophoneTest = vi.fn().mockResolvedValue(restoreCallAudio);
     const stop = vi.fn();
     const pause = vi.fn();
     const play = vi.fn().mockResolvedValue(undefined);
@@ -788,6 +799,9 @@ describe("SettingsPage", () => {
         selectedOutputId: "speaker-2",
         outputSelectionSupported: true,
         onRefreshDevices,
+        voiceStatus: "connected",
+        voiceChannelName: "Lounge",
+        onBeginMicrophoneTest,
       });
       await userEvent.click(
         screen.getByRole("button", { name: "Test microphone" }),
@@ -796,11 +810,22 @@ describe("SettingsPage", () => {
       await waitFor(() => expect(play).toHaveBeenCalledOnce());
       expect(setSinkId).toHaveBeenCalledWith("speaker-2");
       expect(onRefreshDevices).toHaveBeenCalledOnce();
+      expect(onBeginMicrophoneTest).toHaveBeenCalledOnce();
       expect(screen.getByText(/Live monitor is on/i)).toBeInTheDocument();
+      expect(screen.getByText(/temporarily muted and deafened/i)).toBeVisible();
+      expect(
+        screen.getByRole("meter", { name: "Raw microphone input level" }),
+      ).toBeVisible();
+      expect(
+        screen.getByRole("meter", {
+          name: "Studio microphone output level",
+        }),
+      ).toBeVisible();
 
       await userEvent.click(screen.getByRole("button", { name: "Stop test" }));
       expect(pause).toHaveBeenCalledOnce();
       expect(stop).toHaveBeenCalledOnce();
+      await waitFor(() => expect(restoreCallAudio).toHaveBeenCalledOnce());
     } finally {
       vi.unstubAllGlobals();
       if (originalSetSinkId) {

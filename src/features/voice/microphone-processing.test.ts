@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   attachMicrophoneProcessor,
+  createMicrophonePreview,
   isMicrophoneProcessingSupported,
   initializeMicrophoneWorklet,
   microphoneCaptureOptions,
@@ -243,6 +244,57 @@ describe("microphone processing", () => {
     await localTrack.stopProcessor();
     expect(processedTrack.stop).toHaveBeenCalledOnce();
     expect(activeProcessor).toBeNull();
+    await releaseMicrophoneProcessing();
+  });
+
+  it("changes Studio suppression live inside one microphone preview", async () => {
+    const processedTrack = { stop: vi.fn() };
+    const source = { connect: vi.fn(), disconnect: vi.fn() };
+    const destination = {
+      stream: { getAudioTracks: () => [processedTrack] },
+      disconnect: vi.fn(),
+    };
+    class ProcessingAudioContext {
+      readonly sampleRate = 48_000;
+      readonly state = "running";
+      readonly resume = vi.fn().mockResolvedValue(undefined);
+      readonly close = vi.fn().mockResolvedValue(undefined);
+      readonly createMediaStreamSource = vi.fn(() => source);
+      readonly createMediaStreamDestination = vi.fn(() => destination);
+    }
+    Object.defineProperty(ProcessingAudioContext.prototype, "audioWorklet", {
+      configurable: true,
+      value: { addModule: vi.fn().mockResolvedValue(undefined) },
+    });
+    class FakeMediaStream {
+      constructor(readonly tracks: unknown[]) {}
+      getAudioTracks() {
+        return this.tracks;
+      }
+    }
+    vi.stubGlobal("AudioContext", ProcessingAudioContext);
+    vi.stubGlobal("AudioWorkletNode", ReadyWorkletNode);
+    vi.stubGlobal("MediaStream", FakeMediaStream);
+
+    const preview = await createMicrophonePreview(
+      { getAudioTracks: () => [{}] } as unknown as MediaStream,
+      { enhancedNoiseSuppression: true },
+    );
+
+    expect(preview.processingError).toBeNull();
+    expect(preview.stream.getAudioTracks()).toEqual([processedTrack]);
+    await expect(preview.setEnhancedNoiseSuppression(false)).resolves.toBe(
+      true,
+    );
+    expect(ReadyWorkletNode.instances.at(-1)?.port.messages).toContainEqual(
+      expect.objectContaining({
+        type: "configure",
+        preferences: { enhancedNoiseSuppression: false },
+      }),
+    );
+
+    preview.cleanup();
+    expect(processedTrack.stop).toHaveBeenCalledOnce();
     await releaseMicrophoneProcessing();
   });
 });

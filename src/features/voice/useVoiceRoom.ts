@@ -237,6 +237,7 @@ interface VoiceRoomState {
   selectedCameraId: string;
   enhancedNoiseSuppression: boolean;
   inputDevicePending: boolean;
+  outputDevicePending: boolean;
   macosFullVolumeModeAvailable: boolean;
   macosKeepOtherAudioFullVolume: boolean;
   microphoneProcessingSupported: boolean;
@@ -268,6 +269,7 @@ interface VoiceRoomState {
   leave: (reason?: VoiceLeaveReason) => Promise<void>;
   toggleMute: () => Promise<void>;
   toggleDeafen: () => Promise<void>;
+  beginMicrophoneTest: () => Promise<() => Promise<void>>;
   resumeAudio: () => Promise<void>;
   copyVoiceDiagnostics: () => Promise<boolean>;
   setParticipantVolume: (participantId: string, volume: number) => void;
@@ -327,7 +329,7 @@ export function useVoiceRoom(
   >(null);
   const [microphoneProcessingState, setMicrophoneProcessingState] =
     useState<MicrophoneProcessingState>(
-      initialPreferences.enhancedNoiseSuppression ? "starting" : "off",
+      initialPreferences.enhancedNoiseSuppression ? "active" : "off",
     );
   const [outputDeviceError, setOutputDeviceError] = useState<string | null>(
     null,
@@ -351,6 +353,7 @@ export function useVoiceRoom(
     initialPreferences.enhancedNoiseSuppression,
   );
   const [inputDevicePending, setInputDevicePending] = useState(false);
+  const [outputDevicePending, setOutputDevicePending] = useState(false);
   const [macosKeepOtherAudioFullVolume, setMacosKeepOtherAudioFullVolumeState] =
     useState(initialPreferences.macosKeepOtherAudioFullVolume);
   const [cameraEnabled, setCameraEnabled] = useState(false);
@@ -410,7 +413,10 @@ export function useVoiceRoom(
   const prepareOperationRef = useRef(0);
   const joiningMicrophoneRef = useRef<LocalAudioTrack | null>(null);
   const inputRestartPendingRef = useRef(false);
+  const outputDevicePendingRef = useRef(false);
+  const outputSwitchOperationRef = useRef(0);
   const microphoneProcessingOperationRef = useRef(0);
+  const microphoneTestIsolationOperationRef = useRef(0);
   const outputDeviceErrorTimerRef = useRef<number | null>(null);
   const relayPreferredUntilRef = useRef(
     loadRelayPreference(appConfig.livekitUrl),
@@ -988,6 +994,8 @@ export function useVoiceRoom(
   const resetVoiceMedia = useCallback(
     (preserveLocalControls = false) => {
       playbackOperationRef.current += 1;
+      outputSwitchOperationRef.current += 1;
+      microphoneTestIsolationOperationRef.current += 1;
       soundStartOperationRef.current += 1;
       cameraOperationRef.current += 1;
       screenShareOperationRef.current += 1;
@@ -1014,7 +1022,7 @@ export function useVoiceRoom(
       setJoinStage(null);
       setMicrophoneProcessingState(
         microphoneProcessingPreferencesRef.current.enhancedNoiseSuppression
-          ? "starting"
+          ? "active"
           : "off",
       );
       if (!preserveLocalControls) {
@@ -1025,6 +1033,8 @@ export function useVoiceRoom(
       }
       setAudioPlaybackBlocked(false);
       setVoiceContinuityWarning(null);
+      outputDevicePendingRef.current = false;
+      setOutputDevicePending(false);
       setCameraEnabled(false);
       setCameraPending(false);
       setScreenShares([]);
@@ -1728,7 +1738,7 @@ export function useVoiceRoom(
       setMicrophoneProcessingError(null);
       setMicrophoneProcessingState(
         microphoneProcessingPreferencesRef.current.enhancedNoiseSuppression
-          ? "starting"
+          ? "active"
           : "off",
       );
       dismissOutputDeviceError();
@@ -2043,6 +2053,14 @@ export function useVoiceRoom(
               source: Track.Source.Microphone,
             },
           );
+          // The speech track is restarted directly so the synthetic
+          // soundboard microphone-source publication is never touched by
+          // Room.switchActiveDevice(). Keep LiveKit's future-device state in
+          // sync explicitly for mute/rejoin/device-recovery paths.
+          room.localParticipant.activeDeviceMap.set(
+            "audioinput",
+            selectedInputId,
+          );
           if (joiningMicrophoneRef.current === result.track) {
             joiningMicrophoneRef.current = null;
           }
@@ -2057,7 +2075,9 @@ export function useVoiceRoom(
                 room,
                 selectedOutputId,
               );
-              if (!outputResult.ok) throw new Error(outputResult.message);
+              if (!outputResult.ok) {
+                recordVoiceDiagnostic("room-output-sync-failed");
+              }
             } catch {
               showOutputDeviceError(
                 "Bakbak joined using system output because the selected speaker was unavailable.",
@@ -2253,6 +2273,54 @@ export function useVoiceRoom(
     status,
   ]);
 
+  const beginMicrophoneTest = useCallback(async () => {
+    const room = roomRef.current;
+    if (status !== "connected" || !room) {
+      return () => Promise.resolve();
+    }
+
+    const operation = microphoneTestIsolationOperationRef.current + 1;
+    microphoneTestIsolationOperationRef.current = operation;
+    const wasMuted = mutedRef.current;
+    const wasDeafened = deafenedRef.current;
+    const isCurrent = () =>
+      microphoneTestIsolationOperationRef.current === operation &&
+      roomRef.current === room;
+    const restorePreviousState = async () => {
+      if (!isCurrent()) return;
+      if (deafenedRef.current !== wasDeafened) {
+        await toggleDeafen().catch(() => undefined);
+      }
+      if (!isCurrent()) return;
+      if (mutedRef.current !== wasMuted) {
+        await toggleMute().catch(() => undefined);
+      }
+    };
+
+    try {
+      if (!wasMuted) await toggleMute();
+      if (!isCurrent() || !mutedRef.current) {
+        throw new Error("The call microphone could not be muted.");
+      }
+      if (!wasDeafened) await toggleDeafen();
+      if (!isCurrent() || !deafenedRef.current) {
+        throw new Error("Incoming call audio could not be deafened.");
+      }
+    } catch {
+      await restorePreviousState();
+      throw new Error(
+        "Bakbak could not isolate the active call for a safe microphone test.",
+      );
+    }
+
+    let restored = false;
+    return async () => {
+      if (restored) return;
+      restored = true;
+      await restorePreviousState();
+    };
+  }, [status, toggleDeafen, toggleMute]);
+
   const resumeAudio = useCallback(async () => {
     const room = roomRef.current;
     if (status !== "connected" || !room || deafenedRef.current) return;
@@ -2377,6 +2445,7 @@ export function useVoiceRoom(
           setInputDeviceError(result.message);
           return;
         }
+        room.localParticipant.activeDeviceMap.set("audioinput", deviceId);
         setSelectedInputId(deviceId);
         setMacosKeepOtherAudioFullVolumeState(keepOtherAudioFullVolume);
         setInputDeviceError(null);
@@ -2510,44 +2579,75 @@ export function useVoiceRoom(
 
   const setOutputDevice = useCallback(
     async (deviceId: string) => {
-      if (status === "connecting" || status === "reconnecting") return;
+      if (
+        status === "connecting" ||
+        status === "reconnecting" ||
+        outputDevicePendingRef.current
+      ) {
+        return;
+      }
       if (!outputSelectionSupported) {
         showOutputDeviceError(
           "This runtime supports only the system output device.",
         );
         return;
       }
+      if (deviceId === selectedOutputId) {
+        dismissOutputDeviceError();
+        return;
+      }
 
       const room = roomRef.current;
       const previousId = selectedOutputId;
+      const operation = outputSwitchOperationRef.current + 1;
+      outputSwitchOperationRef.current = operation;
+      outputDevicePendingRef.current = true;
+      setOutputDevicePending(true);
+      const isCurrent = () =>
+        outputSwitchOperationRef.current === operation &&
+        roomRef.current === room;
       try {
         await audioOutput.setDevice(deviceId);
+        if (!isCurrent()) return;
         await remoteAudio.setDevice(deviceId);
+        if (!isCurrent()) return;
         if (room) {
           const result = await switchAudioOutput(room, deviceId);
-          if (!result.ok) throw new Error(result.message);
-          await reconcileRemoteAudio(room, "output-device-change", true);
+          if (!result.ok) {
+            // Bakbak owns every audible remote element and the final mix. A
+            // failed LiveKit bookkeeping sync must not undo a working sink.
+            recordVoiceDiagnostic("room-output-sync-failed");
+          }
+        }
+        if (!isCurrent()) return;
+        setSelectedOutputId(deviceId);
+        dismissOutputDeviceError();
+        if (room) {
+          void reconcileRemoteAudio(room, "output-device-change", true);
         } else {
-          await remoteAudio.recoverAll("output-device-change");
+          void remoteAudio.recoverAll("output-device-change");
         }
       } catch {
+        if (!isCurrent()) return;
         await audioOutput.setDevice(previousId).catch(() => undefined);
         await remoteAudio.setDevice(previousId).catch(() => undefined);
         if (room) void switchAudioOutput(room, previousId);
         showOutputDeviceError(
           "Bakbak couldn't switch speakers. The previous output is still active.",
         );
-        return;
+      } finally {
+        if (outputSwitchOperationRef.current === operation) {
+          outputDevicePendingRef.current = false;
+          setOutputDevicePending(false);
+        }
       }
-
-      setSelectedOutputId(deviceId);
-      dismissOutputDeviceError();
     },
     [
       audioOutput,
       dismissOutputDeviceError,
       outputSelectionSupported,
       reconcileRemoteAudio,
+      recordVoiceDiagnostic,
       remoteAudio,
       selectedOutputId,
       showOutputDeviceError,
@@ -3059,6 +3159,7 @@ export function useVoiceRoom(
     selectedCameraId,
     enhancedNoiseSuppression,
     inputDevicePending,
+    outputDevicePending,
     macosFullVolumeModeAvailable,
     macosKeepOtherAudioFullVolume,
     microphoneProcessingSupported,
@@ -3095,6 +3196,7 @@ export function useVoiceRoom(
     leave,
     toggleMute,
     toggleDeafen,
+    beginMicrophoneTest,
     resumeAudio,
     copyVoiceDiagnostics,
     setParticipantVolume,

@@ -213,14 +213,17 @@ export async function createMicrophonePreview(
 ): Promise<{
   stream: MediaStream;
   cleanup: () => void;
+  processingError: string | null;
+  setEnhancedNoiseSuppression: (enabled: boolean) => Promise<boolean>;
 }> {
-  if (
-    !needsMicrophoneProcessor(preferences) ||
-    !isMicrophoneProcessingSupported()
-  ) {
+  if (!isMicrophoneProcessingSupported()) {
     return {
       stream: sourceStream,
       cleanup: () => undefined,
+      processingError: preferences.enhancedNoiseSuppression
+        ? MICROPHONE_PROCESSING_UNAVAILABLE
+        : null,
+      setEnhancedNoiseSuppression: () => Promise.resolve(false),
     };
   }
 
@@ -239,10 +242,24 @@ export async function createMicrophonePreview(
     return {
       stream: new MediaStream([processor.processedTrack]),
       cleanup: () => void processor.destroy(),
+      processingError: null,
+      setEnhancedNoiseSuppression: async (enabled) => {
+        await processor.setPreferences({
+          enhancedNoiseSuppression: enabled,
+        });
+        return true;
+      },
     };
-  } catch (error) {
+  } catch {
     await processor.destroy();
-    throw error;
+    return {
+      stream: sourceStream,
+      cleanup: () => undefined,
+      processingError: preferences.enhancedNoiseSuppression
+        ? MICROPHONE_PROCESSING_UNAVAILABLE
+        : null,
+      setEnhancedNoiseSuppression: () => Promise.resolve(false),
+    };
   }
 }
 

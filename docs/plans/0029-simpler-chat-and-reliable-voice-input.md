@@ -72,6 +72,24 @@ and all backend/LiveKit protocol contracts.
   active mic test.
 - Other platforms always keep echo cancellation and hide the option.
 
+### 2026-08-09 Studio and live-device follow-up
+
+- The mic test renders raw-input and Studio-output meters, monitors the same
+  stream friends receive through the selected output, and applies cleanup
+  toggle changes to the running preview. RNNoise preview failure keeps a raw
+  WebRTC-cleaned test available with explicit fallback copy.
+- Starting a mic test during a call temporarily mutes and deafens the current
+  room. Stop, failure, unmount, or a stale startup restores the exact prior mute
+  and deafen state without applying it to a later room.
+- A successful connected input restart explicitly updates LiveKit's active
+  audio-input bookkeeping. Bakbak does not use a room-wide input switch because
+  the independently published soundboard track also uses LiveKit's microphone
+  source classification.
+- Output changes use their own serialized transaction. The Bakbak-owned
+  soundboard and final remote-audio sinks are authoritative; a blocked silent
+  autoplay probe or failed auxiliary LiveKit bookkeeping cannot roll back a
+  sink that already switched successfully.
+
 ## Acceptance
 
 ### Automated
@@ -86,6 +104,10 @@ and all backend/LiveKit protocol contracts.
       serialization, rollback, failed rollback, and stale-room results.
 - [x] Settings tests cover cleanup-only controls, macOS visibility and copy,
       other-platform hiding, and mic-test capture constraints.
+- [x] Studio preview tests cover raw/processed meters, live cleanup changes,
+      call isolation, exact state restoration, failure cleanup, and fallback.
+- [x] Active-call device tests cover input bookkeeping, independently pending
+      output routing, stale-room protection, and autoplay/bookkeeping failure.
 
 ### Installed/manual
 
@@ -97,6 +119,10 @@ and all backend/LiveKit protocol contracts.
 - [ ] Complete a two-client echo/noise intelligibility check.
 - [ ] Repeat microphone switching on Windows and confirm the macOS control is
       absent.
+- [ ] Switch between two outputs during an active two-client call and confirm
+      speech, soundboard, and mic-test monitoring follow the chosen sink.
+- [ ] During an active call, compare Studio off/on, stop the test, and confirm
+      the previous mute/deafen state and normal remote playback return.
 - [ ] Inspect light/dark channel and chat layouts at 1280×800 and 1024×680.
 
 ## Constraints
