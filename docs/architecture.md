@@ -14,26 +14,40 @@ conversation canvas. The always-present 48 px titlebar keeps its centre empty
 and draggable; its single sidebar visibility control sits in the leading area,
 after native macOS traffic lights and before the drag surface on other
 platforms. The Personal/Bakbak segmented switch lives at the top of the
-sidebar. Startup and startup-error screens retain branded content beneath
-navigation-free titlebar chrome. Authentication uses a responsive split
-welcome surface: a honey-to-teal private-room story beside a focused sign-in or
-invite form at desktop widths, collapsing to the form and compact Bakbak
-lockup on narrow windows. Sign-in and invite mode preserve native autofill and
-validation, explicit password visibility, and keyboard-accessible tabs.
+sidebar. Authentication and loading reuse that same app geometry: a quiet
+280 px honey-to-teal rail, an 8 px outer inset, and one rounded solid canvas.
+The transparent navigation-free titlebar reveals the same gradient as the
+page, matching the signed-in shell instead of introducing a separate header
+surface. Authentication keeps only the Bakbak lockup, a short private-space
+label, and the focused sign-in/invite form; narrow windows collapse to the
+canvas and compact lockup. Loading shows the same empty shell with one bounded
+progress cue. Sign-in and invite mode preserve native autofill and validation,
+explicit password visibility, and keyboard-accessible tabs.
 
 macOS retains native overlay traffic lights and an active-state-following
-`underWindowBackground` material. Windows uses renderer-owned controls and
-applies Mica on build 22000 or newer; Windows 10 and browser/mock mode use an
-opaque CSS underlay. The sidebar defaults to 280 px, resizes from 248–340 px,
+`under-window` vibrancy material. The Electron BrowserWindow and renderer root
+are transparent so sidebar gradient alpha reveals that material. Windows uses
+renderer-owned controls and applies Mica on Windows 11 22H2 or newer; older
+Windows keeps the transparent frameless backing without Mica. Browser/mock
+mode uses an opaque CSS underlay. The sidebar defaults to 280 px, resizes from
+248–340 px,
 and leaves a 420 px minimum conversation canvas. V3 layout preferences persist
 only sidebar visibility and width, migrate v2's left-side fields, and discard
 the retired right-panel fields. Settings remains a centred, focus-trapped
 in-app modal with internal scrolling, active-call controls, confirmed logout,
 and account-scoped cache management.
 
-The Bakbak space uses a honey-to-moss/teal-to-midnight gradient and honey/teal
-interaction tokens. Personal uses a berry/violet-to-blue-to-midnight gradient
-and violet/blue tokens. Switching spaces updates the gradient and accents while
+The Bakbak space defaults to a honey-to-teal-to-midnight gradient and Personal
+defaults to berry-to-violet-to-midnight. Each signed-in account can independently
+replace either sidebar with a solid color or three-stop gradient, make it darker
+or lighter, add up to 45% transparency, and choose no texture, dots, or grain.
+The gradient picker places three draggable, click-to-recolor points on the live
+field; their positions determine gradient direction and the middle stop.
+Alt+Arrow provides keyboard positioning, and eight one-click presets sit below
+the field.
+The interaction accents remain the space-owned honey/teal and violet/blue tokens
+so control contrast does not depend on a user-selected background. Switching
+spaces updates the gradient and accents while
 only the destination sidebar content below the stationary space switch enters
 directionally over 345 ms: Personal moves left from the right and Bakbak moves
 right from the left. The channel header, conversation canvas, live application
@@ -41,8 +55,9 @@ tree, and global call dock stay mounted and still; reduced motion applies the
 destination immediately. The
 conversation canvas is `#171717` in dark mode and near-white in light mode.
 Auto, Light, and Dark appearance choices remain device-local and apply before
-React mounts. Appearance Settings replaces the operating-system accent summary
-with read-only Bakbak and Personal palette previews.
+React mounts. Appearance Settings includes the same live per-space sidebar
+editor used by the one-time, skippable setup prompt shown after each account's
+first completed sign-in on a device.
 
 Inter Variable is bundled locally at weights 400–700 with `Inter`,
 `Avenir Next`, `Segoe UI`, and `sans-serif` fallbacks. The rem-based scale uses
@@ -986,24 +1001,32 @@ An invite-management UI is deferred until post-v1.
    52 px composer, and restrained 10/14/16/18 px curves. Hover transitions use
    color and border changes; reduced motion disables transitions and press
    scaling.
-2. Profile edits validate a trimmed 1–50 character display name, a
+2. Sidebar theme preferences are stored per account under
+   `bakbak.sidebarThemes.v1:<user ID>`. Each record contains independent
+   Personal and Bakbak solid/gradient colors, brightness, transparency, and
+   texture plus three bounded gradient points and the one-time setup completion
+   flag. Parsing clamps numeric values and rejects malformed colors or points.
+   Older v1 records receive default point positions. Skip keeps the defaults
+   and records completion; the full editor remains available in Appearance
+   Settings.
+3. Profile edits validate a trimmed 1–50 character display name, a
    190-character plain-text description, integer 0–100 cover coordinates, and
    optional PNG/JPEG/WebP/GIF media. Avatars are limited to 5 MiB, covers to 10
    MiB, and every decoded image to 16 megapixels and 8192 px on either side.
    Separate Avatar and Cover actions open the existing attributed GIPHY search
    in GIF-only, target-aware mode.
-3. The renderer decodes each upload before storage and paints a bounded static
+4. The renderer decodes each upload before storage and paints a bounded static
    poster: at most 512 px on the avatar long edge or 1600 px on the cover long
    edge, encoded as WebP with PNG fallback. GIF uploads retain the original
    animation beside the poster; other animated formats are flattened.
-4. Changed poster/animation objects upload to
+5. Changed poster/animation objects upload to
    `<user UUID>/<generated UUID>` before one profile-row update. Any failure
    removes every newly uploaded object. Success mirrors the display name into
    Auth metadata and best-effort deletes replaced/removed objects. Choosing
    GIPHY instead writes only its bounded asset ID, clears the field's upload
    paths/legacy URL, and then removes replaced private objects; choosing an
    upload or removal clears the corresponding provider ID.
-5. A memory plus user-scoped IndexedDB bucket/path cache deduplicates
+6. A memory plus user-scoped IndexedDB bucket/path cache deduplicates
    authenticated downloads and revokes object URLs on replacement, account
    change, clearing, and teardown. Workspace metadata publishes before avatar
    posters hydrate progressively. Activity and expanded member rows request
@@ -1023,10 +1046,10 @@ An invite-management UI is deferred until post-v1.
    posters, use the session-deduplicated provider adapter for attention-driven
    animation and cover loads, and fall back to initials/no cover on API or
    rendition failure.
-6. Cover framing uses a fixed 3:1 preview. Pointer drag or keyboard arrows
+7. Cover framing uses a fixed 3:1 preview. Pointer drag or keyboard arrows
    update integer focal coordinates; Shift moves by a larger step and Reset
    returns to 50/50.
-7. Audio settings retain the persisted device selectors, soundboard volume,
+8. Audio settings retain the persisted device selectors, soundboard volume,
    enhanced-cleanup switch, selected voice effect, and interface-sound
    master/volume/category preferences in four spaced Voice Input, Voice Output,
    Video, and App Sounds categories. Opening settings does not request media.
@@ -1038,7 +1061,7 @@ An invite-management UI is deferred until post-v1.
    temporary resources and release them when stopped or unmounted. Preview
    buttons activate and play one modern interface-sound category representative
    through the system output.
-8. Settings is a modal overlay over the current canvas. It traps focus, restores
+9. Settings is a modal overlay over the current canvas. It traps focus, restores
    the opener on close, exposes compact active-call controls, and confirms
    logout. Closing discards staged profile edits and revokes preview URLs; a
    failed save leaves the draft intact for retry. A failed logout leaves the
@@ -1439,6 +1462,9 @@ Appearance stores only `auto`, `light`, or `dark` under
 `bakbak.appearancePreferences.*` entries remain inert rather than receiving a
 cleanup migration. The native system-accent bridge remains dormant for desktop
 compatibility; no accent preference or system-accent summary is exposed.
+Per-account sidebar themes use `bakbak.sidebarThemes.v1:<user ID>` and never
+leave the device; defaults restore independently for Personal and Bakbak when a
+record is absent or malformed.
 It stores `{ enabled, volume, categories }` under
 `bakbak.interfaceSoundPreferences.v1`; the default is enabled at 55% with
 Messages, Voice, Screen share, and Status enabled. Interface sounds lazily
@@ -1815,7 +1841,8 @@ that it has passed.
   before release acceptance.
 - Plan 0034 supersedes plan 0016's active typography and plan 0026's visible
   system-accent treatment with bundled Inter Variable and distinct Bakbak and
-  Personal palettes. Auto/Light/Dark remains the only appearance choice.
+  Personal palettes. Auto/Light/Dark remains the global canvas choice; the
+  sidebar palettes can now be customized independently per signed-in account.
   Installed macOS/Windows glyph, clipping, native material, and offline-font
   observation remain required.
 - Plan 0006's centered settings modal, sidebar call controls, and simplified

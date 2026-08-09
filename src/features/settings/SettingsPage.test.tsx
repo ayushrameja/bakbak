@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppUser } from "../../lib/types";
 import { SettingsPage, type SettingsSection } from "./SettingsPage";
+import { DEFAULT_SIDEBAR_THEME_PREFERENCES } from "./sidebar-theme-preferences";
 
 const giphyState = vi.hoisted(() => ({
   search: vi.fn(),
@@ -102,6 +103,9 @@ function renderSettings(
       },
     },
     appearancePreference: "auto",
+    sidebarThemePreferences: structuredClone(
+      DEFAULT_SIDEBAR_THEME_PREFERENCES,
+    ),
     inputError: null,
     outputError: null,
     cameraError: null,
@@ -123,6 +127,7 @@ function renderSettings(
     onMacosKeepOtherAudioFullVolumeChange: vi.fn(),
     onInterfaceSoundPreferencesChange: vi.fn(),
     onAppearancePreferenceChange: vi.fn(),
+    onSidebarThemePreferencesChange: vi.fn(),
     onPreviewInterfaceSound: vi.fn(),
     onToggleMute: vi.fn(),
     onToggleDeafen: vi.fn(),
@@ -946,23 +951,48 @@ describe("SettingsPage", () => {
     vi.unstubAllGlobals();
   });
 
-  it("selects Auto, Dark, or Light without typography controls", async () => {
+  it("changes the app theme and each space sidebar independently", async () => {
     const onAppearancePreferenceChange = vi.fn();
-    renderSettings("appearance", { onAppearancePreferenceChange });
+    const onSidebarThemePreferencesChange = vi.fn();
+    renderSettings("appearance", {
+      onAppearancePreferenceChange,
+      onSidebarThemePreferencesChange,
+    });
 
-    expect(screen.getByText("Bakbak palette")).toBeVisible();
-    expect(screen.getByText("Honey & teal")).toBeVisible();
-    expect(screen.getByText("Personal palette")).toBeVisible();
-    expect(screen.getByText("Berry & blue")).toBeVisible();
-    expect(screen.queryByText("System accent")).toBeNull();
+    expect(screen.getByText("Sidebar")).toBeVisible();
     expect(screen.getByRole("radio", { name: /Auto/ })).toBeChecked();
     expect(screen.getByRole("radio", { name: /Dark/ })).not.toBeChecked();
     expect(screen.getByRole("radio", { name: /Light/ })).not.toBeChecked();
     await userEvent.click(screen.getByRole("radio", { name: /Dark/ }));
     expect(onAppearancePreferenceChange).toHaveBeenCalledWith("dark");
+    await userEvent.click(screen.getByRole("button", { name: "Personal" }));
+    expect(screen.getByRole("group", { name: "Color presets" })).toBeVisible();
+    expect(screen.getByLabelText("Personal color 1")).toHaveAttribute(
+      "type",
+      "color",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Dots" }));
+    expect(onSidebarThemePreferencesChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        spaces: expect.objectContaining({
+          personal: expect.objectContaining({ texture: "dots" }),
+        }),
+      }),
+    );
+    fireEvent.change(
+      screen.getByRole("slider", { name: "Personal transparency" }),
+      { target: { value: "45" } },
+    );
+    expect(onSidebarThemePreferencesChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        spaces: expect.objectContaining({
+          personal: expect.objectContaining({ transparency: 45 }),
+        }),
+      }),
+    );
     expect(screen.queryByText("Typeface")).not.toBeInTheDocument();
     expect(screen.queryByText("Roundo")).not.toBeInTheDocument();
-    expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("slider")).toHaveLength(2);
   });
 
   it("traps focus, closes with Escape, and restores the opener", () => {

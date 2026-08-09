@@ -3,14 +3,32 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const root = new URL("../", import.meta.url);
-const [styles, main, app, settings, sidebar, packageJson] = await Promise.all([
+const [
+  styles,
+  main,
+  app,
+  settings,
+  themeEditor,
+  gradientPicker,
+  sidebar,
+  packageJson,
+] =
+  await Promise.all([
   readFile(new URL("src/styles.css", root), "utf8"),
   readFile(new URL("src/main.tsx", root), "utf8"),
   readFile(new URL("src/app/App.tsx", root), "utf8"),
   readFile(new URL("src/features/settings/SettingsPage.tsx", root), "utf8"),
+    readFile(
+      new URL("src/features/settings/SidebarThemeEditor.tsx", root),
+      "utf8",
+    ),
+    readFile(
+      new URL("src/features/settings/SidebarGradientPicker.tsx", root),
+      "utf8",
+    ),
   readFile(new URL("src/features/channels/ChannelSidebar.tsx", root), "utf8"),
   readFile(new URL("package.json", root), "utf8"),
-]);
+  ]);
 
 test("Bakbak and Personal own distinct signed-in palettes", () => {
   assert.match(
@@ -62,15 +80,23 @@ test("the unified sidebar exposes one flat shelf and the member overlay", () => 
   assert.doesNotMatch(app, /DirectPersonPanel|panel-slot--right/);
 });
 
-test("appearance keeps scheme selection and shows both read-only palettes", () => {
+test("appearance keeps scheme selection and customizes both space themes", () => {
   assert.match(styles, /data-color-scheme="dark"/);
   assert.match(styles, /data-color-scheme="light"/);
   assert.match(settings, /value:\s*"auto"/);
   assert.match(settings, /value:\s*"dark"/);
   assert.match(settings, /value:\s*"light"/);
-  assert.match(settings, />Bakbak palette</);
-  assert.match(settings, />Personal palette</);
-  assert.doesNotMatch(settings, />System accent|type="color"/);
+  assert.match(settings, /<SidebarThemeEditor/);
+  assert.match(themeEditor, /server:\s*"Bakbak"/);
+  assert.match(themeEditor, /personal:\s*"Personal"/);
+  assert.match(themeEditor, /<SidebarGradientPicker/);
+  assert.match(gradientPicker, /type="color"/);
+  assert.match(gradientPicker, /Color presets/);
+  assert.match(gradientPicker, /onPointerMove/);
+  assert.match(themeEditor, /type="range"/);
+  assert.match(themeEditor, /Dots/);
+  assert.match(themeEditor, /Grain/);
+  assert.doesNotMatch(settings, />System accent/);
 });
 
 test("conversation surfaces stay solid in light and dark mode", () => {

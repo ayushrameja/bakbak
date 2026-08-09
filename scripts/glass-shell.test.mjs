@@ -13,6 +13,8 @@ const [
   sidebarUserDock,
   voiceRoom,
   html,
+  main,
+  electronMain,
 ] = await Promise.all([
   readFile(new URL("src/styles.css", root), "utf8"),
   readFile(new URL("src/app/App.tsx", root), "utf8"),
@@ -23,6 +25,8 @@ const [
   readFile(new URL("src/features/voice/SidebarUserDock.tsx", root), "utf8"),
   readFile(new URL("src/features/voice/VoiceRoom.tsx", root), "utf8"),
   readFile(new URL("index.html", root), "utf8"),
+  readFile(new URL("src/main.tsx", root), "utf8"),
+  readFile(new URL("electron/main.ts", root), "utf8"),
 ]);
 
 test("glass tokens and native-safe document underlays stay system adaptive", () => {
@@ -48,6 +52,11 @@ test("glass tokens and native-safe document underlays stay system adaptive", () 
     styles,
     /html\[data-window-material="native"\][\s\S]*?background:\s*transparent/,
   );
+  assert.match(main, /dataset\.windowMaterial = isDesktopRuntime\(\)/);
+  assert.match(electronMain, /backgroundColor:\s*"#00000000"/);
+  assert.match(electronMain, /transparent:\s*true/);
+  assert.match(electronMain, /vibrancy:\s*"under-window"/);
+  assert.match(electronMain, /setBackgroundMaterial\("mica"\)/);
   assert.match(html, /name="theme-color"[\s\S]*?content="#000000"/);
   assert.match(html, /name="theme-color"[\s\S]*?content="#f4f4f4"/);
 });

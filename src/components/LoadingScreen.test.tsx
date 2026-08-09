@@ -3,17 +3,17 @@ import { describe, expect, it } from "vitest";
 import { LoadingScreen } from "./LoadingScreen";
 
 describe("LoadingScreen", () => {
-  it("renders one accessible Bakbak status with six staggered letters", () => {
+  it("renders one accessible app-shaped Bakbak loading status", () => {
     const { container } = render(<LoadingScreen />);
 
     expect(
       screen.getByRole("status", { name: "Loading Bakbak" }),
     ).toBeVisible();
-    const word = container.querySelector(".app-loading__word");
-    expect(word).toHaveTextContent("BAKBAK");
-    expect(word?.querySelectorAll("span")).toHaveLength(6);
-    expect(word?.querySelector("span")).toHaveStyle("--letter-index: 0");
-    expect(screen.queryByText("Opening Bakbak")).not.toBeInTheDocument();
-    expect(container.querySelector(".bakbak-mark")).toBeNull();
+    expect(container.querySelector(".app-loading__sidebar")).not.toBeNull();
+    expect(container.querySelector(".app-loading__canvas")).not.toBeNull();
+    expect(container.querySelector(".app-loading__status")).toHaveTextContent(
+      "Opening Bakbak",
+    );
+    expect(container.querySelectorAll(".bakbak-mark")).toHaveLength(2);
   });
 });

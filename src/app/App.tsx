@@ -70,6 +70,14 @@ import {
   type ProfileSaveInput,
   type SettingsSection,
 } from "../features/settings/SettingsPage";
+import { SidebarThemeSetupDialog } from "../features/settings/SidebarThemeSetupDialog";
+import {
+  DEFAULT_SIDEBAR_THEME_PREFERENCES,
+  loadSidebarThemePreferences,
+  saveSidebarThemePreferences,
+  sidebarThemeStyle,
+  type SidebarThemePreferences,
+} from "../features/settings/sidebar-theme-preferences";
 import { Soundboard } from "../features/soundboard/Soundboard";
 import {
   shouldDismissSoundboardForEscape,
@@ -91,6 +99,7 @@ import { sessionToAppUser, signOut } from "../lib/auth-service";
 import { useAutoHideScrollbars } from "../lib/use-auto-hide-scrollbars";
 import type { CommunicationEffectEvent } from "../lib/communication-effects";
 import { isConnectivityError } from "../lib/connectivity";
+import { isDesktopRuntime } from "../lib/desktop-runtime";
 import {
   createLiveChannel,
   reconcileChannelCategories,
@@ -281,6 +290,13 @@ export default function App() {
   const [layoutPreferences, setLayoutPreferences] = useState<LayoutPreferences>(
     () => loadLayoutPreferences(),
   );
+  const [sidebarThemePreferences, setSidebarThemePreferences] =
+    useState<SidebarThemePreferences>(() =>
+      structuredClone(DEFAULT_SIDEBAR_THEME_PREFERENCES),
+    );
+  const [sidebarThemeAccountId, setSidebarThemeAccountId] = useState<
+    string | null
+  >(null);
   const [spaceTransitionDirection, setSpaceTransitionDirection] = useState<
     "left" | "right" | null
   >(null);
@@ -349,6 +365,17 @@ export default function App() {
     signedInUserId,
     appConfig.dataMode,
   );
+  useEffect(() => {
+    if (!signedInUserId) {
+      setSidebarThemeAccountId(null);
+      setSidebarThemePreferences(
+        structuredClone(DEFAULT_SIDEBAR_THEME_PREFERENCES),
+      );
+      return;
+    }
+    setSidebarThemePreferences(loadSidebarThemePreferences(signedInUserId));
+    setSidebarThemeAccountId(signedInUserId);
+  }, [signedInUserId]);
   const handleCommunicationEffect = useCallback(
     (event: CommunicationEffectEvent) => {
       interfaceSoundController.play(event, {
@@ -2601,6 +2628,15 @@ export default function App() {
     saveAppearancePreference(preference);
   }
 
+  function handleSidebarThemePreferencesChange(
+    preferences: SidebarThemePreferences,
+  ) {
+    setSidebarThemePreferences(preferences);
+    if (signedInUserId) {
+      saveSidebarThemePreferences(signedInUserId, preferences);
+    }
+  }
+
   function updateLayoutPreferences(
     updater: (current: LayoutPreferences) => LayoutPreferences,
   ) {
@@ -2823,17 +2859,39 @@ export default function App() {
   const personalUnread = directConversations.some(
     (conversation) => conversation.hasUnread,
   );
+  const sidebarThemeSetupOpen =
+    sidebarThemeAccountId === user?.id &&
+    startupAssembly === "complete" &&
+    !sidebarThemePreferences.onboardingComplete &&
+    activeView === "channel" &&
+    channelDialog === null &&
+    !screenShareDialogOpen;
   const blockingDialogOpen =
     activeView === "settings" ||
     channelDialog !== null ||
-    screenShareDialogOpen;
+    screenShareDialogOpen ||
+    sidebarThemeSetupOpen;
 
-  function renderAppFrame(content: ReactNode, showSpaceSwitcher = false) {
+  function renderAppFrame(
+    content: ReactNode,
+    showSpaceSwitcher = false,
+    surface?: "entry",
+  ) {
+    const theme =
+      sidebarThemeAccountId === signedInUserId
+        ? sidebarThemePreferences.spaces[activeSpace]
+        : DEFAULT_SIDEBAR_THEME_PREFERENCES.spaces[activeSpace];
     return (
       <div
         className="app-frame"
         data-space={showSpaceSwitcher ? activeSpace : undefined}
+        data-desktop-runtime={
+          showSpaceSwitcher ? String(isDesktopRuntime()) : undefined
+        }
+        data-theme-texture={showSpaceSwitcher ? theme.texture : undefined}
+        data-surface={surface}
         data-startup-assembly={showSpaceSwitcher ? startupAssembly : undefined}
+        style={showSpaceSwitcher ? sidebarThemeStyle(theme) : undefined}
       >
         <WindowTitlebar
           showSpaceSwitcher={showSpaceSwitcher}
@@ -2857,7 +2915,7 @@ export default function App() {
   }
 
   if (authLoading) {
-    return renderAppFrame(<LoadingScreen />);
+    return renderAppFrame(<LoadingScreen />, false, "entry");
   }
 
   if (!user) {
@@ -2868,6 +2926,8 @@ export default function App() {
         onAuthenticated={setUser}
         onEnterMock={() => setUser(mockCurrentUser)}
       />,
+      false,
+      "entry",
     );
   }
 
@@ -2893,12 +2953,14 @@ export default function App() {
             : undefined
         }
       />,
+      false,
+      "entry",
     );
   }
 
   if (activeSpace === "server" && (!workspace || !selectedChannel)) {
     if (!appError) {
-      return renderAppFrame(<LoadingScreen />);
+      return renderAppFrame(<LoadingScreen />, false, "entry");
     }
     return renderAppFrame(
       <main className="app-loading app-loading--error">
@@ -2913,6 +2975,8 @@ export default function App() {
           Back to sign in
         </button>
       </main>,
+      false,
+      "entry",
     );
   }
 
@@ -3347,6 +3411,7 @@ export default function App() {
           microphoneProcessingState={voice.microphoneProcessingState}
           interfaceSoundPreferences={interfaceSoundPreferences}
           appearancePreference={appearancePreference}
+          sidebarThemePreferences={sidebarThemePreferences}
           cacheStats={cacheStats}
           dataFreshness={dataFreshness}
           readOnly={dataFreshness === "offline"}
@@ -3386,12 +3451,27 @@ export default function App() {
             handleInterfaceSoundPreferencesChange
           }
           onAppearancePreferenceChange={handleAppearancePreferenceChange}
+          onSidebarThemePreferencesChange={
+            handleSidebarThemePreferencesChange
+          }
           onClearCachedData={handleClearCachedData}
           onPreviewInterfaceSound={(category) =>
             void interfaceSoundController.preview(category)
           }
           onSignOut={handleSignOut}
           onClose={() => setActiveView("channel")}
+        />
+      ) : null}
+      {sidebarThemeSetupOpen ? (
+        <SidebarThemeSetupDialog
+          preferences={sidebarThemePreferences}
+          onSkip={() =>
+            handleSidebarThemePreferencesChange({
+              ...sidebarThemePreferences,
+              onboardingComplete: true,
+            })
+          }
+          onSave={handleSidebarThemePreferencesChange}
         />
       ) : null}
     </div>,

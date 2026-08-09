@@ -408,11 +408,14 @@ function createMainWindow(): BrowserWindow {
     minHeight: 680,
     center: true,
     show: false,
-    backgroundColor: "#090909",
+    backgroundColor: "#00000000",
+    transparent: true,
     ...(process.platform === "darwin"
       ? {
           titleBarStyle: "hiddenInset" as const,
           trafficLightPosition: { x: 16, y: 20 },
+          vibrancy: "under-window" as const,
+          visualEffectState: "active" as const,
         }
       : { frame: false }),
     webPreferences: {

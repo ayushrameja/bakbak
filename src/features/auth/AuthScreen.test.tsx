@@ -15,9 +15,7 @@ describe("AuthScreen", () => {
       />,
     );
 
-    expect(
-      screen.getByRole("heading", { name: "Good to have you back." }),
-    ).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Welcome back" })).toBeVisible();
     expect(screen.getByLabelText("Email address")).toHaveAttribute(
       "autocomplete",
       "email",
@@ -30,19 +28,18 @@ describe("AuthScreen", () => {
     await user.click(screen.getByRole("button", { name: "Show password" }));
     expect(screen.getByLabelText("Password")).toHaveAttribute("type", "text");
 
-    await user.click(screen.getByRole("tab", { name: "Join with invite" }));
-    expect(
-      screen.getByRole("heading", { name: "Your invite is the key." }),
-    ).toBeVisible();
+    await user.click(screen.getByRole("tab", { name: "Use an invite" }));
+    expect(screen.getByRole("heading", { name: "Join Bakbak" })).toBeVisible();
     expect(screen.getByLabelText("Display name")).toBeRequired();
     expect(screen.getByLabelText("Invite code")).toBeRequired();
     expect(screen.getByLabelText("Password")).toHaveAttribute(
       "autocomplete",
       "new-password",
     );
-    expect(
-      screen.getByRole("tab", { name: "Join with invite" }),
-    ).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Use an invite" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 
   it("keeps preview entry local and credential-free", async () => {

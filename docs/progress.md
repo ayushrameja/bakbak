@@ -7149,3 +7149,108 @@ aarch64-apple-darwin --bundles app,dmg` plus
 - **Known limitations:** None identified for the redesigned authentication
   surface.
 - **Next:** Continue the Electron PR and installed updater-migration validation.
+
+## 2026-08-09 — Simplify entry and loading surfaces
+
+- **Completed:** Reworked the authentication redesign into the signed-in app's
+  minimal rail-and-canvas geometry, removing the marketing headline, feature
+  list, fake member activity, security topline, and duplicate privacy footer.
+  Replaced the full-screen animated word scene with the same quiet shell and one
+  bounded progress cue. Made the navigation-free titlebar transparent over the
+  entry gradient so its color belongs to the page like the main app.
+- **Decisions:** Reused the server shell's 280 px rail, 8 px outer inset,
+  16 px rounded canvas, honey-to-teal gradient, and dark/light conversation
+  colors. Kept authentication fields, invite switching, password visibility,
+  autofill, validation, and service behavior unchanged.
+- **Validation:**
+  - Direct Prettier and zero-warning ESLint checks — passed.
+  - Direct renderer, Node/Vite, and Electron TypeScript checks — passed.
+  - Direct Vitest — passed 86 files / 483 tests, including the revised loading
+    structure, entry-surface frame state, and minimal authentication flows.
+  - Direct Node contract suite — passed 50/50 tests, including the new shared
+    rail/canvas loading geometry and bounded-motion contracts.
+  - `node scripts/set-version.mjs --check` — passed at version `1.6.1`.
+  - Direct Vite production build — passed; the existing large-chunk warnings
+    remain non-blocking.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist`,
+    `electron-dist`, and `release`.
+  - Local browser visual checks — passed for desktop sign-in, desktop invite,
+    the 760×720 compact breakpoint, and the transient loading scene. They also
+    caught and corrected inherited flex alignment that initially shrank the
+    loading canvas; final DOM measurements showed zero page overflow.
+  - `git diff --check` — passed.
+- **Documentation updated:** Updated the current entry, loading, and titlebar
+  contract in `docs/architecture.md` and appended this correction to the
+  canonical progress log.
+- **Known limitations:** None identified for the simplified entry surfaces.
+- **Next:** Continue the Electron PR and installed updater-migration validation.
+
+## 2026-08-09 — Add per-space sidebar themes
+
+- **Completed:** Added independent, account-scoped Personal and Bakbak sidebar
+  themes with solid or three-color gradient modes, darker/lighter adjustment,
+  bounded transparency, none/dots/grain texture, live previews, and per-space
+  reset. Added a focus-trapped one-time post-login setup prompt with Skip and
+  Save actions, then reused the same editor in Settings → Appearance.
+- **Decisions:** Kept preferences device-local under
+  `bakbak.sidebarThemes.v1:<user ID>` so accounts sharing a machine do not
+  inherit each other's choices. Skip records completion with defaults, and the
+  parser restores safe per-space defaults for corrupt or out-of-range values.
+  User colors affect the sidebar/titlebar background only; fixed semantic
+  space accents continue to protect control contrast.
+- **Validation:**
+  - `pnpm check` — passed formatting, zero-warning lint, renderer/Node/Electron
+    typechecks, all tests, version check, production renderer build, and bundle
+    secret scan.
+  - `pnpm test` — passed 87 Vitest files / 487 tests and 50/50 Node contract
+    tests, including per-account persistence, malformed-value recovery,
+    gradient generation, Settings interaction, and one-time Skip coverage.
+  - Local browser visual and interaction checks — passed at 1280×800 for the
+    onboarding prompt, independent Bakbak/Personal tabs, dots on the live
+    Personal sidebar/titlebar, immediate Save application, and the reusable
+    Appearance Settings editor.
+  - `git diff --check` — passed.
+- **Documentation updated:** Updated `docs/architecture.md`, the active v1 plan,
+  appearance source-contract tests, and this canonical progress log.
+- **Known limitations:** Sidebar themes intentionally do not sync between
+  devices. Installed macOS/Windows visual observation remains part of the
+  broader Electron acceptance matrix.
+- **Next:** Continue the Electron PR and installed updater-migration validation.
+
+## 2026-08-09 — Refine the sidebar picker and native transparency
+
+- **Completed:** Replaced the compact hex-box color controls with an Arc-like
+  dotted blend field containing three click-to-recolor, pointer-draggable color
+  points. Added keyboard point movement, darker/lighter shortcuts, and eight
+  one-click presets below the field. Gradient point placement now determines
+  direction and the middle stop. Repaired the transparency path through the
+  renderer document, Electron BrowserWindow, macOS under-window vibrancy, and
+  Windows Mica.
+- **Decisions:** Kept old `bakbak.sidebarThemes.v1:<user ID>` records compatible
+  by supplying bounded default point positions when the new field is absent.
+  Native material is enabled only in Electron; browser/mock mode retains an
+  opaque underlay. Windows keeps its frameless requirement for transparent
+  windows, and Mica remains available only where Electron supports it.
+- **Validation:**
+  - `pnpm check` — passed formatting, zero-warning lint, renderer/Node/Electron
+    typechecks, full tests, version check, production renderer build, and bundle
+    secret scan.
+  - `pnpm test` — passed 88 Vitest files / 489 tests and all 50 Node contract
+    tests.
+  - Focused renderer tests — passed for preset application, three color inputs,
+    Alt+Arrow point movement, malformed-point fallback, directional gradient
+    generation, and 45% transparency alpha.
+  - Focused Node contracts — passed for native renderer material selection,
+    transparent Electron window configuration, macOS vibrancy, Windows Mica,
+    and the new picker source contract.
+  - Local browser visual checks — passed at 1280×800 in both first-login and
+    Settings layouts; all color points, presets, controls, Skip, and Save remain
+    visible in onboarding, with internal scrolling retained in Settings.
+- **Documentation updated:** Updated the current native-material and picker
+  contracts in `docs/architecture.md`, the active v1 plan, and this log.
+- **Known limitations:** Browser QA cannot display a native desktop backdrop.
+  The Electron process must be fully restarted to observe the BrowserWindow
+  transparency change; installed macOS/Windows material observation remains in
+  the distribution acceptance matrix.
+- **Next:** Restart the desktop app, visually confirm backdrop visibility on a
+  supported native host, then continue updater-migration validation.

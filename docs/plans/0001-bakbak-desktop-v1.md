@@ -300,6 +300,16 @@ profile/camera clusters and orbits. Non-LIVE circles stay passive behind an
 above-avatar action tooltip; LIVE alone opens a control-free share stage whose
 media returns to people, with no participant expansion or renderer fullscreen.
 
+The 2026-08-09 sidebar-theme amendment adds device-local, account-scoped
+Personal and Bakbak customization without changing the global light/dark
+canvas or semantic interaction accents. Both spaces support a solid color or
+three-stop gradient, darker/lighter adjustment, bounded transparency, and
+none/dots/grain texture. A skippable one-time post-login prompt uses the same
+editor that remains available in Appearance Settings.
+The follow-up picker uses draggable color points and a preset strip; Electron
+exposes macOS vibrancy or Windows Mica beneath translucent sidebar gradients
+while browser and unsupported-Windows fallback rendering remains opaque.
+
 The 2026-08-09 Electron shell amendment supersedes Tauri-specific runtime,
 window, capture, packaging, and updater implementation details throughout the
 older plans without rewriting their historical decisions. The application ID,
@@ -541,6 +551,8 @@ NSIS invocation so the handoff does not create a second application location.
       clearer room timers, and 345 ms sidebar-only directional motion.
 - [x] Repair plan 0035's tooltip volume path so native range input updates the
       post-attachment LiveKit MediaStream gain for both attenuation and boost.
+- [x] Add account-scoped Personal/Bakbak sidebar themes, a one-time skippable
+      setup prompt, and the reusable Appearance Settings editor.
 - [ ] Complete plan 0035's light/dark two-resolution and installed
       macOS/Windows multi-client visual/interaction acceptance matrix.
 

@@ -3,10 +3,18 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const root = new URL("../", import.meta.url);
-const [styles, main, settings] = await Promise.all([
+const [styles, main, settings, themeEditor, gradientPicker] = await Promise.all([
   readFile(new URL("src/styles.css", root), "utf8"),
   readFile(new URL("src/main.tsx", root), "utf8"),
   readFile(new URL("src/features/settings/SettingsPage.tsx", root), "utf8"),
+  readFile(
+    new URL("src/features/settings/SidebarThemeEditor.tsx", root),
+    "utf8",
+  ),
+  readFile(
+    new URL("src/features/settings/SidebarGradientPicker.tsx", root),
+    "utf8",
+  ),
 ]);
 
 test("signed-in accents come from the active Bakbak or Personal space", () => {
@@ -19,13 +27,14 @@ test("signed-in accents come from the active Bakbak or Personal space", () => {
   assert.doesNotMatch(main, /initializeSystemAccent|system-accent/);
 });
 
-test("Appearance previews both palettes without an accent preference", () => {
-  assert.match(settings, />Bakbak palette</);
-  assert.match(settings, />Personal palette</);
-  assert.match(settings, /appearance-palette-card--bakbak/);
-  assert.match(settings, /appearance-palette-card--personal/);
+test("Appearance edits both space palettes without an accent preference", () => {
+  assert.match(settings, /<SidebarThemeEditor/);
+  assert.match(themeEditor, /server:\s*"Bakbak"/);
+  assert.match(themeEditor, /personal:\s*"Personal"/);
+  assert.match(themeEditor, /SidebarGradientPicker/);
+  assert.match(gradientPicker, /sidebarThemeStyle/);
   assert.doesNotMatch(
     settings,
-    />System accent|name="system-accent"|type="color"/,
+    />System accent|name="system-accent"/,
   );
 });

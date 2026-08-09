@@ -60,6 +60,8 @@ import type { MicrophoneProcessingState } from "../voice/useVoiceRoom";
 import { setAudioElementOutput } from "../voice/media-devices";
 import { GiphyPicker } from "../chat/GiphyPicker";
 import { AppUpdateSettings } from "./AppUpdateSettings";
+import { SidebarThemeEditor } from "./SidebarThemeEditor";
+import type { SidebarThemePreferences } from "./sidebar-theme-preferences";
 
 const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
 
@@ -97,6 +99,7 @@ interface SettingsPageProps {
   microphoneProcessingState: MicrophoneProcessingState;
   interfaceSoundPreferences: InterfaceSoundPreferences;
   appearancePreference: AppearancePreference;
+  sidebarThemePreferences: SidebarThemePreferences;
   cacheStats?: CacheStats;
   dataFreshness?: DataFreshness;
   readOnly?: boolean;
@@ -124,6 +127,9 @@ interface SettingsPageProps {
     preferences: InterfaceSoundPreferences,
   ) => void;
   onAppearancePreferenceChange: (preference: AppearancePreference) => void;
+  onSidebarThemePreferencesChange: (
+    preferences: SidebarThemePreferences,
+  ) => void;
   onClearCachedData?: () => Promise<void>;
   onPreviewInterfaceSound: (category: InterfaceSoundCategory) => void;
   onToggleMute: () => void;
@@ -334,6 +340,8 @@ export function SettingsPage(props: SettingsPageProps) {
               <AppearanceSettings
                 preference={props.appearancePreference}
                 onChange={props.onAppearancePreferenceChange}
+                sidebarThemes={props.sidebarThemePreferences}
+                onSidebarThemesChange={props.onSidebarThemePreferencesChange}
               />
             ) : null}
             {props.section === "storage" ? (
@@ -1870,9 +1878,13 @@ const APPEARANCE_OPTIONS: ReadonlyArray<{
 function AppearanceSettings({
   preference,
   onChange,
+  sidebarThemes,
+  onSidebarThemesChange,
 }: {
   preference: AppearancePreference;
   onChange: (preference: AppearancePreference) => void;
+  sidebarThemes: SidebarThemePreferences;
+  onSidebarThemesChange: (preferences: SidebarThemePreferences) => void;
 }) {
   return (
     <div className="settings-panel appearance-settings">
@@ -1908,21 +1920,15 @@ function AppearanceSettings({
           ))}
         </div>
       </fieldset>
-      <div className="appearance-summary-grid">
-        <section className="appearance-summary-card appearance-palette-card appearance-palette-card--bakbak">
-          <span className="appearance-palette-preview" aria-hidden="true" />
-          <span>Bakbak palette</span>
-          <strong>Honey &amp; teal</strong>
-          <p>Warm honey settles through moss and teal into midnight.</p>
-        </section>
-        <section className="appearance-summary-card appearance-palette-card appearance-palette-card--personal">
-          <span className="appearance-palette-preview" aria-hidden="true" />
-          <span>Personal palette</span>
-          <strong>Berry &amp; blue</strong>
-          <p>
-            Violet and berry shift into blue when conversations get private.
-          </p>
-        </section>
+      <div className="appearance-sidebar-themes">
+        <div>
+          <strong>Sidebar</strong>
+          <p>Give Personal and Bakbak their own color and texture.</p>
+        </div>
+        <SidebarThemeEditor
+          value={sidebarThemes}
+          onChange={onSidebarThemesChange}
+        />
       </div>
     </div>
   );
