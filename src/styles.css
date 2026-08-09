@@ -545,6 +545,17 @@ button:active:not(:disabled) {
   background: var(--bg-deep);
   user-select: none;
   -webkit-user-select: none;
+  -webkit-app-region: drag;
+}
+
+.window-titlebar button,
+.window-titlebar a,
+.window-titlebar input,
+.window-titlebar select,
+.window-titlebar textarea,
+.window-titlebar [role="navigation"],
+.window-titlebar [role="group"] {
+  -webkit-app-region: no-drag;
 }
 
 .window-titlebar__drag {

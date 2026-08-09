@@ -197,7 +197,7 @@ function createDependencies(
   overrides: Partial<LinkPreviewDependencies> = {},
 ): LinkPreviewDependencies {
   return {
-    allowedOrigins: new Set(["tauri://localhost"]),
+    allowedOrigins: new Set(["app://bakbak"]),
     authenticate: () => Promise.resolve({ id: "user-1" }),
     loadMessage: () =>
       Promise.resolve({
@@ -229,7 +229,7 @@ function request(): Request {
     headers: {
       authorization: "Bearer token",
       "content-type": "application/json",
-      origin: "tauri://localhost",
+      origin: "app://bakbak",
     },
     body: JSON.stringify({ scope: "channel", messageId: MESSAGE_ID }),
   });

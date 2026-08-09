@@ -1,9 +1,8 @@
 dist
 coverage
 node_modules
-src-tauri/target
-src-tauri/gen
+electron-dist
+release
 .pnpm-store
 pnpm-lock.yaml
-src-tauri/Cargo.lock
 public/vendor/ffmpeg

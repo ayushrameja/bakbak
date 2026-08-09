@@ -119,12 +119,18 @@ test("titlebar, directional space motion, startup assembly, and scroll activity 
     styles,
     /data-space-direction="(?:left|right)"[^{}]*\.(?:top-bar|content-stage--space-motion)/,
   );
-  assert.equal(titlebar.match(/onMouseDown=\{handleDrag\}/g)?.length, 1);
-  assert.equal(
-    titlebar.match(/onDoubleClick=\{handleDoubleClick\}/g)?.length,
-    1,
+  assert.doesNotMatch(
+    titlebar,
+    /handleDrag|handleDoubleClick|isTitlebarControl/,
   );
-  assert.match(titlebar, /isTitlebarControl\(event\.target\)/);
+  assert.match(
+    styles,
+    /\.window-titlebar\s*\{[\s\S]*?-webkit-app-region:\s*drag/,
+  );
+  assert.match(
+    styles,
+    /\.window-titlebar button,[\s\S]*?-webkit-app-region:\s*no-drag/,
+  );
   assert.match(
     styles,
     /\.member-panel__person \+ \.member-panel__person\s*{[\s\S]*?margin-top:\s*5px/,

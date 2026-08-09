@@ -9,49 +9,11 @@ permissions:
   contents: read
 
 jobs:
-  changes:
-    name: Detect native changes
-    runs-on: ubuntu-latest
-    outputs:
-      windows-native: ${{ steps.windows-native.outputs.required }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Check whether Windows-native validation is required
-        id: windows-native
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        shell: bash
-        run: |
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]] ||
-            ! git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- \
-              src-tauri \
-              .github/workflows/ci.yml; then
-            echo "required=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "required=false" >> "$GITHUB_OUTPUT"
-          fi
-
   validate:
+    name: Validate renderer and Electron shell
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Tauri system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libxdo-dev \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
       - uses: pnpm/action-setup@v4
         with:
           run_install: false
@@ -59,19 +21,32 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: ./src-tauri -> target
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
-      - run: cargo check --locked --manifest-path src-tauri/Cargo.toml
+      - run: pnpm electron:compile
 
-  windows-native:
-    name: Windows native capture
-    needs: changes
-    if: needs.changes.outputs.windows-native == 'true'
-    runs-on: windows-latest
+  package:
+    name: Package ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: macos-arm64
+            name: macOS Apple Silicon
+            runner: macos-26
+            builder_args: --mac --arm64
+            artifact_paths: |
+              release/*.dmg
+              release/*.zip
+              release/latest-mac.yml
+          - id: windows-x64
+            name: Windows x64
+            runner: windows-latest
+            builder_args: --win --x64
+            artifact_paths: |
+              release/*.exe
+              release/latest.yml
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -81,11 +56,13 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: ./src-tauri -> target
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - run: cargo check --locked --manifest-path src-tauri/Cargo.toml
-      - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+      - run: pnpm desktop:prepare
+      - run: pnpm exec electron-builder ${{ matrix.builder_args }} --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bakbak-pr-${{ matrix.id }}
+          path: ${{ matrix.artifact_paths }}
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0

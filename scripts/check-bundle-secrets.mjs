@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { extname, join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -19,14 +19,8 @@ export function findCompiledBundleRoots(cwd = process.cwd()) {
   };
 
   add(join(cwd, "dist"));
-  const targetRoot = join(cwd, "src-tauri", "target");
-  add(join(targetRoot, "release", "bundle"));
-  if (existsSync(targetRoot)) {
-    for (const entry of readdirSync(targetRoot, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      add(join(targetRoot, entry.name, "release", "bundle"));
-    }
-  }
+  add(join(cwd, "electron-dist"));
+  add(join(cwd, "release"));
   return roots;
 }
 
@@ -42,7 +36,8 @@ export function inspectCompiledBundles({
   const findings = [];
 
   const scan = (path) => {
-    const metadata = statSync(path);
+    const metadata = lstatSync(path);
+    if (metadata.isSymbolicLink()) return;
     if (metadata.isDirectory()) {
       for (const entry of readdirSync(path)) scan(join(path, entry));
       return;

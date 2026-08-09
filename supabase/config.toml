@@ -33,8 +33,7 @@ enabled = true
 site_url = "http://127.0.0.1:1420"
 additional_redirect_urls = [
   "http://localhost:1420",
-  "http://tauri.localhost",
-  "tauri://localhost",
+  "app://bakbak",
 ]
 enable_signup = true
 

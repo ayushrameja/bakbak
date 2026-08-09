@@ -1,113 +1,184 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { BakbakDesktopBridge } from "../../lib/desktop-runtime";
+
+const livekit = vi.hoisted(() => {
+  const videoTrack = {
+    kind: "video",
+    mediaStreamTrack: {
+      contentHint: "",
+      applyConstraints: vi.fn().mockResolvedValue(undefined),
+    },
+    once: vi.fn(),
+    sender: null,
+  };
+  const audioTrack = { kind: "audio", stop: vi.fn() };
+  const room = {
+    connect: vi.fn().mockResolvedValue(undefined),
+    disconnect: vi.fn().mockResolvedValue(undefined),
+    once: vi.fn(),
+    localParticipant: { publishTrack: vi.fn().mockResolvedValue({}) },
+  };
+  return {
+    videoTrack,
+    audioTrack,
+    room,
+    createLocalScreenTracks: vi
+      .fn()
+      .mockResolvedValue([videoTrack, audioTrack]),
+  };
+});
+
+vi.mock("livekit-client", () => ({
+  LocalVideoTrack: class LocalVideoTrack {},
+  Room: class MockRoom {
+    constructor() {
+      return livekit.room;
+    }
+  },
+  RoomEvent: { Disconnected: "disconnected" },
+  Track: {
+    Kind: { Video: "video", Audio: "audio" },
+    Source: {
+      ScreenShare: "screen_share",
+      ScreenShareAudio: "screen_share_audio",
+    },
+  },
+  TrackEvent: { Ended: "ended" },
+  createLocalScreenTracks: livekit.createLocalScreenTracks,
+}));
+
 import {
   getScreenShareCapabilities,
   listScreenShareSources,
-  listenForScreenShareLifecycle,
+  screenShareServiceTesting,
   startScreenShare,
   stopScreenShare,
   updateScreenShareSettings,
 } from "./screen-share-service";
 
-const tauri = vi.hoisted(() => ({
-  invoke: vi.fn(),
-  isTauri: vi.fn(),
-  listen: vi.fn(),
+const desktop = vi.hoisted(() => ({
+  listSources: vi.fn(),
+  prepare: vi.fn(),
 }));
 
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: tauri.invoke,
-  isTauri: tauri.isTauri,
-}));
+function installDesktopBridge(): void {
+  window.bakbakDesktop = {
+    platform: "windows",
+    screenShare: {
+      listSources: desktop.listSources,
+      prepare: desktop.prepare,
+    },
+  } as unknown as BakbakDesktopBridge;
+}
 
-vi.mock("@tauri-apps/api/event", () => ({ listen: tauri.listen }));
+const source = {
+  id: "screen:1:0",
+  kind: "display" as const,
+  label: "Screen 1",
+  applicationLabel: null,
+  audioAvailable: true,
+  audioUnavailableReason: null,
+  thumbnailDataUrl: null,
+};
 
 describe("screen-share-service", () => {
-  beforeEach(() => {
-    tauri.invoke.mockReset();
-    tauri.isTauri.mockReset();
-    tauri.listen.mockReset();
+  beforeEach(async () => {
+    await screenShareServiceTesting.reset();
+    vi.clearAllMocks();
+    Reflect.deleteProperty(window, "bakbakDesktop");
+    desktop.listSources.mockResolvedValue([source]);
+    desktop.prepare.mockResolvedValue(undefined);
+    livekit.room.connect.mockResolvedValue(undefined);
+    livekit.room.disconnect.mockResolvedValue(undefined);
+    livekit.room.localParticipant.publishTrack.mockResolvedValue({});
+    livekit.createLocalScreenTracks.mockResolvedValue([
+      livekit.videoTrack,
+      livekit.audioTrack,
+    ]);
   });
 
-  it("keeps browser mode unavailable without invoking native commands", async () => {
-    tauri.isTauri.mockReturnValue(false);
-
+  it("keeps browser mode unavailable without invoking desktop capture", async () => {
     await expect(getScreenShareCapabilities()).resolves.toMatchObject({
       available: false,
       nativeCapture: false,
       systemAudio: false,
     });
-    await stopScreenShare("ignored");
-    await listenForScreenShareLifecycle(vi.fn());
-
-    expect(tauri.invoke).not.toHaveBeenCalled();
-    expect(tauri.listen).not.toHaveBeenCalled();
+    await expect(listScreenShareSources()).resolves.toEqual([]);
+    expect(desktop.listSources).not.toHaveBeenCalled();
   });
 
-  it("passes only the short-lived token and public connection input to Tauri", async () => {
-    tauri.isTauri.mockReturnValue(true);
-    tauri.invoke.mockResolvedValue({
-      sessionId: "session-1",
-      sourceLabel: "Demo window",
-      sourceKind: "window",
-      audioPublished: true,
-      settings: { resolution: 1080, frameRate: 60 },
+  it("exposes only the supported Electron source and quality contract", async () => {
+    installDesktopBridge();
+    await expect(getScreenShareCapabilities()).resolves.toMatchObject({
+      available: true,
+      nativeCapture: true,
+      systemAudio: true,
+      sourceKinds: ["display", "application"],
     });
+    await expect(listScreenShareSources()).resolves.toEqual([source]);
+  });
 
-    await startScreenShare({
+  it("keeps the token in the sandboxed renderer and prepares only a source", async () => {
+    installDesktopBridge();
+    const session = await startScreenShare({
       serverUrl: "wss://example.test",
       token: "short-lived-token",
       includeAudio: true,
+      sourceId: source.id,
       settings: { resolution: 1080, frameRate: 60 },
     });
 
-    expect(tauri.invoke).toHaveBeenCalledWith("start_screen_share", {
-      request: {
-        serverUrl: "wss://example.test",
-        token: "short-lived-token",
-        includeAudio: true,
-        settings: { resolution: 1080, frameRate: 60 },
-      },
+    expect(desktop.prepare).toHaveBeenCalledWith({
+      sourceId: source.id,
+      includeAudio: true,
     });
+    expect(desktop.prepare.mock.calls.flat().join(" ")).not.toContain(
+      "short-lived-token",
+    );
+    expect(livekit.room.connect).toHaveBeenCalledWith(
+      "wss://example.test",
+      "short-lived-token",
+      { autoSubscribe: false },
+    );
+    expect(livekit.room.localParticipant.publishTrack).toHaveBeenCalledTimes(2);
+    expect(session).toMatchObject({
+      sourceLabel: "Screen 1",
+      sourceKind: "display",
+      audioPublished: true,
+    });
+    await stopScreenShare(session.sessionId);
   });
 
-  it("requests the privacy-filtered native source list only in desktop mode", async () => {
-    tauri.isTauri.mockReturnValue(true);
-    tauri.invoke.mockResolvedValue([
-      {
-        id: "display:1",
-        kind: "display",
-        label: "Screen 1",
-        applicationLabel: null,
-        audioAvailable: false,
-        audioUnavailableReason: "Video only on this Windows build.",
-        thumbnailDataUrl: null,
-      },
-    ]);
-
-    await expect(listScreenShareSources()).resolves.toHaveLength(1);
-    expect(tauri.invoke).toHaveBeenCalledWith("list_screen_share_sources");
-  });
-
-  it("passes validated live quality updates to the active native session", async () => {
-    tauri.isTauri.mockReturnValue(true);
-    tauri.invoke.mockResolvedValue({ resolution: 720, frameRate: 30 });
+  it("applies validated quality constraints to the active capture", async () => {
+    installDesktopBridge();
+    const session = await startScreenShare({
+      serverUrl: "wss://example.test",
+      token: "short-lived-token",
+      includeAudio: false,
+      settings: { resolution: 1080, frameRate: 60 },
+    });
 
     await expect(
-      updateScreenShareSettings("session-1", {
+      updateScreenShareSettings(session.sessionId, {
         resolution: 720,
         frameRate: 30,
       }),
     ).resolves.toEqual({ resolution: 720, frameRate: 30 });
-
-    expect(tauri.invoke).toHaveBeenCalledWith("update_screen_share_settings", {
-      sessionId: "session-1",
-      settings: { resolution: 720, frameRate: 30 },
+    expect(
+      livekit.videoTrack.mediaStreamTrack.applyConstraints,
+    ).toHaveBeenCalledWith({
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      frameRate: { ideal: 30 },
     });
+    await stopScreenShare(session.sessionId);
   });
 
-  it("logs a sanitized native start failure without logging the request", async () => {
-    tauri.isTauri.mockReturnValue(true);
-    tauri.invoke.mockRejectedValue("macOS did not deliver a video frame.");
+  it("logs a sanitized capture failure without logging the token", async () => {
+    installDesktopBridge();
+    livekit.createLocalScreenTracks.mockRejectedValueOnce(
+      new Error("The selected source stopped."),
+    );
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
@@ -119,101 +190,13 @@ describe("screen-share-service", () => {
         includeAudio: false,
         settings: { resolution: 1080, frameRate: 60 },
       }),
-    ).rejects.toThrow("macOS did not deliver a video frame.");
+    ).rejects.toThrow("The selected source stopped.");
 
-    expect(consoleError).toHaveBeenCalledWith(
-      "[Bakbak screen share] capture-failed: macOS did not deliver a video frame.",
+    expect(consoleError.mock.calls.flat().join(" ")).toContain(
+      "capture-failed",
     );
     expect(consoleError.mock.calls.flat().join(" ")).not.toContain(
       "must-not-appear-in-console",
-    );
-    consoleError.mockRestore();
-  });
-
-  it("prints native lifecycle failures to DevTools and still forwards them", async () => {
-    tauri.isTauri.mockReturnValue(true);
-    const onEvent = vi.fn();
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
-    const payload = {
-      state: "error",
-      sessionId: "session-1",
-      sourceLabel: null,
-      sourceKind: null,
-      audioPublished: false,
-      audioUnavailableReason: null,
-      settings: null,
-      message: "The selected source stopped before its first frame.",
-    } as const;
-    tauri.listen.mockImplementation(
-      (
-        _event: string,
-        callback: (event: { payload: typeof payload }) => void,
-      ) => {
-        callback({ payload });
-        return Promise.resolve(() => undefined);
-      },
-    );
-
-    await listenForScreenShareLifecycle(onEvent);
-
-    expect(consoleError).toHaveBeenCalledWith(
-      "[Bakbak screen share] capture-failed: The selected source stopped before its first frame.",
-    );
-    expect(onEvent).toHaveBeenCalledWith({
-      ...payload,
-      failure: {
-        code: "capture-failed",
-        message: "The selected source stopped before its first frame.",
-        recommendedRetrySource: null,
-      },
-    });
-    consoleError.mockRestore();
-  });
-
-  it("forwards a live audio-isolation downgrade without ending video", async () => {
-    tauri.isTauri.mockReturnValue(true);
-    const onEvent = vi.fn();
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
-    const payload = {
-      state: "sharing",
-      sessionId: "session-1",
-      sourceLabel: "Screen 1",
-      sourceKind: "display",
-      audioPublished: false,
-      audioUnavailableReason:
-        "Bakbak's WebView2 audio process tree changed, so screen audio was stopped; video is still sharing.",
-      settings: { resolution: 1080, frameRate: 60 },
-      message:
-        "[audio-isolation-unavailable] Bakbak's WebView2 audio process tree changed.",
-      failure: {
-        code: "audio-isolation-unavailable",
-        message: "Bakbak's WebView2 audio process tree changed.",
-        recommendedRetrySource: null,
-      },
-    } as const;
-    tauri.listen.mockImplementation(
-      (
-        _event: string,
-        callback: (event: { payload: typeof payload }) => void,
-      ) => {
-        callback({ payload });
-        return Promise.resolve(() => undefined);
-      },
-    );
-
-    await listenForScreenShareLifecycle(onEvent);
-
-    expect(onEvent).toHaveBeenCalledWith({
-      ...payload,
-      sourceKind: "display",
-      settings: { resolution: 1080, frameRate: 60 },
-    });
-    expect(consoleError).toHaveBeenCalledWith(
-      "[Bakbak screen share] audio-isolation-unavailable: Bakbak's WebView2 audio process tree changed.",
     );
     consoleError.mockRestore();
   });

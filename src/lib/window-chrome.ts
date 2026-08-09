@@ -1,5 +1,4 @@
-import { isTauri } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getDesktopBridge } from "./desktop-runtime";
 
 export type WindowChromePlatform = "macos" | "windows" | "web";
 
@@ -16,13 +15,7 @@ export interface WindowChromeAdapter {
 }
 
 function detectPlatform(): WindowChromePlatform {
-  if (typeof navigator === "undefined" || !isTauri()) return "web";
-  const userAgent = navigator.userAgent.toLowerCase();
-  if (userAgent.includes("macintosh") || userAgent.includes("mac os")) {
-    return "macos";
-  }
-  if (userAgent.includes("windows")) return "windows";
-  return "web";
+  return getDesktopBridge()?.platform ?? "web";
 }
 
 export function createWindowChromeAdapter(): WindowChromeAdapter {
@@ -39,25 +32,16 @@ export function createWindowChromeAdapter(): WindowChromeAdapter {
     };
   }
 
-  const appWindow = getCurrentWindow();
+  const desktopWindow = getDesktopBridge()?.window;
+  if (!desktopWindow) throw new Error("Desktop window bridge is unavailable.");
   return {
     platform,
-    minimize: () => appWindow.minimize(),
-    toggleMaximize: () => appWindow.toggleMaximize(),
-    close: () => appWindow.close(),
-    startDragging: () => appWindow.startDragging(),
-    isMaximized: () => appWindow.isMaximized(),
-    onMaximizedChange: async (listener) => {
-      const emitCurrentState = async () => {
-        try {
-          listener(await appWindow.isMaximized());
-        } catch {
-          // Losing a cosmetic maximize-state read must not affect the window.
-        }
-      };
-      return appWindow.onResized(() => {
-        void emitCurrentState();
-      });
-    },
+    minimize: () => desktopWindow.minimize(),
+    toggleMaximize: () => desktopWindow.toggleMaximize(),
+    close: () => desktopWindow.close(),
+    startDragging: () => Promise.resolve(),
+    isMaximized: () => desktopWindow.isMaximized(),
+    onMaximizedChange: (listener) =>
+      Promise.resolve(desktopWindow.onMaximizedChange(listener)),
   };
 }

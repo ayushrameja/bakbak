@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { WindowChromeAdapter } from "../lib/window-chrome";
@@ -42,7 +42,7 @@ function renderTitlebar(adapter: WindowChromeAdapter) {
 describe("WindowTitlebar", () => {
   it("controls and drags an undecorated Windows window", async () => {
     const { adapter, emitMaximized, spies } = createAdapter("windows");
-    const { container } = renderTitlebar(adapter);
+    renderTitlebar(adapter);
     await userEvent.click(
       screen.getByRole("button", { name: "Minimize window" }),
     );
@@ -54,11 +54,6 @@ describe("WindowTitlebar", () => {
     expect(spies.toggleMaximize).toHaveBeenCalledOnce();
     expect(spies.close).toHaveBeenCalledOnce();
 
-    fireEvent.mouseDown(
-      container.querySelector(".window-titlebar__drag--leading")!,
-      { button: 0 },
-    );
-    expect(spies.startDragging).toHaveBeenCalledOnce();
     act(() => emitMaximized(true));
     expect(
       await screen.findByRole("button", { name: "Restore window" }),

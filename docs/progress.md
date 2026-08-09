@@ -6992,3 +6992,91 @@ aarch64-apple-darwin --bundles app,dmg` plus
   link to friends who do not receive the old startup popup, then validate
   automatic and manual `1.6.1 -> later patch` updates on installed Apple Silicon
   macOS and Windows x64 clients.
+
+## 2026-08-09 — Replace Tauri with an Electron prototype
+
+- **Completed:** Removed the Rust workspace, Cargo configuration, Tauri source,
+  capabilities, plugins, and package dependencies. Added a hardened Electron
+  main/preload boundary with a sandboxed renderer, secure `app://bakbak`
+  protocol, typed narrow bridge, native window/accent/link/update controls,
+  Chromium screen-source selection, and Electron updater lifecycle. Moved
+  screen-share publication to renderer-owned LiveKit tracks while keeping its
+  short-lived token out of the main process. Added electron-builder DMG/ZIP and
+  NSIS packaging for Apple Silicon macOS and Windows x64, Electron YAML update
+  metadata, signed legacy Tauri manifest generation, compiled-bundle secret
+  scanning, and Electron-only PR/candidate/release workflows. Added a Windows
+  NSIS shim that keeps `%LOCALAPPDATA%\Bakbak`, translates Tauri's passive and
+  restart arguments, and removes its obsolete uninstaller/registry material.
+  The first public Electron release is gated on an explicit installed migration
+  rehearsal.
+- **Decisions:** Preserved `com.bakbak.desktop`, product/release identity,
+  macOS 12.3 minimum, Apple Silicon and Windows x64 targets, and the existing
+  GitHub latest-release endpoint. Kept the old Tauri minisign key only in pinned
+  release tooling so installed Tauri clients can verify the transition payload;
+  no Rust or Tauri runtime ships. macOS uses `Bakbak.app`, while Windows retains
+  `bakbak.exe` for the legacy install path. Electron does not attempt a brittle
+  WebView2-to-Chromium local-storage copy; cloud data stays authoritative and a
+  one-time sign-in is acceptable. Native process-tree screen-audio isolation was
+  not claimed after moving capture to Chromium.
+- **Validation:**
+  - Direct Prettier check — passed for every tracked supported file after
+    resolving one non-idempotent multiline Markdown code span.
+  - Direct zero-warning ESLint — passed.
+  - Direct renderer, Node/Vite, and Electron TypeScript checks — passed.
+  - Direct Vitest — passed 85 files / 481 tests.
+  - Direct Node contract suite — passed 49/49 tests, including packaging,
+    architecture, workflow, updater-manifest, and Windows migration-shim
+    contracts.
+  - `node scripts/set-version.mjs --check` — passed at tracked version `1.6.0`.
+  - Direct Vite production build — passed; the existing 1.46 MB application and
+    1.93 MB RNNoise worklet chunk warnings remain non-blocking.
+  - `pnpm check` — passed once after the core migration at 85/481 Vitest and
+    47/47 Node tests. The final rerun hit the existing package-manager
+    no-output stall and was stopped after 60 seconds; every exact underlying
+    formatter, linter, three-project typecheck, 85/481 Vitest, expanded 49/49
+    Node, version, production-build, and secret-scan command passed afterward.
+  - `pnpm desktop:build` — passed the initial Apple Silicon Electron package.
+    The final direct electron-builder rebuild passed with `Bakbak.app`, one
+    129 MB DMG, one 145 MB ZIP, blockmaps, and `latest-mac.yml`.
+  - Direct electron-builder Windows cross-package — passed with a 107 MB NSIS
+    installer, blockmap, and `latest.yml`; `file` confirmed the packaged app is
+    PE32+ x86-64. The first NSIS compile exposed a missing LogicLib include; it
+    was fixed and the exact build then exited successfully.
+  - `codesign --verify --deep --strict` — passed for the ad-hoc hardened ARM64
+    `Bakbak.app`; `file` confirmed its main executable is Mach-O arm64.
+  - Legacy macOS updater archive inspection — passed with one top-level
+    `Bakbak.app`; the pinned Tauri updater source confirms it strips that first
+    component before replacing the existing bundle path.
+  - Packaged launch smoke — Electron loaded the renderer and began its updater
+    check without a main/renderer crash. The check returned the expected 404
+    because the current published Tauri release has `latest.json` but no
+    Electron `latest-mac.yml` yet.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist`,
+    `electron-dist`, and both packaged release trees.
+  - `git diff --check` — passed.
+  - GitHub-hosted PR/candidate/release matrices — skipped because this local
+    task did not push or dispatch workflows.
+  - Installed Tauri-to-Electron and later Electron update rehearsals — skipped;
+    they require real installed Apple Silicon macOS and Windows x64 clients plus
+    a signed staged release newer than the current Tauri tag.
+- **Documentation updated:** Updated `AGENTS.md`, `README.md`, the architecture
+  source of truth, the active desktop-v1 plan, and this canonical progress log
+  for the Electron boundary, commands, distribution bridge, release gate, and
+  accepted limitations.
+- **Known limitations:** The compatibility artifacts and both native installers
+  compile, but the updater handoff is not accepted until installed clients prove
+  `Tauri -> first Electron -> later Electron` on both platforms. Current macOS
+  output is ad-hoc signed and unnotarized; Windows output is unsigned, so
+  Developer ID/notarization and Windows code signing remain production
+  blockers. Existing users may need one sign-in after Chromium takes over local
+  storage. Chromium capture no longer proves the former native process-tree
+  audio isolation, so echo and source-audio behavior need the installed matrix.
+  The local `1.6.0` prototype is below the currently published Tauri release and
+  must never be published as-is; the release workflow will resolve a newer
+  version once the migration gate opens.
+- **Next:** Run the Electron PR and stabilization-candidate matrices on GitHub,
+  inspect both exact-revision artifacts, configure production OS signing, then
+  rehearse the signed latest-Tauri-to-Electron-to-Electron sequence with
+  rollback/manual recovery on real Apple Silicon macOS and Windows x64 clients.
+  Set `ELECTRON_MIGRATION_REHEARSED=true` and publish only after that matrix
+  passes.

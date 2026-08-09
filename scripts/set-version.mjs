@@ -1,71 +1,27 @@
 import { readFile, writeFile } from "node:fs/promises";
-import {
-  findCargoLockVersion,
-  replaceCargoLockVersion,
-} from "./set-version-lib.mjs";
+import { isStableSemver, withPackageVersion } from "./set-version-lib.mjs";
 
 const checkOnly = process.argv.includes("--check");
 const requestedVersion = process.argv.find((argument) =>
   /^\d+\.\d+\.\d+$/.test(argument),
 );
-const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-
 const packagePath = new URL("../package.json", import.meta.url);
-const tauriConfigPath = new URL(
-  "../src-tauri/tauri.conf.json",
-  import.meta.url,
-);
-const cargoManifestPath = new URL("../src-tauri/Cargo.toml", import.meta.url);
-const cargoLockPath = new URL("../src-tauri/Cargo.lock", import.meta.url);
-
 const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
-const tauriConfig = JSON.parse(await readFile(tauriConfigPath, "utf8"));
-const cargoManifest = await readFile(cargoManifestPath, "utf8");
-const cargoLock = await readFile(cargoLockPath, "utf8");
-const cargoVersionMatch = /^version = "([^"]+)"$/m.exec(cargoManifest);
-const cargoLockVersion = findCargoLockVersion(cargoLock);
-
-if (!cargoVersionMatch)
-  throw new Error("Could not find the Bakbak Cargo package version.");
-if (!cargoLockVersion)
-  throw new Error("Could not find the Bakbak Cargo lockfile version.");
 
 if (checkOnly) {
-  const versions = [
-    packageJson.version,
-    tauriConfig.version,
-    cargoVersionMatch[1],
-    cargoLockVersion,
-  ];
-  if (!versions.every((version) => version === versions[0])) {
+  if (!isStableSemver(packageJson.version)) {
     throw new Error(
-      `Version mismatch: package=${versions[0]}, tauri=${versions[1]}, cargo=${versions[2]}, cargo-lock=${versions[3]}`,
+      `Bakbak version is not stable SemVer: ${packageJson.version}`,
     );
   }
-  if (!semverPattern.test(versions[0])) {
-    throw new Error(`Bakbak version is not stable SemVer: ${versions[0]}`);
-  }
-  process.stdout.write(`Bakbak version ${versions[0]} is synchronized.\n`);
+  process.stdout.write(`Bakbak version ${packageJson.version} is valid.\n`);
   process.exit(0);
 }
 
-if (!requestedVersion || !semverPattern.test(requestedVersion)) {
+if (!requestedVersion) {
   throw new Error("Usage: node scripts/set-version.mjs <major.minor.patch>");
 }
 
-packageJson.version = requestedVersion;
-tauriConfig.version = requestedVersion;
-const nextCargoManifest = cargoManifest.replace(
-  /^version = "[^"]+"$/m,
-  `version = "${requestedVersion}"`,
-);
-const nextCargoLock = replaceCargoLockVersion(cargoLock, requestedVersion);
-
-await Promise.all([
-  writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`),
-  writeFile(tauriConfigPath, `${JSON.stringify(tauriConfig, null, 2)}\n`),
-  writeFile(cargoManifestPath, nextCargoManifest),
-  writeFile(cargoLockPath, nextCargoLock),
-]);
-
+const nextPackageJson = withPackageVersion(packageJson, requestedVersion);
+await writeFile(packagePath, `${JSON.stringify(nextPackageJson, null, 2)}\n`);
 process.stdout.write(`Set Bakbak version to ${requestedVersion}.\n`);

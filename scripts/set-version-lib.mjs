@@ -1,15 +1,12 @@
-const cargoLockPackagePattern =
-  /\[\[package\]\]\r?\nname = "bakbak"\r?\nversion = "([^"]+)"/;
-const cargoLockPackageReplacementPattern =
-  /(\[\[package\]\]\r?\nname = "bakbak"\r?\nversion = ")[^"]+(")/;
+const stableSemverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
-export function findCargoLockVersion(cargoLock) {
-  return cargoLockPackagePattern.exec(cargoLock)?.[1] ?? null;
+export function isStableSemver(version) {
+  return typeof version === "string" && stableSemverPattern.test(version);
 }
 
-export function replaceCargoLockVersion(cargoLock, version) {
-  return cargoLock.replace(
-    cargoLockPackageReplacementPattern,
-    `$1${version}$2`,
-  );
+export function withPackageVersion(packageMetadata, version) {
+  if (!isStableSemver(version)) {
+    throw new Error(`Bakbak version is not stable SemVer: ${version}`);
+  }
+  return { ...packageMetadata, version };
 }

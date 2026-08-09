@@ -1,5 +1,6 @@
-import { invoke, isTauri } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { getDesktopBridge, isDesktopRuntime } from "../../lib/desktop-runtime";
+
+type UnlistenFn = () => void;
 
 export type SystemAccentSource = "macos" | "windows" | "fallback";
 export type ResolvedColorScheme = "light" | "dark";
@@ -227,17 +228,21 @@ export function subscribeSystemAccent(
 }
 
 function defaultRuntime(): SystemAccentRuntime {
+  const bridge = getDesktopBridge();
   return {
     root: document.documentElement,
     window,
     previewAccent: import.meta.env.DEV
       ? readPreviewSystemAccent(window.location.search)
       : undefined,
-    isNative: isTauri,
-    queryNative: () => invoke<unknown>("get_system_accent"),
+    isNative: isDesktopRuntime,
+    queryNative: () =>
+      bridge
+        ? bridge.systemAccent.get()
+        : Promise.reject(new Error("Desktop accent bridge is unavailable.")),
     listenNative: (onAccent) =>
-      listen<unknown>("system-accent-changed", (event) =>
-        onAccent(event.payload),
+      Promise.resolve(
+        bridge?.systemAccent.onChange(onAccent) ?? (() => undefined),
       ),
   };
 }

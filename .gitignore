@@ -16,7 +16,8 @@ dist-ssr
 .env.*
 !.env.example
 coverage
-src-tauri/target
+electron-dist
+release
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts

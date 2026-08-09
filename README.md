@@ -6,7 +6,7 @@ account favorites and five-second member uploads from audio or video. Its Warm
 Adda interface includes light/dark theming, in-app profile and media settings,
 private member avatars, automation-only System rooms, safe link previews, local
 RNNoise microphone cleanup, opt-in voice effects, and admin-managed ordinary
-text and voice rooms. It uses React, strict TypeScript, Vite, Tauri 2, Supabase,
+text and voice rooms. It uses React, strict TypeScript, Vite, Electron, Supabase,
 and LiveKit.
 
 The default local experience is fully interactive and needs no account or
@@ -15,8 +15,8 @@ protected by Supabase Row Level Security and a token-issuing Edge Function.
 
 ## Start locally
 
-Prerequisites: Node.js, pnpm, Rust, and the platform dependencies required by
-Tauri 2.
+Prerequisites: Node.js 22 and pnpm. Electron and its packaging tools are local
+project dependencies; Rust and platform WebView toolchains are no longer used.
 
 Distributed builds support Apple Silicon Macs running macOS 12.3 or later and
 Windows x64. Bakbak v0.4.0 is the final Intel Mac release; existing Intel
@@ -28,22 +28,24 @@ cp .env.example .env
 pnpm dev
 ```
 
-Open the Vite URL and choose **Enter the preview**. For the native window, run:
+Open the Vite URL and choose **Enter the preview**. For the desktop window with
+live reload, run:
 
 ```sh
-pnpm tauri dev
+pnpm desktop:dev
 ```
 
-To create a local macOS application bundle without release updater artifacts or
-the protected updater signing key, run:
+To create an unpacked local application without publishing updater metadata,
+run:
 
 ```sh
-pnpm tauri:build:local
+pnpm desktop:pack:local
 ```
 
-Signed updater artifacts are created only by the GitHub release workflow. A
-plain `pnpm tauri build` still expects the updater private key because the main
-Tauri configuration intentionally enables release updater artifacts.
+To create this host's supported DMG/ZIP or NSIS artifacts, run
+`pnpm desktop:build`. GitHub is the only supported place to publish update
+metadata and the transitional signed payload consumed by existing Tauri
+installations.
 
 Before a stabilization release, add the `stabilization:candidate` label to the
 ready pull request. The candidate workflow validates that exact PR-head commit,
@@ -111,19 +113,17 @@ LiveKit secret or Supabase service-role key there.
 
 ## Screen-share compatibility
 
-- macOS 14 or later and Windows share Bakbak's Entire screen / Application
-  picker. Matched source audio defaults on when available and can be turned off
-  with a switch. On macOS, grant Bakbak access under **System Settings → Privacy
-  & Security → Screen & System Audio Recording** and relaunch after changing
-  permission.
-- macOS 12.3–13 use the video-only WebView picker when available.
-- Windows uses `Windows.Graphics.Capture` with time-bounded in-memory previews.
-  Windows build 20348 or newer can include only the selected application's
-  process tree, or display audio with Bakbak's process tree excluded. Older
-  builds keep video sharing available and disable the audio switch; Bakbak never
-  substitutes unrelated system output.
+- Apple Silicon macOS 12.3 or later and Windows x64 use Bakbak's Entire screen /
+  Application picker backed by Chromium desktop capture. Source audio can be
+  requested and is published only when Chromium returns an audio track. On
+  macOS, grant Bakbak access under **System Settings → Privacy & Security →
+  Screen & System Audio Recording** and relaunch after changing permission.
+- Electron requests Chromium's own-audio restriction, but the prototype no
+  longer contains the former Rust process-tree capture proof. Treat echo and
+  application-only audio isolation as an installed-client acceptance gate, not
+  a guarantee made by the picker.
 - Presenters can choose 480p, 720p, or 1080p and 15, 30, or 60 fps before
-  sharing and change those caps while a native share is live.
+  sharing and change those caps while a share is live.
 - Browser and Linux clients do not publish or view shares in this phase.
 - Protected or DRM-controlled content can be black or silent by operating
   system policy.
@@ -141,7 +141,7 @@ pnpm typecheck
 pnpm test
 pnpm build
 pnpm security:scan
-pnpm tauri build
+pnpm desktop:build
 ```
 
 Database policy tests run through the Supabase CLI when local Supabase is
@@ -161,10 +161,9 @@ Bakbak uses SemVer and starts the updater-enabled release line at `0.2.0`.
 Every merge to `main` publishes a patch release after validation unless the
 pull request has `release:skip`; `release:minor` and `release:major` select a
 larger bump. A manual workflow run can also choose the bump explicitly. After
-the installers and updater manifest are verified and the release is published,
+the installers and updater metadata are verified and the release is published,
 the workflow opens and merges a small protected-branch-compatible PR that
-synchronizes the released version in `package.json`, the Tauri configuration,
-and the Rust package manifest and lockfile. That bot commit does not start
+synchronizes the released version in `package.json`. That bot commit does not start
 another release. A separate three-retry job also posts every verified stable
 release to `#releases`;
 publication itself remains successful if announcement delivery needs a rerun.
@@ -181,13 +180,25 @@ General → Workflow permissions** must allow GitHub Actions to create and
 approve pull requests. The release job requests only the `contents: write` and
 `pull-requests: write` permissions needed for its version-sync PR.
 
-The release workflow builds one macOS Apple Silicon DMG plus one Windows x64
-NSIS installer. It rejects Intel macOS assets and updater targets and keeps the
-GitHub Release in draft state until both supported installers and the signed
-`latest.json` updater manifest are present. Installed desktop clients check
-that manifest shortly after launch and offer an explicit **Update and restart**
-action. Existing `0.1.0` installations must install the first published
-updater-enabled release manually once because they do not contain the updater.
+The release workflow builds one Apple Silicon DMG and ZIP plus one Windows x64
+NSIS installer. It rejects Intel macOS assets and keeps the GitHub Release in
+draft state until Electron's `latest-mac.yml` and `latest.yml` plus the signed
+legacy `latest.json` are present. Electron clients use the YAML metadata for
+future updates. The legacy JSON points existing Tauri clients at an Electron
+`.app.tar.gz` on macOS and the same NSIS executable on Windows, preserving the
+application identifier and release channel. On Windows, the Electron NSIS shim
+keeps Tauri's `%LOCALAPPDATA%\Bakbak` install location, translates its passive
+and restart arguments, and removes the obsolete Tauri uninstaller registration.
+This bridge must pass installed `Tauri 1.6.0/latest -> first Electron release ->
+later Electron release` rehearsals on both platforms before publication;
+generating the files is not proof that either installer has completed that
+surgery successfully.
+
+Until that matrix passes, push-triggered releases stop at the workflow gate.
+Set the non-secret repository variable `ELECTRON_MIGRATION_REHEARSED=true` only
+after both installed paths pass, or explicitly confirm the equivalent checkbox
+on a manual release run. The first Electron version must be greater than the
+newest published Tauri tag.
 
 Release builds require these GitHub Actions repository variables:
 
@@ -197,14 +208,15 @@ Release builds require these GitHub Actions repository variables:
 - `VITE_BACKEND_REGION`
 - `VITE_GIPHY_API_KEY`
 
-They also require `TAURI_SIGNING_PRIVATE_KEY` and
-`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` as GitHub Actions secrets. System release
-announcements additionally require `BAKBAK_SYSTEM_EVENTS_SECRET`, matching the
-Supabase Function Secret. The committed public updater key verifies updates;
-private values must remain backed up and must never be committed. The current
-macOS builds remain ad-hoc signed and Windows builds remain unsigned, so
-first-install operating-system warnings are expected until Developer
-ID/notarization and Windows code signing are configured.
+The transitional first Electron release also requires the existing
+`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` GitHub
+Actions secrets solely to sign the payload accepted by older Tauri clients; no
+Tauri runtime or Rust code remains. System release announcements additionally
+require `BAKBAK_SYSTEM_EVENTS_SECRET`, matching the Supabase Function Secret.
+Private values must remain backed up and must never be committed. Current macOS
+builds are ad-hoc signed and Windows builds are unsigned, so Developer ID
+signing/notarization and Windows code signing remain production blockers rather
+than decorative paperwork wearing a lanyard.
 
 ## Project memory
 

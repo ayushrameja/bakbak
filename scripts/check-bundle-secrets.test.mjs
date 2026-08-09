@@ -8,30 +8,23 @@ import {
   inspectCompiledBundles,
 } from "./check-bundle-secrets.mjs";
 
-test("secret scan includes generic and target-specific Tauri bundles", async (t) => {
+test("secret scan includes renderer, Electron main, and packaged outputs", async (t) => {
   const cwd = await mkdtemp(join(tmpdir(), "bakbak-secret-scan-"));
   t.after(() => rm(cwd, { recursive: true, force: true }));
-  const generic = join(cwd, "src-tauri", "target", "release", "bundle");
-  const targeted = join(
-    cwd,
-    "src-tauri",
-    "target",
-    "aarch64-apple-darwin",
-    "release",
-    "bundle",
-  );
+  const electron = join(cwd, "electron-dist");
+  const release = join(cwd, "release");
   await mkdir(join(cwd, "dist"), { recursive: true });
-  await mkdir(generic, { recursive: true });
-  await mkdir(targeted, { recursive: true });
+  await mkdir(electron, { recursive: true });
+  await mkdir(release, { recursive: true });
 
   assert.deepEqual(findCompiledBundleRoots(cwd), [
     join(cwd, "dist"),
-    generic,
-    targeted,
+    electron,
+    release,
   ]);
 
   await writeFile(
-    join(targeted, "renderer.js"),
+    join(release, "renderer.js"),
     "const leaked = 'SUPABASE_SERVICE_ROLE_KEY';\n",
   );
   const result = inspectCompiledBundles({ cwd });

@@ -1,31 +1,24 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  findCargoLockVersion,
-  replaceCargoLockVersion,
-} from "./set-version-lib.mjs";
+import { isStableSemver, withPackageVersion } from "./set-version-lib.mjs";
 
-for (const [name, newline] of [
-  ["LF", "\n"],
-  ["CRLF", "\r\n"],
-]) {
-  test(`reads and updates a Cargo lockfile with ${name} line endings`, () => {
-    const cargoLock = [
-      "version = 4",
-      "",
-      "[[package]]",
-      'name = "bakbak"',
-      'version = "0.3.0"',
-      "dependencies = []",
-      "",
-    ].join(newline);
+test("accepts stable desktop release versions only", () => {
+  assert.equal(isStableSemver("1.6.0"), true);
+  assert.equal(isStableSemver("01.6.0"), false);
+  assert.equal(isStableSemver("1.6.0-beta.1"), false);
+  assert.equal(isStableSemver("main"), false);
+});
 
-    assert.equal(findCargoLockVersion(cargoLock), "0.3.0");
+test("updates package metadata without mutating unrelated Electron config", () => {
+  const original = {
+    name: "bakbak",
+    version: "1.6.0",
+    build: { appId: "com.bakbak.desktop" },
+  };
+  const updated = withPackageVersion(original, "1.7.0");
 
-    const updated = replaceCargoLockVersion(cargoLock, "0.4.0");
-    assert.equal(findCargoLockVersion(updated), "0.4.0");
-    assert.equal(updated.includes(newline), true);
-    assert.equal(updated.replaceAll(newline, "").includes("\n"), false);
-    assert.equal(updated.replaceAll(newline, "").includes("\r"), false);
-  });
-}
+  assert.equal(updated.version, "1.7.0");
+  assert.deepEqual(updated.build, original.build);
+  assert.equal(original.version, "1.6.0");
+  assert.throws(() => withPackageVersion(original, "1.7"), /stable SemVer/);
+});

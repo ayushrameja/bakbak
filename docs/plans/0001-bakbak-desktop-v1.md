@@ -3,15 +3,14 @@
 - **Status:** Active
 - **Approved:** 2026-07-11
 - **Target users:** One private group of 5–10 friends
-- **Primary platform:** Apple Silicon macOS and Windows x64 desktop releases;
-  Linux after friend testing
+- **Primary platform:** Apple Silicon macOS and Windows x64 desktop releases
 - **First usable release:** Voice, persistent text chat, and a private hosted
   synchronized soundboard
 
 ## Summary
 
 Build Bakbak as a private desktop app for 5–10 friends using **pnpm,
-TypeScript, Tauri 2, React, and Vite**. The collaborative chat remains the
+TypeScript, Electron, React, and Vite**. The collaborative chat remains the
 product and technical guide, while the repository keeps a durable record of
 plans, decisions, completed work, and verification results so future work
 starts with context instead of archaeological guessing.
@@ -36,12 +35,14 @@ starts with context instead of archaeological guessing.
 ## Accepted architecture and structure
 
 - Use one pnpm application with strict TypeScript.
-- Use Tauri 2 as the desktop shell and React + Vite as the UI layer.
+- Use Electron as the desktop shell and React + Vite as the UI layer.
 - Organize frontend code by feature under
   `src/features/{auth,server,channels,chat,voice,soundboard,settings}`.
 - Place shared UI in `src/components`, service clients in `src/lib`, and the
   application shell/providers in `src/app`.
-- Keep native configuration and Rust code isolated in `src-tauri`.
+- Keep the trusted Electron main/preload code in `electron`, renderer-safe
+  bridge types in `src/lib/desktop-runtime.ts`, and bundle resources in
+  `build`. The renderer remains sandboxed without Node.js or generic IPC.
 - Use one neutral, system-accent-veiled glass interface with device-local Auto,
   Light, and Dark choices; Auto follows the operating system and the accent
   always follows the native OS color. Keep scoped semantic status colors. A
@@ -64,8 +65,8 @@ starts with context instead of archaeological guessing.
 - One private server with multiple text and voice rooms.
 - Email/password authentication plus a single-use invite code.
 - One seeded admin; all invited users become members.
-- Apple Silicon macOS and Windows x64 installers; Linux afterward. Bakbak
-  v0.4.0 remains the final Intel macOS release.
+- Apple Silicon macOS and Windows x64 installers only. Bakbak v0.4.0 remains
+  the final Intel macOS release.
 - The first usable release includes voice, text, and a private hosted
   soundboard whose audio files stay outside the desktop bundle.
 
@@ -77,7 +78,7 @@ plan.
 
 ### Phase 1 — Foundation: no secrets
 
-- [x] Create the official pnpm + TypeScript + Tauri 2 + React + Vite scaffold.
+- [x] Create the official pnpm + TypeScript + React + Vite application scaffold.
 - [x] Replace generated product metadata and starter content with Bakbak.
 - [x] Add the feature-based folder structure and service boundaries.
 - [x] Add mock data for one server with text and voice rooms.
@@ -299,6 +300,20 @@ profile/camera clusters and orbits. Non-LIVE circles stay passive behind an
 above-avatar action tooltip; LIVE alone opens a control-free share stage whose
 media returns to people, with no participant expansion or renderer fullscreen.
 
+The 2026-08-09 Electron shell amendment supersedes Tauri-specific runtime,
+window, capture, packaging, and updater implementation details throughout the
+older plans without rewriting their historical decisions. The application ID,
+product name, GitHub release channel, Apple Silicon macOS minimum, Windows x64
+target, renderer, Supabase contracts, and LiveKit room contracts stay stable.
+Electron uses a sandboxed renderer, secure custom protocol, and narrow typed
+preload bridge. The former native process-tree screen-audio isolation is not
+preserved by Chromium capture and is reopened as an installed acceptance gate.
+The first Electron release must serve Electron updater YAML and a signed legacy
+Tauri JSON bridge, then prove both the old-shell handoff and a subsequent pure
+Electron update on real supported machines before publication. Windows keeps
+the Tauri current-user install directory and translates its passive/restart
+NSIS invocation so the handoff does not create a second application location.
+
 ### Phase 5 — Post-v1 improvements
 
 - [ ] Complete desktop screen sharing with matched system audio on macOS and
@@ -499,8 +514,9 @@ media returns to people, with no participant expansion or renderer fullscreen.
 - [ ] Complete plan 0019's light/dark three-resolution and 200/240/360 px panel
       visual matrix plus installed macOS/Windows control/member observation.
 - [ ] Evaluate optional global push-to-talk.
-- [x] Implement Windows process/display-matched audio with WebView2 browser-tree
-      exclusion, build/proof gating, and video-only fallback.
+- [ ] Revalidate Electron's Chromium system-audio and own-audio restriction on
+      installed Windows x64 and Apple Silicon macOS clients; the removed native
+      process-tree proof cannot be credited to the new shell.
 - [ ] Complete the cross-platform installed-client acceptance matrix.
 - [x] Update architecture, plan status, and the append-only progress log for
       plan 0014.
@@ -535,25 +551,39 @@ media returns to people, with no participant expansion or renderer fullscreen.
       configure open PR #33 with only `release:major`.
 - [ ] Recheck the newest published tag immediately before merging PR #33; stop
       if `v1.0.0` already exists.
-- [x] Add signed Tauri update artifacts, a public GitHub Releases endpoint, and
-      an explicit in-app update-and-restart experience.
+- [x] Preserve the public GitHub Releases endpoint and explicit in-app
+      update-and-restart experience in the Electron shell.
 - [x] Harden startup checks with 60-second requests and bounded retries, and add
       a manual Updates settings section with visible failure states, progress,
       diagnostics, and a GitHub Releases fallback.
-- [x] Add gated GitHub Actions validation and draft release workflows for macOS
-      Apple Silicon and Windows x64 NSIS installers, rejecting Intel artifacts.
+- [x] Add gated GitHub Actions validation, native PR packaging, candidate, and
+      draft release workflows for Apple Silicon macOS and Windows x64 while
+      rejecting Intel artifacts.
 - [x] Configure the updater signing secrets and live renderer variables in
       GitHub Actions.
-- [ ] Publish and validate the first updater-enabled `0.2.x` release.
-- [ ] Manually validate an update from the first updater-enabled release to a
-      later version on macOS and Windows.
-- [ ] Build and validate the Apple-Silicon-only macOS installer in the updated
-      GitHub Actions matrix.
+- [x] Replace Tauri/Rust with a sandboxed Electron main/preload shell while
+      preserving `com.bakbak.desktop`, the product name, window contract, and
+      supported platform/architecture pair.
+- [x] Configure Electron `latest-mac.yml` / `latest.yml` metadata and a signed
+      transitional `latest.json` plus `.app.tar.gz`/NSIS payloads for existing
+      Tauri clients.
+- [x] Keep the first public Electron release behind an explicit installed
+      migration-rehearsal workflow gate.
+- [ ] Run the updated PR and release matrices on GitHub-hosted macOS and Windows
+      runners and inspect every uploaded installer/metadata asset.
+- [ ] Manually validate the installed migration from Tauri 1.6.0 and the latest
+      Tauri release to the first Electron release, then to a later Electron
+      release, on Apple Silicon macOS and Windows x64, including rollback/manual
+      recovery and the expected one-time reauthentication.
+- [ ] Publish and validate the first Electron release only after that migration
+      rehearsal passes.
 - [x] Document initial unsigned and unnotarized installer warnings.
-- [x] Build and validate the Windows x64 installer in GitHub Actions.
+- [x] Cross-build and inspect a Windows x64 Electron/NSIS installer locally.
+- [ ] Build and validate the Windows x64 installer in GitHub Actions.
 - [ ] Add Linux installer builds after friend testing.
-- [ ] Revisit signing and notarization after the core product is stable.
-- [ ] Update architecture, plan status, and the append-only progress log.
+- [ ] Configure Developer ID signing/notarization and Windows code signing
+      before treating the Electron updater as production-ready.
+- [x] Update architecture, plan status, and the append-only progress log.
 
 ## Test and documentation requirements
 
@@ -601,7 +631,6 @@ After every phase:
 
 ## Deferred and out of scope for v1
 
-- Screen sharing, including system audio.
 - Camera recording, effects, and virtual backgrounds.
 - Member-created/reordered sound categories, uploaded custom emoji artwork, and
   retained source video. Five-second member uploads and owner/admin management
@@ -610,6 +639,7 @@ After every phase:
 - Advanced roles and permission management.
 - Invite-management UI.
 - Desktop notifications and tray controls.
-- Linux distribution before friend testing.
 - Intel macOS releases after Bakbak v0.4.0.
-- Signing and notarization before the core product is stable.
+- Linux packaging and any architecture beyond Apple Silicon macOS and Windows
+  x64; operating-system signing for the two supported builds remains required
+  before production distribution.
