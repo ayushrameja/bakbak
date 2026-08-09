@@ -183,9 +183,14 @@ suppression, automatic gain control, and RNNoise, and warns the user to wear
 headphones because RNNoise is not acoustic echo cancellation. Browser/mock,
 Windows, and other platforms always keep echo cancellation enabled and do not
 show this control. The explicit microphone test uses the same resolved capture
-mode and processed preview through the selected call output while rendering
-its level, and releases the monitor, stream, processor, and analyser together
-on stop.
+mode and processed preview through the selected call output, renders separate
+raw-input and Studio-output meters, and lets the user toggle RNNoise live
+without reopening capture. When a call is active, starting the test first
+temporarily mutes and deafens that exact room; stop, failure, unmount, or stale
+startup restores the user's previous mute and deafen state. The test releases
+the monitor, stream, processor, analysers, and call-isolation transaction
+together on stop. If the preview worklet is unavailable, testing continues on
+the raw WebRTC-cleaned stream with an explicit fallback notice.
 Connected microphone and macOS capture-mode changes are one serialized restart
 transaction on the existing named speech track. LiveKit preserves its mute
 state and restarts any attached RNNoise processor against the new source.
@@ -215,6 +220,12 @@ receiving the boost twice. A single hidden MediaStream output monitor routes
 the limited mix through the selected speaker. Unsupported graph creation falls
 back to the existing 0–100% media-element path and is visible as
 `limitedOutput: false` in the privacy-safe voice diagnostics.
+Deafen is enforced at the final listener mix as well as each source boundary:
+the shared output monitor is hard-muted, current and future gain stages are
+zeroed, and attached LiveKit remote-audio tracks receive binary zero volume.
+Undeafen reopens those boundaries and reapplies the existing participant and
+soundboard gain model, so speech, watched-share audio, and soundboard clips
+cannot leak through a deafened client.
 The renderer reconciles LiveKit's current subscribed publications after
 initial connection, signal resume, full reconnect, and output changes instead
 of depending on a future subscription event. Publication and gain-stage
@@ -222,10 +233,11 @@ ownership are idempotent, and output autoplay plus paused, stalled, failed, or
 ended source playback use the same bounded recovery path. Detach, departure,
 room replacement, and hook teardown disconnect every source/gain node, stop
 the routed stream, remove its monitor, and close the context. Listener-owned
-session state, not LiveKit's track volume or backend metadata, drives both
-current and future attachments. Sender capture constraints, browser AGC, echo
-cancellation, and RNNoise defaults are unchanged pending repeatable installed
-macOS/Windows input measurements.
+session state, not backend metadata, drives both current and future
+attachments; LiveKit track volume is only a binary deafen safety boundary.
+Sender capture constraints, browser AGC, echo cancellation, and RNNoise
+defaults are unchanged pending repeatable installed macOS/Windows input
+measurements.
 Selecting a voice channel immediately joins it; selecting another voice channel switches
 the active call without a pre-join or initial connection surface. An active call
 adds a sidebar status block with connection state, room, disconnect, and a
@@ -746,6 +758,9 @@ individual typed methods for window controls, native accent state, external
 links, relaunch/settings, screen-source selection, and updates; it never exposes
 `ipcRenderer` or a generic channel API. Native calls remain convenience
 boundaries, not substitutes for Supabase RLS or Edge Function authorization.
+Edge Function CORS accepts `app://bakbak` plus the legacy
+`tauri://localhost`/`http://tauri.localhost` origins during the updater handoff;
+all remain exact origins rather than wildcard access.
 
 The application ID remains `com.bakbak.desktop`, and Electron stores its data
 under the stable application-specific user-data directory. Existing Tauri
@@ -802,7 +817,9 @@ that selected processed or fallback speech track; it does not configure or
 host the RNNoise stage. Live input changes restart that same named track with
 the complete device and capture constraints; LiveKit restarts the attached
 processor and retains track mute state without republishing a second
-microphone.
+microphone. After publication or restart, Bakbak explicitly updates LiveKit's
+active audio-input device bookkeeping for later recovery while leaving the
+separate synthetic soundboard microphone publication untouched.
 A protected Supabase Edge Function is the only component allowed to sign
 LiveKit participant tokens. Voice tokens allow microphone, camera, data, and
 video-only screen publication. Screen-companion tokens use generated identities
@@ -1057,17 +1074,19 @@ An invite-management UI is deferred until post-v1.
    update integer focal coordinates; Shift moves by a larger step and Reset
    returns to 50/50.
 8. Audio settings retain the persisted device selectors, soundboard volume,
-   enhanced-cleanup switch, selected voice effect, and interface-sound
+   enhanced-cleanup switch, and interface-sound
    master/volume/category preferences in four spaced Voice Input, Voice Output,
    Video, and App Sounds categories. Opening settings does not request media.
    The explicit microphone test uses the same selected processing path as an
-   outgoing call, plays it through the selected output, and warns headphones
-   users before live monitoring. Successful microphone permission immediately
-   refreshes device enumeration because macOS WebKit can reveal named speakers
-   only after capture permission. Microphone and output tests acquire only
-   temporary resources and release them when stopped or unmounted. Preview
-   buttons activate and play one modern interface-sound category representative
-   through the system output.
+   outgoing call, plays it through the selected output, compares raw and Studio
+   meters, supports a live cleanup toggle, and warns headphones users before
+   monitoring. An active call is temporarily muted and deafened for the test,
+   then returns to its exact previous state. Successful microphone permission
+   immediately refreshes device enumeration because macOS WebKit can reveal
+   named speakers only after capture permission. Microphone and output tests
+   acquire only temporary resources and release them when stopped or unmounted.
+   Preview buttons activate and play one modern interface-sound category
+   representative through the system output.
 9. Settings is a modal overlay over the current canvas. It traps focus, restores
    the opener on close, exposes compact active-call controls, and confirms
    logout. Closing discards staged profile edits and revokes preview URLs; a
@@ -1232,9 +1251,10 @@ An invite-management UI is deferred until post-v1.
 6. Direct channel switching unpublishes the current microphone without
    stopping it, disconnects the old room, republishes it into the new room,
    and preserves its processor plus mute/deafen state. Input-device changes
-   restart the processor on the replacement source. Leave, sign-out, a failed
-   switch, and teardown stop every retained or pending microphone. Sign-out and
-   application teardown close the shared processing context.
+   restart the processor on the replacement source and update LiveKit's active
+   input-device map only after success. Leave, sign-out, a failed switch, and
+   teardown stop every retained or pending microphone. Sign-out and application
+   teardown close the shared processing context.
 7. The renderer generation-gates all token, connection, and microphone work so
    a stale attempt can disconnect only its own room. A compact polite status
    loader announces authorization, connection, microphone, or soundboard work;
@@ -1248,11 +1268,15 @@ An invite-management UI is deferred until post-v1.
    result and refreshes on `devicechange`, explicit user refresh, successful
    mic testing, camera start, and room join. Permission-limited default-only
    discovery does not erase a remembered device ID. Output switching is
-   capability-checked from `HTMLMediaElement.setSinkId`; a supported switch
-   updates the soundboard monitor, LiveKit room, and every current or future
-   hidden remote-audio element. Unsupported runtimes keep the selector
-   read-only and use system output. A genuinely missing remembered device
-   falls back to default after specific devices become visible.
+   capability-checked from `HTMLMediaElement.setSinkId`; a supported switch is
+   serialized independently from input capture and updates the soundboard plus
+   the renderer-owned remote-audio monitor for every current or future source.
+   Those audible routes are authoritative, so a silent monitor's autoplay
+   rejection or LiveKit's auxiliary device-bookkeeping failure cannot roll a
+   working sink back; reconciliation and later playback recovery retry as
+   needed. Unsupported runtimes keep the selector read-only and use system
+   output. A genuinely missing remembered device falls back to default after
+   specific devices become visible.
 10. Initial connection, signal resume, full reconnect, and output changes
     reconcile every currently subscribed remote audio publication against the
     active room. The renderer reuses the publication's existing audio element,
@@ -1436,8 +1460,9 @@ An invite-management UI is deferred until post-v1.
    share audio uses participant volume once, and normal microphone speech keeps
    only participant volume. The listener-local gain accepts 0–200%, then all
    remote sources share the final bounded limiter and selected-output monitor.
-   Deafen zeros every remote gain stage and the sender's local monitor branch
-   without muting outbound soundboard audio.
+   Deafen hard-mutes the final remote mix, zeros every current and future remote
+   gain stage and LiveKit track volume, and mutes the sender's local monitor
+   branch without muting outbound soundboard audio.
 
 Unknown message types, stale duplicates, and unknown sound IDs are ignored
 safely. Built-in suppression plus RNNoise target keyboard and steady background

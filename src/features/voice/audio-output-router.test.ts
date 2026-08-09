@@ -92,6 +92,26 @@ describe("AudioOutputRouter", () => {
     expect(contextDouble.routes[1]?.track.stop).toHaveBeenCalledOnce();
     expect(contextDouble.close).toHaveBeenCalledOnce();
   });
+
+  it("keeps a valid selected sink when silent-monitor autoplay is blocked", async () => {
+    const contextDouble = createContextDouble();
+    const element = createElementDouble();
+    element.play.mockRejectedValueOnce(
+      new DOMException("gesture required", "NotAllowedError"),
+    );
+    const router = new AudioOutputRouter({
+      contextConstructor: vi.fn(function () {
+        return contextDouble.context;
+      }) as unknown as AudioContextConstructor,
+      outputSelectionSupported: true,
+      createAudioElement: () => element.element,
+      getHost: () => ({ append: vi.fn() }) as unknown as HTMLElement,
+    });
+
+    await expect(router.setDevice("speaker-2")).resolves.toBeUndefined();
+    expect(router.deviceId).toBe("speaker-2");
+    expect(element.setSinkId).toHaveBeenCalledWith("speaker-2");
+  });
 });
 
 function createContextDouble(routeCount = 1) {

@@ -34,6 +34,7 @@ export class RemoteAudioGainGraph {
   private destination: MediaStreamAudioDestinationNode | null = null;
   private output: HTMLAudioElement | null = null;
   private selectedDeviceId = "default";
+  private muted = false;
   private failed = false;
   private startPending: Promise<boolean> | null = null;
 
@@ -110,6 +111,11 @@ export class RemoteAudioGainGraph {
     return true;
   }
 
+  setMuted(muted: boolean): void {
+    this.muted = muted;
+    if (this.output) this.output.muted = muted;
+  }
+
   async start(): Promise<boolean> {
     if (this.startPending) return this.startPending;
     const graph = this.currentGraph();
@@ -138,6 +144,7 @@ export class RemoteAudioGainGraph {
     this.limiter = null;
     this.destination = null;
     this.output = null;
+    this.muted = false;
     this.failed = false;
     this.startPending = null;
 
@@ -176,6 +183,7 @@ export class RemoteAudioGainGraph {
       output = this.createOutputElement();
       output.autoplay = true;
       output.hidden = true;
+      output.muted = this.muted;
       output.srcObject = destination.stream;
       output.dataset.bakbakRemoteAudioOutput = "";
       this.getHost().append(output);

@@ -9,6 +9,7 @@ export interface RemoteAudioTrackLike {
   readonly kind: string;
   attach(element: HTMLMediaElement): HTMLMediaElement;
   detach(element: HTMLMediaElement): HTMLMediaElement;
+  setVolume?(volume: number): void;
 }
 
 export type RemoteAudioSourceKind = "speech" | "soundboard" | "screen-share";
@@ -215,6 +216,10 @@ export class RemoteAudioRenderer {
 
   setMuted(muted: boolean): void {
     this.muted = muted;
+    // The mixed output is the final safety boundary. Muting it as well as each
+    // source prevents a late or orphaned soundboard gain stage from leaking a
+    // frame while Deafen is active.
+    this.gainGraph.setMuted(muted);
     this.elements.forEach((owned) => this.applyGain(owned));
   }
 
@@ -448,17 +453,25 @@ export class RemoteAudioRenderer {
 
   private applyGain(owned: OwnedRemoteAudio): void {
     const gain = this.resolveGain(owned);
+    const sourceMuted = this.isSourceMuted(owned);
+    try {
+      // Keep LiveKit's own track volume as a second binary mute boundary. The
+      // listener gain still lives only in Bakbak's graph, avoiding double gain.
+      owned.track.setVolume?.(sourceMuted ? 0 : 1);
+    } catch {
+      // The renderer-owned media element and gain graph remain authoritative.
+    }
     if (owned.gainStage) {
       // Room.startAudio() may unmute LiveKit's attached elements. A direct
       // MediaStream source therefore also keeps its companion element at zero
       // volume, preventing an unprocessed duplicate from bypassing this gain.
       owned.element.volume = owned.gainStage.isolatesElementPlayback ? 0 : 1;
       owned.element.muted =
-        owned.gainStage.isolatesElementPlayback || this.isSourceMuted(owned);
+        owned.gainStage.isolatesElementPlayback || sourceMuted;
       owned.gainStage.setGain(gain);
       return;
     }
-    owned.element.muted = this.isSourceMuted(owned);
+    owned.element.muted = sourceMuted;
     owned.element.volume = clampGain(gain);
   }
 

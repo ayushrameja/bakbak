@@ -7385,3 +7385,101 @@ aarch64-apple-darwin --bundles app,dmg` plus
   notarization credentials were configured, as expected for a local build.
 - **Next:** Commit and push this repair, then confirm all three PR 54 CI jobs pass
   on the updated head.
+
+## 2026-08-09 — Make in-call devices and Studio testing reliable
+
+- **Completed:** Made active-call input changes update LiveKit's input-device
+  bookkeeping after the existing speech-track restart, without switching the
+  synthetic soundboard microphone publication. Serialized output changes on an
+  independent pending state and made Bakbak's audible soundboard/final-mix
+  sinks authoritative when silent autoplay or LiveKit bookkeeping fails. Added
+  Bakbak Studio mic testing with simultaneous raw and processed meters, live
+  RNNoise toggling, selected-output monitoring, raw fallback, and exact
+  active-call mute/deafen isolation plus restoration. Enforced deafen on the
+  final remote mix, every source gain, and LiveKit track volume so remote
+  soundboard audio cannot bypass it. Corrected the disconnected Studio control
+  from a permanent `Starting…` label to its ready state.
+- **Decisions:** Kept connected input replacement on the named speech track
+  because LiveKit's room-wide input switch would also target the separately
+  published soundboard track. Treated renderer-owned audible sinks as the
+  output transaction's source of truth and LiveKit output selection as
+  best-effort bookkeeping. Kept participant boost in Bakbak's owned gain graph;
+  LiveKit volume is only a binary deafen safety boundary. Described Studio as
+  reducing keyboard, fan, and steady room noise rather than promising complete
+  speaker separation or acoustic isolation.
+- **Validation:**
+  - Focused Vitest — passed 7 files / 125 tests covering active-call input and
+    output switching, output autoplay/bookkeeping failure, Studio live toggle
+    and fallback, call isolation/restoration, and final-mix/track deafen.
+  - Local mock-browser visual check — passed for Settings → Audio & video at
+    1280×720, including dual meters, selected-output copy, Studio controls, and
+    the corrected ready `On` state. The pass caught and corrected the stale
+    idle `Starting…` state.
+  - `pnpm check` — passed formatting, zero-warning lint, renderer/Node/Electron
+    typechecks, 89 Vitest files / 502 tests, all 50 Node contract tests, version
+    validation at `1.6.1`, the production renderer build, and bundle secret
+    scanning for `dist`, `electron-dist`, and `release`. The existing large
+    chunk warning remains non-blocking.
+  - `pnpm desktop:build` — passed the renderer and Electron compilation, native
+    dependency rebuild, ad-hoc-signed Apple Silicon app packaging, ZIP and DMG
+    generation, and block-map generation. The first sandboxed attempt could not
+    fetch Electron; the scoped network retry and final exact-tree run passed.
+    Local notarization was skipped because credentials were not configured.
+  - `git diff --check` — passed; the compiled bundle secret scan found no
+    service-role or LiveKit secret material.
+- **Documentation updated:** Updated `docs/architecture.md`, the active v1 plan,
+  plans 0029 and 0030, and this canonical progress log.
+- **Known limitations:** RNNoise is not acoustic echo cancellation or guaranteed
+  voice isolation. Physical-device behavior still needs the installed macOS and
+  Windows two-client matrix; non-`setSinkId` runtimes remain system-output only.
+- **Next:** In installed two-client calls, switch between two microphones and
+  outputs while muted and unmuted, compare Studio off/on with repeatable fan and
+  keyboard noise, and confirm mute plus deafen suppresses remote soundboard
+  clips before restoring prior state.
+
+## 2026-08-09 — Restore released-app voice token requests
+
+- **Completed:** Reproduced the released Electron failure as a production CORS
+  preflight rejection: `app://bakbak` returned 403 while the development and
+  legacy Tauri origins returned 204. Confirmed the installed 1.7.0 artifact uses
+  the secure `app://bakbak` renderer and contains the expected live Supabase and
+  LiveKit hosts. Restored both legacy Tauri origins alongside Electron and the
+  two fixed development origins, then deployed only `livekit-token` to the
+  linked hosted project.
+- **Decisions:** Kept exact-origin allowlisting and did not use a wildcard.
+  Preserved `tauri://localhost` and `http://tauri.localhost` so fixing Electron
+  voice does not break clients still completing the signed updater handoff.
+  Limited the production mutation to `livekit-token`; no database, secret,
+  renderer, or other Edge Function was changed.
+- **Validation:**
+  - Pre-deploy hosted preflights — `app://bakbak` returned 403 without an allow
+    header, `http://127.0.0.1:1420` returned 204, and `tauri://localhost`
+    returned 204, proving the deployed function still carried the pre-Electron
+    bundle.
+  - Focused LiveKit-token Deno tests — passed 12/12, including Electron, macOS
+    Tauri, Windows Tauri, unauthenticated preflight, hostile-origin rejection,
+    authorization, and token grants.
+  - Full Edge Function Deno suite — passed 44/44 tests.
+  - `deno lint` for the shared CORS, token function, and focused test — passed;
+    `deno check --config supabase/deno.json
+supabase/functions/livekit-token/index.ts` — passed.
+  - `pnpm check` — passed formatting, zero-warning lint, renderer/Node/Electron
+    typechecks, 89 Vitest files / 502 tests, all 50 Node contract tests, version
+    validation at `1.6.1`, the production renderer build, and bundle secret
+    scanning. The existing large-chunk warning remains non-blocking.
+  - `pnpm dlx supabase@latest functions deploy livekit-token --use-api` —
+    passed for project `ezdwfqcmrofcemmfzxgl`; the deployment uploaded the
+    token modules plus `_shared/http.ts` and the corrected `_shared/cors.ts`.
+  - Post-deploy hosted preflights — Electron, macOS Tauri, and Windows Tauri
+    returned 204; the Electron response included
+    `Access-Control-Allow-Origin: app://bakbak`; an untrusted HTTPS origin
+    remained 403.
+- **Documentation updated:** Updated the Electron trust boundary in
+  `docs/architecture.md`, completed the distribution CORS item in the active v1
+  plan, and appended this canonical progress entry.
+- **Known limitations:** The authenticated installed-app join still needs a
+  user-session retry after deployment. Other Edge Functions bundle the shared
+  CORS module independently and were not redeployed in this voice-only repair.
+- **Next:** Retry the released app's voice room. If another packaged Edge
+  Function feature reports the same fetch-level error, probe its Electron
+  preflight and redeploy that function's current bundle separately.

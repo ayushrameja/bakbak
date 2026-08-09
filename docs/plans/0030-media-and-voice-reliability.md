@@ -14,6 +14,9 @@ always roll back, and `Keep other audio at full volume` must default on.
       gain. Apply participant gain to speech and watched-share audio and apply
       participant × global soundboard gain to soundboard audio, including late
       subscriptions.
+- [x] Enforce deafen at the final mixed-output monitor, every current and future
+      source gain, and each attached LiveKit remote-audio track so soundboard or
+      recovery playback cannot bypass the listener's deafen state.
 - [x] Keep participant volume in one listener-local session map. Give the
       participant card a separate focus button and a continuous, keyboard
       accessible volume range that cannot activate focus.
@@ -71,6 +74,8 @@ always roll back, and `Keep other audio at full volume` must default on.
 - [x] Actual direct-fallback volume plus stream-backed gain covers 0%, 40%,
       100%, 150%, 175%, and 200%, late tracks, screen audio, soundboard
       multiplication, source ordering, and duplicate-route suppression.
+- [x] Deafen tests cover the final mixed monitor, current and future sources,
+      LiveKit track volume, and soundboard restoration after undeafen.
 - [x] Slider input and keyboard adjustment do not trigger participant focus.
 - [x] RNNoise ready/configure/error, sender restore, frame wrapping, and
       preference migration have focused tests.
@@ -89,6 +94,8 @@ always roll back, and `Keep other audio at full volume` must default on.
       shared audio while target audio remains audible.
 - [ ] Verify remote speech, soundboard, and watched-share audio at 100%, 50%,
       and 0%.
+- [ ] While muted and deafened, trigger remote soundboard clips and confirm the
+      listener hears nothing; undeafen must restore the configured volumes.
 - [ ] Compare RNNoise off/on with repeatable fan and keyboard noise.
 - [ ] Test Valorant Application and Entire screen capture in Borderless
       Windowed; Entire screen must include game pixels and cursor.

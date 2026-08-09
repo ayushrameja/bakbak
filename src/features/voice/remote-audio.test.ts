@@ -59,6 +59,26 @@ describe("RemoteAudioRenderer", () => {
     expect(second).toHaveProperty("muted", false);
   });
 
+  it("hard-mutes LiveKit's track volume as a soundboard safety boundary", () => {
+    const host = document.createElement("div");
+    const renderer = new RemoteAudioRenderer(() => host);
+    const base = createTrack().track;
+    const setVolume = vi.fn();
+    const track = { ...base, setVolume };
+    const element = renderer.attach(track, {
+      ownerId: "mira",
+      sourceKind: "soundboard",
+    });
+
+    renderer.setMuted(true);
+    expect(setVolume).toHaveBeenLastCalledWith(0);
+    expect(element).toHaveProperty("muted", true);
+
+    renderer.setMuted(false);
+    expect(setVolume).toHaveBeenLastCalledWith(1);
+    expect(element).toHaveProperty("muted", false);
+  });
+
   it("keeps an idle soundboard track muted independently of deafen", () => {
     const host = document.createElement("div");
     const renderer = new RemoteAudioRenderer(() => host);

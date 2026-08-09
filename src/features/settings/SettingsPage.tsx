@@ -107,6 +107,7 @@ interface SettingsPageProps {
   outputError: string | null;
   cameraError: string | null;
   inputDisabled: boolean;
+  outputDisabled: boolean;
   outputSelectionSupported: boolean;
   voiceStatus: string;
   voiceChannelName: string | null;
@@ -120,6 +121,7 @@ interface SettingsPageProps {
   onOutputChange: (deviceId: string) => void;
   onCameraChange: (deviceId: string) => void;
   onRefreshDevices: () => Promise<void>;
+  onBeginMicrophoneTest: () => Promise<() => Promise<void>>;
   onSoundboardVolumeChange: (volume: number) => void;
   onEnhancedNoiseSuppressionChange: (enabled: boolean) => void;
   onMacosKeepOtherAudioFullVolumeChange: (enabled: boolean) => void;
@@ -1172,15 +1174,19 @@ function ProfileSettings({
 }
 
 function AudioSettings(props: SettingsPageProps) {
-  const [meter, setMeter] = useState(0);
+  const [meter, setMeter] = useState({ input: 0, studio: 0 });
   const [testing, setTesting] = useState(false);
   const [refreshingDevices, setRefreshingDevices] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
+  const [testNotice, setTestNotice] = useState<string | null>(null);
   const [diagnosticsCopyState, setDiagnosticsCopyState] = useState<
     "idle" | "copied" | "failed"
   >("idle");
   const stopTestRef = useRef<(() => void) | null>(null);
   const stopOutputTestRef = useRef<(() => void) | null>(null);
+  const setTestNoiseSuppressionRef = useRef<
+    ((enabled: boolean) => Promise<boolean>) | null
+  >(null);
   const mountedRef = useRef(true);
   const testRequestRef = useRef(0);
 
@@ -1207,6 +1213,7 @@ function AudioSettings(props: SettingsPageProps) {
     }
     const requestId = ++testRequestRef.current;
     setTestError(null);
+    setTestNotice(null);
     setTesting(true);
     let stream: MediaStream | null = null;
     let previewStream: MediaStream;
@@ -1214,7 +1221,18 @@ function AudioSettings(props: SettingsPageProps) {
     let context: AudioContext | null = null;
     let monitor: HTMLAudioElement | null = null;
     let stopStartedTest: (() => void) | null = null;
+    let restoreCallAudio: (() => Promise<void>) | null = null;
+    const restoreCallIsolation = async () => {
+      const restore = restoreCallAudio;
+      restoreCallAudio = null;
+      await restore?.().catch(() => undefined);
+    };
     try {
+      restoreCallAudio = await props.onBeginMicrophoneTest();
+      if (!mountedRef.current || requestId !== testRequestRef.current) {
+        await restoreCallIsolation();
+        return;
+      }
       stream = await navigator.mediaDevices.getUserMedia({
         audio: microphoneCaptureOptions(
           props.selectedInputId,
@@ -1226,11 +1244,13 @@ function AudioSettings(props: SettingsPageProps) {
       });
       if (!mountedRef.current || requestId !== testRequestRef.current) {
         stream.getTracks().forEach((track) => track.stop());
+        await restoreCallIsolation();
         return;
       }
       await props.onRefreshDevices().catch(() => undefined);
       if (!mountedRef.current || requestId !== testRequestRef.current) {
         stream.getTracks().forEach((track) => track.stop());
+        await restoreCallIsolation();
         return;
       }
       const preview = await createMicrophonePreview(stream, {
@@ -1238,27 +1258,37 @@ function AudioSettings(props: SettingsPageProps) {
       });
       previewStream = preview.stream;
       previewCleanup = preview.cleanup;
+      setTestNoiseSuppressionRef.current = preview.setEnhancedNoiseSuppression;
+      if (preview.processingError) setTestNotice(preview.processingError);
       if (!mountedRef.current || requestId !== testRequestRef.current) {
         previewCleanup();
         stream.getTracks().forEach((track) => track.stop());
+        setTestNoiseSuppressionRef.current = null;
+        await restoreCallIsolation();
         return;
       }
       context = new AudioContext();
-      const analyser = context.createAnalyser();
-      analyser.fftSize = 256;
-      context.createMediaStreamSource(previewStream).connect(analyser);
+      const inputAnalyser = context.createAnalyser();
+      const studioAnalyser = context.createAnalyser();
+      inputAnalyser.fftSize = 256;
+      studioAnalyser.fftSize = 256;
+      context.createMediaStreamSource(stream).connect(inputAnalyser);
+      context.createMediaStreamSource(previewStream).connect(studioAnalyser);
       monitor = new Audio();
       monitor.autoplay = true;
       monitor.srcObject = previewStream;
-      const values = new Uint8Array(analyser.frequencyBinCount);
+      const inputValues = new Uint8Array(inputAnalyser.frequencyBinCount);
+      const studioValues = new Uint8Array(studioAnalyser.frequencyBinCount);
       let frame = 0;
       let stopped = false;
       const tick = () => {
         if (stopped) return;
-        analyser.getByteFrequencyData(values);
-        const average =
-          values.reduce((sum, value) => sum + value, 0) / values.length;
-        setMeter(Math.min(1, average / 90));
+        inputAnalyser.getByteFrequencyData(inputValues);
+        studioAnalyser.getByteFrequencyData(studioValues);
+        setMeter({
+          input: microphoneMeterLevel(inputValues),
+          studio: microphoneMeterLevel(studioValues),
+        });
         frame = requestAnimationFrame(tick);
       };
       const stop = () => {
@@ -1269,10 +1299,12 @@ function AudioSettings(props: SettingsPageProps) {
         if (monitor) monitor.srcObject = null;
         previewCleanup?.();
         previewCleanup = null;
+        setTestNoiseSuppressionRef.current = null;
         stream?.getTracks().forEach((track) => track.stop());
         void context?.close();
+        void restoreCallIsolation();
         if (mountedRef.current) {
-          setMeter(0);
+          setMeter({ input: 0, studio: 0 });
           setTesting(false);
         }
         stopTestRef.current = null;
@@ -1294,6 +1326,8 @@ function AudioSettings(props: SettingsPageProps) {
         previewCleanup?.();
         stream?.getTracks().forEach((track) => track.stop());
         void context?.close();
+        setTestNoiseSuppressionRef.current = null;
+        await restoreCallIsolation();
       }
       stopTestRef.current = null;
       if (mountedRef.current && requestId === testRequestRef.current) {
@@ -1304,6 +1338,24 @@ function AudioSettings(props: SettingsPageProps) {
             : "Microphone test could not start.",
         );
       }
+    }
+  }
+
+  async function changeNoiseSuppression(enabled: boolean) {
+    props.onEnhancedNoiseSuppressionChange(enabled);
+    const updateTest = setTestNoiseSuppressionRef.current;
+    if (!updateTest) return;
+    try {
+      const applied = await updateTest(enabled);
+      setTestNotice(
+        enabled && !applied
+          ? "Studio suppression could not start in this test. Built-in WebRTC cleanup remains active."
+          : null,
+      );
+    } catch {
+      setTestNotice(
+        "Studio suppression could not change live. Stop the test and try again.",
+      );
     }
   }
 
@@ -1404,7 +1456,8 @@ function AudioSettings(props: SettingsPageProps) {
               <small>Voice input</small>
               <h3 id="voice-input-title">Microphone</h3>
               <p>
-                Pick your mic, clean it up, then hear exactly what others do.
+                Pick your mic, compare raw and Studio levels, then hear the
+                exact processed output.
               </p>
             </div>
           </header>
@@ -1435,29 +1488,61 @@ function AudioSettings(props: SettingsPageProps) {
                 </button>
               </div>
             </div>
-            <div className="microphone-test">
-              <div aria-label="Microphone input level">
-                <i style={{ width: `${meter * 100}%` }} />
+            <div className="microphone-test" data-active={testing}>
+              <div className="microphone-test__meters">
+                <div className="microphone-test__meter">
+                  <span>
+                    <strong>Mic input</strong>
+                    <small>Before Studio</small>
+                  </span>
+                  <div
+                    role="meter"
+                    aria-label="Raw microphone input level"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(meter.input * 100)}
+                  >
+                    <i style={{ width: `${meter.input * 100}%` }} />
+                  </div>
+                </div>
+                <div className="microphone-test__meter is-studio">
+                  <span>
+                    <strong>Studio output</strong>
+                    <small>What friends hear</small>
+                  </span>
+                  <div
+                    role="meter"
+                    aria-label="Studio microphone output level"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(meter.studio * 100)}
+                  >
+                    <i style={{ width: `${meter.studio * 100}%` }} />
+                  </div>
+                </div>
               </div>
               <p>
                 {testing
-                  ? "Live monitor is on. You should hear your processed voice through the selected output."
+                  ? props.voiceStatus === "connected"
+                    ? `Live monitor is on through the selected output. ${props.voiceChannelName ?? "Your call"} is temporarily muted and deafened; your previous state returns when the test stops.`
+                    : "Live monitor is on. Studio output is what friends will hear through the selected output."
                   : "Use headphones before testing unless you would like to summon the feedback dragon."}
               </p>
             </div>
             <div className="microphone-processing-settings">
               <div className="microphone-processing-settings__heading">
                 <div>
-                  <strong>Bakbak noise cleanup</strong>
+                  <strong>Bakbak Studio noise suppression</strong>
                   <small>
-                    Local RNNoise removes keyboard and room noise before your
-                    mic leaves this device.
+                    Local RNNoise reduces keyboard, fan, and steady room noise
+                    before your mic leaves this device. Toggle it during a test
+                    for a live comparison.
                   </small>
                 </div>
                 <button
                   type="button"
                   role="switch"
-                  aria-label="Bakbak noise cleanup"
+                  aria-label="Bakbak Studio noise suppression"
                   aria-checked={props.enhancedNoiseSuppression}
                   disabled={
                     props.inputDisabled ||
@@ -1465,9 +1550,7 @@ function AudioSettings(props: SettingsPageProps) {
                     props.microphoneProcessingState === "starting"
                   }
                   onClick={() =>
-                    props.onEnhancedNoiseSuppressionChange(
-                      !props.enhancedNoiseSuppression,
-                    )
+                    void changeNoiseSuppression(!props.enhancedNoiseSuppression)
                   }
                 >
                   {props.microphoneProcessingState === "starting"
@@ -1517,6 +1600,11 @@ function AudioSettings(props: SettingsPageProps) {
                 {props.microphoneProcessingError}
               </p>
             ) : null}
+            {testNotice ? (
+              <p className="settings-note" role="status">
+                {testNotice}
+              </p>
+            ) : null}
             {props.inputError ? (
               <p className="settings-error">{props.inputError}</p>
             ) : null}
@@ -1547,7 +1635,7 @@ function AudioSettings(props: SettingsPageProps) {
                 selectedId={props.selectedOutputId}
                 fallbackLabel="Speaker"
                 disabled={
-                  props.inputDisabled || !props.outputSelectionSupported
+                  props.outputDisabled || !props.outputSelectionSupported
                 }
                 onChange={props.onOutputChange}
               />
@@ -1571,6 +1659,7 @@ function AudioSettings(props: SettingsPageProps) {
                 <button
                   className="secondary-button"
                   type="button"
+                  disabled={props.outputDisabled}
                   onClick={() => void testOutput()}
                 >
                   <Play size={14} /> Test output
@@ -1847,6 +1936,12 @@ function DeviceSelect({
       </select>
     </label>
   );
+}
+
+function microphoneMeterLevel(values: Uint8Array): number {
+  if (values.length === 0) return 0;
+  const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+  return Math.min(1, average / 90);
 }
 
 const APPEARANCE_OPTIONS: ReadonlyArray<{

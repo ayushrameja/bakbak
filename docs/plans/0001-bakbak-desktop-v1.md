@@ -427,6 +427,9 @@ NSIS invocation so the handoff does not create a second application location.
 - [x] Add plan 0029's persistent selected-channel accent pill, circular
       chat-only avatars, serialized live microphone restart/rollback, v3
       preference migration, and installed-macOS full-volume capture option.
+- [x] Add the 2026-08-09 voice follow-up: reliable in-call input/output
+      switching, dual-meter live Studio testing with temporary call isolation,
+      and final-mix deafen enforcement for remote soundboard audio.
 - [ ] Complete plan 0029's macOS and Windows installed two-client audio checks,
       including speaker-safe echo, full-volume mode, muted/unmuted device
       switching, and RNNoise intelligibility.
@@ -579,6 +582,8 @@ NSIS invocation so the handoff does not create a second application location.
 - [x] Replace Tauri/Rust with a sandboxed Electron main/preload shell while
       preserving `com.bakbak.desktop`, the product name, window contract, and
       supported platform/architecture pair.
+- [x] Deploy the Electron `app://bakbak` Edge Function origin while preserving
+      both legacy Tauri origins for clients completing the updater handoff.
 - [x] Configure Electron `latest-mac.yml` / `latest.yml` metadata and a signed
       transitional `latest.json` plus `.app.tar.gz`/NSIS payloads for existing
       Tauri clients.

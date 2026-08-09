@@ -100,6 +100,22 @@ describe("remote listener gain safety", () => {
     expect(audio.close).toHaveBeenCalledOnce();
   });
 
+  it("hard-mutes the final mixed output for current and future sources", () => {
+    const currentAudio = createGraphDouble();
+    const currentGraph = new RemoteAudioGainGraph(currentAudio.options);
+    currentGraph.attach(document.createElement("audio"));
+    currentGraph.setMuted(true);
+    expect(currentAudio.output.muted).toBe(true);
+    currentGraph.setMuted(false);
+    expect(currentAudio.output.muted).toBe(false);
+
+    const futureAudio = createGraphDouble();
+    const futureGraph = new RemoteAudioGainGraph(futureAudio.options);
+    futureGraph.setMuted(true);
+    futureGraph.attach(document.createElement("audio"));
+    expect(futureAudio.output.muted).toBe(true);
+  });
+
   it("falls back safely when the browser cannot create the gain graph", async () => {
     class BrokenAudioContext {
       constructor() {
