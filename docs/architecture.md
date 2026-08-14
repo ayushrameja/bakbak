@@ -10,12 +10,13 @@ and phase completion belong in the numbered files under `docs/plans`.
 As of 2026-08-14, Bakbak has a complete local/mock product path and production
 Supabase and LiveKit adapters. The signed-in renderer uses an Arc-like
 two-track shell with no full app titlebar or contextual conversation header.
-A transparent native-safe overlay contributes one sidebar-close toggle at the
-visible sidebar's top-right edge, while the main canvas starts with a compact
-30 px drag strip that has no contextual text or actions. The overlay collapses
-to zero with the sidebar; `Cmd/Ctrl+B` or the native View menu restores it.
-macOS aligns native traffic lights inside the visible sidebar chrome and hides
-them with the sidebar; Windows keeps native
+A zero-width native-safe overlay contains no renderer controls, while the main
+canvas starts with a compact 30 px drag strip that has no contextual text or
+actions. The visible sidebar's bottom user dock places its close control
+directly after Settings; `Cmd/Ctrl+B` or the native View menu restores the
+sidebar after hiding. macOS aligns native traffic lights inside left-positioned
+sidebar chrome and otherwise leaves them on the platform-standard left edge;
+Windows keeps native
 Window Controls Overlay caption buttons on the platform-standard right edge.
 The Personal/Bakbak segmented switch lives at the top of the unified sidebar.
 Authentication and loading keep the same full-window geometry without adding
@@ -31,18 +32,20 @@ hidden titlebar with Window Controls Overlay and applies Mica on Windows 11
 22H2 or newer. Reduced-transparency, high-contrast, older Windows, browser, and
 unsupported environments use an opaque scheme-aware fallback. The native View
 menu owns `Cmd/Ctrl+B`; browser/mock uses the same renderer shortcut. The
-single platform-safe overlay control closes the visible sidebar and disappears
-with it; the native View menu and `Cmd/Ctrl+B` remain the restore paths.
+user-dock control closes the visible sidebar and disappears with it; the native
+View menu and `Cmd/Ctrl+B` remain the restore paths.
 macOS traffic-light visibility is main-process-owned and is reapplied after
 window focus, restore, and fullscreen return.
-The sidebar defaults to 280 px, resizes from 248–340 px, stays mounted but inert
-at zero width when hidden, and leaves a
+The sidebar defaults to 280 px on the left, can move to the right from
+Appearance Settings, resizes from 248–340 px on either side, stays mounted but
+inert at zero width when hidden, and leaves a
 420 px minimum conversation canvas while visible. Both tracks use the complete
 window without an outer inset; the conversation canvas has no shell border,
 radius, or shadow. Hiding the sidebar lets text, voice, or focused share fill
-the window without changing call state. Layout preferences v4 persist only
-`sidebarVisible` and `sidebarWidth`, migrate v3/v2 left-panel fields and v1
-visibility, and discard retired right-panel state. Settings remains a centred,
+the window without changing call state. Layout preferences v5 persist
+`sidebarVisible`, `sidebarWidth`, and `sidebarPosition`; migrate v4/v3/v2
+left-panel fields and v1 visibility; and discard retired right-panel state.
+Settings remains a centred,
 focus-trapped in-app modal with internal scrolling, active-call controls,
 confirmed logout, and account-scoped cache management.
 
@@ -676,14 +679,11 @@ architectural placeholder folders are not used.
 
 The renderer uses a native-overlay, two-track desktop layout and modal layer:
 
-1. No full renderer titlebar or contextual header remains. A transparent
-   absolute overlay contains one keyboard-described sidebar-close toggle at the
-   panel's top-right edge, is bounded to the sidebar width while open, and
-   collapses to zero while hidden. Its button owns a direct `no-drag` hit region
-   above the main strip.
-   macOS places its native traffic lights at the left of this sidebar chrome and
-   hides them when the sidebar closes; Windows keeps Window Controls Overlay on
-   the right. The main canvas contributes a 30 px, action-free drag strip so the
+1. No full renderer titlebar or contextual header remains. The signed-in
+   native-safe overlay is zero-width and contains no renderer controls.
+   macOS keeps native traffic lights on the platform-standard left edge (inside
+   the sidebar when it is left-positioned); Windows keeps Window Controls
+   Overlay on the right. The main canvas contributes a 30 px, action-free drag strip so the
    frameless window always has a predictable grab target. The native View menu
    and browser fallback expose the same `Cmd/Ctrl+B` action; blocking dialogs
    suppress the toggle.
@@ -700,10 +700,12 @@ The renderer uses a native-overlay, two-track desktop layout and modal layer:
    block, isolated leave action, and three equal camera/share/soundboard
    controls. The dock is a 56 px, cover-free Buzz-like identity row with a
    12 px rounded raised surface, profile trigger, semantic presence label, and
-   Settings/voice controls.
-   One resizer keeps the track within 248–340 px. The visible overlay control
-   closes it; at zero width no renderer control remains while the mounted slot
-   is `aria-hidden` and inert. `Cmd/Ctrl+B` or View → Toggle Sidebar restores it.
+   Settings/voice controls plus one adjacent keyboard-described sidebar-close
+   button. One resizer keeps the track within 248–340 px on either edge.
+   Appearance Settings can place the sidebar on the left or right without
+   changing its saved width or visibility. At zero width the dock control is
+   clipped and inaccessible with the mounted slot `aria-hidden` and inert.
+   `Cmd/Ctrl+B` or View → Toggle Sidebar restores it.
 3. Beneath the compact drag strip, the flexible solid canvas contains the text
    or voice conversation without a contextual top bar. Its accessible
    main-region name carries the selected
@@ -1016,13 +1018,15 @@ An invite-management UI is deferred until post-v1.
    shelf while retaining shared active-call and current-user footers. Settings
    remains an overlay. The last selected active server text channel or Personal
    DM is cached per account; voice rooms are never restored or auto-joined.
-3. Layout preferences v4 store only `sidebarVisible` and the sidebar's
-   248–340 px width. The two-track grid keeps at least 420 px for the canvas. A
+3. Layout preferences v5 store `sidebarVisible`, the sidebar's 248–340 px width,
+   and `sidebarPosition` (`left` or `right`). The two-track grid mirrors its
+   columns and resizer direction while keeping at least 420 px for the canvas. A
    9 px pointer target overlays the visual separator; keyboard resizing supports
-   arrows, Shift+arrows, Home/End, and reset. The native-safe overlay control,
-   View menu, and `Cmd/Ctrl+B` close or restore the mounted sidebar without
-   changing voice/share state. Migration reads v3/v2 left-side values and v1
-   visibility, then intentionally discards all retired right-panel state.
+   arrows, Shift+arrows, Home/End, and reset. The user-dock control, View menu,
+   and `Cmd/Ctrl+B` close or restore the mounted sidebar without changing
+   voice/share state. Migration reads v4, v3/v2 left-side values, and v1
+   visibility, defaults them to the left, then intentionally discards all
+   retired right-panel state.
 4. After Auth resolves the user ID, the renderer reads that account's
    normalized IndexedDB snapshot and may paint it as cached data. It then
    revalidates workspace, membership, profiles, DM summaries, unread state, and
@@ -1592,11 +1596,13 @@ Messages, Voice, Screen share, and Status enabled. Interface sounds lazily
 preload after the first pointer/keyboard interaction, use the Web Audio system
 destination, never queue blocked pre-gesture events, cap concurrency at three,
 throttle messages to 350 ms, batch remote roster churn for 250 ms, and cool
-failure alerts for two seconds. Sidebar visibility and width use
-`bakbak.layoutPreferences.v4`; v3/v2 migrate only their left-side values, v1
-migrates visibility with the default width, and retired right-side state is
-dropped. Malformed values restore the 280 px visible default, and widths are
-clamped to 248–340 px while leaving at least 420 px for canvas.
+failure alerts for two seconds. Sidebar visibility, width, and left/right
+position use `bakbak.layoutPreferences.v5`; v4 migrates visibility and width,
+v3/v2 migrate only their left-side values, v1 migrates visibility with the
+default width, and all legacy values default to the left while retired
+right-panel state is dropped. Malformed values restore the 280 px visible-left
+default, and widths are clamped to 248–340 px while leaving at least 420 px for
+canvas.
 All of these preferences are device-local and never part of the profile or
 Supabase schema.
 
@@ -1959,8 +1965,8 @@ that it has passed.
 
 ## Current limitations and deferred work
 
-- Plan 0036's native-overlay/full-bleed shell, layout v4 migration, compact
-  main-canvas drag strip, sidebar-scoped clickable toggle, macOS traffic-light
+- Plan 0036's native-overlay/full-bleed shell, layout v5 migration, compact
+  main-canvas drag strip, user-dock sidebar toggle, left/right placement, macOS traffic-light
   ownership, rounded user dock, permanently transparent sidebar slot,
   chrome-theme v2 Glass/gradient normalization, structured source failures, and typed
   microphone recovery are implemented. Installed macOS/Windows window-control,

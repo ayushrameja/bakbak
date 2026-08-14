@@ -2867,6 +2867,14 @@ export default function App() {
     screenShareDialogOpen ||
     membersOverlayOpen;
 
+  const hideSidebar = useCallback(() => {
+    if (blockingDialogOpen || hasBlockingModal()) return;
+    updateLayoutPreferences((current) => ({
+      ...current,
+      sidebarVisible: false,
+    }));
+  }, [blockingDialogOpen, updateLayoutPreferences]);
+
   useEffect(() => {
     // Electron owns this accelerator through the native View menu. Keeping a
     // renderer listener there can dispatch the same shortcut twice on some
@@ -2955,19 +2963,7 @@ export default function App() {
         <WindowTitlebar
           showSpaceSwitcher={showSpaceSwitcher}
           {...(showSpaceSwitcher
-            ? {
-                panelControls: {
-                  sidebarVisible: layoutPreferences.sidebarVisible,
-                  disabled: blockingDialogOpen,
-                  onToggleSidebar: () => {
-                    if (hasBlockingModal()) return;
-                    updateLayoutPreferences((current) => ({
-                      ...current,
-                      sidebarVisible: !current.sidebarVisible,
-                    }));
-                  },
-                },
-              }
+            ? { sidebarVisible: layoutPreferences.sidebarVisible }
             : {})}
         />
         <div className="app-frame__content">{content}</div>
@@ -3068,6 +3064,7 @@ export default function App() {
       className="desktop-shell"
       style={shellStyle}
       data-left-panel={layoutPreferences.sidebarVisible ? "visible" : "hidden"}
+      data-sidebar-position={layoutPreferences.sidebarPosition}
       data-space-direction={spaceTransitionDirection ?? undefined}
     >
       <div
@@ -3115,6 +3112,9 @@ export default function App() {
                 setChannelDialog({ mode: "rename", channel });
               }}
               onOpenSettings={() => openSettings("profile")}
+              sidebarPosition={layoutPreferences.sidebarPosition}
+              sidebarToggleDisabled={blockingDialogOpen}
+              onHideSidebar={hideSidebar}
               soundboardOpen={soundboardOpen}
               onToggleSoundboard={toggleSoundboard}
               onOpenScreenShare={openScreenShare}
@@ -3137,6 +3137,9 @@ export default function App() {
               onSelect={handleSelectConversation}
               onStartConversation={handleStartConversation}
               onOpenSettings={() => openSettings("profile")}
+              sidebarPosition={layoutPreferences.sidebarPosition}
+              sidebarToggleDisabled={blockingDialogOpen}
+              onHideSidebar={hideSidebar}
               soundboardOpen={soundboardOpen}
               onToggleSoundboard={toggleSoundboard}
               onOpenScreenShare={openScreenShare}
@@ -3159,7 +3162,7 @@ export default function App() {
       </div>
       <PanelResizer
         label="Resize navigation panel"
-        side="left"
+        side={layoutPreferences.sidebarPosition}
         enabled={layoutPreferences.sidebarVisible}
         value={sidebarWidth}
         minimum={MIN_SIDE_PANEL_WIDTH}
@@ -3464,6 +3467,7 @@ export default function App() {
           microphoneProcessingState={voice.microphoneProcessingState}
           interfaceSoundPreferences={interfaceSoundPreferences}
           appearancePreference={appearancePreference}
+          sidebarPosition={layoutPreferences.sidebarPosition}
           sidebarThemePreferences={sidebarThemePreferences}
           cacheStats={cacheStats}
           dataFreshness={dataFreshness}
@@ -3510,6 +3514,12 @@ export default function App() {
             handleInterfaceSoundPreferencesChange
           }
           onAppearancePreferenceChange={handleAppearancePreferenceChange}
+          onSidebarPositionChange={(sidebarPosition) =>
+            updateLayoutPreferences((current) => ({
+              ...current,
+              sidebarPosition,
+            }))
+          }
           onSidebarThemePreferencesChange={handleSidebarThemePreferencesChange}
           onClearCachedData={handleClearCachedData}
           onPreviewInterfaceSound={(category) =>

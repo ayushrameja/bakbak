@@ -15,6 +15,7 @@ import { SidebarVoicePanel } from "../voice/SidebarVoicePanel";
 import { SidebarUserDock } from "../voice/SidebarUserDock";
 import type { useVoiceRoom } from "../voice/useVoiceRoom";
 import type { AppSpace } from "../server/app-space";
+import type { SidebarPosition } from "../settings/layout-preferences";
 import {
   useEffect,
   useRef,
@@ -32,6 +33,9 @@ interface PersonalSidebarProps {
   onSelect: (conversation: DirectConversation) => void;
   onStartConversation: (member: ServerMember) => Promise<void>;
   onOpenSettings: () => void;
+  sidebarPosition: SidebarPosition;
+  sidebarToggleDisabled: boolean;
+  onHideSidebar: () => void;
   soundboardOpen: boolean;
   onToggleSoundboard: () => void;
   onOpenScreenShare: () => void;
@@ -59,6 +63,9 @@ export function PersonalSidebar({
   onSelect,
   onStartConversation,
   onOpenSettings,
+  sidebarPosition,
+  sidebarToggleDisabled,
+  onHideSidebar,
   soundboardOpen,
   onToggleSoundboard,
   onOpenScreenShare,
@@ -202,6 +209,9 @@ export function PersonalSidebar({
         onOpenUserContextMenu={onOpenUserContextMenu}
         openProfileId={openProfileId}
         onOpenSettings={onOpenSettings}
+        sidebarPosition={sidebarPosition}
+        sidebarToggleDisabled={sidebarToggleDisabled}
+        onHideSidebar={onHideSidebar}
       />
       {pickerOpen ? (
         <div

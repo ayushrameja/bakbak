@@ -26,6 +26,7 @@ import type {
   VoiceRoomOccupant,
 } from "../../lib/types";
 import type { AppSpace } from "../server/app-space";
+import type { SidebarPosition } from "../settings/layout-preferences";
 import { MemberCoverPoster } from "../server/MemberPanel";
 import { MembersOverlay } from "../server/MembersOverlay";
 import { selectActivityPreview } from "../server/member-presence";
@@ -66,6 +67,9 @@ interface ChannelSidebarProps {
   onCreateChannel: (kind: ChannelKind) => void;
   onRenameChannel: (channel: Channel) => void;
   onOpenSettings: () => void;
+  sidebarPosition: SidebarPosition;
+  sidebarToggleDisabled: boolean;
+  onHideSidebar: () => void;
   soundboardOpen: boolean;
   onToggleSoundboard: () => void;
   onOpenScreenShare: () => void;
@@ -101,6 +105,9 @@ export function ChannelSidebar({
   onCreateChannel,
   onRenameChannel,
   onOpenSettings,
+  sidebarPosition,
+  sidebarToggleDisabled,
+  onHideSidebar,
   soundboardOpen,
   onToggleSoundboard,
   onOpenScreenShare,
@@ -467,6 +474,9 @@ export function ChannelSidebar({
         onOpenUserContextMenu={onOpenUserContextMenu}
         openProfileId={openProfileId}
         onOpenSettings={onOpenSettings}
+        sidebarPosition={sidebarPosition}
+        sidebarToggleDisabled={sidebarToggleDisabled}
+        onHideSidebar={onHideSidebar}
       />
 
       {membersDialogOpen ? (

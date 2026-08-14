@@ -51,15 +51,16 @@ starts with context instead of archaeological guessing.
   with independent 20–100% transparency and a 100% Glass default. No full renderer titlebar or
   contextual top bar remains; a compact 30 px main-canvas drag strip provides
   a reliable grab target.
-  macOS aligns native traffic lights inside the visible sidebar and hides them
-  with it. Main-process state reapplies their visibility across focus, restore,
-  and fullscreen return. Windows uses Window Controls Overlay on the right, and
-  a native-safe overlay supplies one manual sidebar-close control at the visible
-  sidebar's top-right edge. `Cmd/Ctrl+B` or View → Toggle Sidebar restores it
-  after hiding. The 280 px default
-  unified sidebar resizes within 248–340 px, stays mounted and inert at zero
-  width, and reveals a borderless full-window text/voice/share canvas when
-  hidden. Settings remains centered, the sidebar retains its call block, and
+  macOS keeps native traffic lights on the standard left edge—inside the
+  sidebar when it is left-positioned—and hides them with the sidebar.
+  Main-process state reapplies their visibility across focus, restore, and
+  fullscreen return. Windows uses Window Controls Overlay on the right, and
+  the signed-in native-safe overlay stays empty. One close control sits after
+  Settings in the bottom user dock. `Cmd/Ctrl+B` or View → Toggle Sidebar
+  restores it after hiding. The 280 px default unified sidebar resizes within
+  248–340 px, can persist on the left or right from Appearance Settings, stays
+  mounted and inert at zero width, and reveals a borderless full-window
+  text/voice/share canvas when hidden. Settings remains centered, the sidebar retains its call block, and
   the global voice dock remains auto-hiding. The renderer uses locally bundled
   Inter Variable at 400–700 weights. A separate multi-server rail remains
   deferred until multi-server navigation. Plan 0020 adds one bounded Bakbak
@@ -314,10 +315,11 @@ above-avatar action tooltip; LIVE alone opens a control-free share stage whose
 media returns to people, with no participant expansion or renderer fullscreen.
 
 Plan 0036 replaces plans 0034/0035's two visible header rows with a native-safe
-Arc-like shell. macOS keeps sidebar-scoped native traffic lights; Windows uses
-Window Controls Overlay. One overlay control, the native View menu, and `Cmd/Ctrl+B` manually
-toggle the mounted sidebar without changing call/share state. Layout v4
-persists its visibility and width, migrates v3/v2/v1, and lets the borderless
+Arc-like shell. macOS keeps native traffic lights; Windows uses Window Controls
+Overlay. One user-dock control, the native View menu, and `Cmd/Ctrl+B` manually
+toggle the mounted sidebar without changing call/share state. Layout v5
+persists its visibility, width, and left/right position, migrates v4/v3/v2/v1,
+and lets the borderless
 conversation or focused-share canvas fill the window when hidden.
 Plan 0036 also supersedes the 2026-08-09 untouched gradient default and
 one-time setup prompt. Account-scoped chrome-theme v2 defaults both spaces to
@@ -336,6 +338,9 @@ A third 2026-08-14 follow-up makes the sidebar toggle a direct clickable
 no-drag target inside the visible sidebar, removes it with the hidden sidebar,
 aligns and hides macOS traffic lights with the sidebar, promotes untouched 45%
 Glass records to the new 100% default, and rounds the current-user dock.
+A fourth follow-up moves that toggle beside Settings in the user dock, leaves
+the signed-in overlay empty, and adds a persisted Appearance choice that mirrors
+the sidebar and its resizer to the right like an editor navigation rail.
 Finally, plan 0036 adds typed microphone/screen permission snapshots and
 structured source-enumeration failures. macOS recovery can open the correct
 Privacy Settings and request restart; Windows microphone recovery targets the
@@ -592,7 +597,7 @@ NSIS invocation so the handoff does not create a second application location.
 - [ ] Complete plan 0035's light/dark two-resolution and installed
       macOS/Windows multi-client visual/interaction acceptance matrix.
 - [x] Implement plan 0036's native-overlay shell, Windows Window Controls
-      Overlay, native View-menu shortcut, layout v4 migration, mounted/inert
+      Overlay, native View-menu shortcut, layout v5 migration, mounted/inert
       sidebar toggle, accessible main naming, and hidden-sidebar/focused-share
       full-bleed behavior.
 - [x] Migrate plan 0036 chrome themes to account-scoped v2, make Glass the
@@ -606,6 +611,9 @@ NSIS invocation so the handoff does not create a second application location.
       overlay when hidden, retain `Cmd/Ctrl+B` and View-menu restoration, align
       and sidebar-scope macOS traffic lights, make 100% the Glass default, and
       give the current-user dock a rounded raised surface.
+- [x] Move the sidebar toggle beside Settings, keep the signed-in overlay empty,
+      and add persisted left/right sidebar placement with a mirrored resizer and
+      layout v5 migration.
 - [x] Add plan 0036's typed microphone/screen permission bridge, explicit
       capture-action prompt boundary, structured source/capability failures,
       and platform-correct settings/restart recovery.

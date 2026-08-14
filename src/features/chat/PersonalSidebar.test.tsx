@@ -51,6 +51,9 @@ function renderSidebar() {
       onSelect={vi.fn()}
       onStartConversation={vi.fn().mockResolvedValue(undefined)}
       onOpenSettings={vi.fn()}
+      sidebarPosition="left"
+      sidebarToggleDisabled={false}
+      onHideSidebar={vi.fn()}
       soundboardOpen={false}
       onToggleSoundboard={vi.fn()}
       onOpenScreenShare={vi.fn()}

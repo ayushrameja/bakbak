@@ -5816,6 +5816,10 @@ body {
   gap: 10px;
 }
 
+.sidebar-position-picker > div {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .appearance-theme-picker label {
   position: relative;
   min-width: 0;
@@ -13736,17 +13740,6 @@ textarea {
   display: none;
 }
 
-.titlebar-panel-controls,
-.window-titlebar__leading .titlebar-panel-controls {
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  left: auto;
-  padding: 0;
-  pointer-events: auto;
-  -webkit-app-region: no-drag;
-}
-
 .window-titlebar[data-platform="windows"] {
   top: env(titlebar-area-y, 0px);
   right: auto;
@@ -13754,21 +13747,9 @@ textarea {
   width: env(titlebar-area-width, 100%);
 }
 
-.window-titlebar[data-shell="true"] {
+.app-frame[data-space] .window-titlebar[data-shell="true"] {
   left: 0;
-  transition: width 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-.window-titlebar[data-shell="true"][data-sidebar-visible="true"] {
-  width: min(var(--context-panel-width, 280px), 100%);
-}
-
-.window-titlebar[data-shell="true"][data-sidebar-visible="false"] {
   width: 0;
-}
-
-html.is-panel-resizing .window-titlebar[data-shell="true"] {
-  transition: none !important;
 }
 
 .window-controls-overlay-scrim {
@@ -13783,25 +13764,16 @@ html.is-panel-resizing .window-titlebar[data-shell="true"] {
   pointer-events: none;
 }
 
-.titlebar-panel-controls > button,
-.app-frame[data-space] .titlebar-panel-controls > button {
-  position: relative;
-  z-index: 2;
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--conversation-border, var(--line));
-  border-radius: 9px;
-  color: var(--text);
-  background: var(--conversation-raised, var(--panel));
-  box-shadow: none;
-  pointer-events: auto;
-  -webkit-app-region: no-drag;
-}
-
 .app-frame[data-space] .desktop-shell,
 .app-frame[data-space] .desktop-shell[data-left-panel] {
   height: 100%;
   padding: 0;
+}
+
+.app-frame[data-space]
+  .desktop-shell
+  > :is(.panel-slot--left, .panel-resizer, .content-shell) {
+  grid-row: 1;
 }
 
 .app-frame[data-space] .channel-sidebar {
@@ -13830,6 +13802,43 @@ html.is-panel-resizing .window-titlebar[data-shell="true"] {
   background: transparent;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
+}
+
+.app-frame[data-space] .desktop-shell[data-sidebar-position="right"] {
+  grid-template-columns:
+    minmax(420px, 1fr) var(--left-divider-track)
+    var(--left-panel-track);
+}
+
+.app-frame[data-space]
+  .desktop-shell[data-sidebar-position="right"]
+  .panel-slot--left {
+  grid-column: 3;
+}
+
+.app-frame[data-space]
+  .desktop-shell[data-sidebar-position="right"]
+  .panel-slot__motion--left {
+  transform-origin: right center;
+}
+
+.app-frame[data-space]
+  .desktop-shell[data-sidebar-position="right"]
+  .panel-slot[data-visible="false"]
+  .panel-slot__motion--left {
+  transform: translateX(10px);
+}
+
+.app-frame[data-space]
+  .desktop-shell[data-sidebar-position="right"]
+  .panel-resizer {
+  grid-column: 2;
+}
+
+.app-frame[data-space]
+  .desktop-shell[data-sidebar-position="right"]
+  .content-shell {
+  grid-column: 1;
 }
 
 .app-frame[data-space] .user-dock {

@@ -189,8 +189,11 @@ describe("App navigation state", () => {
     expect(
       screen
         .getByRole("button", { name: "Hide sidebar" })
-        .closest(".window-titlebar"),
+        .closest(".user-dock"),
     ).not.toBeNull();
+    expect(
+      document.querySelector(".window-titlebar [aria-label='Hide sidebar']"),
+    ).toBeNull();
     expect(document.querySelector(".top-bar")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Hide sidebar" }));
     expect(shell).toHaveAttribute("data-left-panel", "hidden");
@@ -220,6 +223,35 @@ describe("App navigation state", () => {
     );
     expect(screen.getByRole("button", { name: "Hide sidebar" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: /member panel/i })).toBeNull();
+  });
+
+  it("moves and persists the sidebar on the right", async () => {
+    const first = render(<App />);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Enter the preview" }),
+    );
+
+    const shell = document.querySelector(".desktop-shell");
+    expect(shell).toHaveAttribute("data-sidebar-position", "left");
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await userEvent.click(screen.getByRole("button", { name: "Appearance" }));
+    await userEvent.click(screen.getByRole("radio", { name: /Right/ }));
+    expect(shell).toHaveAttribute("data-sidebar-position", "right");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Close settings" }),
+    );
+    expect(document.querySelector(".panel-resizer--right")).not.toBeNull();
+    expect(document.querySelector(".panel-resizer--left")).toBeNull();
+
+    first.unmount();
+    render(<App />);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Enter the preview" }),
+    );
+    expect(document.querySelector(".desktop-shell")).toHaveAttribute(
+      "data-sidebar-position",
+      "right",
+    );
   });
 
   it("toggles the mounted sidebar with Cmd/Ctrl+B outside dialogs", async () => {

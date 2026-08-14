@@ -12,15 +12,18 @@ with typed macOS and Windows recovery.
 
 - Remove both the full app-owned titlebar and contextual conversation top bar;
   keep only a compact, action-free drag strip at the top of the main canvas.
-- Keep native macOS traffic lights aligned inside the visible sidebar chrome
-  and hide them with that sidebar. Use Windows Window Controls Overlay on its
-  platform-standard right edge.
+- Keep native macOS traffic lights on the platform-standard left edge—inside
+  the sidebar when it is left-positioned—and hide them with that sidebar. Use
+  Windows Window Controls Overlay on its platform-standard right edge.
 - Keep the sidebar visible by default, preserve its 248–340 px width, and let
-  one platform-safe overlay control close it from its top-right edge while
-  visible. Remove that renderer control and collapse its overlay to zero with
-  the hidden sidebar. Give the visible button a direct no-drag hit region; View
-  → Toggle Sidebar and `Cmd/Ctrl+B` restore it. Calls never change sidebar
+  one control directly after Settings in the bottom user dock close it while
+  visible. Keep the signed-in native-safe overlay empty and zero-width. View →
+  Toggle Sidebar and `Cmd/Ctrl+B` restore it. Calls never change sidebar
   visibility automatically.
+- Default the sidebar to the left, let Appearance Settings move it to the right,
+  mirror the resizer direction, and persist the position without changing its
+  saved width or visibility. Native caption buttons remain on their
+  platform-standard edge.
 - A hidden sidebar is mounted but inert at zero width. Its solid conversation
   canvas becomes borderless and fills the complete window; a focused share
   fills that canvas while people view retains useful padding.
@@ -61,6 +64,9 @@ with typed macOS and Windows recovery.
       hidden state, make the toggle an explicit clickable no-drag region, align
       and sidebar-scope macOS traffic lights, default Glass to 100%, and round
       the current-user dock.
+- [x] Move the close toggle beside Settings in the user dock, leave the
+      signed-in overlay empty, and migrate layout preferences to v5 with a
+      persisted left/right sidebar position and mirrored resizer.
 - [x] Add vibrancy/Mica/fallback capability reporting, opaque startup, glass
       tokens, and accessibility fallbacks without filtering live media.
 - [x] Complete formatting, lint, typecheck, unit/source-contract, production

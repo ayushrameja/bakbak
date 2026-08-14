@@ -1,5 +1,4 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BakbakDesktopBridge } from "../lib/desktop-runtime";
 import { WindowTitlebar } from "./WindowTitlebar";
@@ -24,7 +23,9 @@ describe("WindowTitlebar", () => {
   );
 
   it("renders only a non-layout drag region before the signed-in shell", () => {
-    const { container } = renderTitlebar("macos");
+    const { container } = render(
+      <WindowTitlebar showSpaceSwitcher={false} platform="macos" />,
+    );
     expect(container.querySelector(".window-titlebar__drag")).not.toBeNull();
     expect(container.querySelector("header")).toBeNull();
     expect(
@@ -39,41 +40,26 @@ describe("WindowTitlebar", () => {
     );
   });
 
-  it("keeps one keyboard-described sidebar visibility control", async () => {
-    const onToggleSidebar = vi.fn();
-    render(
-      <WindowTitlebar
-        showSpaceSwitcher
-        panelControls={{
-          sidebarVisible: true,
-          disabled: false,
-          onToggleSidebar,
-        }}
-        platform="web"
-      />,
+  it("keeps the signed-in titlebar overlay free of controls", () => {
+    const { container } = render(
+      <WindowTitlebar showSpaceSwitcher sidebarVisible platform="web" />,
     );
 
-    const toggle = screen.getByRole("button", { name: "Hide sidebar" });
-    expect(toggle.closest(".window-titlebar")).toHaveAttribute(
+    expect(container.querySelector(".window-titlebar")).toHaveAttribute(
       "data-sidebar-visible",
       "true",
     );
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(toggle).toHaveAttribute("aria-keyshortcuts", "Meta+B Control+B");
-    expect(toggle).toHaveAttribute("aria-controls", "context-panel");
-    await userEvent.click(toggle);
-    expect(onToggleSidebar).toHaveBeenCalledOnce();
+    expect(
+      screen.queryByRole("group", { name: "Sidebar controls" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Hide sidebar" })).toBeNull();
   });
 
-  it("removes the sidebar control when the sidebar is hidden", () => {
+  it("retains hidden state without adding a reopen control", () => {
     const { container } = render(
       <WindowTitlebar
         showSpaceSwitcher
-        panelControls={{
-          sidebarVisible: false,
-          disabled: false,
-          onToggleSidebar: vi.fn(),
-        }}
+        sidebarVisible={false}
         platform="macos"
       />,
     );
@@ -95,16 +81,7 @@ describe("WindowTitlebar", () => {
       window: { setWindowControlsVisible },
     } as unknown as BakbakDesktopBridge;
 
-    render(
-      <WindowTitlebar
-        showSpaceSwitcher
-        panelControls={{
-          sidebarVisible: false,
-          disabled: false,
-          onToggleSidebar: vi.fn(),
-        }}
-      />,
-    );
+    render(<WindowTitlebar showSpaceSwitcher sidebarVisible={false} />);
 
     await waitFor(() =>
       expect(setWindowControlsVisible).toHaveBeenCalledWith(false),

@@ -10,6 +10,8 @@ import {
   Mic2,
   Moon,
   Palette,
+  PanelLeft,
+  PanelRight,
   Play,
   RefreshCw,
   Square,
@@ -39,6 +41,7 @@ import type { CacheStats, DataFreshness } from "../../lib/local-cache";
 import { registerGiphyAction, type GiphyAsset } from "../../lib/giphy-service";
 import { resolveGiphyProfileMedia } from "../../lib/profile-giphy-media";
 import type { AppearancePreference } from "./appearance-preferences";
+import type { SidebarPosition } from "./layout-preferences";
 import {
   AVATAR_BUCKET,
   COVER_BUCKET,
@@ -108,6 +111,7 @@ interface SettingsPageProps {
   microphoneProcessingState: MicrophoneProcessingState;
   interfaceSoundPreferences: InterfaceSoundPreferences;
   appearancePreference: AppearancePreference;
+  sidebarPosition: SidebarPosition;
   sidebarThemePreferences: SidebarThemePreferences;
   cacheStats?: CacheStats;
   dataFreshness?: DataFreshness;
@@ -138,6 +142,7 @@ interface SettingsPageProps {
     preferences: InterfaceSoundPreferences,
   ) => void;
   onAppearancePreferenceChange: (preference: AppearancePreference) => void;
+  onSidebarPositionChange: (position: SidebarPosition) => void;
   onSidebarThemePreferencesChange: (
     preferences: SidebarThemePreferences,
   ) => void;
@@ -351,6 +356,8 @@ export function SettingsPage(props: SettingsPageProps) {
               <AppearanceSettings
                 preference={props.appearancePreference}
                 onChange={props.onAppearancePreferenceChange}
+                sidebarPosition={props.sidebarPosition}
+                onSidebarPositionChange={props.onSidebarPositionChange}
                 sidebarThemes={props.sidebarThemePreferences}
                 onSidebarThemesChange={props.onSidebarThemePreferencesChange}
               />
@@ -2057,11 +2064,15 @@ const APPEARANCE_OPTIONS: ReadonlyArray<{
 function AppearanceSettings({
   preference,
   onChange,
+  sidebarPosition,
+  onSidebarPositionChange,
   sidebarThemes,
   onSidebarThemesChange,
 }: {
   preference: AppearancePreference;
   onChange: (preference: AppearancePreference) => void;
+  sidebarPosition: SidebarPosition;
+  onSidebarPositionChange: (position: SidebarPosition) => void;
   sidebarThemes: SidebarThemePreferences;
   onSidebarThemesChange: (preferences: SidebarThemePreferences) => void;
 }) {
@@ -2097,6 +2108,39 @@ function AppearanceSettings({
               </span>
             </label>
           ))}
+        </div>
+      </fieldset>
+      <fieldset className="appearance-theme-picker sidebar-position-picker">
+        <legend>Sidebar position</legend>
+        <div>
+          <label className={sidebarPosition === "left" ? "is-selected" : ""}>
+            <input
+              type="radio"
+              name="sidebar-position"
+              value="left"
+              checked={sidebarPosition === "left"}
+              onChange={() => onSidebarPositionChange("left")}
+            />
+            <PanelLeft size={19} aria-hidden="true" />
+            <span>
+              <strong>Left</strong>
+              <small>Navigation before chat</small>
+            </span>
+          </label>
+          <label className={sidebarPosition === "right" ? "is-selected" : ""}>
+            <input
+              type="radio"
+              name="sidebar-position"
+              value="right"
+              checked={sidebarPosition === "right"}
+              onChange={() => onSidebarPositionChange("right")}
+            />
+            <PanelRight size={19} aria-hidden="true" />
+            <span>
+              <strong>Right</strong>
+              <small>Chat leads, navigation follows</small>
+            </span>
+          </label>
         </div>
       </fieldset>
       <div className="appearance-sidebar-themes">

@@ -7842,3 +7842,54 @@ supabase/functions/livekit-token/index.ts` — passed.
   ad-hoc macOS package is intentionally not notarized.
 - **Next:** Confirm the clean hidden state once in the refreshed desktop app,
   then run the outstanding Windows x64 WCO/Mica/scaling acceptance matrix.
+
+## 2026-08-14 — Move the sidebar control and add right-side placement
+
+- **Completed:** Removed the signed-in renderer control from the empty
+  titlebar overlay and placed the sidebar-close button directly after Settings
+  in the bottom user dock. Added an Appearance Settings choice for Left or
+  Right navigation, mirrored the grid track, hidden-state motion, and resizer
+  direction, and persisted the position through layout preferences v5. The v5
+  parser migrates v4 visibility/width and every older layout to the safe left
+  default while retaining the existing 248–340 px clamp and keyboard/menu
+  restore paths.
+- **Decisions:** Kept Left as the default and made placement device-local rather
+  than account-scoped. Kept native caption buttons on their platform-standard
+  edge; on macOS the traffic lights coincide with the sidebar only when it is
+  left-positioned. Retained the mounted/inert zero-width sidebar so voice,
+  share, drafts, and selected context do not remount during collapse.
+- **Validation:**
+  - Focused Vitest — passed 7 files / 81 tests covering v5 migration, empty
+    titlebar chrome, dock control semantics, both sidebar compositions,
+    Appearance selection, app placement persistence, and collapse behavior.
+  - `node --test scripts/glass-shell.test.mjs scripts/window-chrome-config.test.mjs`
+    — passed 10/10 Arc shell and native chrome contracts during the focused
+    pass.
+  - Browser/mock interaction at 1280×720 — passed left and right full-height
+    geometry, Settings/toggle adjacency, zero titlebar controls, right-side
+    collapse to a 1280 px canvas, `Cmd+B` restoration, reversed keyboard
+    resizing, and right-side persistence after reload. The pass exposed and
+    fixed an initial CSS Grid auto-row split before acceptance.
+  - Full direct check equivalents — passed formatting, zero-warning lint,
+    renderer/Node/Electron strict TypeScript, 90 Vitest files / 538 tests, all
+    56 Node source-contract tests, and version validation at `1.7.2`.
+  - `./node_modules/.bin/vite build` — passed the production renderer build;
+    the existing large-chunk warning remains non-blocking.
+  - `./node_modules/.bin/electron-builder --publish never` — the sandboxed
+    attempt failed because GitHub DNS was unavailable; the approved network
+    retry passed native rebuild, Electron download, ad-hoc signing, Apple
+    Silicon ZIP/DMG generation, and both block maps. Notarization remained
+    skipped without credentials.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist`,
+    `electron-dist`, and `release`.
+  - `git diff --check` and the added-line secret-pattern audit — passed.
+- **Documentation updated:** Updated the current shell/layout contract in
+  `docs/architecture.md`, plan 0036, the active v1 plan, and this canonical log.
+- **Known limitations:** The global pnpm shim again produced no output for the
+  wrapper checks before the bounded wait, so their exact local binaries ran and
+  passed instead. Installed Windows x64 right-sidebar WCO behavior and packaged
+  macOS traffic-light/drag observation remain open; the macOS package remains
+  intentionally ad-hoc signed and unnotarized.
+- **Next:** Confirm left/right placement, collapse/restore, resizer direction,
+  and native caption controls in refreshed installed macOS and Windows builds,
+  then complete plan 0036's outstanding native acceptance matrix.

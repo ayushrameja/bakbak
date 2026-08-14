@@ -1,24 +1,18 @@
-import { PanelLeftClose } from "lucide-react";
 import { useEffect } from "react";
 import { getDesktopBridge } from "../lib/desktop-runtime";
 
 interface WindowTitlebarProps {
   showSpaceSwitcher: boolean;
-  panelControls?: {
-    sidebarVisible: boolean;
-    disabled: boolean;
-    onToggleSidebar: () => void;
-  };
+  sidebarVisible?: boolean;
   platform?: "macos" | "windows" | "web";
 }
 
 export function WindowTitlebar({
   showSpaceSwitcher,
-  panelControls,
+  sidebarVisible = false,
   platform,
 }: WindowTitlebarProps) {
   const runtimePlatform = platform ?? getDesktopBridge()?.platform ?? "web";
-  const sidebarVisible = panelControls?.sidebarVisible ?? false;
 
   useEffect(() => {
     const desktopWindow = getDesktopBridge()?.window;
@@ -47,32 +41,10 @@ export function WindowTitlebar({
         data-platform={runtimePlatform}
         data-shell={showSpaceSwitcher ? "true" : "false"}
         data-sidebar-visible={
-          showSpaceSwitcher && panelControls
-            ? String(sidebarVisible)
-            : undefined
+          showSpaceSwitcher ? String(sidebarVisible) : undefined
         }
       >
         <span className="window-titlebar__drag" aria-hidden="true" />
-        {panelControls?.sidebarVisible ? (
-          <div
-            className="titlebar-panel-controls"
-            role="group"
-            aria-label="Sidebar controls"
-          >
-            <button
-              type="button"
-              aria-label="Hide sidebar"
-              aria-controls="context-panel"
-              aria-expanded="true"
-              aria-keyshortcuts="Meta+B Control+B"
-              title="Hide sidebar (Cmd/Ctrl+B)"
-              disabled={panelControls.disabled}
-              onClick={panelControls.onToggleSidebar}
-            >
-              <PanelLeftClose size={18} />
-            </button>
-          </div>
-        ) : null}
       </div>
     </>
   );

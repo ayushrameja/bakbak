@@ -195,35 +195,13 @@ test("signed-in shell uses a transparent sidebar and draggable canvas header", (
   );
   assert.match(
     arcShell,
-    /data-sidebar-visible="true"[\s\S]*?--context-panel-width/,
+    /\.window-titlebar\[data-shell="true"\][\s\S]*?width:\s*0/,
   );
-  assert.match(arcShell, /data-sidebar-visible="false"[\s\S]*?width:\s*0/);
-  assert.match(titlebar, /panelControls\?\.sidebarVisible/);
+  assert.match(titlebar, /sidebarVisible = false/);
   assert.doesNotMatch(titlebar, /PanelLeftOpen|Show sidebar/);
-  assert.match(
-    arcShell,
-    /\.titlebar-panel-controls > button,[\s\S]*?-webkit-app-region:\s*no-drag/,
-  );
-  assert.match(
-    arcShell,
-    /\.titlebar-panel-controls,[\s\S]*?right:\s*10px;[\s\S]*?left:\s*auto/,
-  );
-  assert.match(
-    arcShell,
-    /data-shell="true"\]\[data-sidebar-visible="true"\][\s\S]*?width:\s*min\(var\(--context-panel-width, 280px\), 100%\)/,
-  );
-  assert.match(
-    arcShell,
-    /\.window-titlebar\[data-shell="true"\][\s\S]*?transition:\s*width 220ms/,
-  );
-  assert.doesNotMatch(
-    arcShell,
-    /data-platform="windows"\] \.titlebar-panel-controls/,
-  );
-  assert.doesNotMatch(
-    arcShell,
-    /data-platform="macos"\] \.titlebar-panel-controls[\s\S]*?left:\s*92px/,
-  );
+  assert.doesNotMatch(titlebar, /titlebar-panel-controls|Hide sidebar/);
+  assert.match(sidebarUserDock, /aria-label="Hide sidebar"/);
+  assert.match(sidebarUserDock, /PanelLeftClose|PanelRightClose/);
   assert.match(
     arcShell,
     /\.app-frame\[data-space\] \.user-dock\s*\{[\s\S]*?border-radius:\s*12px/,
@@ -247,6 +225,15 @@ test("signed-in shell uses a transparent sidebar and draggable canvas header", (
   assert.match(app, /className="panel-slot panel-slot--left"/);
   assert.doesNotMatch(app, /panel-slot--right/);
   assert.doesNotMatch(app, /rightPanelVisible|rightPanelWidth/);
+  assert.match(
+    app,
+    /data-sidebar-position=\{layoutPreferences\.sidebarPosition\}/,
+  );
+  assert.match(app, /side=\{layoutPreferences\.sidebarPosition\}/);
+  assert.match(
+    arcShell,
+    /data-sidebar-position="right"[\s\S]*?grid-template-columns:[\s\S]*?minmax\(420px, 1fr\)[\s\S]*?var\(--left-panel-track\)/,
+  );
   assert.match(app, /enabled=\{layoutPreferences\.sidebarVisible\}/);
   assert.match(
     styles,
@@ -266,7 +253,8 @@ test("native overlay chrome, directional motion, and scroll activity retain thei
     titlebar,
     /<span className="window-titlebar__drag" aria-hidden="true" \/>/,
   );
-  assert.match(titlebar, /titlebar-panel-controls/);
+  assert.doesNotMatch(titlebar, /titlebar-panel-controls|Hide sidebar/);
+  assert.match(sidebarUserDock, /aria-label="Hide sidebar"/);
   assert.match(titlebar, /data-sidebar-visible=/);
   assert.doesNotMatch(titlebar, /Window controls|Minimize window|Close window/);
   assert.doesNotMatch(app, /<TopBar|function TopBar/);
@@ -300,15 +288,11 @@ test("native overlay chrome, directional motion, and scroll activity retain thei
     styles,
     /\.window-titlebar__drag\s*\{[\s\S]*?-webkit-app-region:\s*drag/,
   );
-  assert.match(
-    styles,
-    /\.titlebar-panel-controls,[\s\S]*?-webkit-app-region:\s*no-drag/,
-  );
   const windowsOverlayStart = styles.indexOf(
     '.window-titlebar[data-platform="windows"]',
   );
   const windowsOverlayEnd = styles.indexOf(
-    ".titlebar-panel-controls > button",
+    ".app-frame[data-space] .desktop-shell,",
     windowsOverlayStart,
   );
   assert.notEqual(windowsOverlayStart, -1);

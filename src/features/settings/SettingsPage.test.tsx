@@ -118,6 +118,7 @@ function renderSettings(
       },
     },
     appearancePreference: "auto",
+    sidebarPosition: "left",
     sidebarThemePreferences: structuredClone(DEFAULT_SIDEBAR_THEME_PREFERENCES),
     inputError: null,
     outputError: null,
@@ -142,6 +143,7 @@ function renderSettings(
     onMacosKeepOtherAudioFullVolumeChange: vi.fn(),
     onInterfaceSoundPreferencesChange: vi.fn(),
     onAppearancePreferenceChange: vi.fn(),
+    onSidebarPositionChange: vi.fn(),
     onSidebarThemePreferencesChange: vi.fn(),
     onPreviewInterfaceSound: vi.fn(),
     onToggleMute: vi.fn(),
@@ -1064,10 +1066,12 @@ describe("SettingsPage", () => {
 
   it("changes the app theme and each space chrome independently", async () => {
     const onAppearancePreferenceChange = vi.fn();
+    const onSidebarPositionChange = vi.fn();
     const onSidebarThemePreferencesChange =
       vi.fn<(preferences: SidebarThemePreferences) => void>();
     const { props, rerender } = renderSettings("appearance", {
       onAppearancePreferenceChange,
+      onSidebarPositionChange,
       onSidebarThemePreferencesChange,
     });
 
@@ -1077,6 +1081,9 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("radio", { name: /Light/ })).not.toBeChecked();
     await userEvent.click(screen.getByRole("radio", { name: /Dark/ }));
     expect(onAppearancePreferenceChange).toHaveBeenCalledWith("dark");
+    expect(screen.getByRole("radio", { name: /Left/ })).toBeChecked();
+    await userEvent.click(screen.getByRole("radio", { name: /Right/ }));
+    expect(onSidebarPositionChange).toHaveBeenCalledWith("right");
     await userEvent.click(screen.getByRole("button", { name: "Personal" }));
     expect(screen.getByRole("button", { name: "Glass" })).toHaveAttribute(
       "aria-pressed",
