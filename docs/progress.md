@@ -8158,3 +8158,44 @@ native/screen-share-helper/Cargo.toml` — passed 13 library tests plus 1
 - **Next:** Push `arcify`, confirm PR 60's Windows package job compiles the
   helper and packages the installer, then continue the installed plan 0037
   acceptance matrix.
+
+## 2026-08-14 — Align the Windows helper MSVC runtime
+
+- **Completed:** Added a target-specific Cargo configuration for
+  `x86_64-pc-windows-msvc` that enables Rust's static CRT feature. This keeps
+  Rust and the `cc`/`cxx` bridge objects on the same `/MT` runtime as LiveKit's
+  pinned prebuilt WebRTC archive. Added a CI source-contract test that requires
+  the Windows target and `+crt-static` setting.
+- **Decisions:** Scoped the runtime selection to Windows x64 instead of setting
+  global Rust flags. The macOS helper and renderer builds remain unchanged.
+  Chose ABI alignment over linker suppression flags such as `/NODEFAULTLIB`;
+  suppressing one runtime would hide the mismatch rather than produce one
+  coherent C++ runtime boundary.
+- **Validation:**
+  - PR 60 replacement run `31813634370`, Windows job `94809933964` — the prior
+    Rust `E0277` compilation error was resolved, then native-test linking failed
+    with `LNK2038` because WebRTC objects used `MT_StaticRelease` while generated
+    bridge objects used `MD_DynamicRelease`, followed by duplicate C++ runtime
+    symbols and `LNK1169`.
+  - `node --test scripts/ci-workflow.test.mjs` — passed 2/2 focused contracts.
+  - `cargo metadata --locked --offline --no-deps`, locked Rust formatting,
+    Clippy with warnings denied, and tests — passed; tests remain 13 library plus
+    1 binary with 0 doc tests.
+  - Full Prettier, zero-warning ESLint, and renderer/Node/Electron/Electron-test
+    strict TypeScript — passed.
+  - `./node_modules/.bin/vitest run` — passed 91 files / 555 tests.
+  - `node --test scripts/*.test.mjs` — passed 61/61 contracts.
+  - Vite production build, version check, and bundle secret scan — passed; Vite
+    retains the existing non-blocking large-chunk warning.
+  - `pnpm check` — local wrapper stalled without output because the global pnpm
+    version differs from the repository's pinned version; it was interrupted,
+    and every underlying check was run directly with the successful outcomes
+    above.
+- **Documentation updated:** Added this canonical correction entry; architecture
+  and active-plan behavior are unchanged.
+- **Known limitations:** macOS cannot link or execute the MSVC target. A clean
+  Windows x64 GitHub runner remains the authoritative proof that the generated
+  bridge inherits `/MT` and that the helper and installer package successfully.
+- **Next:** Push `arcify`, monitor the replacement Windows job through native
+  tests, release helper build, Electron packaging, and artifact upload, then
+  continue plan 0037's installed three-client acceptance matrix.

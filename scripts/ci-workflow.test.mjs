@@ -9,6 +9,10 @@ const workflow = await readFile(
 const packageJson = JSON.parse(
   await readFile(new URL("../package.json", import.meta.url), "utf8"),
 );
+const cargoConfig = await readFile(
+  new URL("../.cargo/config.toml", import.meta.url),
+  "utf8",
+);
 
 test("PR CI validates and packages only the two supported Electron targets", () => {
   assert.match(workflow, /run: pnpm check/);
@@ -28,4 +32,9 @@ test("PR CI validates and packages only the two supported Electron targets", () 
   assert.doesNotMatch(workflow, /linux|src-tauri/i);
   assert.match(packageJson.scripts["native:build"], /--locked/);
   assert.match(packageJson.scripts["native:test"], /--locked/);
+});
+
+test("Windows helper uses the MSVC runtime required by pinned WebRTC", () => {
+  assert.match(cargoConfig, /\[target\.x86_64-pc-windows-msvc\]/);
+  assert.match(cargoConfig, /target-feature=\+crt-static/);
 });
