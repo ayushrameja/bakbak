@@ -8,6 +8,10 @@ const packageMetadata = JSON.parse(
 );
 const main = await readFile(new URL("electron/main.ts", root), "utf8");
 const preload = await readFile(new URL("electron/preload.cts", root), "utf8");
+const screenShareService = await readFile(
+  new URL("src/features/voice/screen-share-service.ts", root),
+  "utf8",
+);
 const styles = await readFile(new URL("src/styles.css", root), "utf8");
 const macEntitlements = await readFile(
   new URL("build/entitlements.mac.plist", root),
@@ -70,8 +74,8 @@ test("permission requests stay on trusted frames with one fullscreen embed excep
   assert.match(main, /permission === "fullscreen"/);
   assert.match(main, /hostname === "www\.youtube-nocookie\.com"/);
   assert.match(main, /pathname\.startsWith\("\/embed\/"\)/);
-  assert.match(main, /code: "permission-denied"/);
-  assert.match(main, /code: "policy-blocked"/);
-  assert.match(main, /code: "unknown"/);
-  assert.doesNotMatch(main, /code: "enumeration-failed"/);
+  assert.match(screenShareService, /"permission-denied"/);
+  assert.match(screenShareService, /"policy-blocked"/);
+  assert.match(screenShareService, /"unknown"/);
+  assert.doesNotMatch(screenShareService, /"enumeration-failed"/);
 });

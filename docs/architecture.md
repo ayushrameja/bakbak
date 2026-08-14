@@ -539,25 +539,23 @@ voice, video, device, soundboard, reconnect, and crash-expiry rehearsal remains
 open for human observation.
 
 Installed Apple Silicon macOS and Windows x64 clients share one Bakbak Entire
-screen / Application picker before capture starts. Electron enumerates Chromium
-desktop-capture sources in the trusted main process and returns bounded source
-metadata plus in-memory thumbnails through a narrow preload bridge. The
-renderer keeps the short-lived screen-share token, connects the least-privilege
-companion LiveKit room, creates the Chromium capture tracks, and publishes H.264
-video with presenter-selected 480p/720p/1080p and 15/30/60-fps ceilings. The
-default is 1080p/60 and the last successful quality is device-local. All
-current Electron sources are video-only on both Windows and macOS. Chromium
-whole-display loopback can capture Bakbak's own call output, while application
-capture cannot provide a proven process-isolated replacement; the removed Rust
-process-tree proof therefore cannot be approximated with `restrictOwnAudio`.
-Both main-process capabilities and renderer normalization fail closed with a
-bounded explanation, prepared selections reject `includeAudio: true`, and the
-display-media callback returns only the selected video source. System audio may
-return only behind a future native path that proves Bakbak process-tree
-exclusion on installed Windows and macOS clients. Source termination,
-terminal LiveKit disconnect, voice leave, explicit stop, and window teardown
-disconnect the companion and release capture tracks. The desktop bundle minimum
-remains macOS 12.3.
+screen / Application picker before capture starts. A bundled
+`bakbak-screen-share-helper` enumerates sources, captures native video and
+process-isolated audio, and publishes the least-privilege companion tracks to
+LiveKit. Electron supervises it over a versioned JSON-lines protocol; the
+renderer never invokes Chromium display capture or publishes screen media.
+Entire-screen audio excludes Bakbak's Electron root process tree, while
+application audio includes only the selected process tree. If the helper cannot
+prove isolation, audio fails closed and video may continue without it. The
+tracked/default, PR, and release Electron builds also embed a fail-closed native
+audio rollout flag: they mask helper/source audio capabilities and reject an
+audio start before spawning the helper. Only exact-revision stabilization
+candidates embed the temporary enabled flag until the installed plan 0037
+matrix passes. The
+presenter still selects 480p/720p/1080p and 15/30/60 fps with exact 0.8–8 Mbps
+ceilings. Helper crash, timeout, malformed protocol, source end, voice leave,
+explicit stop, window teardown, and app quit terminate the native session and
+emit sanitized lifecycle state. The desktop bundle minimum remains macOS 12.3.
 
 Electron owns application metadata, secure window creation, the custom
 `app://bakbak` renderer protocol, CSP, least-privilege permission handling,
@@ -848,13 +846,25 @@ Electron updates use the same directory and electron-builder registry identity.
 
 `electron-updater` performs explicit check, download, progress, and
 install/restart operations against GitHub Releases. It is disabled for unpacked
-builds and unsupported platforms. Source capture is prepared with a 30-second,
-single-use selection bound to the trusted renderer and a user gesture. The
-short-lived LiveKit screen-share token never crosses into the main process;
-the renderer uses it directly to establish the companion room. Sanitized media
-diagnostics contain OS/build, source kind, capture backend, cursor capability,
-audio-isolation mode, and stable failure code. Focused voice media stays inside
-the normal application window and does not request native fullscreen.
+builds and unsupported platforms. Screen-share preload methods are limited to
+`capabilities`, `listSources`, `start`, `update`, `stop`, and `onLifecycle`;
+hello and shutdown remain internal. `start` transfers the five-minute companion
+URL/token once to the helper through trusted IPC; request payloads and raw child
+stderr are never logged. Protocol v1 requires hello before other commands,
+correlates every response by request ID, limits lines to 32 MiB, tokens to 16
+KiB, and source lists to 256. Hello times out at 5 seconds, start at 30 seconds,
+and other public commands at 15 seconds. A malformed response, unknown request
+ID, timeout, or crash rejects pending requests, kills the child, and emits a
+sanitized failed lifecycle for an active share.
+
+Packaged builds spawn only `resources/native/bakbak-screen-share-helper[.exe]`;
+development defaults to
+`native/screen-share-helper/target/{debug|release}` with an optional
+main-process-only path override. The helper receives an allowlisted environment
+without Bakbak, Supabase, or LiveKit service variables. Sanitized diagnostics
+contain source kind, native capture backend, audio-isolation mode, and stable
+failure code. Focused voice media stays inside the normal application window
+and does not request native fullscreen.
 
 ### Supabase
 
@@ -1405,8 +1415,8 @@ An invite-management UI is deferred until post-v1.
 ### Desktop screen share
 
 1. A connected installed client opens a renderer confirmation with Entire
-   screen / Application tabs. Electron's trusted main process enumerates screen
-   and window sources and returns a discriminated success/failure result through
+   screen / Application tabs. Electron's supervised helper enumerates native
+   screen/application sources and returns a discriminated result through
    the typed preload bridge. Success contains bounded labels, thumbnails,
    normalized permission status, global capabilities, and per-source audio
    availability. A macOS denied/restricted result is distinct from source
@@ -1421,26 +1431,24 @@ An invite-management UI is deferred until post-v1.
 2. The renderer requests `{ channelId, purpose: "screen_share" }`. The function
    repeats authentication, membership, and voice-channel checks, then signs a
    five-minute companion identity tied to the same room and owner.
-3. The renderer sends only `{ sourceId, includeAudio }` to the main process.
-   Electron validates the current main frame and origin, records a single-use
-   30-second selection, and satisfies the next user-gesture display-media
-   request for exactly that enumerated source. The token and LiveKit URL do not
-   enter desktop IPC.
-4. The renderer connects the companion `Room` with `autoSubscribe: false`,
-   creates a local screen-video track, and publishes H.264 screen video. The
-   presenter ceiling uses the existing 0.8–8 Mbps
-   encoding limits across the nine quality combinations; LiveKit adaptive
-   layers may deliver less to a viewer. Live quality changes apply media-track
-   constraints and sender encoding limits.
-5. System audio is unavailable on every current Electron source. Capability
-   and source contracts report video-only with a bounded own-call-exclusion
-   reason; the renderer independently normalizes stale or unsafe bridge claims
-   to unavailable, and the main process rejects an audio-enabled prepared
-   selection. Electron's display-media callback has no loopback branch. This
-   remains independent of Screen Recording permission: video can stay live,
-   while system audio must wait for a proven native process-isolation path.
-6. Explicit stop, source-track end, terminal companion disconnect, voice leave,
-   and window teardown disconnect the companion room. Structured capture
+3. The renderer sends the selected source, include-audio flag, exact quality
+   tuple, and short-lived companion URL/token through narrow `start` IPC.
+   Electron validates the trusted sender; the helper manager validates `wss`,
+   token length, source ID, and one of the nine supported quality tuples before
+   writing one correlated request to the child.
+4. The helper connects the companion with subscriptions disabled, captures and
+   publishes native screen video plus optional `ScreenShareAudio`. The renderer
+   owns UI state only. Quality changes call the helper's correlated `update` and
+   never mutate Chromium media tracks or WebRTC senders.
+5. System audio is requested only when the presenter enables it and the helper
+   reports process-tree isolation. Entire-screen capture excludes the Electron
+   root and all descendants; application capture includes only the selected
+   process tree. No Chromium loopback fallback is permitted. System-audio
+   capability and per-source availability are independent of Screen Recording
+   permission. A missing or failed audio track leaves video live and reports a
+   bounded unavailable reason instead of relabeling it as permission denial.
+6. Explicit stop, source end, terminal companion disconnect, voice leave,
+   window teardown, helper crash, timeout, and app quit disconnect the companion. Structured capture
    failures remain sanitized and never include the short-lived token or source
    content.
 7. Companion participants are merged into their owner's UI state and omitted
@@ -2060,15 +2068,11 @@ that it has passed.
   soundboard track as a second microphone-source track and distinguishes it by
   `bakbak-soundboard`; speech is independently named `bakbak-microphone` so mute
   and reuse never depend on publication order.
-- Electron desktop capture publishes screen/window video on both supported
-  targets and deliberately publishes no system audio. Main-process source
-  contracts, renderer normalization, prepared-selection validation, and the
-  display-media callback all fail closed because Chromium loopback cannot prove
-  exclusion of Bakbak's own call output. The former Rust
-  ScreenCaptureKit/WGC/WASAPI process-tree isolation implementation has been
-  removed. A future audio path must restore equivalent process-tree proof;
-  black/protected content, teardown, and cross-platform two-account video
-  behavior still require the installed-client matrix.
+- The native helper and Electron protocol integration are implemented, but
+  installed macOS/Windows capture, packaged helper signing, process-tree
+  isolation, application audio, protected content, teardown, and three-client
+  no-self/no-duplicate-audio behavior still require plan 0037's acceptance
+  matrix before release.
 - The current production renderer is roughly 406 kB compressed; LiveKit and
   Supabase can be lazy-loaded in a later performance pass if startup profiling
   shows a meaningful benefit.

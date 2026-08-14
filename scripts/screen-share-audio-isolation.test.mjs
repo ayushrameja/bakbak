@@ -14,30 +14,53 @@ const voiceRoom = await readFile(
   new URL("../src/features/voice/useVoiceRoom.ts", import.meta.url),
   "utf8",
 );
+const helper = await readFile(
+  new URL("../electron/screen-share-helper.ts", import.meta.url),
+  "utf8",
+);
+const preload = await readFile(
+  new URL("../electron/preload.cts", import.meta.url),
+  "utf8",
+);
 
-test("Electron grants only the freshly selected video source", () => {
-  assert.match(main, /setDisplayMediaRequestHandler/);
-  assert.match(main, /preparedCapture = null/);
-  assert.match(main, /capture\.expiresAt < Date\.now\(\)/);
-  assert.match(main, /candidate\.id === capture\.sourceId/);
-  assert.match(main, /request\.userGesture/);
-  assert.match(main, /callback\(\{ video: source \}\)/);
-  assert.doesNotMatch(main, /audio:\s*["']loopback["']/);
+test("Electron screen sharing is helper-only with no Chromium loopback route", () => {
+  assert.match(main, /ScreenShareHelperManager/);
+  assert.match(main, /screen-share:capabilities/);
+  assert.match(main, /screen-share:start/);
+  assert.match(main, /screen-share:update/);
+  assert.match(main, /screen-share:stop/);
+  assert.match(main, /screenShareHelper\?\.stopActive\(\)/);
+  assert.doesNotMatch(main, /desktopCapturer/);
+  assert.doesNotMatch(main, /setDisplayMediaRequestHandler/);
+  assert.doesNotMatch(main, /audio: "loopback"/);
+  assert.doesNotMatch(main, /display-capture/);
 });
 
-test("Electron and the renderer fail closed when system audio is requested", () => {
-  assert.match(main, /systemAudioAvailable: false/);
-  assert.match(main, /const audioAvailable = false/);
-  assert.match(
-    main,
-    /typeof input\.includeAudio !== "boolean" \|\|\s*input\.includeAudio/,
-  );
-  assert.match(service, /systemAudio: false/);
-  assert.match(service, /audioAvailable: false/);
-  assert.match(service, /systemAudioAvailable: false/);
+test("renderer delegates native publication and exposes only narrow helper methods", () => {
+  assert.match(service, /bridge\.screenShare\.start/);
+  assert.match(service, /bridge\.screenShare\.update/);
+  assert.match(service, /bridge\.screenShare\.stop/);
+  assert.doesNotMatch(service, /createLocalScreenTracks|publishTrack|new Room/);
+  assert.match(preload, /capabilities:/);
+  assert.match(preload, /listSources:/);
+  assert.match(preload, /start:/);
+  assert.match(preload, /update:/);
+  assert.match(preload, /stop:/);
+  assert.match(preload, /onLifecycle:/);
+  assert.doesNotMatch(preload, /prepare:/);
   assert.match(
     voiceRoom,
     /includeAudio:\s*includeAudio\s*&&\s*screenShareCapabilities\.systemAudio/,
   );
-  assert.doesNotMatch(main, /short-lived-token|serverUrl|token:/);
+});
+
+test("helper protocol is correlated, bounded, isolated, and never logs raw stderr", () => {
+  assert.match(helper, /SCREEN_SHARE_PROTOCOL_VERSION = 1/);
+  assert.match(helper, /SCREEN_SHARE_MAX_LINE_BYTES = 32 \* 1024 \* 1024/);
+  assert.match(helper, /SCREEN_SHARE_MAX_SOURCES = 256/);
+  assert.match(helper, /SCREEN_SHARE_MAX_TOKEN_BYTES = 16 \* 1024/);
+  assert.match(helper, /Unknown helper request correlation/);
+  assert.match(helper, /child\.stderr\.on\("data", \(\) => undefined\)/);
+  assert.match(helper, /exclude-bakbak-process-tree/);
+  assert.doesNotMatch(helper, /console\.(?:log|info|error).*stderr/);
 });

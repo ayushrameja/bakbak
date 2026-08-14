@@ -175,7 +175,9 @@ test("release builds only Apple Silicon macOS and Windows Electron installers", 
   assert.match(workflow, /pnpm dlx @tauri-apps\/cli@2\.11\.4 signer sign/);
   assert.match(workflow, /migration_rehearsal_passed:/);
   assert.match(workflow, /vars\.ELECTRON_MIGRATION_REHEARSED == 'true'/);
-  assert.doesNotMatch(workflow, /rust-toolchain|cargo|src-tauri|tauri-action/i);
+  assert.match(workflow, /dtolnay\/rust-toolchain@stable/);
+  assert.match(workflow, /pnpm native:test/);
+  assert.doesNotMatch(workflow, /src-tauri|tauri-action/i);
 });
 
 test("published releases synchronize their version through a protected-branch PR", async () => {

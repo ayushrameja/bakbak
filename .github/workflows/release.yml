@@ -25,6 +25,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  BAKBAK_NATIVE_SCREEN_AUDIO_CANDIDATE: "false"
   VITE_DATA_MODE: live
   VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
   VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
@@ -89,7 +90,9 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
       - run: pnpm install --frozen-lockfile
+      - run: pnpm native:test
       - run: node scripts/check-release-env.mjs
       - run: pnpm check
       - run: pnpm electron:compile
@@ -135,7 +138,9 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
       - run: pnpm install --frozen-lockfile
+      - run: pnpm native:test
       - run: node scripts/set-version.mjs ${{ needs.prepare.outputs.version }}
       - run: node scripts/check-release-env.mjs
       - run: pnpm desktop:prepare

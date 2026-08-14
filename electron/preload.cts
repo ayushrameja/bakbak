@@ -66,12 +66,21 @@ const bridge = Object.freeze({
       ipcRenderer.invoke("permissions:open-settings", kind) as Promise<boolean>,
   }),
   screenShare: Object.freeze({
-    getCapabilities: () =>
-      ipcRenderer.invoke("screen-share:get-capabilities") as Promise<unknown>,
-    listSources: () =>
-      ipcRenderer.invoke("screen-share:list-sources") as Promise<unknown>,
-    prepare: (input: { sourceId: string; includeAudio: boolean }) =>
-      ipcRenderer.invoke("screen-share:prepare", input) as Promise<void>,
+    capabilities: () =>
+      ipcRenderer.invoke("screen-share:capabilities") as Promise<unknown>,
+    listSources: (input: { includeThumbnails?: boolean } = {}) =>
+      ipcRenderer.invoke(
+        "screen-share:list-sources",
+        input,
+      ) as Promise<unknown>,
+    start: (input: unknown) =>
+      ipcRenderer.invoke("screen-share:start", input) as Promise<unknown>,
+    update: (input: unknown) =>
+      ipcRenderer.invoke("screen-share:update", input) as Promise<unknown>,
+    stop: (input: { sessionId: string }) =>
+      ipcRenderer.invoke("screen-share:stop", input) as Promise<unknown>,
+    onLifecycle: (listener: (event: unknown) => void) =>
+      subscribe("screen-share:lifecycle", listener),
   }),
   updates: Object.freeze({
     check: (timeoutMs: number) =>

@@ -18,6 +18,9 @@ dist-ssr
 coverage
 electron-dist
 release
+native/**/target
+native/**/check-target
+build/native
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts

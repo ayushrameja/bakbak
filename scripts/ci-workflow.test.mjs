@@ -6,6 +6,9 @@ const workflow = await readFile(
   new URL("../.github/workflows/ci.yml", import.meta.url),
   "utf8",
 );
+const packageJson = JSON.parse(
+  await readFile(new URL("../package.json", import.meta.url), "utf8"),
+);
 
 test("PR CI validates and packages only the two supported Electron targets", () => {
   assert.match(workflow, /run: pnpm check/);
@@ -17,6 +20,12 @@ test("PR CI validates and packages only the two supported Electron targets", () 
   assert.match(workflow, /runner: windows-latest/);
   assert.match(workflow, /builder_args: --win --x64/);
   assert.match(workflow, /pnpm exec electron-builder/);
+  assert.match(workflow, /dtolnay\/rust-toolchain@stable/);
+  assert.match(workflow, /run: pnpm native:test/);
+  assert.equal(workflow.match(/run: pnpm native:test/g)?.length, 2);
+  assert.match(workflow, /run: pnpm desktop:prepare/);
   assert.match(workflow, /if-no-files-found: error/);
-  assert.doesNotMatch(workflow, /linux|cargo|rust-toolchain|src-tauri/i);
+  assert.doesNotMatch(workflow, /linux|src-tauri/i);
+  assert.match(packageJson.scripts["native:build"], /--locked/);
+  assert.match(packageJson.scripts["native:test"], /--locked/);
 });

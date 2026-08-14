@@ -1,0 +1,76 @@
+[package]
+name = "bakbak-screen-share-helper"
+version = "0.1.0"
+edition = "2024"
+description = "Fail-closed native screen capture companion for Bakbak"
+license = "UNLICENSED"
+publish = false
+
+[lib]
+name = "bakbak_screen_share_helper"
+
+[[bin]]
+name = "bakbak-screen-share-helper"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["io-std", "io-util", "macros", "rt-multi-thread", "sync", "time"] }
+url = "2"
+uuid = { version = "1", features = ["v4"] }
+zeroize = "1"
+
+[build-dependencies]
+webrtc-sys-build = "=0.3.18"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# ScreenCaptureKit accepts apple-metal 0.6 through 0.8. The newer releases
+# hard-link MetalFX (macOS 13+), although Bakbak does not use their Metal API.
+# Keep the shared lockfile resolution on the last pre-MetalFX release so the
+# video-only helper can launch on macOS 12.3.
+apple-metal = { version = "=0.6.0", default-features = false }
+core-graphics = "0.25"
+libc = "0.2"
+livekit = { version = "=0.7.51", features = ["rustls-tls-native-roots"] }
+livekit-api = "=0.5.5"
+livekit-datatrack = "=0.1.10"
+livekit-protocol = "=0.7.10"
+os_info = "3.15"
+screencapturekit = { version = "=8.0.0", features = ["async", "macos_14_0"] }
+webrtc-sys = "=0.3.37"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+livekit = { version = "=0.7.51", features = ["rustls-tls-native-roots"] }
+livekit-api = "=0.5.5"
+livekit-datatrack = "=0.1.10"
+livekit-protocol = "=0.7.10"
+wasapi = "=0.23.0"
+webrtc-sys = "=0.3.37"
+windows = { version = "0.62.2", features = [
+  "Foundation",
+  "Graphics",
+  "Graphics_Capture",
+  "Graphics_DirectX",
+  "Graphics_DirectX_Direct3D11",
+  "Win32_Foundation",
+  "Win32_Graphics_Direct3D",
+  "Win32_Graphics_Direct3D11",
+  "Win32_Graphics_Dwm",
+  "Win32_Graphics_Dxgi",
+  "Win32_Graphics_Dxgi_Common",
+  "Win32_Graphics_Gdi",
+  "Win32_System_Com",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_Threading",
+  "Win32_System_WinRT",
+  "Win32_System_WinRT_Direct3D11",
+  "Win32_System_WinRT_Graphics_Capture",
+  "Win32_UI_WindowsAndMessaging",
+] }
+windows-version = "=0.1.7"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
