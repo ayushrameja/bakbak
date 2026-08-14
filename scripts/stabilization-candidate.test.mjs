@@ -36,7 +36,9 @@ test("candidate workflow builds two exact-revision installers without publishing
   assert.match(workflow, /node scripts\/check-bundle-secrets\.mjs/);
   assert.match(workflow, /actions\/upload-artifact@v4/);
   assert.match(workflow, /retention-days: 7/);
-  assert.doesNotMatch(workflow, /SIGNING_PRIVATE_KEY|tauri-action|cargo|rust/i);
+  assert.match(workflow, /dtolnay\/rust-toolchain@stable/);
+  assert.match(workflow, /pnpm native:test/);
+  assert.doesNotMatch(workflow, /SIGNING_PRIVATE_KEY|tauri-action/i);
   assert.doesNotMatch(workflow, /gh release|contents: write/);
 });
 

@@ -1636,6 +1636,7 @@ export function useVoiceRoom(
               playing ? "room-playback-active" : "room-playback-blocked",
             );
             setAudioPlaybackBlocked(!playing);
+            remoteAudio.reassertExactOnceRouting();
             if (playing) {
               void remoteAudio.recoverAll("room-playback-restored");
             } else {

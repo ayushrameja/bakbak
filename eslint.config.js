@@ -13,6 +13,8 @@ export default tseslint.config(
       "public/vendor",
       "electron-dist",
       "release",
+      "native/**/target",
+      "native/**/check-target",
       "supabase/functions",
     ],
   },
@@ -52,7 +54,7 @@ export default tseslint.config(
       ecmaVersion: 2022,
       globals: globals.node,
       parserOptions: {
-        project: ["./tsconfig.electron.json"],
+        project: ["./tsconfig.electron.json", "./tsconfig.electron-tests.json"],
         tsconfigRootDir: import.meta.dirname,
       },
     },

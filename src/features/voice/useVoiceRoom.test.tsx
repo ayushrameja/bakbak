@@ -995,6 +995,33 @@ describe("useVoiceRoom join lifecycle", () => {
     expect(recoverAll).toHaveBeenCalledTimes(2);
   });
 
+  it("reasserts exact-once routing for blocked and restored room playback", async () => {
+    const reassertExactOnceRouting = vi.spyOn(
+      RemoteAudioRenderer.prototype,
+      "reassertExactOnceRouting",
+    );
+    const recoverAll = vi
+      .spyOn(RemoteAudioRenderer.prototype, "recoverAll")
+      .mockResolvedValue(true);
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    reassertExactOnceRouting.mockClear();
+    recoverAll.mockClear();
+    const room = liveKitState.rooms[0]!;
+
+    act(() => room.emit("audioPlaybackStatusChanged", false));
+    expect(reassertExactOnceRouting).toHaveBeenCalledOnce();
+    expect(recoverAll).not.toHaveBeenCalled();
+
+    act(() => room.emit("audioPlaybackStatusChanged", true));
+    expect(reassertExactOnceRouting).toHaveBeenCalledTimes(2);
+    expect(recoverAll).toHaveBeenCalledWith("room-playback-restored");
+  });
+
   it("retains the last confirmed participant roster through reconnect", async () => {
     supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
     const { result } = renderHook(() => useVoiceRoom(user, "live"));

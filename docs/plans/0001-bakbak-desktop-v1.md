@@ -355,8 +355,12 @@ older plans without rewriting their historical decisions. The application ID,
 product name, GitHub release channel, Apple Silicon macOS minimum, Windows x64
 target, renderer, Supabase contracts, and LiveKit room contracts stay stable.
 Electron uses a sandboxed renderer, secure custom protocol, and narrow typed
-preload bridge. The former native process-tree screen-audio isolation is not
-preserved by Chromium capture and is reopened as an installed acceptance gate.
+preload bridge. Plan 0037 supersedes the Chromium capture amendment: a bundled
+native helper restores fail-closed process-tree screen-audio isolation and owns
+companion publication, while the renderer owns UI state only. Its installed
+macOS/Windows and three-client no-self/no-duplicate-audio matrix is a release
+gate. Until that matrix passes, default/PR/release Electron builds embed native
+audio disabled and only stabilization candidates embed it enabled.
 The first Electron release must serve Electron updater YAML and a signed legacy
 Tauri JSON bridge, then prove both the old-shell handoff and a subsequent pure
 Electron update on real supported machines before publication. Windows keeps
@@ -369,6 +373,9 @@ NSIS invocation so the handoff does not create a second application location.
       Windows under plans `0003-screen-sharing.md` and
       `0010-cross-platform-screen-share-and-focus.md`; plans 0015 and 0032's
       installed isolation matrices remain the release gate.
+- [x] Fail closed to video-only in ordinary and release Electron builds until
+      plan 0037 proves native call-audio exclusion on installed macOS and
+      Windows clients.
 - [ ] Add invite management UI.
 - [ ] Add desktop notifications and tray controls.
 - [x] Add locally persisted microphone, speaker, and camera preferences.
@@ -566,9 +573,10 @@ NSIS invocation so the handoff does not create a second application location.
 - [ ] Complete plan 0019's light/dark three-resolution and 200/240/360 px panel
       visual matrix plus installed macOS/Windows control/member observation.
 - [ ] Evaluate optional global push-to-talk.
-- [ ] Revalidate Electron's Chromium system-audio and own-audio restriction on
-      installed Windows x64 and Apple Silicon macOS clients; the removed native
-      process-tree proof cannot be credited to the new shell.
+- [x] Implement plan 0037's native helper, protocol-v1 Electron supervision,
+      renderer delegation, packaging, and no-Chromium-loopback contracts.
+- [ ] Complete plan 0037's installed Windows x64, Apple Silicon macOS, and
+      three-client no-self/no-duplicate-audio acceptance matrix.
 - [ ] Complete the cross-platform installed-client acceptance matrix.
 - [x] Update architecture, plan status, and the append-only progress log for
       plan 0014.

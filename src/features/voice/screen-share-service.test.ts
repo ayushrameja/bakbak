@@ -1,68 +1,32 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { BakbakDesktopBridge } from "../../lib/desktop-runtime";
-
-const livekit = vi.hoisted(() => {
-  const videoTrack = {
-    kind: "video",
-    mediaStreamTrack: {
-      contentHint: "",
-      applyConstraints: vi.fn().mockResolvedValue(undefined),
-    },
-    once: vi.fn(),
-    sender: null,
-  };
-  const audioTrack = { kind: "audio", stop: vi.fn() };
-  const room = {
-    connect: vi.fn().mockResolvedValue(undefined),
-    disconnect: vi.fn().mockResolvedValue(undefined),
-    once: vi.fn(),
-    localParticipant: { publishTrack: vi.fn().mockResolvedValue({}) },
-  };
-  return {
-    videoTrack,
-    audioTrack,
-    room,
-    createLocalScreenTracks: vi
-      .fn()
-      .mockResolvedValue([videoTrack, audioTrack]),
-  };
-});
-
-vi.mock("livekit-client", () => ({
-  LocalVideoTrack: class LocalVideoTrack {},
-  Room: class MockRoom {
-    constructor() {
-      return livekit.room;
-    }
-  },
-  RoomEvent: { Disconnected: "disconnected" },
-  Track: {
-    Kind: { Video: "video", Audio: "audio" },
-    Source: {
-      ScreenShare: "screen_share",
-      ScreenShareAudio: "screen_share_audio",
-    },
-  },
-  TrackEvent: { Ended: "ended" },
-  createLocalScreenTracks: livekit.createLocalScreenTracks,
-}));
-
+import type {
+  BakbakDesktopBridge,
+  DesktopNativeScreenShareLifecycleEvent,
+} from "../../lib/desktop-runtime";
 import {
   getPermissionSnapshot,
   getScreenShareCapabilities,
   listScreenShareSources,
+  listenForScreenShareLifecycle,
   openPermissionSettings,
   requestMicrophonePermission,
   screenShareServiceTesting,
   startScreenShare,
   stopScreenShare,
+  type ScreenShareLifecycleEvent,
   updateScreenShareSettings,
 } from "./screen-share-service";
 
+let nativeLifecycle:
+  ((event: DesktopNativeScreenShareLifecycleEvent) => void) | undefined;
+
 const desktop = vi.hoisted(() => ({
-  getCapabilities: vi.fn(),
+  capabilities: vi.fn(),
   listSources: vi.fn(),
-  prepare: vi.fn(),
+  start: vi.fn(),
+  update: vi.fn(),
+  stop: vi.fn(),
+  onLifecycle: vi.fn(),
   getPermission: vi.fn(),
   requestMicrophone: vi.fn(),
   openSettings: vi.fn(),
@@ -77,15 +41,18 @@ function installDesktopBridge(platform: "macos" | "windows" = "windows"): void {
       openSettings: desktop.openSettings,
     },
     screenShare: {
-      getCapabilities: desktop.getCapabilities,
+      capabilities: desktop.capabilities,
       listSources: desktop.listSources,
-      prepare: desktop.prepare,
+      start: desktop.start,
+      update: desktop.update,
+      stop: desktop.stop,
+      onLifecycle: desktop.onLifecycle,
     },
   } as unknown as BakbakDesktopBridge;
 }
 
 const source = {
-  id: "screen:1:0",
+  id: "display:1",
   kind: "display" as const,
   label: "Screen 1",
   applicationLabel: null,
@@ -94,33 +61,72 @@ const source = {
   thumbnailDataUrl: null,
 };
 
-const successfulSourceResult = {
-  ok: true as const,
-  sources: [source],
-  permissionStatus: "granted" as const,
-  systemAudioAvailable: true,
-  systemAudioUnavailableReason: null,
-  failure: null,
+const nativeCapabilities = {
+  video: true,
+  systemAudio: true,
+  applicationAudio: true,
+  processTreeIsolation: true,
+  minOsVersion: null,
+  reason: null,
 };
 
 describe("screen-share-service", () => {
-  beforeEach(async () => {
-    await screenShareServiceTesting.reset();
+  beforeEach(() => {
+    screenShareServiceTesting.reset();
     vi.clearAllMocks();
     Reflect.deleteProperty(window, "bakbakDesktop");
-    desktop.getCapabilities.mockResolvedValue({
-      systemAudioAvailable: true,
-      systemAudioUnavailableReason: null,
+    desktop.capabilities.mockResolvedValue(nativeCapabilities);
+    desktop.listSources.mockResolvedValue({
+      sources: [source],
+      truncated: false,
     });
-    desktop.listSources.mockResolvedValue(successfulSourceResult);
-    desktop.prepare.mockResolvedValue(undefined);
-    desktop.getPermission.mockResolvedValue({
-      kind: "microphone",
-      status: "granted",
-      canRequest: false,
-      canOpenSettings: false,
-      requiresRestart: false,
+    desktop.start.mockResolvedValue({
+      sessionId: "native-session-1",
+      sourceLabel: source.label,
+      sourceKind: source.kind,
+      audioPublished: true,
+      audioUnavailableReason: null,
+      settings: {
+        width: 1920,
+        height: 1080,
+        frameRate: 60,
+        maxBitrate: 8_000_000,
+      },
+      diagnostics: {
+        captureBackend: "screen-capture-kit",
+        audioIsolationMode: "exclude-bakbak-process-tree",
+      },
     });
+    desktop.update.mockResolvedValue({
+      sessionId: "native-session-1",
+      settings: {
+        width: 1280,
+        height: 720,
+        frameRate: 30,
+        maxBitrate: 2_000_000,
+      },
+      paused: false,
+    });
+    desktop.stop.mockResolvedValue({
+      sessionId: "native-session-1",
+      stopped: true,
+    });
+    nativeLifecycle = undefined;
+    desktop.onLifecycle.mockImplementation(
+      (listener: (event: DesktopNativeScreenShareLifecycleEvent) => void) => {
+        nativeLifecycle = listener;
+        return () => undefined;
+      },
+    );
+    desktop.getPermission.mockImplementation((kind: "microphone" | "screen") =>
+      Promise.resolve({
+        kind,
+        status: "granted",
+        canRequest: false,
+        canOpenSettings: false,
+        requiresRestart: false,
+      }),
+    );
     desktop.requestMicrophone.mockResolvedValue({
       kind: "microphone",
       status: "granted",
@@ -129,114 +135,33 @@ describe("screen-share-service", () => {
       requiresRestart: false,
     });
     desktop.openSettings.mockResolvedValue(true);
-    livekit.room.connect.mockResolvedValue(undefined);
-    livekit.room.disconnect.mockResolvedValue(undefined);
-    livekit.room.localParticipant.publishTrack.mockResolvedValue({});
-    livekit.createLocalScreenTracks.mockResolvedValue([
-      livekit.videoTrack,
-      livekit.audioTrack,
-    ]);
   });
 
-  it("keeps browser mode unavailable without invoking desktop capture", async () => {
+  it("keeps browser mode unavailable without invoking native capture", async () => {
     await expect(getScreenShareCapabilities()).resolves.toMatchObject({
       available: false,
       nativeCapture: false,
       systemAudio: false,
     });
-    await expect(listScreenShareSources()).resolves.toMatchObject({
-      ok: false,
-      sources: [],
-      failure: { code: "capture-unavailable" },
-    });
     expect(desktop.listSources).not.toHaveBeenCalled();
   });
 
-  it("exposes only the supported Electron source and quality contract", async () => {
+  it("requires process-tree isolation before advertising system audio", async () => {
     installDesktopBridge();
+    desktop.capabilities.mockResolvedValueOnce({
+      ...nativeCapabilities,
+      processTreeIsolation: false,
+      reason: "Process-tree exclusion is unavailable.",
+    });
     await expect(getScreenShareCapabilities()).resolves.toMatchObject({
       available: true,
       nativeCapture: true,
-      systemAudio: true,
-      sourceKinds: ["display", "application"],
-    });
-    await expect(listScreenShareSources()).resolves.toEqual(
-      successfulSourceResult,
-    );
-  });
-
-  it("returns permission recovery snapshots without reducing them to strings", async () => {
-    installDesktopBridge("macos");
-    desktop.getPermission.mockResolvedValueOnce({
-      kind: "screen",
-      status: "denied",
-      canRequest: false,
-      canOpenSettings: true,
-      requiresRestart: true,
-    });
-
-    await expect(getPermissionSnapshot("screen")).resolves.toEqual({
-      kind: "screen",
-      status: "denied",
-      canRequest: false,
-      canOpenSettings: true,
-      requiresRestart: true,
-    });
-    await expect(requestMicrophonePermission()).resolves.toMatchObject({
-      kind: "microphone",
-      status: "granted",
-    });
-    await expect(openPermissionSettings("screen")).resolves.toBe(true);
-    expect(desktop.openSettings).toHaveBeenCalledWith("screen");
-  });
-
-  it("keeps macOS screen sharing video-only when loopback is unavailable", async () => {
-    installDesktopBridge("macos");
-    desktop.getCapabilities.mockResolvedValueOnce({
-      systemAudioAvailable: false,
-      systemAudioUnavailableReason:
-        "System audio sharing is unavailable on macOS; video sharing still works.",
-    });
-    const videoOnlySource = {
-      ...source,
-      audioAvailable: false,
-      audioUnavailableReason:
-        "System audio sharing is unavailable on macOS; video sharing still works.",
-    };
-    desktop.listSources.mockResolvedValueOnce({
-      ...successfulSourceResult,
-      sources: [videoOnlySource],
-      systemAudioAvailable: false,
-      systemAudioUnavailableReason: videoOnlySource.audioUnavailableReason,
-    });
-
-    const capabilities = await getScreenShareCapabilities();
-    expect(capabilities).toMatchObject({
-      available: true,
       systemAudio: false,
+      reason: "Process-tree exclusion is unavailable.",
     });
-    expect(capabilities.reason).toContain("unavailable on macOS");
-    const session = await startScreenShare({
-      serverUrl: "wss://example.test",
-      token: "short-lived-token",
-      includeAudio: true,
-      sourceId: source.id,
-      settings: { resolution: 1080, frameRate: 60 },
-    });
-
-    expect(desktop.prepare).toHaveBeenCalledWith({
-      sourceId: source.id,
-      includeAudio: false,
-    });
-    expect(livekit.createLocalScreenTracks).toHaveBeenCalledWith(
-      expect.objectContaining({ audio: false, systemAudio: "exclude" }),
-    );
-    expect(session.audioPublished).toBe(false);
-    expect(session.audioUnavailableReason).toContain("unavailable on macOS");
-    await stopScreenShare(session.sessionId);
   });
 
-  it("keeps the token in the sandboxed renderer and prepares only a source", async () => {
+  it("passes the short-lived token only to the native helper start boundary", async () => {
     installDesktopBridge();
     const session = await startScreenShare({
       serverUrl: "wss://example.test",
@@ -246,162 +171,182 @@ describe("screen-share-service", () => {
       settings: { resolution: 1080, frameRate: 60 },
     });
 
-    expect(desktop.prepare).toHaveBeenCalledWith({
+    expect(desktop.start).toHaveBeenCalledWith({
+      serverUrl: "wss://example.test",
+      token: "short-lived-token",
       sourceId: source.id,
       includeAudio: true,
+      settings: {
+        width: 1920,
+        height: 1080,
+        frameRate: 60,
+        maxBitrate: 8_000_000,
+      },
     });
-    expect(desktop.prepare.mock.calls.flat().join(" ")).not.toContain(
-      "short-lived-token",
-    );
-    expect(livekit.room.connect).toHaveBeenCalledWith(
-      "wss://example.test",
-      "short-lived-token",
-      { autoSubscribe: false },
-    );
-    expect(livekit.room.localParticipant.publishTrack).toHaveBeenCalledTimes(2);
     expect(session).toMatchObject({
-      sourceLabel: "Screen 1",
-      sourceKind: "display",
+      sessionId: "native-session-1",
       audioPublished: true,
+      diagnostics: {
+        audioIsolationMode: "exclude-bakbak-process-tree",
+      },
     });
-    await stopScreenShare(session.sessionId);
   });
 
-  it("applies validated quality constraints to the active capture", async () => {
+  it("delegates quality updates and stop to the helper session", async () => {
     installDesktopBridge();
-    const session = await startScreenShare({
-      serverUrl: "wss://example.test",
-      token: "short-lived-token",
-      includeAudio: false,
-      settings: { resolution: 1080, frameRate: 60 },
-    });
-
     await expect(
-      updateScreenShareSettings(session.sessionId, {
+      updateScreenShareSettings("native-session-1", {
         resolution: 720,
         frameRate: 30,
       }),
     ).resolves.toEqual({ resolution: 720, frameRate: 30 });
-    expect(
-      livekit.videoTrack.mediaStreamTrack.applyConstraints,
-    ).toHaveBeenCalledWith({
-      width: { ideal: 1280 },
-      height: { ideal: 720 },
-      frameRate: { ideal: 30 },
+    expect(desktop.update).toHaveBeenCalledWith({
+      sessionId: "native-session-1",
+      settings: {
+        width: 1280,
+        height: 720,
+        frameRate: 30,
+        maxBitrate: 2_000_000,
+      },
     });
-    await stopScreenShare(session.sessionId);
+    await stopScreenShare("native-session-1");
+    expect(desktop.stop).toHaveBeenCalledWith({
+      sessionId: "native-session-1",
+    });
   });
 
-  it("logs a sanitized capture failure without logging the token", async () => {
+  it("forces video-only start when the global isolation proof is unavailable", async () => {
     installDesktopBridge();
-    livekit.createLocalScreenTracks.mockRejectedValueOnce(
-      new Error("The selected source stopped."),
+    desktop.capabilities.mockResolvedValue({
+      ...nativeCapabilities,
+      systemAudio: false,
+      processTreeIsolation: false,
+      reason: "Native screen audio is disabled for this build.",
+    });
+    desktop.start.mockResolvedValueOnce({
+      sessionId: "video-session",
+      sourceLabel: source.label,
+      sourceKind: source.kind,
+      audioPublished: false,
+      audioUnavailableReason: "Native screen audio is disabled for this build.",
+      settings: {
+        width: 1280,
+        height: 720,
+        frameRate: 30,
+        maxBitrate: 2_000_000,
+      },
+      diagnostics: {
+        captureBackend: "windows-graphics-capture",
+        audioIsolationMode: "disabled",
+      },
+    });
+    const session = await startScreenShare({
+      serverUrl: "wss://example.test",
+      token: "token",
+      sourceId: source.id,
+      includeAudio: true,
+      settings: { resolution: 720, frameRate: 30 },
+    });
+    expect(desktop.start).toHaveBeenCalledWith(
+      expect.objectContaining({ includeAudio: false }),
     );
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
-
-    await expect(
-      startScreenShare({
-        serverUrl: "wss://example.test",
-        token: "must-not-appear-in-console",
-        includeAudio: false,
-        settings: { resolution: 1080, frameRate: 60 },
-      }),
-    ).rejects.toThrow("The selected source stopped.");
-
-    expect(consoleError.mock.calls.flat().join(" ")).toContain("unknown");
-    expect(consoleError.mock.calls.flat().join(" ")).not.toContain(
-      "must-not-appear-in-console",
-    );
-    consoleError.mockRestore();
+    expect(session).toMatchObject({
+      audioPublished: false,
+      audioUnavailableReason: "Native screen audio is disabled for this build.",
+    });
   });
 
-  it("carries structured source-enumeration recovery through capture start", async () => {
+  it("maps audio downgrade to a live video session without discarding context", async () => {
+    installDesktopBridge();
+    const events = vi.fn<(event: ScreenShareLifecycleEvent) => void>();
+    const unlisten = await listenForScreenShareLifecycle(events);
+    const session = await startScreenShare({
+      serverUrl: "wss://example.test",
+      token: "token",
+      sourceId: source.id,
+      includeAudio: true,
+      settings: { resolution: 1080, frameRate: 60 },
+    });
+    nativeLifecycle?.({
+      sessionId: session.sessionId,
+      state: "audio-downgraded",
+      reasonCode: "isolation-lost",
+      message:
+        "Audio stopped because process isolation could not be maintained.",
+      audioPublished: false,
+    });
+    expect(events).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        state: "sharing",
+        sessionId: session.sessionId,
+        sourceLabel: source.label,
+        settings: { resolution: 1080, frameRate: 60 },
+        audioPublished: false,
+        failure: null,
+      }),
+    );
+    expect(events.mock.lastCall?.[0]?.diagnostics?.audioIsolationMode).toBe(
+      "exclude-bakbak-process-tree",
+    );
+    unlisten();
+  });
+
+  it("clears native session context after stopped and failed lifecycles", async () => {
+    installDesktopBridge();
+    const events = vi.fn<(event: ScreenShareLifecycleEvent) => void>();
+    const unlisten = await listenForScreenShareLifecycle(events);
+    const session = await startScreenShare({
+      serverUrl: "wss://example.test",
+      token: "token",
+      sourceId: source.id,
+      includeAudio: false,
+      settings: { resolution: 1080, frameRate: 60 },
+    });
+    nativeLifecycle?.({ sessionId: session.sessionId, state: "stopped" });
+    expect(events).toHaveBeenLastCalledWith(
+      expect.objectContaining({ state: "idle", sourceLabel: source.label }),
+    );
+    nativeLifecycle?.({
+      sessionId: session.sessionId,
+      state: "failed",
+      message: "late duplicate failure",
+    });
+    expect(events).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        state: "error",
+        sourceLabel: null,
+        settings: null,
+        diagnostics: null,
+      }),
+    );
+    unlisten();
+  });
+
+  it("preserves permission recovery through native source failures", async () => {
     installDesktopBridge("macos");
-    const failure = {
-      code: "permission-denied" as const,
-      message: "Allow Bakbak in Screen Recording, then restart Bakbak.",
+    desktop.getPermission.mockResolvedValue({
+      kind: "screen",
+      status: "denied",
+      canRequest: false,
       canOpenSettings: true,
-      restartRequired: true,
-    };
-    desktop.listSources.mockResolvedValueOnce({
+      requiresRestart: true,
+    });
+    desktop.listSources.mockRejectedValue(new Error("helper rejected request"));
+    await expect(listScreenShareSources()).resolves.toMatchObject({
       ok: false,
-      sources: [],
       permissionStatus: "denied",
-      systemAudioAvailable: false,
-      systemAudioUnavailableReason: "Video sharing still works after access.",
-      failure,
-    });
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
-
-    await expect(
-      startScreenShare({
-        serverUrl: "wss://example.test",
-        token: "short-lived-token",
-        includeAudio: false,
-        settings: { resolution: 1080, frameRate: 60 },
-      }),
-    ).rejects.toMatchObject({
       failure: {
-        ...failure,
-        recommendedRetrySource: null,
+        code: "permission-denied",
+        canOpenSettings: true,
+        restartRequired: true,
       },
     });
-
-    expect(desktop.prepare).not.toHaveBeenCalled();
-    expect(livekit.room.connect).not.toHaveBeenCalled();
-    consoleError.mockRestore();
-  });
-
-  it("uses capture-unavailable when a selected source disappeared", async () => {
-    installDesktopBridge();
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
-
-    await expect(
-      startScreenShare({
-        serverUrl: "wss://example.test",
-        token: "short-lived-token",
-        includeAudio: false,
-        sourceId: "window:missing",
-        settings: { resolution: 1080, frameRate: 60 },
-      }),
-    ).rejects.toMatchObject({
-      failure: {
-        code: "capture-unavailable",
-        canOpenSettings: false,
-        restartRequired: false,
-      },
+    await expect(getPermissionSnapshot("screen")).resolves.toMatchObject({
+      status: "denied",
     });
-    consoleError.mockRestore();
-  });
-
-  it("categorizes a capture-engine missing source without message sniffing", async () => {
-    installDesktopBridge();
-    livekit.createLocalScreenTracks.mockRejectedValueOnce(
-      new DOMException("Browser-specific text", "NotFoundError"),
-    );
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
-
-    await expect(
-      startScreenShare({
-        serverUrl: "wss://example.test",
-        token: "short-lived-token",
-        includeAudio: false,
-        settings: { resolution: 1080, frameRate: 60 },
-      }),
-    ).rejects.toMatchObject({
-      failure: {
-        code: "capture-unavailable",
-        message: "The selected screen source is no longer available.",
-      },
+    await expect(requestMicrophonePermission()).resolves.toMatchObject({
+      status: "granted",
     });
-    consoleError.mockRestore();
+    await expect(openPermissionSettings("screen")).resolves.toBe(true);
   });
 });

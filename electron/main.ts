@@ -1,7 +1,6 @@
 import {
   app,
   BrowserWindow,
-  desktopCapturer,
   ipcMain,
   Menu,
   nativeTheme,
@@ -17,6 +16,11 @@ import updaterPackage from "electron-updater";
 import { access } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  ScreenShareHelperManager,
+  resolveScreenShareHelperPath,
+} from "./screen-share-helper.js";
+import { NATIVE_SCREEN_AUDIO_ENABLED } from "./screen-share-rollout.js";
 
 const { autoUpdater } = updaterPackage;
 const APP_ID = "com.bakbak.desktop";
@@ -30,32 +34,16 @@ const MAC_WINDOW_CONTROLS_POSITIONS = {
   right: { x: 16, y: 8 },
 } as const;
 
-interface PreparedCapture {
-  sourceId: string;
-  includeAudio: boolean;
-  senderId: number;
-  expiresAt: number;
-}
-
-interface PreparedCaptureInput {
-  sourceId: string;
-  includeAudio: boolean;
-}
-
 type PermissionKind = "microphone" | "screen";
 type PermissionStatus =
   "not-determined" | "granted" | "denied" | "restricted" | "unknown";
-
-interface ScreenShareCapabilities {
-  systemAudioAvailable: boolean;
-  systemAudioUnavailableReason: string | null;
-}
 
 type WindowMaterial = "vibrancy" | "mica" | "fallback";
 type SidebarPosition = keyof typeof MAC_WINDOW_CONTROLS_POSITIONS;
 
 let mainWindow: BrowserWindow | null = null;
-let preparedCapture: PreparedCapture | null = null;
+let screenShareHelper: ScreenShareHelperManager | null = null;
+let helperShutdownStarted = false;
 let windowMaterial: WindowMaterial = "fallback";
 let macWindowControlsVisible = true;
 let macWindowControlsSidebarPosition: SidebarPosition = "left";
@@ -285,69 +273,36 @@ function permissionSnapshot(kind: PermissionKind) {
   };
 }
 
-function screenShareCapabilities(): ScreenShareCapabilities {
-  if (process.platform === "win32") {
-    return {
-      systemAudioAvailable: true,
-      systemAudioUnavailableReason: null,
-    };
+function getScreenShareHelper(): ScreenShareHelperManager {
+  if (!screenShareHelper) {
+    throw new Error("Native screen sharing is not ready.");
   }
-  return {
-    systemAudioAvailable: false,
-    systemAudioUnavailableReason:
-      "System audio sharing is unavailable on macOS; video sharing still works.",
-  };
+  return screenShareHelper;
 }
 
-function screenShareSourceFailure(permissionStatus: PermissionStatus) {
-  const capabilities = screenShareCapabilities();
-  if (process.platform === "darwin" && permissionStatus === "denied") {
-    return {
-      ok: false as const,
-      sources: [] as [],
-      permissionStatus,
-      ...capabilities,
-      failure: {
-        code: "permission-denied" as const,
-        message:
-          "Allow Bakbak in macOS Privacy & Security > Screen Recording, then restart Bakbak.",
-        canOpenSettings: true,
-        restartRequired: true,
-      },
-    };
-  }
-  if (permissionStatus === "restricted") {
-    return {
-      ok: false as const,
-      sources: [] as [],
-      permissionStatus,
-      ...capabilities,
-      failure: {
-        code: "policy-blocked" as const,
-        message:
-          process.platform === "darwin"
-            ? "Screen recording is restricted by macOS or your device policy."
-            : "Screen capture is blocked by Windows or your device policy.",
-        canOpenSettings: false,
-        restartRequired: false,
-      },
-    };
-  }
-  return {
-    ok: false as const,
-    sources: [] as [],
-    permissionStatus,
-    ...capabilities,
-    failure: {
-      code: "unknown" as const,
-      message:
-        process.platform === "win32"
-          ? "Bakbak could not list screens or applications. Windows has no Bakbak-specific screen-capture permission; retry, or check device policy if this continues."
-          : "Bakbak could not list screens or applications. Retry, or restart Bakbak if macOS access changed while it was open.",
-      canOpenSettings: false,
-      restartRequired: false,
-    },
-  };
+function configureScreenShareHelper(): void {
+  screenShareHelper = new ScreenShareHelperManager({
+    binaryPath: resolveScreenShareHelperPath({
+      packaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      appPath: app.getAppPath(),
+      platform: process.platform,
+      ...(!app.isPackaged && process.env.BAKBAK_SCREEN_SHARE_HELPER_PATH
+        ? {
+            developmentOverride: process.env.BAKBAK_SCREEN_SHARE_HELPER_PATH,
+          }
+        : {}),
+    }),
+    electronRootPid: process.pid,
+    bundleId: APP_ID,
+    appVersion: app.getVersion(),
+    nativeAudioEnabled: NATIVE_SCREEN_AUDIO_ENABLED,
+  });
+  screenShareHelper.onLifecycle((event) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("screen-share:lifecycle", event);
+    }
+  });
 }
 
 async function openPermissionSettings(kind: PermissionKind): Promise<boolean> {
@@ -485,79 +440,34 @@ function registerIpcHandlers(): void {
       return openPermissionSettings(validatedPermissionKind(rawKind));
     },
   );
-  ipcMain.handle("screen-share:get-capabilities", (event) => {
+  ipcMain.handle("screen-share:capabilities", async (event) => {
     assertTrustedSender(event);
-    return screenShareCapabilities();
+    return getScreenShareHelper().capabilities();
   });
-  ipcMain.handle("screen-share:list-sources", async (event) => {
+  ipcMain.handle("screen-share:list-sources", async (event, input: unknown) => {
     assertTrustedSender(event);
-    const initialPermissionStatus = getPermissionStatus("screen");
-    if (
-      process.platform === "darwin" &&
-      (initialPermissionStatus === "denied" ||
-        initialPermissionStatus === "restricted")
-    ) {
-      return screenShareSourceFailure(initialPermissionStatus);
-    }
-    try {
-      const sources = await desktopCapturer.getSources({
-        types: ["screen", "window"],
-        fetchWindowIcons: true,
-        thumbnailSize: { width: 320, height: 180 },
-      });
-      const capabilities = screenShareCapabilities();
-      return {
-        ok: true as const,
-        sources: sources.map((source) => {
-          const display = source.id.startsWith("screen:");
-          const audioAvailable = capabilities.systemAudioAvailable && display;
-          return {
-            id: source.id,
-            kind: display ? ("display" as const) : ("application" as const),
-            label: source.name,
-            applicationLabel: display ? null : source.name,
-            audioAvailable,
-            audioUnavailableReason: audioAvailable
-              ? null
-              : (capabilities.systemAudioUnavailableReason ??
-                "Bakbak cannot isolate audio to one application; share an entire screen to include system audio."),
-            thumbnailDataUrl: source.thumbnail.isEmpty()
-              ? null
-              : source.thumbnail.toDataURL(),
-          };
-        }),
-        permissionStatus: getPermissionStatus("screen"),
-        ...capabilities,
-        failure: null,
-      };
-    } catch {
-      return screenShareSourceFailure(getPermissionStatus("screen"));
-    }
+    return getScreenShareHelper().listSources(
+      input && typeof input === "object" ? input : {},
+    );
   });
-  ipcMain.handle(
-    "screen-share:prepare",
-    (event, input: PreparedCaptureInput) => {
-      assertTrustedSender(event);
-      if (
-        !input ||
-        typeof input.sourceId !== "string" ||
-        input.sourceId.length < 1 ||
-        input.sourceId.length > 256 ||
-        typeof input.includeAudio !== "boolean" ||
-        (input.includeAudio &&
-          (!screenShareCapabilities().systemAudioAvailable ||
-            !input.sourceId.startsWith("screen:")))
-      ) {
-        throw new Error("Invalid screen-share selection.");
-      }
-      preparedCapture = {
-        sourceId: input.sourceId,
-        includeAudio: input.includeAudio,
-        senderId: event.sender.id,
-        expiresAt: Date.now() + 30_000,
-      };
-    },
-  );
+  ipcMain.handle("screen-share:start", async (event, input: unknown) => {
+    assertTrustedSender(event);
+    return getScreenShareHelper().start(
+      input as Parameters<ScreenShareHelperManager["start"]>[0],
+    );
+  });
+  ipcMain.handle("screen-share:update", async (event, input: unknown) => {
+    assertTrustedSender(event);
+    return getScreenShareHelper().update(
+      input as Parameters<ScreenShareHelperManager["update"]>[0],
+    );
+  });
+  ipcMain.handle("screen-share:stop", async (event, input: unknown) => {
+    assertTrustedSender(event);
+    return getScreenShareHelper().stop(
+      input as Parameters<ScreenShareHelperManager["stop"]>[0],
+    );
+  });
   ipcMain.handle("updates:check", async (event, rawTimeout: unknown) => {
     assertTrustedSender(event);
     if (!app.isPackaged || !["darwin", "win32"].includes(process.platform)) {
@@ -596,7 +506,6 @@ function configureSession(): void {
     );
   const allowedPermissions = new Set([
     "media",
-    "display-capture",
     "fullscreen",
     "clipboard-sanitized-write",
   ]);
@@ -650,50 +559,6 @@ function configureSession(): void {
           (trustedMainFrame || trustedEmbedFullscreen),
       );
     },
-  );
-  currentSession.setDisplayMediaRequestHandler(
-    (request, callback) => {
-      const window = mainWindow;
-      const capture = preparedCapture;
-      preparedCapture = null;
-      if (
-        !window ||
-        !capture ||
-        capture.expiresAt < Date.now() ||
-        capture.senderId !== window.webContents.id ||
-        !request.frame ||
-        request.frame.top !== window.webContents.mainFrame ||
-        !isTrustedRendererUrl(request.securityOrigin) ||
-        !request.userGesture
-      ) {
-        callback({});
-        return;
-      }
-      void desktopCapturer
-        .getSources({
-          types: ["screen", "window"],
-          thumbnailSize: { width: 0, height: 0 },
-        })
-        .then((sources) => {
-          const source = sources.find(
-            (candidate) => candidate.id === capture.sourceId,
-          );
-          if (!source) {
-            callback({});
-            return;
-          }
-          callback({
-            video: source,
-            ...(capture.includeAudio &&
-            screenShareCapabilities().systemAudioAvailable &&
-            source.id.startsWith("screen:")
-              ? { audio: "loopback" as const }
-              : {}),
-          });
-        })
-        .catch(() => callback({}));
-    },
-    { useSystemPicker: false },
   );
 }
 
@@ -824,7 +689,10 @@ function createMainWindow(): BrowserWindow {
     applyMacWindowControlsVisibility(window),
   );
   window.on("closed", () => {
-    if (mainWindow === window) mainWindow = null;
+    if (mainWindow === window) {
+      mainWindow = null;
+      void screenShareHelper?.stopActive();
+    }
   });
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("https://") || url.startsWith("http://")) {
@@ -859,6 +727,7 @@ void app.whenReady().then(() => {
   registerAppProtocol();
   installApplicationMenu();
   configureUpdater();
+  configureScreenShareHelper();
   registerIpcHandlers();
   mainWindow = createMainWindow();
   configureSession();
@@ -879,4 +748,11 @@ void app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
+});
+
+app.on("before-quit", (event) => {
+  if (helperShutdownStarted || !screenShareHelper) return;
+  event.preventDefault();
+  helperShutdownStarted = true;
+  void screenShareHelper.shutdown().finally(() => app.quit());
 });

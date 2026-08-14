@@ -7939,3 +7939,148 @@ supabase/functions/livekit-token/index.ts` — passed.
 - **Next:** Fully restart Bakbak, select the right sidebar, confirm the traffic
   lights are centered in the main drag strip through one focus/fullscreen
   cycle, then complete the remaining native plan 0036 matrix.
+
+## 2026-08-14 — Fail closed screen audio and enforce exact-once playback
+
+- **Completed:** Made every current Windows and macOS Electron screen source
+  video-only. Main-process capabilities/source metadata now explain that Bakbak
+  call audio cannot be safely excluded, audio-enabled prepared selections are
+  rejected, and the display-media callback returns only the exact selected
+  video source with no Chromium loopback branch. The renderer independently
+  normalizes stale or unsafe bridge claims to video-only before capture. Added
+  an exact-once remote-audio invariant across LiveKit-like attach/unmute and
+  `volumechange`, blocked/restored room playback, output changes, `playing`, and
+  bounded pause/stall/error/ended recovery. Direct MediaStream routes rebuild
+  their gain stage on error/ended reattachment; a re-entry guard prevents
+  route mutations from recursively reacting to their own `volumechange`
+  events. Element fallback remains available. Privacy-safe diagnostics schema
+  v3 now includes route type, attachment state/count, and invariant status.
+- **Decisions:** Chose a product-level fail-closed boundary instead of treating
+  Chromium's best-effort `restrictOwnAudio` as process isolation. System audio
+  can return only through a native path that proves Bakbak's process tree is
+  excluded on installed Windows and macOS clients. Kept listener gain in one
+  renderer-owned route and reapplied its invariant after every known LiveKit,
+  recovery, and output mutation point rather than trusting one-time attach
+  state.
+- **Validation:**
+  - Focused Vitest — passed 4 files / 88 tests covering remote routing,
+    screen-share service normalization, room playback-status reconciliation,
+    and diagnostics.
+  - `node --test scripts/screen-share-audio-isolation.test.mjs` — passed 2/2
+    Electron video-only/fail-closed source-contract tests.
+  - `./node_modules/.bin/prettier --check .` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed with zero warnings.
+  - Direct strict TypeScript checks for the renderer, Node scripts, and
+    Electron process — all passed.
+  - Full Vitest — passed 90 files / 539 tests.
+  - `node --test scripts/*.test.mjs` — passed all 56 Node source-contract tests.
+  - `./node_modules/.bin/vite build` — passed after transforming 2,053 modules;
+    the existing large-chunk warning remains non-blocking.
+  - Electron compile plus `electron-builder --publish never` — the sandboxed
+    packaging attempt failed when `github.com` DNS was unavailable; the
+    approved network retry passed native rebuild, ad-hoc signing, Apple Silicon
+    ZIP/DMG generation, and both block maps. Notarization remained skipped
+    because credentials are not configured.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist`,
+    `electron-dist`, and `release`.
+  - `git diff --check` — passed.
+- **Documentation updated:** Updated `docs/architecture.md`, the active v1
+  plan, and this canonical progress log with the fail-closed capture boundary,
+  exact-once remote routing, diagnostic schema v3, and future native-isolation
+  gate.
+- **Known limitations:** System audio is intentionally unavailable for every
+  current Electron screen share. This removes shared-loopback self-return but
+  does not replace the required installed two-client Windows/macOS voice,
+  speaker echo-cancellation, reconnect, output-change, and video-share
+  observation. The element fallback cannot boost beyond the media element's
+  0–100% range when Web Audio graph creation is unavailable.
+- **Next:** Run the installed two-client matrix on Apple Silicon macOS and
+  Windows x64 to confirm one copy of remote speech across watch, reconnect,
+  playback recovery, and speaker changes; separately design and prove a native
+  process-isolated system-audio path before restoring the audio checkbox.
+
+## 2026-08-14 — Restore native Electron screen-audio isolation
+
+- **Completed:** Added the bundled `bakbak-screen-share-helper` contract and
+  Electron protocol-v1 supervisor with exact hello, correlated JSON-lines
+  requests, strict input/result validation, bounded lines/tokens/sources,
+  sanitized errors, lifecycle forwarding, timeout/crash cleanup, and graceful
+  shutdown. Replaced preload `prepare` with capabilities/list/start/update/stop
+  plus lifecycle methods. The renderer now delegates capture and companion
+  publication to the helper; Electron `desktopCapturer`, display-media handling,
+  `display-capture` permission, Chromium loopback, and renderer screen-track
+  publication are removed. Added locked Rust build/test/staging scripts,
+  `extraResources`, macOS/Windows CI checks, and a clean staging directory so
+  the executable lands at `resources/native`. Added the compile-time rollout
+  gate: default, PR, and release builds embed audio disabled, while only an
+  exact-revision stabilization candidate embeds it enabled.
+  Closing the last app window now invokes a bounded, restartable helper teardown
+  that stops or kills any active/in-flight share without preventing a later
+  macOS Dock activation from starting a fresh helper. On macOS, an audio
+  downgrade now reconfigures ScreenCaptureKit with native audio disabled while
+  preserving video and quality settings. `apple-metal` is pinned to 0.6.0; a
+  scoped dependency clean plus locked standard-target rebuild proved the staged
+  and packaged helpers have no unused MetalFX load dependency.
+- **Decisions:** Native audio fails closed unless the helper proves the Electron
+  process tree is excluded for display capture or only the selected process tree
+  is included for application capture. The helper receives an allowlisted
+  environment and neither request payloads nor raw stderr are logged. Only the
+  nine existing 854×480/1280×720/1920×1080 at 15/30/60 quality/bitrate tuples
+  are accepted. A protocol fault, unknown response, oversized remainder,
+  timeout, or crash kills the child and fails an active share. Audio rollout is
+  compiled into Electron rather than relying on an installer-time environment
+  variable.
+- **Validation:**
+  - `pnpm format:check` — interrupted without output because the machine's
+    global pnpm 11.3 shim stalls while the project requests pnpm 11.17; the
+    equivalent project-local checks below ran directly.
+  - `./node_modules/.bin/prettier --check .` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed.
+  - Renderer, Node, Electron, and Electron-test strict TypeScript commands —
+    passed all four configurations.
+  - `./node_modules/.bin/vitest run` — passed 91 files / 547 tests, including
+    helper handshake/correlation/malformed/timeout/crash/line-bound/URL/gate
+    coverage, restartable window teardown, and renderer downgrade/cleanup
+    behavior.
+  - `node --test scripts/*.test.mjs` — passed 60/60 source, rollout, CI, and
+    packaging contract tests.
+  - `cargo test --locked --manifest-path native/screen-share-helper/Cargo.toml
+--quiet` — passed 13 library tests plus 1 binary test; doc tests had 0.
+  - Locked `cargo fmt --check`/Clippy checks — passed.
+  - `cargo build --release --locked --manifest-path
+native/screen-share-helper/Cargo.toml` — the sandboxed attempt failed only
+    because DNS could not download LiveKit's pinned WebRTC archive; the approved
+    network retry passed and produced an Apple Silicon Mach-O helper.
+  - `cargo clean -p apple-metal --release` followed by the locked standard
+    release build — passed. `cargo tree --locked -i apple-metal` resolved only
+    0.6.0; staged and packaged helper `otool`/`strings` checks found no
+    MetalFX/MTLFX linkage or symbols, and `vtool -show-build` reported macOS
+    `minos 11.0`.
+  - Direct packaged-path helper pipe smoke — passed hello → ready → capabilities
+    → shutting-down → shutdown with correlated responses and exit 0.
+  - `./node_modules/.bin/vite build` and Electron compile — passed; Vite retains
+    the existing non-blocking large-chunk warning.
+  - `./node_modules/.bin/electron-builder --publish never` — passed native
+    rebuild, ad-hoc deep signing, Apple Silicon ZIP/DMG, and block maps after the
+    approved download. The packaged arm64 helper exists and is executable at
+    `Bakbak.app/Contents/Resources/native/bakbak-screen-share-helper`;
+    `codesign --verify --deep --strict` passed. Notarization was skipped without
+    credentials. After the clean native rebuild, the full Apple Silicon ZIP/DMG
+    and block maps were regenerated successfully and the packaged helper passed
+    the dependency and signing checks again.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist`,
+    `electron-dist`, and `release`.
+- **Documentation updated:** Replaced the Chromium capture contract in
+  `docs/architecture.md`, added plan 0037, updated the active v1 plan, and added
+  this canonical entry.
+- **Known limitations:** Native audio remains disabled in ordinary and release
+  builds. Installed Apple Silicon macOS and Windows x64 source/audio/permission,
+  signing, teardown, helper-crash, and application-audio matrices remain open,
+  as does the 30-minute three-client proof that the presenter hears no self
+  return and every remote speaker exactly once. Windows packaging runs only in
+  CI. The MetalFX/load-floor and ScreenCaptureKit stop-audio results are local
+  binary/unit evidence, not substitutes for that installed capture matrix. The
+  local macOS package is ad-hoc signed and intentionally not notarized.
+- **Next:** Build the exact-revision stabilization candidate on both supported
+  runners, complete plan 0037's installed matrices and three-client observation,
+  then record the evidence before enabling native audio in release builds.

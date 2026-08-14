@@ -13,6 +13,9 @@ export interface RemoteAudioTrackLike {
 }
 
 export type RemoteAudioSourceKind = "speech" | "soundboard" | "screen-share";
+export type RemoteAudioRouteType =
+  "stream-graph" | "element-graph" | "element-fallback";
+export type RemoteAudioAttachmentState = "attached" | "detached";
 
 export interface RemoteAudioAttachment {
   ownerId: string;
@@ -58,6 +61,10 @@ export interface RemoteAudioDiagnostic {
   lastEvent: string;
   listenerGain: number;
   limitedOutput: boolean;
+  routeType: RemoteAudioRouteType;
+  attachmentState: RemoteAudioAttachmentState;
+  attachmentCount: number;
+  exactOnceInvariant: boolean;
 }
 
 interface OwnedRemoteAudio {
@@ -77,6 +84,8 @@ interface OwnedRemoteAudio {
   lastEvent: string;
   removeHealthListeners: () => void;
   gainStage: RemoteAudioGainStage | null;
+  routingReady: boolean;
+  applyingRoute: boolean;
 }
 
 const MAX_PLAYBACK_RECOVERY_ATTEMPTS = 2;
@@ -126,8 +135,8 @@ export class RemoteAudioRenderer {
     const existing = this.elements.get(track);
     if (existing) {
       existing.metadata = normalizeMetadata(metadata);
-      this.applyGain(existing);
       if (!existing.element.parentNode) this.getHost().append(existing.element);
+      this.applyGain(existing);
       return existing.element;
     }
 
@@ -151,6 +160,8 @@ export class RemoteAudioRenderer {
       lastEvent: "attached",
       removeHealthListeners: () => undefined,
       gainStage: null,
+      routingReady: false,
+      applyingRoute: false,
     };
     owned.removeHealthListeners = this.addHealthListeners(track, owned);
     this.getHost().append(element);
@@ -169,6 +180,7 @@ export class RemoteAudioRenderer {
       ) {
         void element.setSinkId(this.selectedDeviceId).catch(() => undefined);
       }
+      owned.routingReady = true;
       this.applyGain(owned);
     } catch {
       this.emitHealth(owned, "playback-failed", true);
@@ -245,6 +257,15 @@ export class RemoteAudioRenderer {
       }),
     );
     this.selectedDeviceId = deviceId;
+    this.reassertExactOnceRouting();
+  }
+
+  /**
+   * Reapplies the single authoritative route after LiveKit or the browser has
+   * touched its attached media elements (for example Room.startAudio()).
+   */
+  reassertExactOnceRouting(): void {
+    this.elements.forEach((owned) => this.applyGain(owned));
   }
 
   detachExcept(tracks: ReadonlySet<RemoteAudioTrackLike>): void {
@@ -317,6 +338,10 @@ export class RemoteAudioRenderer {
       lastEvent: owned.lastEvent,
       listenerGain: this.resolveGain(owned),
       limitedOutput: Boolean(owned.gainStage),
+      routeType: this.routeType(owned),
+      attachmentState: owned.element.parentNode ? "attached" : "detached",
+      attachmentCount: owned.element.parentNode ? 1 : 0,
+      exactOnceInvariant: this.hasExactOnceInvariant(owned),
     }));
   }
 
@@ -338,6 +363,7 @@ export class RemoteAudioRenderer {
     owned: OwnedRemoteAudio,
   ): () => void {
     const onPlaying = () => {
+      this.applyGain(owned);
       const wasRecovering =
         owned.playbackState !== "playing" && owned.playbackState !== "attached";
       owned.playbackState = "playing";
@@ -360,18 +386,29 @@ export class RemoteAudioRenderer {
     const onStalled = () => recover("stalled");
     const onError = () => recover("error");
     const onEnded = () => recover("ended");
+    const onVolumeChange = () => {
+      if (
+        this.elements.get(track) === owned &&
+        !owned.applyingRoute &&
+        !this.hasExactOnceInvariant(owned)
+      ) {
+        this.applyGain(owned);
+      }
+    };
 
     owned.element.addEventListener("playing", onPlaying);
     owned.element.addEventListener("pause", onPause);
     owned.element.addEventListener("stalled", onStalled);
     owned.element.addEventListener("error", onError);
     owned.element.addEventListener("ended", onEnded);
+    owned.element.addEventListener("volumechange", onVolumeChange);
     return () => {
       owned.element.removeEventListener("playing", onPlaying);
       owned.element.removeEventListener("pause", onPause);
       owned.element.removeEventListener("stalled", onStalled);
       owned.element.removeEventListener("error", onError);
       owned.element.removeEventListener("ended", onEnded);
+      owned.element.removeEventListener("volumechange", onVolumeChange);
     };
   }
 
@@ -395,18 +432,33 @@ export class RemoteAudioRenderer {
 
     try {
       if (
-        trigger === "error" ||
-        trigger === "ended" ||
+        trigger.startsWith("error") ||
+        trigger.startsWith("ended") ||
         Boolean(owned.element.error)
       ) {
+        this.hardMuteElement(owned.element);
+        owned.routingReady = false;
+        const rebuildStreamRoute =
+          owned.gainStage?.isolatesElementPlayback === true;
+        if (rebuildStreamRoute) {
+          owned.gainStage?.setGain(0);
+          owned.gainStage?.disconnect();
+          owned.gainStage = null;
+        }
         track.detach(owned.element);
         track.attach(owned.element);
+        if (rebuildStreamRoute) {
+          owned.gainStage = this.gainGraph.attach(owned.element);
+        }
+        owned.routingReady = true;
       }
+      this.applyGain(owned);
       await Promise.resolve(owned.element.play());
       if (!(await this.gainGraph.start())) {
         throw new DOMException("gesture required", "NotAllowedError");
       }
       if (this.elements.get(track) !== owned) return false;
+      this.applyGain(owned);
       const alreadyReportedPlaying = owned.lastEvent === "playing";
       owned.playbackState = "playing";
       owned.recoveryAttempts = 0;
@@ -452,27 +504,66 @@ export class RemoteAudioRenderer {
   }
 
   private applyGain(owned: OwnedRemoteAudio): void {
-    const gain = this.resolveGain(owned);
-    const sourceMuted = this.isSourceMuted(owned);
+    if (owned.applyingRoute) return;
+    owned.applyingRoute = true;
     try {
-      // Keep LiveKit's own track volume as a second binary mute boundary. The
-      // listener gain still lives only in Bakbak's graph, avoiding double gain.
-      owned.track.setVolume?.(sourceMuted ? 0 : 1);
-    } catch {
-      // The renderer-owned media element and gain graph remain authoritative.
+      if (!owned.routingReady) {
+        this.hardMuteElement(owned.element);
+        return;
+      }
+      const gain = this.resolveGain(owned);
+      const sourceMuted = this.isSourceMuted(owned);
+      try {
+        // Keep LiveKit's own track volume as a second binary mute boundary. The
+        // listener gain still lives only in Bakbak's graph, avoiding double gain.
+        owned.track.setVolume?.(sourceMuted ? 0 : 1);
+      } catch {
+        // The renderer-owned media element and gain graph remain authoritative.
+      }
+      if (owned.gainStage) {
+        // Room.startAudio() may unmute LiveKit's attached elements. A direct
+        // MediaStream source therefore also keeps its companion element at zero
+        // volume, preventing an unprocessed duplicate from bypassing this gain.
+        owned.element.volume = owned.gainStage.isolatesElementPlayback ? 0 : 1;
+        owned.element.muted =
+          owned.gainStage.isolatesElementPlayback || sourceMuted;
+        owned.gainStage.setGain(gain);
+        return;
+      }
+      owned.element.muted = sourceMuted;
+      owned.element.volume = clampGain(gain);
+    } finally {
+      owned.applyingRoute = false;
     }
-    if (owned.gainStage) {
-      // Room.startAudio() may unmute LiveKit's attached elements. A direct
-      // MediaStream source therefore also keeps its companion element at zero
-      // volume, preventing an unprocessed duplicate from bypassing this gain.
-      owned.element.volume = owned.gainStage.isolatesElementPlayback ? 0 : 1;
-      owned.element.muted =
-        owned.gainStage.isolatesElementPlayback || sourceMuted;
-      owned.gainStage.setGain(gain);
-      return;
+  }
+
+  private hardMuteElement(element: HTMLAudioElement): void {
+    element.volume = 0;
+    element.muted = true;
+  }
+
+  private routeType(owned: OwnedRemoteAudio): RemoteAudioRouteType {
+    if (owned.gainStage?.isolatesElementPlayback) return "stream-graph";
+    if (owned.gainStage) return "element-graph";
+    return "element-fallback";
+  }
+
+  private hasExactOnceInvariant(owned: OwnedRemoteAudio): boolean {
+    if (!owned.routingReady || !owned.element.parentNode) return false;
+    const sourceMuted = this.isSourceMuted(owned);
+    switch (this.routeType(owned)) {
+      case "stream-graph":
+        return owned.element.muted && owned.element.volume === 0;
+      case "element-graph":
+        return (
+          owned.element.muted === sourceMuted && owned.element.volume === 1
+        );
+      case "element-fallback":
+        return (
+          owned.element.muted === sourceMuted &&
+          owned.element.volume === clampGain(this.resolveGain(owned))
+        );
     }
-    owned.element.muted = sourceMuted;
-    owned.element.volume = clampGain(gain);
   }
 
   private resolveGain(owned: OwnedRemoteAudio): number {

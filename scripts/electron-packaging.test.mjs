@@ -30,6 +30,23 @@ test("desktop packaging keeps the supported identities and architectures", () =>
   ]);
 });
 
+test("desktop packaging builds and bundles the native screen-share helper", () => {
+  assert.match(packageJson.scripts["desktop:prepare"], /pnpm native:build/);
+  assert.match(
+    packageJson.scripts["native:build"],
+    /cargo build --release --locked --manifest-path native\/screen-share-helper\/Cargo\.toml/,
+  );
+  assert.match(packageJson.scripts["native:test"], /cargo test --locked/);
+  assert.match(packageJson.scripts["desktop:prepare"], /pnpm native:stage/);
+  assert.deepEqual(packageJson.build.extraResources, [
+    {
+      from: "build/native",
+      to: "native",
+      filter: ["bakbak-screen-share-helper", "bakbak-screen-share-helper.exe"],
+    },
+  ]);
+});
+
 test("Windows installer bridges the existing Tauri installation", () => {
   assert.equal(packageJson.build.nsis.include, "build/installer.nsh");
   assert.match(installer, /StrCpy \$INSTDIR "\$LOCALAPPDATA\\Bakbak"/);
