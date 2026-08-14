@@ -2963,7 +2963,10 @@ export default function App() {
         <WindowTitlebar
           showSpaceSwitcher={showSpaceSwitcher}
           {...(showSpaceSwitcher
-            ? { sidebarVisible: layoutPreferences.sidebarVisible }
+            ? {
+                sidebarVisible: layoutPreferences.sidebarVisible,
+                sidebarPosition: layoutPreferences.sidebarPosition,
+              }
             : {})}
         />
         <div className="app-frame__content">{content}</div>

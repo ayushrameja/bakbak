@@ -7893,3 +7893,49 @@ supabase/functions/livekit-token/index.ts` — passed.
 - **Next:** Confirm left/right placement, collapse/restore, resizer direction,
   and native caption controls in refreshed installed macOS and Windows builds,
   then complete plan 0036's outstanding native acceptance matrix.
+
+## 2026-08-14 — Center right-sidebar macOS traffic lights
+
+- **Completed:** Extended the narrow native window-controls command to carry
+  the current sidebar position with visibility. macOS now retains
+  `{ x: 16, y: 16 }` inside the taller left-sidebar chrome and uses
+  `{ x: 16, y: 8 }` when the sidebar is on the right, centering the traffic
+  lights vertically in the compact 30 px main drag strip. Focus, restore,
+  ready-to-show, and fullscreen-return recovery reapply both position and
+  visibility. Authentication/unmount restores the left/default position.
+- **Decisions:** Kept the native buttons on macOS's platform-standard left edge
+  and changed only their vertical alignment. Preserved backward compatibility:
+  a renderer or preload that omits the new position argument safely defaults to
+  `left`, while invalid values are rejected in the trusted main process.
+- **Validation:**
+  - Screenshot inspection — confirmed the reported right-sidebar buttons used
+    the `y: 16` sidebar offset and visibly crossed the 30 px drag-strip bottom;
+    the correction removes that eight-pixel mismatch.
+  - Focused Vitest and source contracts — passed 2 files / 24 tests plus 10/10
+    Arc/native chrome Node tests, including right-position bridge arguments,
+    main-process coordinate constants, and native lifecycle reapplication.
+  - Full direct check equivalents — passed formatting, zero-warning lint,
+    renderer/Node/Electron strict TypeScript, 90 Vitest files / 539 tests, all
+    56 Node source-contract tests, and version validation at `1.7.2`.
+  - `./node_modules/.bin/vite build` — passed the production renderer build;
+    the existing large-chunk warning remains non-blocking.
+  - `./node_modules/.bin/electron-builder --publish never` — the sandboxed
+    attempt failed because GitHub DNS was unavailable; the approved network
+    retry passed native rebuild, Electron download, ad-hoc signing, Apple
+    Silicon ZIP/DMG generation, and both block maps. Notarization remained
+    skipped without credentials.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist`,
+    `electron-dist`, and `release`.
+  - `git diff --check` and the added-line secret-pattern audit — passed.
+- **Documentation updated:** Documented side-specific macOS traffic-light
+  coordinates and native-state synchronization in `docs/architecture.md`, plan
+  0036, the active v1 plan, and this canonical log.
+- **Known limitations:** Vite cannot hot-reload Electron main/preload changes,
+  so an already-running desktop development app must be fully quit and
+  relaunched before the corrected coordinates appear. The fresh package
+  compiled successfully, but final installed macOS observation and Windows WCO
+  acceptance remain open; the macOS package is still ad-hoc signed and
+  unnotarized.
+- **Next:** Fully restart Bakbak, select the right sidebar, confirm the traffic
+  lights are centered in the main drag strip through one focus/fullscreen
+  cycle, then complete the remaining native plan 0036 matrix.

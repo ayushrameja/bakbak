@@ -13,8 +13,9 @@ with typed macOS and Windows recovery.
 - Remove both the full app-owned titlebar and contextual conversation top bar;
   keep only a compact, action-free drag strip at the top of the main canvas.
 - Keep native macOS traffic lights on the platform-standard left edge—inside
-  the sidebar when it is left-positioned—and hide them with that sidebar. Use
-  Windows Window Controls Overlay on its platform-standard right edge.
+  the sidebar when it is left-positioned and vertically centered in the 30 px
+  main drag strip when it is right-positioned—and hide them with that sidebar.
+  Use Windows Window Controls Overlay on its platform-standard right edge.
 - Keep the sidebar visible by default, preserve its 248–340 px width, and let
   one control directly after Settings in the bottom user dock close it while
   visible. Keep the signed-in native-safe overlay empty and zero-width. View →
@@ -67,6 +68,9 @@ with typed macOS and Windows recovery.
 - [x] Move the close toggle beside Settings in the user dock, leave the
       signed-in overlay empty, and migrate layout preferences to v5 with a
       persisted left/right sidebar position and mirrored resizer.
+- [x] Reposition macOS traffic lights from `{ x: 16, y: 16 }` to
+      `{ x: 16, y: 8 }` in right-sidebar mode so they remain centered in the
+      compact main drag strip, and reapply that alignment with native state.
 - [x] Add vibrancy/Mica/fallback capability reporting, opaque startup, glass
       tokens, and accessibility fallbacks without filtering live media.
 - [x] Complete formatting, lint, typecheck, unit/source-contract, production

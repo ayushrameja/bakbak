@@ -37,7 +37,18 @@ test("Electron keeps the existing app and supported platform identities", () => 
   assert.match(main, /label: "Toggle Sidebar"/);
   assert.match(main, /accelerator: "CmdOrCtrl\+B"/);
   assert.match(main, /webContents\.send\("window:toggle-sidebar"\)/);
-  assert.match(main, /trafficLightPosition:\s*\{ x: 16, y: 16 \}/);
+  assert.match(
+    main,
+    /MAC_WINDOW_CONTROLS_POSITIONS\s*=\s*\{[\s\S]*?left:\s*\{ x: 16, y: 16 \}[\s\S]*?right:\s*\{ x: 16, y: 8 \}/,
+  );
+  assert.match(
+    main,
+    /trafficLightPosition:\s*MAC_WINDOW_CONTROLS_POSITIONS\.left/,
+  );
+  assert.match(
+    main,
+    /window\.setWindowButtonPosition\([\s\S]*?MAC_WINDOW_CONTROLS_POSITIONS\[macWindowControlsSidebarPosition\]/,
+  );
   assert.match(
     main,
     /window\.setWindowButtonVisibility\(macWindowControlsVisible\)/,
@@ -46,6 +57,7 @@ test("Electron keeps the existing app and supported platform identities", () => 
   assert.match(main, /window\.on\("restore"/);
   assert.match(main, /window\.on\("leave-full-screen"/);
   assert.match(preload, /window:set-controls-visible/);
+  assert.match(preload, /sidebarPosition:\s*SidebarPosition = "left"/);
   assert.match(styles, /-webkit-app-region: drag/);
   assert.match(styles, /-webkit-app-region: no-drag/);
 });

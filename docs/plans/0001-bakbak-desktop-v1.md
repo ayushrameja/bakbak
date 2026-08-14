@@ -52,9 +52,10 @@ starts with context instead of archaeological guessing.
   contextual top bar remains; a compact 30 px main-canvas drag strip provides
   a reliable grab target.
   macOS keeps native traffic lights on the standard left edge—inside the
-  sidebar when it is left-positioned—and hides them with the sidebar.
-  Main-process state reapplies their visibility across focus, restore, and
-  fullscreen return. Windows uses Window Controls Overlay on the right, and
+  sidebar at `y: 16` when it is left-positioned and centered at `y: 8` in the
+  30 px main strip when it is right-positioned—and hides them with the sidebar.
+  Main-process state reapplies their position and visibility across focus,
+  restore, and fullscreen return. Windows uses Window Controls Overlay on the right, and
   the signed-in native-safe overlay stays empty. One close control sits after
   Settings in the bottom user dock. `Cmd/Ctrl+B` or View → Toggle Sidebar
   restores it after hiding. The 280 px default unified sidebar resizes within
@@ -614,6 +615,9 @@ NSIS invocation so the handoff does not create a second application location.
 - [x] Move the sidebar toggle beside Settings, keep the signed-in overlay empty,
       and add persisted left/right sidebar placement with a mirrored resizer and
       layout v5 migration.
+- [x] Center the native macOS traffic lights in the compact main drag strip when
+      the sidebar is on the right and preserve their taller sidebar alignment on
+      the left.
 - [x] Add plan 0036's typed microphone/screen permission bridge, explicit
       capture-action prompt boundary, structured source/capability failures,
       and platform-correct settings/restart recovery.

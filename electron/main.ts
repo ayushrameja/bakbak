@@ -25,6 +25,10 @@ const DEVELOPMENT_URL = "http://127.0.0.1:1420";
 const MAX_UPDATE_TIMEOUT_MS = 10 * 60_000;
 const MIN_UPDATE_TIMEOUT_MS = 1_000;
 const WINDOWS_MICA_MIN_BUILD = 22_621;
+const MAC_WINDOW_CONTROLS_POSITIONS = {
+  left: { x: 16, y: 16 },
+  right: { x: 16, y: 8 },
+} as const;
 
 interface PreparedCapture {
   sourceId: string;
@@ -48,11 +52,13 @@ interface ScreenShareCapabilities {
 }
 
 type WindowMaterial = "vibrancy" | "mica" | "fallback";
+type SidebarPosition = keyof typeof MAC_WINDOW_CONTROLS_POSITIONS;
 
 let mainWindow: BrowserWindow | null = null;
 let preparedCapture: PreparedCapture | null = null;
 let windowMaterial: WindowMaterial = "fallback";
 let macWindowControlsVisible = true;
+let macWindowControlsSidebarPosition: SidebarPosition = "left";
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -178,14 +184,19 @@ function setChromeScheme(window: BrowserWindow, scheme: unknown): void {
 
 function applyMacWindowControlsVisibility(window: BrowserWindow): void {
   if (process.platform !== "darwin" || window.isDestroyed()) return;
+  window.setWindowButtonPosition(
+    MAC_WINDOW_CONTROLS_POSITIONS[macWindowControlsSidebarPosition],
+  );
   window.setWindowButtonVisibility(macWindowControlsVisible);
 }
 
-function setMacWindowControlsVisibility(
+function setMacWindowControlsState(
   window: BrowserWindow,
   visible: boolean,
+  sidebarPosition: SidebarPosition,
 ): void {
   macWindowControlsVisible = visible;
+  macWindowControlsSidebarPosition = sidebarPosition;
   applyMacWindowControlsVisibility(window);
 }
 
@@ -410,13 +421,23 @@ function registerIpcHandlers(): void {
   ipcMain.handle("window:set-chrome-scheme", (event, scheme: unknown) => {
     setChromeScheme(assertTrustedSender(event), scheme);
   });
-  ipcMain.handle("window:set-controls-visible", (event, visible: unknown) => {
-    const window = assertTrustedSender(event);
-    if (typeof visible !== "boolean") {
-      throw new Error("Invalid window controls visibility.");
-    }
-    setMacWindowControlsVisibility(window, visible);
-  });
+  ipcMain.handle(
+    "window:set-controls-visible",
+    (event, visible: unknown, sidebarPosition: unknown) => {
+      const window = assertTrustedSender(event);
+      if (typeof visible !== "boolean") {
+        throw new Error("Invalid window controls visibility.");
+      }
+      if (
+        sidebarPosition !== undefined &&
+        sidebarPosition !== "left" &&
+        sidebarPosition !== "right"
+      ) {
+        throw new Error("Invalid sidebar position for window controls.");
+      }
+      setMacWindowControlsState(window, visible, sidebarPosition ?? "left");
+    },
+  );
   ipcMain.handle("system-accent:get", (event) => {
     assertTrustedSender(event);
     return currentSystemAccent();
@@ -738,6 +759,7 @@ function installApplicationMenu(): void {
 
 function createMainWindow(): BrowserWindow {
   macWindowControlsVisible = true;
+  macWindowControlsSidebarPosition = "left";
   const preload = fileURLToPath(new URL("./preload.cjs", import.meta.url));
   const window = new BrowserWindow({
     title: "Bakbak",
@@ -752,7 +774,7 @@ function createMainWindow(): BrowserWindow {
     ...(process.platform === "darwin"
       ? {
           titleBarStyle: "hiddenInset" as const,
-          trafficLightPosition: { x: 16, y: 16 },
+          trafficLightPosition: MAC_WINDOW_CONTROLS_POSITIONS.left,
           vibrancy: "under-window" as const,
           visualEffectState: "active" as const,
         }

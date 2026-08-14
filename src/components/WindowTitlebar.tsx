@@ -1,15 +1,18 @@
 import { useEffect } from "react";
+import type { SidebarPosition } from "../features/settings/layout-preferences";
 import { getDesktopBridge } from "../lib/desktop-runtime";
 
 interface WindowTitlebarProps {
   showSpaceSwitcher: boolean;
   sidebarVisible?: boolean;
+  sidebarPosition?: SidebarPosition;
   platform?: "macos" | "windows" | "web";
 }
 
 export function WindowTitlebar({
   showSpaceSwitcher,
   sidebarVisible = false,
+  sidebarPosition = "left",
   platform,
 }: WindowTitlebarProps) {
   const runtimePlatform = platform ?? getDesktopBridge()?.platform ?? "web";
@@ -19,13 +22,15 @@ export function WindowTitlebar({
     if (runtimePlatform !== "macos") return;
     if (!desktopWindow?.setWindowControlsVisible) return;
     const visible = !showSpaceSwitcher || sidebarVisible;
-    void desktopWindow.setWindowControlsVisible(visible).catch(() => undefined);
-  }, [runtimePlatform, showSpaceSwitcher, sidebarVisible]);
+    void desktopWindow
+      .setWindowControlsVisible(visible, sidebarPosition)
+      .catch(() => undefined);
+  }, [runtimePlatform, showSpaceSwitcher, sidebarPosition, sidebarVisible]);
 
   useEffect(
     () => () => {
       void getDesktopBridge()
-        ?.window.setWindowControlsVisible?.(true)
+        ?.window.setWindowControlsVisible?.(true, "left")
         .catch(() => undefined);
     },
     [],

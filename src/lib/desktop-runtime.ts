@@ -90,7 +90,10 @@ export interface BakbakDesktopBridge {
   window: {
     getAppearance(): Promise<DesktopWindowAppearance>;
     setChromeScheme(scheme: DesktopChromeScheme): Promise<void>;
-    setWindowControlsVisible?(visible: boolean): Promise<void>;
+    setWindowControlsVisible?(
+      visible: boolean,
+      sidebarPosition?: "left" | "right",
+    ): Promise<void>;
     onToggleSidebar(listener: () => void): () => void;
     onAppearanceChange(
       listener: (appearance: DesktopWindowAppearance) => void,

@@ -229,6 +229,10 @@ test("signed-in shell uses a transparent sidebar and draggable canvas header", (
     app,
     /data-sidebar-position=\{layoutPreferences\.sidebarPosition\}/,
   );
+  assert.match(
+    app,
+    /sidebarVisible:\s*layoutPreferences\.sidebarVisible,[\s\S]*?sidebarPosition:\s*layoutPreferences\.sidebarPosition/,
+  );
   assert.match(app, /side=\{layoutPreferences\.sidebarPosition\}/);
   assert.match(
     arcShell,

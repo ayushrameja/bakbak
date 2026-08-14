@@ -12,6 +12,7 @@ interface PermissionSnapshot {
   requiresRestart: boolean;
 }
 type ChromeScheme = "light" | "dark";
+type SidebarPosition = "left" | "right";
 
 function subscribe<T>(
   channel: string,
@@ -30,10 +31,14 @@ const bridge = Object.freeze({
       ipcRenderer.invoke("window:get-appearance") as Promise<unknown>,
     setChromeScheme: (scheme: ChromeScheme) =>
       ipcRenderer.invoke("window:set-chrome-scheme", scheme) as Promise<void>,
-    setWindowControlsVisible: (visible: boolean) =>
+    setWindowControlsVisible: (
+      visible: boolean,
+      sidebarPosition: SidebarPosition = "left",
+    ) =>
       ipcRenderer.invoke(
         "window:set-controls-visible",
         visible,
+        sidebarPosition,
       ) as Promise<void>,
     onToggleSidebar: (listener: () => void) =>
       subscribe("window:toggle-sidebar", listener),

@@ -84,9 +84,29 @@ describe("WindowTitlebar", () => {
     render(<WindowTitlebar showSpaceSwitcher sidebarVisible={false} />);
 
     await waitFor(() =>
-      expect(setWindowControlsVisible).toHaveBeenCalledWith(false),
+      expect(setWindowControlsVisible).toHaveBeenCalledWith(false, "left"),
     );
     expect(screen.queryByRole("button", { name: "Show sidebar" })).toBeNull();
+  });
+
+  it("centers native traffic lights for the right-sidebar drag strip", async () => {
+    const setWindowControlsVisible = vi.fn().mockResolvedValue(undefined);
+    window.bakbakDesktop = {
+      platform: "macos",
+      window: { setWindowControlsVisible },
+    } as unknown as BakbakDesktopBridge;
+
+    render(
+      <WindowTitlebar
+        showSpaceSwitcher
+        sidebarVisible
+        sidebarPosition="right"
+      />,
+    );
+
+    await waitFor(() =>
+      expect(setWindowControlsVisible).toHaveBeenCalledWith(true, "right"),
+    );
   });
 
   it("keeps the pre-shell overlay free of controls and navigation", () => {

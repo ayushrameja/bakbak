@@ -14,8 +14,9 @@ A zero-width native-safe overlay contains no renderer controls, while the main
 canvas starts with a compact 30 px drag strip that has no contextual text or
 actions. The visible sidebar's bottom user dock places its close control
 directly after Settings; `Cmd/Ctrl+B` or the native View menu restores the
-sidebar after hiding. macOS aligns native traffic lights inside left-positioned
-sidebar chrome and otherwise leaves them on the platform-standard left edge;
+sidebar after hiding. macOS aligns native traffic lights at `{ x: 16, y: 16 }`
+inside left-positioned sidebar chrome and at `{ x: 16, y: 8 }` to center them
+vertically in the 30 px main drag strip when the sidebar is on the right;
 Windows keeps native
 Window Controls Overlay caption buttons on the platform-standard right edge.
 The Personal/Bakbak segmented switch lives at the top of the unified sidebar.
@@ -34,8 +35,8 @@ unsupported environments use an opaque scheme-aware fallback. The native View
 menu owns `Cmd/Ctrl+B`; browser/mock uses the same renderer shortcut. The
 user-dock control closes the visible sidebar and disappears with it; the native
 View menu and `Cmd/Ctrl+B` remain the restore paths.
-macOS traffic-light visibility is main-process-owned and is reapplied after
-window focus, restore, and fullscreen return.
+macOS traffic-light visibility and vertical alignment are main-process-owned
+and reapplied after window focus, restore, and fullscreen return.
 The sidebar defaults to 280 px on the left, can move to the right from
 Appearance Settings, resizes from 248–340 px on either side, stays mounted but
 inert at zero width when hidden, and leaves a
@@ -682,8 +683,10 @@ The renderer uses a native-overlay, two-track desktop layout and modal layer:
 1. No full renderer titlebar or contextual header remains. The signed-in
    native-safe overlay is zero-width and contains no renderer controls.
    macOS keeps native traffic lights on the platform-standard left edge (inside
-   the sidebar when it is left-positioned); Windows keeps Window Controls
-   Overlay on the right. The main canvas contributes a 30 px, action-free drag strip so the
+   the sidebar when it is left-positioned) and vertically centers them in the
+   main drag strip when the sidebar is right-positioned; Windows keeps Window
+   Controls Overlay on the right. The main canvas contributes a 30 px,
+   action-free drag strip so the
    frameless window always has a predictable grab target. The native View menu
    and browser fallback expose the same `Cmd/Ctrl+B` action; blocking dialogs
    suppress the toggle.
@@ -792,9 +795,10 @@ cached scopes.
 Electron owns the native window, application identity, desktop bundle, update
 client, source enumeration, and operating-system integrations. The main window
 keeps the established 1280×800 geometry with a 1024×680 minimum. macOS uses a
-hidden-inset titlebar with traffic lights at `{ x: 16, y: 16 }`; the narrow
-preload bridge hides or restores those native buttons with signed-in sidebar
-visibility. Windows uses a hidden native titlebar plus Window Controls Overlay
+hidden-inset titlebar with traffic lights at `{ x: 16, y: 16 }` for the left
+sidebar and `{ x: 16, y: 8 }` for the right sidebar's 30 px drag strip; the
+narrow preload bridge synchronizes position and visibility with signed-in
+sidebar state. Windows uses a hidden native titlebar plus Window Controls Overlay
 and Mica when supported. The renderer draws no caption buttons. CSS application
 drag regions replace imperative drag IPC. The native View menu owns
 `Cmd/Ctrl+B` Toggle Sidebar alongside the
