@@ -8084,3 +8084,46 @@ native/screen-share-helper/Cargo.toml` — the sandboxed attempt failed only
 - **Next:** Build the exact-revision stabilization candidate on both supported
   runners, complete plan 0037's installed matrices and three-client observation,
   then record the evidence before enabling native audio in release builds.
+
+## 2026-08-14 — Integrate screen-audio isolation into arcify
+
+- **Completed:** Committed the pending Arc sidebar/window-control packet, then
+  merged the stacked fail-closed screen-audio, exact-once playback, native
+  helper, Electron supervision, renderer delegation, packaging, and rollout
+  changes into `arcify`. Preserved both chronological work-log histories while
+  resolving the append-only progress conflict. Built the complete merged
+  Apple Silicon application and verified the packaged helper and app signature.
+- **Decisions:** Kept native screen audio compiled off in ordinary and release
+  builds. Only stabilization candidates may enable it until the installed
+  macOS/Windows and three-client isolation matrix passes; the release-safe
+  fallback remains video-only with no Chromium loopback.
+- **Validation:**
+  - `./node_modules/.bin/prettier --check .` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed with zero warnings.
+  - Renderer, Node, Electron, and Electron-test strict TypeScript checks —
+    passed all four configurations.
+  - `./node_modules/.bin/vitest run` — passed 91 files / 555 tests.
+  - `node --test scripts/*.test.mjs` — passed 60/60 contracts.
+  - `./node_modules/.bin/vite build` — passed; the existing large-chunk warning
+    remains non-blocking.
+  - Locked Rust formatting and Clippy — passed with warnings denied.
+  - `cargo test --locked --offline --manifest-path
+native/screen-share-helper/Cargo.toml` — passed 13 library tests plus 1
+    binary test; doc tests had 0.
+  - Locked offline Rust release build — passed and produced an Apple Silicon
+    Mach-O helper.
+  - `./node_modules/.bin/electron-builder --publish never` — passed native
+    rebuild, ad-hoc deep signing, Apple Silicon ZIP/DMG, and block maps.
+  - Packaged-app/helper `codesign --verify`, helper `otool`/`vtool`, and bundle
+    secret scan — passed; no MetalFX/MTLFX dependency was present and helper
+    `minos` remained 11.0.
+- **Documentation updated:** Preserved the Arc, immediate safety, and native
+  isolation entries in this canonical log; architecture and plans 0001/0037
+  already describe the merged contracts and release gate.
+- **Known limitations:** The local macOS artifact is ad-hoc signed and not
+  notarized. Installed Windows x64 and Apple Silicon macOS capture/audio,
+  permission, crash, topology-loss, and application-audio validation remains
+  open, as does the 30-minute three-client no-self/no-duplicate-audio proof.
+- **Next:** Run the exact-revision stabilization candidate on both native
+  runners, complete plan 0037's installed matrix, and only then enable native
+  audio in ordinary release builds.
