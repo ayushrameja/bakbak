@@ -8127,3 +8127,34 @@ native/screen-share-helper/Cargo.toml` — passed 13 library tests plus 1
 - **Next:** Run the exact-revision stabilization candidate on both native
   runners, complete plan 0037's installed matrix, and only then enable native
   audio in ordinary release builds.
+
+## 2026-08-14 — Repair Windows helper settings-lock compilation
+
+- **Completed:** Replaced the Windows frame callback's
+  `Result::unwrap_or_default()` on `ScreenShareSettings` with explicit poisoned-
+  lock handling. A poisoned settings lock now drops the frame instead of
+  requiring a nonexistent `Default` implementation or inventing an invalid
+  zero-resolution/zero-frame-rate capture tuple.
+- **Decisions:** Kept `ScreenShareSettings` without `Default`; there is no safe
+  universal capture setting to substitute after synchronization state becomes
+  unavailable. Dropping the frame preserves the native helper's fail-closed
+  contract.
+- **Validation:**
+  - PR 60 Windows packaging run `31812162034`, job `94805138867` — failed before
+    this change with Rust `E0277` at `windows_legacy.rs:402` because
+    `ScreenShareSettings` does not implement `Default`.
+  - Full Prettier, zero-warning ESLint, renderer/Node/Electron/Electron-test
+    strict TypeScript, and Vite production build — passed.
+  - `./node_modules/.bin/vitest run` — passed 91 files / 555 tests.
+  - `node --test scripts/*.test.mjs` — passed 60/60 contracts.
+  - Locked Rust formatting, Clippy with warnings denied, 13 library plus 1
+    binary test, doc tests, and offline release build — passed on Apple Silicon
+    macOS.
+- **Documentation updated:** Added this canonical progress entry; architecture
+  and plan scope are unchanged.
+- **Known limitations:** The Windows-only module cannot be compiled by the
+  local macOS MSVC environment; the native Windows x64 GitHub runner remains
+  the authoritative compilation check.
+- **Next:** Push `arcify`, confirm PR 60's Windows package job compiles the
+  helper and packages the installer, then continue the installed plan 0037
+  acceptance matrix.

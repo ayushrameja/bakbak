@@ -396,10 +396,13 @@ pub async fn start_capture(
                             *size = content_size;
                         }
                     }
-                    let selected_settings = handler_settings
-                        .lock()
-                        .map(|settings| *settings)
-                        .unwrap_or_default();
+                    let selected_settings = match handler_settings.lock() {
+                        Ok(settings) => *settings,
+                        // A poisoned settings lock cannot provide a proven
+                        // resolution/frame-rate tuple. Drop this frame instead
+                        // of inventing a zero-valued capture configuration.
+                        Err(_) => return Ok(()),
+                    };
                     if !should_forward_frame(
                         &handler_last_forwarded,
                         selected_settings.frame_rate,
