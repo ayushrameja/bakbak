@@ -165,11 +165,10 @@ export function SidebarGradientPicker({
             <label
               className="sidebar-gradient-picker__point"
               data-point={index + 1}
-              hidden={theme.mode === "solid" && index > 0}
               style={
                 {
-                  left: `${theme.mode === "solid" ? 50 : point.x}%`,
-                  top: `${theme.mode === "solid" ? 50 : point.y}%`,
+                  left: `${point.x}%`,
+                  top: `${point.y}%`,
                   "--picker-color": color,
                 } as CSSProperties
               }

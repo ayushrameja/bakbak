@@ -46,6 +46,35 @@ describe("SidebarUserDock", () => {
     expect(onOpenSettings).toHaveBeenCalledOnce();
   });
 
+  it("hides the sidebar from the dock on either side", async () => {
+    const onHideSidebar = vi.fn();
+    const { rerender } = renderDock(createVoice(), {
+      onHideSidebar,
+      sidebarPosition: "left",
+    });
+
+    const toggle = screen.getByRole("button", { name: "Hide sidebar" });
+    expect(toggle).toHaveAttribute("aria-controls", "context-panel");
+    expect(toggle).toHaveAttribute("aria-keyshortcuts", "Meta+B Control+B");
+    await userEvent.click(toggle);
+    expect(onHideSidebar).toHaveBeenCalledOnce();
+
+    rerender(
+      <SidebarUserDock
+        member={member}
+        voice={createVoice()}
+        loadProfileMedia={vi.fn().mockResolvedValue(null)}
+        onOpenProfile={vi.fn()}
+        openProfileId={null}
+        onOpenSettings={vi.fn()}
+        sidebarPosition="right"
+        sidebarToggleDisabled
+        onHideSidebar={onHideSidebar}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Hide sidebar" })).toBeDisabled();
+  });
+
   it("uses destructive active states for mute and deafen", async () => {
     const toggleMute = vi.fn().mockResolvedValue(undefined);
     const toggleDeafen = vi.fn().mockResolvedValue(undefined);
@@ -100,6 +129,9 @@ function renderDock(
     onOpenProfile: vi.fn(),
     openProfileId: null,
     onOpenSettings: vi.fn(),
+    sidebarPosition: "left",
+    sidebarToggleDisabled: false,
+    onHideSidebar: vi.fn(),
     ...overrides,
   };
   return render(<SidebarUserDock {...props} />);

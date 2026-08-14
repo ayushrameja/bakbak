@@ -8,9 +8,10 @@ import {
 } from "./screen-share-preferences";
 import {
   listScreenShareSources,
-  openScreenRecordingSettings,
+  openPermissionSettings,
   restartDesktopApp,
   type ScreenShareSource,
+  type ScreenShareSourceListFailure,
 } from "./screen-share-service";
 
 export function ScreenShareDialog({
@@ -40,7 +41,8 @@ export function ScreenShareDialog({
   );
   const [sources, setSources] = useState<ScreenShareSource[]>([]);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
-  const [sourceError, setSourceError] = useState<string | null>(null);
+  const [sourceFailure, setSourceFailure] =
+    useState<ScreenShareSourceListFailure | null>(null);
   const [sourcesLoading, setSourcesLoading] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
 
@@ -48,17 +50,28 @@ export function ScreenShareDialog({
     if (!customPicker) return;
     let cancelled = false;
     setSourcesLoading(true);
-    setSourceError(null);
+    setSourceFailure(null);
     void listScreenShareSources()
-      .then((availableSources) => {
+      .then((result) => {
         if (cancelled) return;
-        setSources(availableSources);
+        if (result.ok) {
+          setSources(result.sources);
+          return;
+        }
+        setSources([]);
+        setSelectedSourceId(null);
+        setSourceFailure(result.failure);
       })
-      .catch((error: unknown) => {
+      .catch(() => {
         if (cancelled) return;
         setSources([]);
         setSelectedSourceId(null);
-        setSourceError(describeSourceError(error));
+        setSourceFailure({
+          code: "unknown",
+          message: "Bakbak could not list screens or applications.",
+          canOpenSettings: false,
+          restartRequired: false,
+        });
       })
       .finally(() => {
         if (!cancelled) setSourcesLoading(false);
@@ -68,11 +81,14 @@ export function ScreenShareDialog({
     };
   }, [customPicker, reloadToken]);
 
+  useEffect(() => {
+    if (!customPicker || !sourceFailure) return;
+    const refreshOnFocus = () => setReloadToken((current) => current + 1);
+    window.addEventListener("focus", refreshOnFocus);
+    return () => window.removeEventListener("focus", refreshOnFocus);
+  }, [customPicker, sourceFailure]);
+
   const visibleSources = sources.filter((source) => source.kind === sourceKind);
-  const macPermissionError =
-    sourceError?.toLowerCase().includes("permission") === true ||
-    sourceError?.toLowerCase().includes("screen access") === true ||
-    sourceError?.toLowerCase().includes("tcc") === true;
 
   useEffect(() => {
     if (!customPicker) return;
@@ -134,27 +150,27 @@ export function ScreenShareDialog({
                 Application
               </button>
             </div>
-            {sourceError ? (
+            {sourceFailure ? (
               <div className="screen-share-dialog__source-status" role="alert">
-                <p>{sourceError}</p>
+                <p>{sourceFailure.message}</p>
                 <div className="screen-share-dialog__source-actions">
-                  {macPermissionError ? (
-                    <>
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        onClick={() => void openScreenRecordingSettings()}
-                      >
-                        Open Privacy Settings
-                      </button>
-                      <button
-                        className="primary-button"
-                        type="button"
-                        onClick={() => void restartDesktopApp()}
-                      >
-                        Restart Bakbak
-                      </button>
-                    </>
+                  {sourceFailure.canOpenSettings ? (
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => void openPermissionSettings("screen")}
+                    >
+                      Open Privacy Settings
+                    </button>
+                  ) : null}
+                  {sourceFailure.restartRequired ? (
+                    <button
+                      className="primary-button"
+                      type="button"
+                      onClick={() => void restartDesktopApp()}
+                    >
+                      Restart Bakbak
+                    </button>
                   ) : null}
                   <button
                     className="secondary-button"
@@ -171,7 +187,9 @@ export function ScreenShareDialog({
                 Loading shareable sources…
               </p>
             ) : null}
-            {!sourcesLoading && !sourceError && visibleSources.length === 0 ? (
+            {!sourcesLoading &&
+            !sourceFailure &&
+            visibleSources.length === 0 ? (
               <div className="screen-share-dialog__source-status">
                 <p>
                   {sourceKind === "display"
@@ -269,7 +287,7 @@ export function ScreenShareDialog({
             <strong>Include system audio</strong>
             <small>
               {sourceAudioAvailable
-                ? "Selected-source audio is included; Bakbak voice chat is excluded."
+                ? "Shares system output; it is not isolated to this display. Bakbak asks the capture engine to suppress its own voice audio, but use headphones and check for echo."
                 : (selectedSource?.audioUnavailableReason ??
                   audioUnavailableReason ??
                   "Matched audio is unavailable on this system; video still works.")}
@@ -307,7 +325,7 @@ export function ScreenShareDialog({
             }}
             disabled={
               customPicker &&
-              (sourcesLoading || !selectedSourceId || Boolean(sourceError))
+              (sourcesLoading || !selectedSourceId || Boolean(sourceFailure))
             }
           >
             <MonitorUp size={17} /> {customPicker ? "Share" : "Choose source"}
@@ -316,10 +334,4 @@ export function ScreenShareDialog({
       </div>
     </Modal>
   );
-}
-
-function describeSourceError(error: unknown): string {
-  if (error instanceof Error && error.message.trim()) return error.message;
-  if (typeof error === "string" && error.trim()) return error;
-  return "Bakbak could not enumerate shareable sources.";
 }

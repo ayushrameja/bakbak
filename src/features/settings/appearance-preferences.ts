@@ -1,4 +1,5 @@
 import { reapplySystemAccent } from "./system-accent";
+import { getDesktopBridge } from "../../lib/desktop-runtime";
 
 export const APPEARANCE_PREFERENCE_KEY = "bakbak.appearancePreference.v1";
 
@@ -58,6 +59,15 @@ export function applyAppearancePreference(
   }
 
   reapplySystemAccent();
+  const prefersLight =
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-color-scheme: light)").matches;
+  const scheme =
+    preference === "auto" ? (prefersLight ? "light" : "dark") : preference;
+  void getDesktopBridge()
+    ?.window.setChromeScheme(scheme)
+    .catch(() => undefined);
 }
 
 export function saveAppearancePreference(

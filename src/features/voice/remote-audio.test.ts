@@ -9,6 +9,38 @@ function createTrack(kind = "audio") {
   return { attach, detach, track };
 }
 
+function createLiveKitLikeTrack(stream: MediaStream) {
+  const attached = new Set<HTMLMediaElement>();
+  const attach = vi.fn((element: HTMLMediaElement) => {
+    attached.add(element);
+    element.srcObject = stream;
+    // LiveKit's attach/startAudio paths are allowed to touch these properties.
+    // Bakbak must restore its one-route invariant after either operation.
+    element.muted = false;
+    element.volume = 1;
+    element.dispatchEvent(new Event("volumechange"));
+    return element;
+  });
+  const detach = vi.fn((element: HTMLMediaElement) => {
+    attached.delete(element);
+    element.srcObject = null;
+    return element;
+  });
+  const setVolume = vi.fn((volume: number) => {
+    attached.forEach((element) => {
+      element.volume = volume;
+      element.dispatchEvent(new Event("volumechange"));
+    });
+  });
+  const track: RemoteAudioTrackLike = {
+    kind: "audio",
+    attach,
+    detach,
+    setVolume,
+  };
+  return { attach, detach, setVolume, track };
+}
+
 describe("RemoteAudioRenderer", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -31,6 +63,14 @@ describe("RemoteAudioRenderer", () => {
     expect(element).toHaveProperty("hidden", true);
     expect(host).toContainElement(element);
     expect(attach).toHaveBeenCalledOnce();
+    expect(renderer.diagnostics()[0]).toEqual(
+      expect.objectContaining({
+        routeType: "element-fallback",
+        attachmentState: "attached",
+        attachmentCount: 1,
+        exactOnceInvariant: true,
+      }),
+    );
     expect(
       renderer.attach(track, { ownerId: "mira", sourceKind: "speech" }),
     ).toBe(element);
@@ -289,6 +329,107 @@ describe("RemoteAudioRenderer", () => {
     expect(graph.gains[0]?.gain.value).toBe(0);
     renderer.setMuted(false);
     expect(graph.gains[0]?.gain.value).toBe(1.75);
+  });
+
+  it("restores an exact-once stream route after LiveKit-like attach and unmute", () => {
+    const host = document.createElement("div");
+    const graph = createGainGraphDouble();
+    const stream = {
+      getAudioTracks: () => [{ kind: "audio" }],
+    } as unknown as MediaStream;
+    const { setVolume, track } = createLiveKitLikeTrack(stream);
+    const renderer = new RemoteAudioRenderer(() => host, graph.options);
+
+    const element = renderer.attach(track, {
+      ownerId: "mira",
+      sourceKind: "speech",
+      publicationSid: "TR_speech",
+    })!;
+
+    expect(element).toHaveProperty("muted", true);
+    expect(element).toHaveProperty("volume", 0);
+    expect(setVolume).toHaveBeenCalledOnce();
+    expect(renderer.diagnostics()[0]).toEqual(
+      expect.objectContaining({
+        routeType: "stream-graph",
+        attachmentState: "attached",
+        attachmentCount: 1,
+        exactOnceInvariant: true,
+      }),
+    );
+    const callsBeforeLiveKitUnmute = setVolume.mock.calls.length;
+
+    element.muted = false;
+    element.volume = 1;
+    element.dispatchEvent(new Event("volumechange"));
+
+    expect(element).toHaveProperty("muted", true);
+    expect(element).toHaveProperty("volume", 0);
+    expect(setVolume.mock.calls.length).toBeGreaterThan(
+      callsBeforeLiveKitUnmute,
+    );
+    expect(setVolume.mock.calls.length).toBeLessThanOrEqual(
+      callsBeforeLiveKitUnmute + 2,
+    );
+    expect(renderer.diagnostics()[0]?.exactOnceInvariant).toBe(true);
+  });
+
+  it("rebuilds and reasserts the stream route after a LiveKit-like error reattach", async () => {
+    const host = document.createElement("div");
+    const graph = createGainGraphDouble();
+    const stream = {
+      getAudioTracks: () => [{ kind: "audio" }],
+    } as unknown as MediaStream;
+    const { attach, detach, track } = createLiveKitLikeTrack(stream);
+    const renderer = new RemoteAudioRenderer(() => host, graph.options);
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const element = renderer.attach(track, {
+      ownerId: "mira",
+      sourceKind: "speech",
+      publicationSid: "TR_speech",
+    })!;
+
+    element.dispatchEvent(new Event("error"));
+
+    await vi.waitFor(() => expect(attach).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() =>
+      expect(renderer.diagnostics()[0]?.playbackState).toBe("playing"),
+    );
+    expect(detach).toHaveBeenCalledOnce();
+    expect(graph.createMediaStreamSource).toHaveBeenCalledTimes(2);
+    expect(element).toHaveProperty("muted", true);
+    expect(element).toHaveProperty("volume", 0);
+    expect(renderer.diagnostics()[0]).toEqual(
+      expect.objectContaining({
+        routeType: "stream-graph",
+        attachmentCount: 1,
+        exactOnceInvariant: true,
+      }),
+    );
+  });
+
+  it("reasserts the stream route after changing output devices", async () => {
+    const graph = createGainGraphDouble();
+    const stream = {
+      getAudioTracks: () => [{ kind: "audio" }],
+    } as unknown as MediaStream;
+    const { track } = createLiveKitLikeTrack(stream);
+    const renderer = new RemoteAudioRenderer(
+      () => document.body,
+      graph.options,
+    );
+    const element = renderer.attach(track, {
+      ownerId: "mira",
+      sourceKind: "speech",
+    })!;
+    element.muted = false;
+    element.volume = 1;
+
+    await renderer.setDevice("speaker-2");
+
+    expect(element).toHaveProperty("muted", true);
+    expect(element).toHaveProperty("volume", 0);
+    expect(renderer.diagnostics()[0]?.exactOnceInvariant).toBe(true);
   });
 
   it("routes a boosted graph to the selected speaker instead of the source element", async () => {

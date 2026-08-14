@@ -6,3 +6,6 @@ release
 .pnpm-store
 pnpm-lock.yaml
 public/vendor/ffmpeg
+native/**/target
+native/**/check-target
+build/native

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-window-material="fallback">
   <head>
     <meta charset="UTF-8" />
     <meta
@@ -24,6 +24,35 @@
       name="description"
       content="Bakbak — a private voice and chat room for close friends."
     />
+    <style>
+      html,
+      body,
+      #root {
+        min-width: 100%;
+        min-height: 100%;
+        background: #171717;
+      }
+
+      @media (prefers-color-scheme: light) {
+        html,
+        body,
+        #root {
+          background: #fbfbf8;
+        }
+      }
+
+      html[data-color-scheme="dark"],
+      html[data-color-scheme="dark"] body,
+      html[data-color-scheme="dark"] #root {
+        background: #171717;
+      }
+
+      html[data-color-scheme="light"],
+      html[data-color-scheme="light"] body,
+      html[data-color-scheme="light"] #root {
+        background: #fbfbf8;
+      }
+    </style>
     <title>Bakbak</title>
   </head>
 

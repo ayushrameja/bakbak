@@ -1,4 +1,43 @@
 export type DesktopPlatform = "macos" | "windows";
+export type DesktopWindowMaterial = "vibrancy" | "mica" | "fallback";
+export type DesktopChromeScheme = "light" | "dark";
+
+export interface DesktopWindowAppearance {
+  material: DesktopWindowMaterial;
+  reducedTransparency: boolean;
+}
+
+export type DesktopPermissionKind = "microphone" | "screen";
+
+export type DesktopPermissionStatus =
+  "not-determined" | "granted" | "denied" | "restricted" | "unknown";
+
+export interface DesktopPermissionSnapshot {
+  kind: DesktopPermissionKind;
+  status: DesktopPermissionStatus;
+  canRequest: boolean;
+  canOpenSettings: boolean;
+  requiresRestart: boolean;
+}
+
+export class DesktopPermissionError extends Error {
+  constructor(
+    readonly permission: DesktopPermissionSnapshot,
+    message: string,
+  ) {
+    super(message);
+    this.name = "DesktopPermissionError";
+  }
+}
+
+export interface DesktopScreenShareCapabilities {
+  video: boolean;
+  systemAudio: boolean;
+  applicationAudio: boolean;
+  processTreeIsolation: boolean;
+  minOsVersion: string | null;
+  reason: string | null;
+}
 
 export interface DesktopScreenShareSource {
   id: string;
@@ -8,6 +47,89 @@ export interface DesktopScreenShareSource {
   audioAvailable: boolean;
   audioUnavailableReason: string | null;
   thumbnailDataUrl: string | null;
+}
+
+export type DesktopScreenShareSourceFailureCode =
+  "permission-denied" | "policy-blocked" | "capture-unavailable" | "unknown";
+
+export interface DesktopScreenShareSourceFailure {
+  code: DesktopScreenShareSourceFailureCode;
+  message: string;
+  canOpenSettings: boolean;
+  restartRequired: boolean;
+}
+
+interface DesktopScreenShareSourceResultBase {
+  permissionStatus: DesktopPermissionStatus;
+  systemAudioAvailable: boolean;
+  systemAudioUnavailableReason: string | null;
+}
+
+export interface DesktopScreenShareSourceSuccess extends DesktopScreenShareSourceResultBase {
+  ok: true;
+  sources: DesktopScreenShareSource[];
+  failure: null;
+}
+
+export interface DesktopScreenShareSourceFailureResult extends DesktopScreenShareSourceResultBase {
+  ok: false;
+  sources: [];
+  failure: DesktopScreenShareSourceFailure;
+}
+
+export type DesktopScreenShareSourceResult =
+  DesktopScreenShareSourceSuccess | DesktopScreenShareSourceFailureResult;
+
+export interface DesktopNativeScreenShareSourceResult {
+  sources: DesktopScreenShareSource[];
+  truncated: boolean;
+}
+
+export interface DesktopNativeScreenShareSettings {
+  width: number;
+  height: number;
+  frameRate: number;
+  maxBitrate: number;
+}
+
+export interface DesktopNativeScreenShareStartInput {
+  serverUrl: string;
+  token: string;
+  sourceId: string;
+  includeAudio: boolean;
+  settings: DesktopNativeScreenShareSettings;
+}
+
+export interface DesktopNativeScreenShareSession {
+  sessionId: string;
+  sourceLabel: string;
+  sourceKind: "display" | "application";
+  audioPublished: boolean;
+  audioUnavailableReason: string | null;
+  settings: DesktopNativeScreenShareSettings;
+  diagnostics: {
+    captureBackend: string;
+    audioIsolationMode:
+      | "disabled"
+      | "exclude-bakbak-process-tree"
+      | "include-selected-process-tree";
+  };
+}
+
+export interface DesktopNativeScreenShareLifecycleEvent {
+  sessionId?: string;
+  state:
+    | "ready"
+    | "starting"
+    | "live"
+    | "audio-downgraded"
+    | "stopping"
+    | "stopped"
+    | "failed"
+    | "shutting-down";
+  reasonCode?: string;
+  message?: string;
+  audioPublished?: boolean;
 }
 
 export interface DesktopUpdateCheckResult {
@@ -24,11 +146,16 @@ export interface DesktopUpdateProgress {
 export interface BakbakDesktopBridge {
   platform: DesktopPlatform;
   window: {
-    minimize(): Promise<void>;
-    toggleMaximize(): Promise<void>;
-    close(): Promise<void>;
-    isMaximized(): Promise<boolean>;
-    onMaximizedChange(listener: (maximized: boolean) => void): () => void;
+    getAppearance(): Promise<DesktopWindowAppearance>;
+    setChromeScheme(scheme: DesktopChromeScheme): Promise<void>;
+    setWindowControlsVisible?(
+      visible: boolean,
+      sidebarPosition?: "left" | "right",
+    ): Promise<void>;
+    onToggleSidebar(listener: () => void): () => void;
+    onAppearanceChange(
+      listener: (appearance: DesktopWindowAppearance) => void,
+    ): () => void;
   };
   systemAccent: {
     get(): Promise<unknown>;
@@ -39,11 +166,36 @@ export interface BakbakDesktopBridge {
   };
   app: {
     relaunch(): Promise<void>;
-    openScreenRecordingSettings(): Promise<void>;
+  };
+  permissions: {
+    get(kind: DesktopPermissionKind): Promise<DesktopPermissionSnapshot>;
+    requestMicrophone(): Promise<DesktopPermissionSnapshot>;
+    openSettings(kind: DesktopPermissionKind): Promise<boolean>;
   };
   screenShare: {
-    listSources(): Promise<DesktopScreenShareSource[]>;
-    prepare(input: { sourceId: string; includeAudio: boolean }): Promise<void>;
+    capabilities(): Promise<DesktopScreenShareCapabilities>;
+    listSources(input?: {
+      includeThumbnails?: boolean;
+    }): Promise<DesktopNativeScreenShareSourceResult>;
+    start(
+      input: DesktopNativeScreenShareStartInput,
+    ): Promise<DesktopNativeScreenShareSession>;
+    update(input: {
+      sessionId: string;
+      settings?: DesktopNativeScreenShareSettings;
+      paused?: boolean;
+    }): Promise<{
+      sessionId: string;
+      settings: DesktopNativeScreenShareSettings;
+      paused: boolean;
+    }>;
+    stop(input: { sessionId: string }): Promise<{
+      sessionId: string;
+      stopped: true;
+    }>;
+    onLifecycle(
+      listener: (event: DesktopNativeScreenShareLifecycleEvent) => void,
+    ): () => void;
   };
   updates: {
     check(timeoutMs: number): Promise<DesktopUpdateCheckResult>;

@@ -620,20 +620,41 @@ export function ConversationView({
         >
           <div className="conversation-flow">
             <div className="channel-intro">
-              <span className="channel-intro__icon">
-                {target.kind === "channel" &&
-                target.purpose !== "system-releases" &&
-                target.purpose !== "system-general"
-                  ? "#"
-                  : target.kind === "direct"
-                    ? "@"
-                    : "•"}
-              </span>
-              <h2>
-                {target.kind === "channel"
-                  ? `#${target.name}`
-                  : `Your conversation with ${target.member.displayName}`}
-              </h2>
+              {target.kind === "direct" ? (
+                <ProfileTrigger
+                  className="channel-intro__profile"
+                  member={target.member}
+                  loadMedia={loadProfileMedia}
+                  onOpenProfile={onOpenProfile}
+                  onOpenContextMenu={onOpenUserContextMenu}
+                  expanded={openProfileId === target.member.id}
+                  aria-label={`View ${target.member.displayName}'s profile`}
+                >
+                  {({ animationUrl, animated }) => (
+                    <>
+                      <Avatar
+                        user={target.member}
+                        size="large"
+                        animationUrl={animationUrl}
+                        animated={animated}
+                      />
+                      <h2>
+                        Your conversation with {target.member.displayName}
+                      </h2>
+                    </>
+                  )}
+                </ProfileTrigger>
+              ) : (
+                <>
+                  <span className="channel-intro__icon">
+                    {target.purpose !== "system-releases" &&
+                    target.purpose !== "system-general"
+                      ? "#"
+                      : "•"}
+                  </span>
+                  <h2>{`#${target.name}`}</h2>
+                </>
+              )}
               <p>
                 {target.kind === "channel"
                   ? target.topic || "This is where the conversation begins."

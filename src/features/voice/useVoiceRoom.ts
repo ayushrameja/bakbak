@@ -22,6 +22,12 @@ import type {
   CommunicationEffectEvent,
   VoiceLeaveReason,
 } from "../../lib/communication-effects";
+import {
+  DesktopPermissionError,
+  getDesktopBridge,
+  type DesktopPermissionSnapshot,
+  type DesktopPermissionStatus,
+} from "../../lib/desktop-runtime";
 import { appConfig } from "../../lib/env";
 import { getSupabaseClient } from "../../lib/supabase";
 import type { AppUser, Channel, DataMode } from "../../lib/types";
@@ -97,6 +103,7 @@ import {
   isDesktopApp,
   listScreenShareSources,
   listenForScreenShareLifecycle,
+  requestMicrophonePermission,
   ScreenShareCaptureError,
   startScreenShare as startNativeScreenShare,
   stopScreenShare as stopNativeScreenShare,
@@ -225,6 +232,7 @@ interface VoiceRoomState {
   voiceDiagnosticsAvailable: boolean;
   error: string | null;
   inputDeviceError: string | null;
+  microphonePermission: DesktopPermissionSnapshot | null;
   microphoneProcessingError: string | null;
   microphoneProcessingState: MicrophoneProcessingState;
   outputDeviceError: string | null;
@@ -324,6 +332,8 @@ export function useVoiceRoom(
     useState(false);
   const [error, setError] = useState<string | null>(null);
   const [inputDeviceError, setInputDeviceError] = useState<string | null>(null);
+  const [microphonePermission, setMicrophonePermission] =
+    useState<DesktopPermissionSnapshot | null>(null);
   const [microphoneProcessingError, setMicrophoneProcessingError] = useState<
     string | null
   >(null);
@@ -1626,6 +1636,7 @@ export function useVoiceRoom(
               playing ? "room-playback-active" : "room-playback-blocked",
             );
             setAudioPlaybackBlocked(!playing);
+            remoteAudio.reassertExactOnceRouting();
             if (playing) {
               void remoteAudio.recoverAll("room-playback-restored");
             } else {
@@ -1647,9 +1658,7 @@ export function useVoiceRoom(
               "Bakbak could not use that camera. Check camera permission and whether another app is using it.",
             );
           } else {
-            setInputDeviceError(
-              "Bakbak could not use that microphone. Check macOS Privacy settings.",
-            );
+            setInputDeviceError(microphonePermissionRecoveryMessage("unknown"));
           }
         })
         .on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
@@ -1732,6 +1741,7 @@ export function useVoiceRoom(
       if (!preserveJoinState) {
         setStatus("disconnected");
         setChannel(null);
+        setMicrophonePermission(null);
       }
       setError(null);
       setInputDeviceError(null);
@@ -1791,6 +1801,7 @@ export function useVoiceRoom(
       setJoinStage("authorizing");
       setError(null);
       setInputDeviceError(null);
+      setMicrophonePermission(null);
       setMicrophoneProcessingError(null);
       dismissOutputDeviceError();
       setCameraDeviceError(null);
@@ -1882,6 +1893,7 @@ export function useVoiceRoom(
         track: LocalAudioTrack | null;
         error: unknown;
         processingError: string | null;
+        permission: DesktopPermissionSnapshot | null;
       }> | null =
         currentRoom === null
           ? acquireMicrophoneTrack(
@@ -1943,6 +1955,7 @@ export function useVoiceRoom(
           track: reusableMicrophone,
           error: null,
           processingError: null,
+          permission: null,
         });
       } else if (microphonePromise === null) {
         microphonePromise = acquireMicrophoneTrack(
@@ -2022,7 +2035,24 @@ export function useVoiceRoom(
         setJoinStage("microphone");
         const publishMicrophone = (async () => {
           const result = await microphonePromise;
-          if (!result.track) throw result.error;
+          if (!result.track) {
+            if (
+              result.permission &&
+              (result.permission.status === "denied" ||
+                result.permission.status === "restricted")
+            ) {
+              setMicrophonePermission(result.permission);
+              setInputDeviceError(
+                result.error instanceof Error
+                  ? result.error.message
+                  : microphonePermissionRecoveryMessage(
+                      result.permission.status,
+                    ),
+              );
+            }
+            throw result.error;
+          }
+          setMicrophonePermission(null);
           setMicrophoneProcessingError(result.processingError);
           if (result.processingError) {
             microphoneProcessingPreferencesRef.current = {
@@ -2274,6 +2304,18 @@ export function useVoiceRoom(
   ]);
 
   const beginMicrophoneTest = useCallback(async () => {
+    const permission = await requestMicrophonePermission().catch(() => null);
+    if (
+      permission &&
+      (permission.status === "denied" || permission.status === "restricted")
+    ) {
+      setMicrophonePermission(permission);
+      throw new DesktopPermissionError(
+        permission,
+        microphonePermissionRecoveryMessage(permission.status),
+      );
+    }
+    setMicrophonePermission(null);
     const room = roomRef.current;
     if (status !== "connected" || !room) {
       return () => Promise.resolve();
@@ -2941,8 +2983,14 @@ export function useVoiceRoom(
       return;
     }
     try {
-      const sources = await listScreenShareSources();
-      const display = sources.find((source) => source.kind === "display");
+      const sourceResult = await listScreenShareSources();
+      if (!sourceResult.ok) {
+        setScreenShareError(sourceResult.failure.message);
+        return;
+      }
+      const display = sourceResult.sources.find(
+        (source) => source.kind === "display",
+      );
       if (!display) {
         setScreenShareError(
           "No entire screen is available. Reopen the picker and try again.",
@@ -3147,6 +3195,7 @@ export function useVoiceRoom(
     voiceDiagnosticsAvailable,
     error,
     inputDeviceError,
+    microphonePermission,
     microphoneProcessingError,
     microphoneProcessingState,
     outputDeviceError,
@@ -3249,7 +3298,7 @@ function readLocalMicrophoneTrack(room: Room | null): LocalAudioTrack | null {
   return track instanceof LocalAudioTrack ? track : null;
 }
 
-function acquireMicrophoneTrack(
+async function acquireMicrophoneTrack(
   deviceId: string,
   echoCancellation: boolean,
   preferences: MicrophoneProcessingPreferences,
@@ -3261,7 +3310,32 @@ function acquireMicrophoneTrack(
   track: LocalAudioTrack | null;
   error: unknown;
   processingError: string | null;
+  permission: DesktopPermissionSnapshot | null;
 }> {
+  const permission = await requestMicrophonePermission().catch(() => null);
+  const permissionStatus = permission?.status ?? "unknown";
+  if (
+    permission &&
+    (permissionStatus === "denied" || permissionStatus === "restricted")
+  ) {
+    return {
+      track: null,
+      error: new DesktopPermissionError(
+        permission,
+        microphonePermissionRecoveryMessage(permissionStatus),
+      ),
+      processingError: null,
+      permission,
+    };
+  }
+  if (!isCurrentJoin()) {
+    return {
+      track: null,
+      error: new Error("Voice join was cancelled."),
+      processingError: null,
+      permission,
+    };
+  }
   return createLocalAudioTrack(
     microphoneCaptureOptions(deviceId, echoCancellation),
   ).then(
@@ -3273,6 +3347,7 @@ function acquireMicrophoneTrack(
           track: null,
           error: new Error("Voice join was cancelled."),
           processingError: null,
+          permission,
         };
       }
       joiningTrackRef.current = track;
@@ -3299,16 +3374,34 @@ function acquireMicrophoneTrack(
           track: null,
           error: new Error("Voice join was cancelled."),
           processingError: null,
+          permission,
         };
       }
-      return { track, error: null, processingError };
+      return { track, error: null, processingError, permission };
     },
     (error: unknown) => ({
       track: null,
       error,
       processingError: null,
+      permission,
     }),
   );
+}
+
+function microphonePermissionRecoveryMessage(
+  status: DesktopPermissionStatus,
+): string {
+  const platform = getDesktopBridge()?.platform;
+  if (platform === "windows") {
+    return "Bakbak could not use that microphone. In Windows Settings > Privacy & security > Microphone, turn on Microphone access and Let desktop apps access your microphone.";
+  }
+  if (status === "restricted") {
+    return "Microphone access is restricted by macOS or your device policy.";
+  }
+  if (platform === "macos") {
+    return "Bakbak could not use that microphone. Allow Bakbak in macOS Privacy & Security > Microphone, then restart Bakbak.";
+  }
+  return "Bakbak could not use that microphone. Check microphone permission and the selected input device.";
 }
 
 function stopJoiningMicrophone(ref: { current: LocalAudioTrack | null }): void {

@@ -29,7 +29,7 @@ const [
   readFile(new URL("electron/main.ts", root), "utf8"),
 ]);
 
-test("glass tokens and native-safe document underlays stay system adaptive", () => {
+test("glass tokens and material-specific underlays stay system adaptive", () => {
   assert.match(styles, /--glass-canvas-neutral:\s*rgba\(0, 0, 0, 0\.64\)/);
   assert.match(styles, /--glass-panel-neutral:\s*rgba\(0, 0, 0, 0\.72\)/);
   assert.match(styles, /--glass-strong-neutral:\s*rgba\(0, 0, 0, 0\.84\)/);
@@ -50,27 +50,161 @@ test("glass tokens and native-safe document underlays stay system adaptive", () 
   assert.match(styles, /blur\(24px\) saturate\(120%\)/);
   assert.match(
     styles,
-    /html\[data-window-material="native"\][\s\S]*?background:\s*transparent/,
+    /html\[data-window-material="vibrancy"\][\s\S]*?html\[data-window-material="mica"\][\s\S]*?background:\s*transparent/,
   );
-  assert.match(main, /dataset\.windowMaterial = isDesktopRuntime\(\)/);
+  assert.match(main, /getAppearance\(\)/);
+  assert.match(main, /applyWindowAppearance/);
+  assert.match(main, /setChromeScheme\(resolvedChromeScheme\(\)\)/);
   assert.match(electronMain, /backgroundColor:\s*"#00000000"/);
   assert.match(electronMain, /transparent:\s*true/);
   assert.match(electronMain, /vibrancy:\s*"under-window"/);
+  assert.match(electronMain, /WINDOWS_MICA_MIN_BUILD = 22_621/);
   assert.match(electronMain, /setBackgroundMaterial\("mica"\)/);
+  assert.match(electronMain, /titleBarStyle:\s*"hidden"/);
+  assert.match(electronMain, /titleBarOverlay:/);
+  assert.match(electronMain, /setTitleBarOverlay/);
+  assert.match(html, /data-window-material="fallback"/);
   assert.match(html, /name="theme-color"[\s\S]*?content="#000000"/);
   assert.match(html, /name="theme-color"[\s\S]*?content="#f4f4f4"/);
 });
 
-test("signed-in shell uses one resizable sidebar and one rounded canvas", () => {
+test("Glass keeps dormant customization inert and follows Auto or explicit scheme tokens", () => {
+  assert.match(
+    app,
+    /showSpaceSwitcher && theme\.mode !== "glass"[\s\S]*?theme\.texture/,
+  );
+  assert.match(
+    app,
+    /\.\.\.sidebarThemeStyle\(theme\),[\s\S]*?"--context-panel-width"/,
+  );
+  assert.match(
+    styles,
+    /\.app-frame\[data-space\]:not\(\s*\[data-chrome-theme="glass"\]\s*\)\[data-theme-texture="dots"\]/,
+  );
+  assert.match(
+    styles,
+    /\.app-frame\[data-space\]:not\(\s*\[data-chrome-theme="glass"\]\s*\)\[data-theme-texture="grain"\]/,
+  );
+
+  const contrastStart = styles.indexOf(
+    "/* The old gradient sidebar intentionally uses white copy",
+  );
+  const contrastEnd = styles.indexOf(
+    "@media (prefers-reduced-motion: reduce)",
+    contrastStart,
+  );
+  assert.notEqual(contrastStart, -1);
+  assert.notEqual(contrastEnd, -1);
+  const glassContrast = styles.slice(contrastStart, contrastEnd);
+  assert.doesNotMatch(glassContrast, /:root\[data-color-scheme="light"\]/);
+  assert.match(
+    glassContrast,
+    /data-chrome-theme="glass"\][\s\S]*?\.channel-sidebar,[\s\S]*?color:\s*var\(--text\)/,
+  );
+  assert.match(glassContrast, /\.activity-preview > header/);
+  assert.match(glassContrast, /\.activity-preview__person/);
+  assert.match(glassContrast, /\.channel-voice-duration/);
+  assert.match(glassContrast, /\.sidebar-voice-panel__status span/);
+  assert.match(glassContrast, /\.user-dock__identity \.user-dock__status/);
+  assert.match(glassContrast, /color:\s*var\(--muted\)/);
+  assert.match(glassContrast, /color:\s*var\(--text\)/);
+});
+
+test("fallback and accessibility modes make every major Glass surface opaque", () => {
+  const fallbackStart = styles.indexOf(
+    "@media (prefers-reduced-transparency: reduce), (prefers-contrast: more)",
+  );
+  const fallbackEnd = styles.indexOf(
+    ".settings-permission-recovery",
+    fallbackStart,
+  );
+  assert.notEqual(fallbackStart, -1);
+  assert.notEqual(fallbackEnd, -1);
+  const fallback = styles.slice(fallbackStart, fallbackEnd);
+  for (const surface of [
+    ".titlebar-panel-controls",
+    ".composer",
+    ".voice-control-dock",
+    ".soundboard-drawer",
+    ".sidebar-voice-panel",
+    ".user-dock",
+    ".modal-card",
+    ".settings-page",
+    ".sidebar-theme-editor__glass-preview",
+  ]) {
+    assert.match(fallback, new RegExp(surface.replaceAll(".", "\\.")));
+  }
+  assert.match(fallback, /data-window-material="fallback"/);
+  assert.match(fallback, /data-reduced-transparency="true"/);
+  assert.match(
+    fallback,
+    /background:\s*var\(--conversation-raised, var\(--panel\)\)/,
+  );
+  assert.match(fallback, /-webkit-backdrop-filter:\s*none/);
+  assert.match(fallback, /backdrop-filter:\s*none/);
+  assert.match(fallback, /background:\s*Canvas !important/);
+  assert.match(
+    fallback,
+    /html:is\(\[data-window-material="fallback"\], \[data-reduced-transparency="true"\]\)\s*\.modal-card\s*\{/,
+  );
+
+  assert.match(
+    styles,
+    /\.content-shell\s*{[\s\S]*?background:\s*var\(--conversation-canvas\);[\s\S]*?backdrop-filter:\s*none/,
+  );
+  assert.match(
+    styles,
+    /\.participant-video,[\s\S]*?\.screen-share-stage__media,[\s\S]*?\.voice-participant-orb__media,[\s\S]*?filter:\s*none !important/,
+  );
+});
+
+test("signed-in shell uses a transparent sidebar and draggable canvas header", () => {
   assert.match(
     styles,
     /grid-template-columns:\s*var\(--left-panel-track\) var\(--left-divider-track\)\s*minmax\(420px, 1fr\)/,
   );
   assert.match(styles, /--left-divider-track:\s*1px/);
   assert.match(styles, /--context-panel-width, 280px/);
+  const arcShellStart = styles.indexOf("/* 0036 — Arc-style full-bleed shell.");
+  assert.notEqual(arcShellStart, -1);
+  const arcShell = styles.slice(arcShellStart);
   assert.match(
-    styles,
-    /\.content-shell\s*{[\s\S]*?border-radius:\s*var\(--radius-panel\)/,
+    arcShell,
+    /\.app-frame\[data-space\] \.desktop-shell,[\s\S]*?padding:\s*0;/,
+  );
+  assert.match(
+    arcShell,
+    /\.app-frame\[data-space\] \.content-shell\s*{[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*0;[\s\S]*?box-shadow:\s*none;/,
+  );
+  assert.match(
+    arcShell,
+    /\.app-frame\[data-space\] \.panel-slot--left\s*{[\s\S]*?background:\s*transparent;[\s\S]*?backdrop-filter:\s*none/,
+  );
+  assert.match(
+    arcShell,
+    /\.app-frame\[data-space\] \.content-shell\s*{[\s\S]*?grid-template-rows:\s*30px minmax\(0, 1fr\)/,
+  );
+  assert.match(app, /className="content-drag-bar" aria-hidden="true"/);
+  assert.match(
+    arcShell,
+    /\.content-drag-bar\s*{[\s\S]*?-webkit-app-region:\s*drag/,
+  );
+  assert.match(
+    arcShell,
+    /\.window-titlebar\[data-shell="true"\] \.window-titlebar__drag\s*\{[\s\S]*?display:\s*none/,
+  );
+  assert.match(
+    arcShell,
+    /\.window-titlebar\[data-shell="true"\][\s\S]*?width:\s*0/,
+  );
+  assert.match(titlebar, /sidebarVisible = false/);
+  assert.doesNotMatch(titlebar, /PanelLeftOpen|Show sidebar/);
+  assert.doesNotMatch(titlebar, /titlebar-panel-controls|Hide sidebar/);
+  assert.match(sidebarUserDock, /aria-label="Hide sidebar"/);
+  assert.match(sidebarUserDock, /PanelLeftClose|PanelRightClose/);
+  assert.match(
+    arcShell,
+    /\.app-frame\[data-space\] \.user-dock\s*\{[\s\S]*?border-radius:\s*12px/,
   );
   assert.match(styles, /--conversation-canvas:\s*#171717/);
   assert.match(styles, /--conversation-canvas:\s*#fbfbf8/);
@@ -91,10 +225,28 @@ test("signed-in shell uses one resizable sidebar and one rounded canvas", () => 
   assert.match(app, /className="panel-slot panel-slot--left"/);
   assert.doesNotMatch(app, /panel-slot--right/);
   assert.doesNotMatch(app, /rightPanelVisible|rightPanelWidth/);
-  assert.match(app, /enabled=\{layoutPreferences\.leftPanelVisible\}/);
+  assert.match(
+    app,
+    /data-sidebar-position=\{layoutPreferences\.sidebarPosition\}/,
+  );
+  assert.match(
+    app,
+    /sidebarVisible:\s*layoutPreferences\.sidebarVisible,[\s\S]*?sidebarPosition:\s*layoutPreferences\.sidebarPosition/,
+  );
+  assert.match(app, /side=\{layoutPreferences\.sidebarPosition\}/);
+  assert.match(
+    arcShell,
+    /data-sidebar-position="right"[\s\S]*?grid-template-columns:[\s\S]*?minmax\(420px, 1fr\)[\s\S]*?var\(--left-panel-track\)/,
+  );
+  assert.match(app, /enabled=\{layoutPreferences\.sidebarVisible\}/);
+  assert.match(
+    styles,
+    /desktop-shell\[data-left-panel="hidden"\][\s\S]*?\.content-shell\s*{[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*0/,
+  );
+  assert.match(app, /aria-label=\{contentLabel\}/);
 });
 
-test("titlebar, directional space motion, startup assembly, and scroll activity retain their timing contracts", () => {
+test("native overlay chrome, directional motion, and scroll activity retain their contracts", () => {
   assert.doesNotMatch(titlebar, /<SpaceSwitcher/);
   assert.match(
     app,
@@ -103,12 +255,16 @@ test("titlebar, directional space motion, startup assembly, and scroll activity 
   assert.doesNotMatch(titlebar, /OG Nahan Gang|Professional yappers/);
   assert.match(
     titlebar,
-    /<div className="window-titlebar__center window-titlebar__drag" \/>/,
+    /<span className="window-titlebar__drag" aria-hidden="true" \/>/,
   );
-  assert.match(
-    titlebar,
-    /window-titlebar__leading[\s\S]*?titlebar-panel-controls/,
-  );
+  assert.doesNotMatch(titlebar, /titlebar-panel-controls|Hide sidebar/);
+  assert.match(sidebarUserDock, /aria-label="Hide sidebar"/);
+  assert.match(titlebar, /data-sidebar-visible=/);
+  assert.doesNotMatch(titlebar, /Window controls|Minimize window|Close window/);
+  assert.doesNotMatch(app, /<TopBar|function TopBar/);
+  assert.match(app, /onToggleSidebar/);
+  assert.match(electronMain, /label:\s*"Toggle Sidebar"/);
+  assert.match(electronMain, /accelerator:\s*"CmdOrCtrl\+B"/);
   assert.doesNotMatch(titlebar, /TITLEBAR_MESSAGE_ROTATION_MS/);
   assert.match(
     app,
@@ -134,12 +290,26 @@ test("titlebar, directional space motion, startup assembly, and scroll activity 
   );
   assert.match(
     styles,
-    /\.window-titlebar\s*\{[\s\S]*?-webkit-app-region:\s*drag/,
+    /\.window-titlebar__drag\s*\{[\s\S]*?-webkit-app-region:\s*drag/,
   );
+  const windowsOverlayStart = styles.indexOf(
+    '.window-titlebar[data-platform="windows"]',
+  );
+  const windowsOverlayEnd = styles.indexOf(
+    ".app-frame[data-space] .desktop-shell,",
+    windowsOverlayStart,
+  );
+  assert.notEqual(windowsOverlayStart, -1);
+  assert.notEqual(windowsOverlayEnd, -1);
+  const windowsOverlay = styles.slice(windowsOverlayStart, windowsOverlayEnd);
+  assert.match(windowsOverlay, /left:\s*env\(titlebar-area-x, 0px\)/);
+  assert.match(windowsOverlay, /width:\s*env\(titlebar-area-width, 100%\)/);
   assert.match(
-    styles,
-    /\.window-titlebar button,[\s\S]*?-webkit-app-region:\s*no-drag/,
+    windowsOverlay,
+    /left:\s*calc\([\s\S]*?titlebar-area-x[\s\S]*?titlebar-area-width/,
   );
+  assert.match(windowsOverlay, /right:\s*0/);
+  assert.doesNotMatch(windowsOverlay, /138px/);
   assert.match(
     styles,
     /\.member-panel__person \+ \.member-panel__person\s*{[\s\S]*?margin-top:\s*5px/,

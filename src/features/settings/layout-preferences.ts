@@ -1,27 +1,33 @@
-export const LAYOUT_PREFERENCES_KEY = "bakbak.layoutPreferences.v3";
+export const LAYOUT_PREFERENCES_KEY = "bakbak.layoutPreferences.v5";
+export const LEGACY_V4_LAYOUT_PREFERENCES_KEY = "bakbak.layoutPreferences.v4";
+export const LEGACY_V3_LAYOUT_PREFERENCES_KEY = "bakbak.layoutPreferences.v3";
 export const LEGACY_LAYOUT_PREFERENCES_KEY = "bakbak.layoutPreferences.v2";
 const LEGACY_V1_LAYOUT_PREFERENCES_KEY = "bakbak.layoutPreferences.v1";
 
-export const DEFAULT_CONTEXT_PANEL_WIDTH = 280;
+export const DEFAULT_SIDEBAR_WIDTH = 280;
 export const MIN_SIDE_PANEL_WIDTH = 248;
 export const MAX_SIDE_PANEL_WIDTH = 340;
 export const MIN_CONTENT_WIDTH = 420;
 
-export interface LayoutPreferencesV3 {
-  leftPanelVisible: boolean;
-  contextPanelWidth: number;
+export type SidebarPosition = "left" | "right";
+
+export interface LayoutPreferencesV5 {
+  sidebarVisible: boolean;
+  sidebarWidth: number;
+  sidebarPosition: SidebarPosition;
 }
 
-export type LayoutPreferences = LayoutPreferencesV3;
+export type LayoutPreferences = LayoutPreferencesV5;
 
 interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
 }
 
-export const DEFAULT_LAYOUT_PREFERENCES: LayoutPreferencesV3 = {
-  leftPanelVisible: true,
-  contextPanelWidth: DEFAULT_CONTEXT_PANEL_WIDTH,
+export const DEFAULT_LAYOUT_PREFERENCES: LayoutPreferencesV5 = {
+  sidebarVisible: true,
+  sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
+  sidebarPosition: "left",
 };
 
 export function clampPanelWidth(value: number): number {
@@ -41,7 +47,47 @@ function browserStorage(): StorageLike | undefined {
   }
 }
 
-function isStoredV3(value: unknown): value is LayoutPreferencesV3 {
+function isSidebarPosition(value: unknown): value is SidebarPosition {
+  return value === "left" || value === "right";
+}
+
+function isStoredV5(value: unknown): value is LayoutPreferencesV5 {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    "sidebarVisible" in value &&
+    "sidebarWidth" in value &&
+    "sidebarPosition" in value &&
+    typeof value.sidebarVisible === "boolean" &&
+    typeof value.sidebarWidth === "number" &&
+    isSidebarPosition(value.sidebarPosition),
+  );
+}
+
+interface LayoutPreferencesV4 {
+  sidebarVisible: boolean;
+  sidebarWidth: number;
+}
+
+function isStoredV4(value: unknown): value is LayoutPreferencesV4 {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    "sidebarVisible" in value &&
+    "sidebarWidth" in value &&
+    typeof value.sidebarVisible === "boolean" &&
+    typeof value.sidebarWidth === "number",
+  );
+}
+
+interface LegacyPanelPreferences {
+  leftPanelVisible: boolean;
+  contextPanelWidth: number;
+}
+
+function isLegacyPanelPreferences(
+  value: unknown,
+): value is LegacyPanelPreferences {
   return Boolean(
     value &&
     typeof value === "object" &&
@@ -54,17 +100,18 @@ function isStoredV3(value: unknown): value is LayoutPreferencesV3 {
 
 export function loadLayoutPreferences(
   storage: StorageLike | undefined = browserStorage(),
-): LayoutPreferencesV3 {
+): LayoutPreferencesV5 {
   if (!storage) return DEFAULT_LAYOUT_PREFERENCES;
 
   try {
     const stored: unknown = JSON.parse(
       storage.getItem(LAYOUT_PREFERENCES_KEY) ?? "null",
     );
-    if (isStoredV3(stored)) {
+    if (isStoredV5(stored)) {
       return {
-        leftPanelVisible: stored.leftPanelVisible,
-        contextPanelWidth: clampPanelWidth(stored.contextPanelWidth),
+        sidebarVisible: stored.sidebarVisible,
+        sidebarWidth: clampPanelWidth(stored.sidebarWidth),
+        sidebarPosition: stored.sidebarPosition,
       };
     }
   } catch {
@@ -73,18 +120,39 @@ export function loadLayoutPreferences(
 
   try {
     const legacy: unknown = JSON.parse(
-      storage.getItem(LEGACY_LAYOUT_PREFERENCES_KEY) ?? "null",
+      storage.getItem(LEGACY_V4_LAYOUT_PREFERENCES_KEY) ?? "null",
     );
-    if (isStoredV3(legacy)) {
+    if (isStoredV4(legacy)) {
       const migrated = {
-        leftPanelVisible: legacy.leftPanelVisible,
-        contextPanelWidth: clampPanelWidth(legacy.contextPanelWidth),
+        sidebarVisible: legacy.sidebarVisible,
+        sidebarWidth: clampPanelWidth(legacy.sidebarWidth),
+        sidebarPosition: "left" as const,
       };
       storage.setItem(LAYOUT_PREFERENCES_KEY, JSON.stringify(migrated));
       return migrated;
     }
   } catch {
-    // Continue with the original visibility-only migration.
+    // Continue with older migrations.
+  }
+
+  for (const legacyKey of [
+    LEGACY_V3_LAYOUT_PREFERENCES_KEY,
+    LEGACY_LAYOUT_PREFERENCES_KEY,
+  ]) {
+    try {
+      const legacy: unknown = JSON.parse(storage.getItem(legacyKey) ?? "null");
+      if (isLegacyPanelPreferences(legacy)) {
+        const migrated = {
+          sidebarVisible: legacy.leftPanelVisible,
+          sidebarWidth: clampPanelWidth(legacy.contextPanelWidth),
+          sidebarPosition: "left" as const,
+        };
+        storage.setItem(LAYOUT_PREFERENCES_KEY, JSON.stringify(migrated));
+        return migrated;
+      }
+    } catch {
+      // Continue with the next legacy format.
+    }
   }
 
   try {
@@ -97,10 +165,12 @@ export function loadLayoutPreferences(
       "leftPanelVisible" in legacy &&
       typeof legacy.leftPanelVisible === "boolean"
     ) {
-      return {
+      const migrated = {
         ...DEFAULT_LAYOUT_PREFERENCES,
-        leftPanelVisible: legacy.leftPanelVisible,
+        sidebarVisible: legacy.leftPanelVisible,
       };
+      storage.setItem(LAYOUT_PREFERENCES_KEY, JSON.stringify(migrated));
+      return migrated;
     }
   } catch {
     // A broken local preference must not keep the app from opening.
@@ -110,12 +180,19 @@ export function loadLayoutPreferences(
 }
 
 export function saveLayoutPreferences(
-  preferences: LayoutPreferencesV3,
+  preferences: LayoutPreferencesV5,
   storage: StorageLike | undefined = browserStorage(),
 ): void {
   if (!storage) return;
   try {
-    storage.setItem(LAYOUT_PREFERENCES_KEY, JSON.stringify(preferences));
+    storage.setItem(
+      LAYOUT_PREFERENCES_KEY,
+      JSON.stringify({
+        sidebarVisible: preferences.sidebarVisible,
+        sidebarWidth: clampPanelWidth(preferences.sidebarWidth),
+        sidebarPosition: preferences.sidebarPosition,
+      } satisfies LayoutPreferencesV5),
+    );
   } catch {
     // Layout still changes for this session if storage is unavailable.
   }

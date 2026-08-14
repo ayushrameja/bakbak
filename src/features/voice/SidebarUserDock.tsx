@@ -1,4 +1,12 @@
-import { HeadphoneOff, Headphones, Mic, MicOff, Settings } from "lucide-react";
+import {
+  HeadphoneOff,
+  Headphones,
+  Mic,
+  MicOff,
+  PanelLeftClose,
+  PanelRightClose,
+  Settings,
+} from "lucide-react";
 import { Avatar } from "../../components/Avatar";
 import {
   ProfileTrigger,
@@ -7,6 +15,7 @@ import {
 } from "../../components/ProfileTrigger";
 import type { OpenUserContextMenu } from "../../components/UserContextMenu";
 import type { ServerMember } from "../../lib/types";
+import type { SidebarPosition } from "../settings/layout-preferences";
 import type { useVoiceRoom } from "./useVoiceRoom";
 
 interface SidebarUserDockProps {
@@ -17,6 +26,9 @@ interface SidebarUserDockProps {
   onOpenUserContextMenu?: OpenUserContextMenu | undefined;
   openProfileId: string | null;
   onOpenSettings: () => void;
+  sidebarPosition: SidebarPosition;
+  sidebarToggleDisabled: boolean;
+  onHideSidebar: () => void;
 }
 
 export function SidebarUserDock({
@@ -27,6 +39,9 @@ export function SidebarUserDock({
   onOpenUserContextMenu,
   openProfileId,
   onOpenSettings,
+  sidebarPosition,
+  sidebarToggleDisabled,
+  onHideSidebar,
 }: SidebarUserDockProps) {
   const callActive = voice.status !== "disconnected";
   const connected = voice.status === "connected";
@@ -106,6 +121,23 @@ export function SidebarUserDock({
         aria-label="Settings"
       >
         <Settings size={17} />
+      </button>
+      <button
+        className="user-dock__control"
+        type="button"
+        onClick={onHideSidebar}
+        aria-label="Hide sidebar"
+        aria-controls="context-panel"
+        aria-expanded="true"
+        aria-keyshortcuts="Meta+B Control+B"
+        title="Hide sidebar (Cmd/Ctrl+B)"
+        disabled={sidebarToggleDisabled}
+      >
+        {sidebarPosition === "left" ? (
+          <PanelLeftClose size={17} />
+        ) : (
+          <PanelRightClose size={17} />
+        )}
       </button>
     </div>
   );

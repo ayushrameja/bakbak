@@ -1,13 +1,14 @@
 import {
-  LocalVideoTrack,
-  Room,
-  RoomEvent,
-  Track,
-  TrackEvent,
-  createLocalScreenTracks,
-  type LocalAudioTrack,
-} from "livekit-client";
-import { getDesktopBridge, isDesktopRuntime } from "../../lib/desktop-runtime";
+  getDesktopBridge,
+  isDesktopRuntime,
+  type DesktopPermissionKind,
+  type DesktopPermissionSnapshot,
+  type DesktopScreenShareCapabilities,
+  type DesktopScreenShareSource,
+  type DesktopScreenShareSourceFailure,
+  type DesktopScreenShareSourceResult,
+  type DesktopNativeScreenShareLifecycleEvent,
+} from "../../lib/desktop-runtime";
 import {
   DEFAULT_SCREEN_SHARE_SETTINGS,
   SCREEN_SHARE_FRAME_RATES,
@@ -32,15 +33,20 @@ export type ScreenShareLifecycleState =
 
 export type ScreenShareSourceKind = "display" | "window" | "application";
 export type ScreenShareFailureCode =
+  | "permission-denied"
+  | "policy-blocked"
+  | "capture-unavailable"
+  | "unknown"
   | "capture-black"
   | "cursor-unavailable"
-  | "audio-isolation-unavailable"
-  | "capture-failed";
+  | "audio-isolation-unavailable";
 
 export interface ScreenShareFailure {
   code: ScreenShareFailureCode;
   message: string;
   recommendedRetrySource: "display" | null;
+  canOpenSettings: boolean;
+  restartRequired: boolean;
 }
 
 export interface ScreenShareDiagnostics {
@@ -65,15 +71,9 @@ export interface ScreenShareCapabilities {
   reason: string | null;
 }
 
-export interface ScreenShareSource {
-  id: string;
-  kind: Extract<ScreenShareSourceKind, "display" | "application">;
-  label: string;
-  applicationLabel: string | null;
-  audioAvailable: boolean;
-  audioUnavailableReason: string | null;
-  thumbnailDataUrl: string | null;
-}
+export type ScreenShareSource = DesktopScreenShareSource;
+export type ScreenShareSourceListFailure = DesktopScreenShareSourceFailure;
+export type ScreenShareSourceListResult = DesktopScreenShareSourceResult;
 
 export interface StartScreenShareInput {
   serverUrl: string;
@@ -113,26 +113,20 @@ export class ScreenShareCaptureError extends Error {
   }
 }
 
-interface ActiveScreenShare {
-  session: ScreenShareSession;
-  room: Room;
-  videoTrack: LocalVideoTrack;
-  audioTrack: LocalAudioTrack | null;
-  stopping: boolean;
-}
-
 const lifecycleListeners = new Set<
   (event: ScreenShareLifecycleEvent) => void
 >();
-let activeScreenShare: ActiveScreenShare | null = null;
+const nativeSessions = new Map<string, ScreenShareSession>();
+let bridgeLifecycleUnlisten: UnlistenFn | null = null;
 
 export function isDesktopApp(): boolean {
   return isDesktopRuntime();
 }
 
-export function getScreenShareCapabilities(): Promise<ScreenShareCapabilities> {
-  if (!isDesktopRuntime()) {
-    return Promise.resolve({
+export async function getScreenShareCapabilities(): Promise<ScreenShareCapabilities> {
+  const bridge = getDesktopBridge();
+  if (!bridge) {
+    return {
       available: false,
       nativeCapture: false,
       systemAudio: false,
@@ -142,28 +136,128 @@ export function getScreenShareCapabilities(): Promise<ScreenShareCapabilities> {
       dynamicSettings: false,
       customPicker: false,
       reason: "Screen sharing is available in the installed desktop app.",
-    });
+    };
   }
 
-  return Promise.resolve({
-    available: true,
+  let nativeCapabilities: DesktopScreenShareCapabilities;
+  try {
+    nativeCapabilities = await bridge.screenShare.capabilities();
+  } catch {
+    return {
+      ...defaultScreenShareCapabilities(),
+      reason: "The native screen-share helper is unavailable.",
+    };
+  }
+
+  return {
+    available: nativeCapabilities.video,
     nativeCapture: true,
-    systemAudio: true,
+    systemAudio:
+      nativeCapabilities.systemAudio && nativeCapabilities.processTreeIsolation,
     sourceKinds: ["display", "application"],
     resolutions: [...SCREEN_SHARE_RESOLUTIONS],
     frameRates: [...SCREEN_SHARE_FRAME_RATES],
     dynamicSettings: true,
     customPicker: true,
-    reason: null,
-  });
+    reason: nativeCapabilities.reason,
+  };
 }
 
-export async function listScreenShareSources(): Promise<ScreenShareSource[]> {
-  return (await getDesktopBridge()?.screenShare.listSources()) ?? [];
+export async function listScreenShareSources(): Promise<ScreenShareSourceListResult> {
+  const bridge = getDesktopBridge();
+  if (!bridge) {
+    return {
+      ok: false,
+      sources: [],
+      permissionStatus: "unknown",
+      systemAudioAvailable: false,
+      systemAudioUnavailableReason:
+        "Screen sharing is available in the installed desktop app.",
+      failure: {
+        code: "capture-unavailable",
+        message: "Screen sharing is available in the installed desktop app.",
+        canOpenSettings: false,
+        restartRequired: false,
+      },
+    };
+  }
+  try {
+    const [capabilities, sourceResult] = await Promise.all([
+      bridge.screenShare.capabilities(),
+      bridge.screenShare.listSources({ includeThumbnails: true }),
+    ]);
+    return {
+      ok: true,
+      sources: sourceResult.sources,
+      permissionStatus: await getPermissionSnapshot("screen").then(
+        (permission) => permission.status,
+      ),
+      systemAudioAvailable:
+        capabilities.systemAudio && capabilities.processTreeIsolation,
+      systemAudioUnavailableReason:
+        capabilities.systemAudio && capabilities.processTreeIsolation
+          ? null
+          : capabilities.reason,
+      failure: null,
+    };
+  } catch (caught) {
+    const permission = await getPermissionSnapshot("screen");
+    const permissionDenied = permission.status === "denied";
+    const policyBlocked = permission.status === "restricted";
+    return {
+      ok: false,
+      sources: [],
+      permissionStatus: permission.status,
+      systemAudioAvailable: false,
+      systemAudioUnavailableReason:
+        "Native process-isolated system audio is unavailable.",
+      failure: {
+        code: permissionDenied
+          ? "permission-denied"
+          : policyBlocked
+            ? "policy-blocked"
+            : "unknown",
+        message:
+          permissionDenied && bridge.platform === "macos"
+            ? "Allow Bakbak in macOS Privacy & Security > Screen Recording, then restart Bakbak."
+            : parseScreenShareFailure(caught).message,
+        canOpenSettings: permission.canOpenSettings,
+        restartRequired: permission.requiresRestart,
+      },
+    };
+  }
 }
 
-export async function openScreenRecordingSettings(): Promise<void> {
-  await getDesktopBridge()?.app.openScreenRecordingSettings();
+export async function requestMicrophonePermission(): Promise<DesktopPermissionSnapshot> {
+  return (
+    (await getDesktopBridge()?.permissions.requestMicrophone()) ?? {
+      kind: "microphone",
+      status: "unknown",
+      canRequest: false,
+      canOpenSettings: false,
+      requiresRestart: false,
+    }
+  );
+}
+
+export async function getPermissionSnapshot(
+  kind: DesktopPermissionKind,
+): Promise<DesktopPermissionSnapshot> {
+  return (
+    (await getDesktopBridge()?.permissions.get(kind)) ?? {
+      kind,
+      status: "unknown",
+      canRequest: false,
+      canOpenSettings: false,
+      requiresRestart: false,
+    }
+  );
+}
+
+export async function openPermissionSettings(
+  kind: DesktopPermissionKind,
+): Promise<boolean> {
+  return (await getDesktopBridge()?.permissions.openSettings(kind)) ?? false;
 }
 
 export async function restartDesktopApp(): Promise<void> {
@@ -179,148 +273,73 @@ export async function startScreenShare(
       "Screen sharing is available in the installed desktop app.",
     );
   }
-  if (activeScreenShare) {
-    throw new Error("A screen share is already active.");
-  }
-
   const settings = parseScreenShareSettings(input.settings);
-  const sessionId = crypto.randomUUID();
-  let room: Room | null = null;
   try {
-    const sources = await listScreenShareSources();
+    const sourceResult = await listScreenShareSources();
+    if (!sourceResult.ok) {
+      throw new ScreenShareCaptureError(
+        screenShareSourceFailure(sourceResult.failure),
+      );
+    }
+    const sources = sourceResult.sources;
     const source = input.sourceId
       ? sources.find((candidate) => candidate.id === input.sourceId)
       : (sources.find((candidate) => candidate.kind === "display") ??
         sources[0]);
-    if (!source) throw new Error("The selected screen source is unavailable.");
-
-    await bridge.screenShare.prepare({
-      sourceId: source.id,
-      includeAudio: input.includeAudio,
-    });
-    room = new Room({
-      adaptiveStream: false,
-      dynacast: true,
-      disconnectOnPageLeave: true,
-    });
-    await room.connect(input.serverUrl, input.token, { autoSubscribe: false });
-
-    const tracks = await createLocalScreenTracks({
-      audio: input.includeAudio
-        ? {
-            autoGainControl: false,
-            echoCancellation: false,
-            noiseSuppression: false,
-            restrictOwnAudio: true,
-          }
-        : false,
-      video: true,
-      resolution: {
-        width: Math.round(settings.resolution * (16 / 9)),
-        height: settings.resolution,
-        frameRate: settings.frameRate,
-      },
-      contentHint: "detail",
-      selfBrowserSurface: "exclude",
-      systemAudio: input.includeAudio ? "include" : "exclude",
-    });
-    const videoTrack = tracks.find(
-      (track) => track.kind === Track.Kind.Video,
-    ) as LocalVideoTrack | undefined;
-    let audioTrack = (tracks.find((track) => track.kind === Track.Kind.Audio) ??
-      null) as LocalAudioTrack | null;
-    if (!videoTrack) throw new Error("The selected source returned no video.");
-
-    videoTrack.mediaStreamTrack.contentHint = "detail";
-    await room.localParticipant.publishTrack(videoTrack, {
-      name: "bakbak-screen",
-      source: Track.Source.ScreenShare,
-      videoCodec: "h264",
-      screenShareEncoding: {
-        maxBitrate: screenShareBitrate(settings),
-        maxFramerate: settings.frameRate,
-      },
-      simulcast: true,
-      degradationPreference: "maintain-resolution",
-    });
-
-    let audioPublished = false;
-    let audioUnavailableReason: string | null = null;
-    if (input.includeAudio && audioTrack) {
-      try {
-        await room.localParticipant.publishTrack(audioTrack.mediaStreamTrack, {
-          name: "bakbak-screen-audio",
-          source: Track.Source.ScreenShareAudio,
-          audioPreset: { maxBitrate: 128_000 },
-          dtx: false,
-          red: true,
-          forceStereo: true,
-        });
-        audioPublished = true;
-      } catch {
-        audioTrack.stop();
-        audioTrack = null;
-        audioUnavailableReason =
-          "The screen is live, but Electron could not publish system audio.";
-      }
-    } else if (input.includeAudio) {
-      audioUnavailableReason =
-        "The selected source did not provide a system-audio track.";
+    if (!source) {
+      throw new ScreenShareCaptureError({
+        code: "capture-unavailable",
+        message: "The selected screen source is unavailable.",
+        recommendedRetrySource: null,
+        canOpenSettings: false,
+        restartRequired: false,
+      });
     }
 
+    const includeAudio =
+      input.includeAudio &&
+      source.audioAvailable &&
+      sourceResult.systemAudioAvailable;
+    const nativeSession = await bridge.screenShare.start({
+      serverUrl: input.serverUrl,
+      token: input.token,
+      sourceId: source.id,
+      includeAudio,
+      settings: nativeSettings(settings),
+    });
     const diagnostics: ScreenShareDiagnostics = {
       os: bridge.platform,
-      osBuild: navigator.userAgent,
-      sourceKind: source.kind,
-      captureBackend: "electron-desktop-capturer",
-      cursorCapability: "chromium-capture",
-      audioIsolationMode: input.includeAudio
-        ? "chromium-restrict-own-audio"
-        : "disabled",
+      osBuild: "native-helper",
+      sourceKind: nativeSession.sourceKind,
+      captureBackend: nativeSession.diagnostics.captureBackend,
+      cursorCapability: "native-capture",
+      audioIsolationMode: nativeSession.diagnostics.audioIsolationMode,
       failureCode: null,
     };
     const session: ScreenShareSession = {
-      sessionId,
-      sourceLabel: source.label,
-      sourceKind: source.kind,
-      audioPublished,
-      audioUnavailableReason,
+      sessionId: nativeSession.sessionId,
+      sourceLabel: nativeSession.sourceLabel,
+      sourceKind: nativeSession.sourceKind,
+      audioPublished: nativeSession.audioPublished,
+      audioUnavailableReason:
+        nativeSession.audioUnavailableReason ??
+        (input.includeAudio && !includeAudio
+          ? (source.audioUnavailableReason ??
+            "The selected source cannot provide isolated system audio.")
+          : null),
       settings,
       diagnostics,
     };
-    activeScreenShare = {
-      session,
-      room,
-      videoTrack,
-      audioTrack,
-      stopping: false,
-    };
-    videoTrack.once(TrackEvent.Ended, () => {
-      void endUnexpectedScreenShare(
-        sessionId,
-        "The selected screen or window stopped sharing.",
-      );
-    });
-    room.once(RoomEvent.Disconnected, () => {
-      if (activeScreenShare?.session.sessionId === sessionId) {
-        void endUnexpectedScreenShare(
-          sessionId,
-          "The screen-share connection ended.",
-        );
-      }
-    });
+    nativeSessions.set(session.sessionId, session);
     logDiagnostics(diagnostics);
-    emitLifecycle({
-      state: "sharing",
-      ...session,
-      message: null,
-      failure: null,
-    });
     return session;
   } catch (caught) {
-    await room?.disconnect(true).catch(() => undefined);
-    const failure = parseScreenShareFailure(caught);
+    const failure =
+      caught instanceof ScreenShareCaptureError
+        ? caught.failure
+        : parseScreenShareFailure(caught);
     console.error(`[Bakbak screen share] ${failure.code}: ${failure.message}`);
+    if (caught instanceof ScreenShareCaptureError) throw caught;
     throw new ScreenShareCaptureError(failure);
   }
 }
@@ -334,89 +353,43 @@ export async function updateScreenShareSettings(
       "Live screen-share changes are available in the installed desktop app.",
     );
   }
-  const active = activeScreenShare;
-  if (!active || active.session.sessionId !== sessionId) {
-    throw new Error("That screen-share session is no longer active.");
-  }
   const updated = parseScreenShareSettings(settings);
-  await active.videoTrack.mediaStreamTrack.applyConstraints({
-    width: { ideal: Math.round(updated.resolution * (16 / 9)) },
-    height: { ideal: updated.resolution },
-    frameRate: { ideal: updated.frameRate },
+  const bridge = getDesktopBridge();
+  if (!bridge) throw new Error("Native screen sharing is unavailable.");
+  await bridge.screenShare.update({
+    sessionId,
+    settings: nativeSettings(updated),
   });
-  const sender = active.videoTrack.sender;
-  if (sender) {
-    const parameters = sender.getParameters();
-    const maxBitrate = screenShareBitrate(updated);
-    const encodings = parameters.encodings;
-    encodings.forEach((encoding, index) => {
-      const scale = (index + 1) / encodings.length;
-      encoding.maxBitrate = Math.round(maxBitrate * scale);
-      encoding.maxFramerate = updated.frameRate;
-    });
-    await sender.setParameters(parameters);
-  }
-  active.session = { ...active.session, settings: updated };
-  emitLifecycle({
-    state: "sharing",
-    ...active.session,
-    message: null,
-    failure: null,
-  });
+  const session = nativeSessions.get(sessionId);
+  if (session) nativeSessions.set(sessionId, { ...session, settings: updated });
   return updated;
 }
 
 export async function stopScreenShare(sessionId: string): Promise<void> {
-  const active = activeScreenShare;
-  if (!active || active.session.sessionId !== sessionId) return;
-  active.stopping = true;
-  activeScreenShare = null;
-  await active.room.disconnect(true).catch(() => undefined);
-  emitLifecycle({
-    state: "idle",
-    sessionId,
-    sourceLabel: null,
-    sourceKind: null,
-    audioPublished: false,
-    audioUnavailableReason: null,
-    settings: null,
-    message: null,
-    failure: null,
-    diagnostics: active.session.diagnostics ?? null,
-  });
+  const bridge = getDesktopBridge();
+  if (!bridge) return;
+  await bridge.screenShare.stop({ sessionId });
+  nativeSessions.delete(sessionId);
 }
 
 export function listenForScreenShareLifecycle(
   onEvent: (event: ScreenShareLifecycleEvent) => void,
 ): Promise<UnlistenFn> {
-  if (!isDesktopRuntime()) return Promise.resolve(() => undefined);
+  const bridge = getDesktopBridge();
+  if (!bridge) return Promise.resolve(() => undefined);
   lifecycleListeners.add(onEvent);
-  return Promise.resolve(() => lifecycleListeners.delete(onEvent));
-}
-
-async function endUnexpectedScreenShare(
-  sessionId: string,
-  message: string,
-): Promise<void> {
-  const active = activeScreenShare;
-  if (!active || active.session.sessionId !== sessionId || active.stopping) {
-    return;
+  if (!bridgeLifecycleUnlisten) {
+    bridgeLifecycleUnlisten = bridge.screenShare.onLifecycle((event) => {
+      const mapped = mapNativeLifecycle(event);
+      if (mapped) emitLifecycle(mapped);
+    });
   }
-  active.stopping = true;
-  activeScreenShare = null;
-  await active.room.disconnect(true).catch(() => undefined);
-  const failure = parseScreenShareFailure(message);
-  emitLifecycle({
-    state: "error",
-    sessionId,
-    sourceLabel: null,
-    sourceKind: null,
-    audioPublished: false,
-    audioUnavailableReason: null,
-    settings: null,
-    message,
-    failure,
-    diagnostics: active.session.diagnostics ?? null,
+  return Promise.resolve(() => {
+    lifecycleListeners.delete(onEvent);
+    if (lifecycleListeners.size === 0 && bridgeLifecycleUnlisten) {
+      bridgeLifecycleUnlisten();
+      bridgeLifecycleUnlisten = null;
+    }
   });
 }
 
@@ -427,6 +400,61 @@ function emitLifecycle(event: ScreenShareLifecycleEvent): void {
     );
   }
   for (const listener of lifecycleListeners) listener(event);
+}
+
+function mapNativeLifecycle(
+  event: DesktopNativeScreenShareLifecycleEvent,
+): ScreenShareLifecycleEvent | null {
+  if (event.state === "ready" || event.state === "shutting-down") return null;
+  const session = event.sessionId
+    ? (nativeSessions.get(event.sessionId) ?? null)
+    : null;
+  const state: ScreenShareLifecycleState =
+    event.state === "starting"
+      ? "starting"
+      : event.state === "live" || event.state === "audio-downgraded"
+        ? "sharing"
+        : event.state === "stopping"
+          ? "stopping"
+          : event.state === "stopped"
+            ? "idle"
+            : "error";
+  const failure =
+    state === "error"
+      ? parseScreenShareFailure(
+          event.message ?? "Native screen sharing ended unexpectedly.",
+        )
+      : null;
+  if (event.sessionId && (state === "idle" || state === "error")) {
+    nativeSessions.delete(event.sessionId);
+  }
+  return {
+    state,
+    sessionId: event.sessionId ?? null,
+    sourceLabel: session?.sourceLabel ?? null,
+    sourceKind: session?.sourceKind ?? null,
+    audioPublished: event.audioPublished ?? session?.audioPublished ?? false,
+    audioUnavailableReason:
+      event.state === "audio-downgraded"
+        ? (event.message ?? session?.audioUnavailableReason ?? null)
+        : (session?.audioUnavailableReason ?? null),
+    settings: session?.settings ?? null,
+    message: event.message ?? null,
+    failure,
+    diagnostics: session?.diagnostics ?? null,
+  };
+}
+
+function nativeSettings(settings: ScreenShareSettings) {
+  return {
+    width:
+      settings.resolution === 480
+        ? 854
+        : Math.round(settings.resolution * (16 / 9)),
+    height: settings.resolution,
+    frameRate: settings.frameRate,
+    maxBitrate: screenShareBitrate(settings),
+  };
 }
 
 export function defaultScreenShareCapabilities(): ScreenShareCapabilities {
@@ -448,21 +476,38 @@ export function defaultScreenShareSettings(): ScreenShareSettings {
 }
 
 export function parseScreenShareFailure(caught: unknown): ScreenShareFailure {
+  if (caught instanceof ScreenShareCaptureError) return caught.failure;
   if (isFailureRecord(caught)) return caught;
+  if (caught instanceof DOMException && caught.name === "NotFoundError") {
+    return {
+      code: "capture-unavailable",
+      message: "The selected screen source is no longer available.",
+      recommendedRetrySource: null,
+      canOpenSettings: false,
+      restartRequired: false,
+    };
+  }
   const raw =
     caught instanceof Error
       ? caught.message
       : typeof caught === "string" && caught.trim()
         ? caught
         : "Native screen sharing failed without an error message.";
-  const match = raw.match(
-    /^\[(capture-black|cursor-unavailable|audio-isolation-unavailable|capture-failed)\]\s*(.*)$/s,
-  );
-  const code = (match?.[1] ?? "capture-failed") as ScreenShareFailureCode;
   return {
-    code,
-    message: match?.[2]?.trim() || raw,
-    recommendedRetrySource: code === "capture-black" ? "display" : null,
+    code: "unknown",
+    message: raw,
+    recommendedRetrySource: null,
+    canOpenSettings: false,
+    restartRequired: false,
+  };
+}
+
+function screenShareSourceFailure(
+  failure: DesktopScreenShareSourceFailure,
+): ScreenShareFailure {
+  return {
+    ...failure,
+    recommendedRetrySource: null,
   };
 }
 
@@ -471,15 +516,22 @@ function isFailureRecord(value: unknown): value is ScreenShareFailure {
     typeof value === "object" &&
     value !== null &&
     "code" in value &&
-    (value.code === "capture-black" ||
+    (value.code === "permission-denied" ||
+      value.code === "policy-blocked" ||
+      value.code === "capture-unavailable" ||
+      value.code === "unknown" ||
+      value.code === "capture-black" ||
       value.code === "cursor-unavailable" ||
-      value.code === "audio-isolation-unavailable" ||
-      value.code === "capture-failed") &&
+      value.code === "audio-isolation-unavailable") &&
     "message" in value &&
     typeof value.message === "string" &&
     "recommendedRetrySource" in value &&
     (value.recommendedRetrySource === "display" ||
-      value.recommendedRetrySource === null)
+      value.recommendedRetrySource === null) &&
+    "canOpenSettings" in value &&
+    typeof value.canOpenSettings === "boolean" &&
+    "restartRequired" in value &&
+    typeof value.restartRequired === "boolean"
   );
 }
 
@@ -488,10 +540,10 @@ function logDiagnostics(diagnostics: ScreenShareDiagnostics): void {
 }
 
 export const screenShareServiceTesting = {
-  async reset(): Promise<void> {
-    const active = activeScreenShare;
-    activeScreenShare = null;
+  reset(): void {
+    bridgeLifecycleUnlisten?.();
+    bridgeLifecycleUnlisten = null;
+    nativeSessions.clear();
     lifecycleListeners.clear();
-    await active?.room.disconnect(true).catch(() => undefined);
   },
 };

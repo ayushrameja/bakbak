@@ -10,9 +10,10 @@ import {
 } from "./sidebar-theme-preferences";
 
 function PickerHarness() {
-  const [theme, setTheme] = useState<SpaceSidebarTheme>(() =>
-    structuredClone(DEFAULT_SIDEBAR_THEME_PREFERENCES.spaces.server),
-  );
+  const [theme, setTheme] = useState<SpaceSidebarTheme>(() => ({
+    ...structuredClone(DEFAULT_SIDEBAR_THEME_PREFERENCES.spaces.server),
+    mode: "gradient",
+  }));
   return (
     <>
       <SidebarGradientPicker label="Bakbak" theme={theme} onChange={setTheme} />

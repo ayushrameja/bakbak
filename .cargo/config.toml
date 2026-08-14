@@ -1,0 +1,5 @@
+[target.x86_64-pc-windows-msvc]
+# LiveKit's pinned WebRTC archive is built with the static MSVC runtime. Keep
+# Rust and every cc/cxx bridge in the helper on the same runtime to avoid
+# LNK2038 RuntimeLibrary mismatches and duplicate C++ standard-library symbols.
+rustflags = ["-C", "target-feature=+crt-static"]

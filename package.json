@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "vite",
     "build": "pnpm typecheck && vite build",
-    "typecheck": "tsc --noEmit --pretty false && tsc --noEmit --pretty false -p tsconfig.node.json && tsc --noEmit --pretty false -p tsconfig.electron.json",
+    "typecheck": "tsc --noEmit --pretty false && tsc --noEmit --pretty false -p tsconfig.node.json && tsc --noEmit --pretty false -p tsconfig.electron.json && tsc --noEmit --pretty false -p tsconfig.electron-tests.json",
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -23,9 +23,13 @@
     "version:check": "node scripts/set-version.mjs --check",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm version:check && pnpm build && pnpm security:scan",
     "preview": "vite preview",
-    "electron:compile": "tsc --pretty false -p tsconfig.electron.json",
-    "desktop:prepare": "pnpm build && pnpm electron:compile",
-    "desktop:dev": "pnpm electron:compile && concurrently -k -s first \"pnpm dev\" \"wait-on tcp:127.0.0.1:1420 && electron .\"",
+    "electron:compile": "node scripts/write-screen-share-rollout.mjs && tsc --pretty false -p tsconfig.electron.json",
+    "native:build": "cargo build --release --locked --manifest-path native/screen-share-helper/Cargo.toml",
+    "native:build:dev": "cargo build --locked --manifest-path native/screen-share-helper/Cargo.toml",
+    "native:stage": "node scripts/stage-screen-share-helper.mjs",
+    "native:test": "cargo test --locked --manifest-path native/screen-share-helper/Cargo.toml",
+    "desktop:prepare": "pnpm build && pnpm electron:compile && pnpm native:build && pnpm native:stage",
+    "desktop:dev": "pnpm native:build:dev && pnpm electron:compile && concurrently -k -s first \"pnpm dev\" \"wait-on tcp:127.0.0.1:1420 && electron .\"",
     "desktop:start": "electron .",
     "desktop:pack:local": "pnpm desktop:prepare && electron-builder --dir --publish never",
     "desktop:build": "pnpm desktop:prepare && electron-builder --publish never"
@@ -84,6 +88,16 @@
       "dist/**/*",
       "electron-dist/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/native",
+        "to": "native",
+        "filter": [
+          "bakbak-screen-share-helper",
+          "bakbak-screen-share-helper.exe"
+        ]
+      }
     ],
     "publish": [
       {

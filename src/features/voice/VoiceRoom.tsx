@@ -30,6 +30,10 @@ import type { AppUser, Channel, ServerMember } from "../../lib/types";
 import { useReducedMotion } from "../../lib/use-reduced-motion";
 import { ParticipantVideo } from "./ParticipantVideo";
 import { ScreenShareStage } from "./ScreenShareStage";
+import {
+  openPermissionSettings,
+  restartDesktopApp,
+} from "./screen-share-service";
 import type { useVoiceRoom } from "./useVoiceRoom";
 import type { VoiceParticipant, VoiceScreenShare } from "./useVoiceRoom";
 
@@ -185,7 +189,8 @@ export function VoiceRoom({
 
   return (
     <section
-      className={`voice-room-view ${isConnected ? "is-connected" : ""} ${voice.screenShares.length > 0 ? "has-screen-share" : ""}`}
+      className={`voice-room-view ${isConnected ? "is-connected" : ""} ${voice.screenShares.length > 0 ? "has-screen-share" : ""} ${focusedShare ? "is-focused-share" : ""}`}
+      data-view={focusedShare ? "focused-share" : "people"}
     >
       {isConnecting || isReconnecting ? (
         <div className="voice-loading" role="status" aria-live="polite">
@@ -214,6 +219,15 @@ export function VoiceRoom({
           >
             <RefreshCw size={16} /> Try again
           </button>
+          {voice.microphonePermission ? (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={onOpenSettings}
+            >
+              Review microphone
+            </button>
+          ) : null}
         </div>
       ) : null}
 
@@ -330,15 +344,39 @@ export function VoiceRoom({
             <div className="voice-device-error" role="alert">
               <CircleAlert size={16} />
               <span>{voice.screenShareError}</span>
-              {voice.screenShareFailure?.recommendedRetrySource ===
-              "display" ? (
-                <button
-                  type="button"
-                  onClick={() => void voice.retryScreenShareWithEntireScreen()}
-                >
-                  Retry Entire screen
-                </button>
-              ) : null}
+              <div className="voice-device-error__actions">
+                {voice.screenShareFailure?.canOpenSettings ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void openPermissionSettings("screen").catch(
+                        () => undefined,
+                      )
+                    }
+                  >
+                    Open Privacy Settings
+                  </button>
+                ) : null}
+                {voice.screenShareFailure?.restartRequired ? (
+                  <button
+                    type="button"
+                    onClick={() => void restartDesktopApp()}
+                  >
+                    Restart Bakbak
+                  </button>
+                ) : null}
+                {voice.screenShareFailure?.recommendedRetrySource ===
+                "display" ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void voice.retryScreenShareWithEntireScreen()
+                    }
+                  >
+                    Retry Entire screen
+                  </button>
+                ) : null}
+              </div>
             </div>
           ) : null}
           {focusedShare ? (

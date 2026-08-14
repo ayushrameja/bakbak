@@ -7,40 +7,62 @@ and phase completion belong in the numbered files under `docs/plans`.
 
 ## Current implementation state
 
-As of 2026-08-09, Bakbak has a complete local/mock product path and production
-Supabase and LiveKit adapters. The signed-in renderer uses a Buzz/Slack-inspired
-two-track shell: one space-specific gradient sidebar and one rounded solid
-conversation canvas. The always-present 48 px titlebar keeps its centre empty
-and draggable; its single sidebar visibility control sits in the leading area,
-after native macOS traffic lights and before the drag surface on other
-platforms. The Personal/Bakbak segmented switch lives at the top of the
-sidebar. Authentication and loading reuse that same app geometry: a quiet
-280 px honey-to-teal rail, an 8 px outer inset, and one rounded solid canvas.
-The transparent navigation-free titlebar reveals the same gradient as the
-page, matching the signed-in shell instead of introducing a separate header
-surface. Authentication keeps only the Bakbak lockup, a short private-space
-label, and the focused sign-in/invite form; narrow windows collapse to the
-canvas and compact lockup. Loading shows the same empty shell with one bounded
-progress cue. Sign-in and invite mode preserve native autofill and validation,
-explicit password visibility, and keyboard-accessible tabs.
+As of 2026-08-14, Bakbak has a complete local/mock product path and production
+Supabase and LiveKit adapters. The signed-in renderer uses an Arc-like
+two-track shell with no full app titlebar or contextual conversation header.
+A zero-width native-safe overlay contains no renderer controls, while the main
+canvas starts with a compact 30 px drag strip that has no contextual text or
+actions. The visible sidebar's bottom user dock places its close control
+directly after Settings; `Cmd/Ctrl+B` or the native View menu restores the
+sidebar after hiding. macOS aligns native traffic lights at `{ x: 16, y: 16 }`
+inside left-positioned sidebar chrome and at `{ x: 16, y: 8 }` to center them
+vertically in the 30 px main drag strip when the sidebar is on the right;
+Windows keeps native
+Window Controls Overlay caption buttons on the platform-standard right edge.
+The Personal/Bakbak segmented switch lives at the top of the unified sidebar.
+Authentication and loading keep the same full-window geometry without adding
+a renderer header row. Authentication keeps only the Bakbak lockup, a short
+private-space label, and the focused sign-in/invite form; narrow windows
+collapse to the canvas and compact lockup. Loading shows the same empty shell
+with one bounded progress cue. Sign-in and invite mode preserve native autofill
+and validation, explicit password visibility, and keyboard-accessible tabs.
 
-macOS retains native overlay traffic lights and an active-state-following
-`under-window` vibrancy material. The Electron BrowserWindow and renderer root
-are transparent so sidebar gradient alpha reveals that material. Windows uses
-renderer-owned controls and applies Mica on Windows 11 22H2 or newer; older
-Windows keeps the transparent frameless backing without Mica. Browser/mock
-mode uses an opaque CSS underlay. The sidebar defaults to 280 px, resizes from
-248–340 px,
-and leaves a 420 px minimum conversation canvas. V3 layout preferences persist
-only sidebar visibility and width, migrate v2's left-side fields, and discard
-the retired right-panel fields. Settings remains a centred, focus-trapped
-in-app modal with internal scrolling, active-call controls, confirmed logout,
-and account-scoped cache management.
+macOS uses a hidden-inset titlebar, native overlay traffic lights, and
+active-state-following `under-window` vibrancy. Windows uses a transparent
+hidden titlebar with Window Controls Overlay and applies Mica on Windows 11
+22H2 or newer. Reduced-transparency, high-contrast, older Windows, browser, and
+unsupported environments use an opaque scheme-aware fallback. The native View
+menu owns `Cmd/Ctrl+B`; browser/mock uses the same renderer shortcut. The
+user-dock control closes the visible sidebar and disappears with it; the native
+View menu and `Cmd/Ctrl+B` remain the restore paths.
+macOS traffic-light visibility and vertical alignment are main-process-owned
+and reapplied after window focus, restore, and fullscreen return.
+The sidebar defaults to 280 px on the left, can move to the right from
+Appearance Settings, resizes from 248–340 px on either side, stays mounted but
+inert at zero width when hidden, and leaves a
+420 px minimum conversation canvas while visible. Both tracks use the complete
+window without an outer inset; the conversation canvas has no shell border,
+radius, or shadow. Hiding the sidebar lets text, voice, or focused share fill
+the window without changing call state. Layout preferences v5 persist
+`sidebarVisible`, `sidebarWidth`, and `sidebarPosition`; migrate v4/v3/v2
+left-panel fields and v1 visibility; and discard retired right-panel state.
+Settings remains a centred,
+focus-trapped in-app modal with internal scrolling, active-call controls,
+confirmed logout, and account-scoped cache management.
 
-The Bakbak space defaults to a honey-to-teal-to-midnight gradient and Personal
-defaults to berry-to-violet-to-midnight. Each signed-in account can independently
-replace either sidebar with a solid color or three-stop gradient, make it darker
-or lighter, add up to 45% transparency, and choose no texture, dots, or grain.
+Glass is the default per-space control-chrome mode. The sidebar slot itself is
+always unpainted so the current window material or translucent theme remains
+visible behind it, while the conversation canvas stays solid and the segmented
+switch, composer, call dock, user dock, dialogs, and other floating controls
+retain scheme-aware Glass. Each signed-in account can independently use Glass
+or a three-stop translucent gradient for Personal and Bakbak, set 20–100%
+transparency, make gradients darker or lighter, and choose no texture, dots,
+or grain. Glass defaults to 100% transparency. Untouched v1 sidebar defaults
+migrate to that Glass value; untouched v2 Glass records from the former 45%
+default are promoted once, while legacy Solid records
+become single-color translucent gradients, and existing gradients keep their
+colors and positions within the new transparency clamp. The retired one-time
+appearance prompt and completion flag are neither rendered nor persisted.
 The gradient picker places three draggable, click-to-recolor points on the live
 field; their positions determine gradient direction and the middle stop.
 Alt+Arrow provides keyboard positioning, and eight one-click presets sit below
@@ -55,9 +77,20 @@ tree, and global call dock stay mounted and still; reduced motion applies the
 destination immediately. The
 conversation canvas is `#171717` in dark mode and near-white in light mode.
 Auto, Light, and Dark appearance choices remain device-local and apply before
-React mounts. Appearance Settings includes the same live per-space sidebar
-editor used by the one-time, skippable setup prompt shown after each account's
-first completed sign-in on a device.
+React mounts. Appearance Settings contains the live per-space chrome editor.
+
+Desktop media recovery now crosses the preload boundary as typed permission
+snapshots and a discriminated screen-source result instead of renderer string
+inspection. Microphone capture/test actions may request macOS access, then
+surface platform-correct Privacy Settings and restart actions after denial.
+Windows recovery points to the global microphone and desktop-app privacy
+switches. Screen-source enumeration reports macOS denied/restricted states,
+source and system-audio capabilities, and enumeration failure separately; on
+Windows it never claims a Bakbak-specific screen-capture permission exists.
+The macOS package remains ad-hoc signed, so a differently signed or rebuilt
+update can lose its TCC identity and require microphone/Screen Recording access
+again. The recovery flow makes that limitation explicit but cannot preserve
+TCC grants without a stable Developer ID signature and notarization.
 
 Inter Variable is bundled locally at weights 400–700 with `Inter`,
 `Avenir Next`, `Segoe UI`, and `sans-serif` fallbacks. The rem-based scale uses
@@ -86,8 +119,8 @@ You while preserving profile, DM, context, and stream-watching actions.
 Forty-six-pixel preview rows use 38 px avatars and more breathing room. Online
 names are bold and their lazy cover texture is clearer, while away/offline
 treatment remains quiet. Personal omits this server preview. The right
-member/details rail no longer exists; DM header identity opens the same profile
-surface. Category and channel snapshots
+member/details rail no longer exists; the DM conversation-introduction identity
+opens the same profile surface. Category and channel snapshots
 request active rows only, archive Realtime reconciliation removes navigation
 rows, and an archived selection falls back to the first active room.
 
@@ -126,9 +159,9 @@ left, text in the flexible centre, and supported GIF, Bakbak sticker, searchable
 native emoji, and send actions on the right. Emoji insertion respects the
 current text selection and preserves structured mention ranges. In its resting
 state, the composer wrapper keeps its 68 px footer band and 52 px message bar.
-The sidebar user dock is a separate compact 56 px control row with no profile
-cover backdrop, keeping identity and call controls readable without competing
-artwork.
+The sidebar user dock is a separate compact 56 px control row with a 12 px
+rounded raised background and no profile cover backdrop, keeping identity and
+call controls readable without competing artwork.
 Replies notify the other author by default, self/deleted/former-author
 notifications are disabled by the database, and author deletion leaves a
 scrubbed tombstone so read pointers and reply references remain valid. Message
@@ -220,6 +253,18 @@ receiving the boost twice. A single hidden MediaStream output monitor routes
 the limited mix through the selected speaker. Unsupported graph creation falls
 back to the existing 0–100% media-element path and is visible as
 `limitedOutput: false` in the privacy-safe voice diagnostics.
+The renderer treats this as an exact-once routing invariant rather than a
+one-time setup step. A stream-backed companion must remain attached exactly
+once, muted, and at zero element volume; an element-backed graph or unsupported-
+graph fallback retains its single audible element route. LiveKit-like
+`volumechange`, room playback-status changes (blocked or restored), output
+changes, `playing`, and bounded pause/stall/error/ended recovery all reassert
+the correct route. Error/ended reattachment rebuilds a direct MediaStream gain
+stage before playback resumes so a replacement stream cannot leave the old
+graph connected. Privacy-safe diagnostics schema v3 reports only the route
+type, attachment state/count, and invariant result alongside existing opaque
+participant/publication SIDs and playback health; it records no device label,
+stream content, token, or persistent user identity.
 Deafen is enforced at the final listener mix as well as each source boundary:
 the shared output monitor is hard-muted, current and future gain stages are
 zeroed, and attached LiveKit remote-audio tracks receive binary zero volume.
@@ -498,20 +543,23 @@ voice, video, device, soundboard, reconnect, and crash-expiry rehearsal remains
 open for human observation.
 
 Installed Apple Silicon macOS and Windows x64 clients share one Bakbak Entire
-screen / Application picker before capture starts. Electron enumerates Chromium
-desktop-capture sources in the trusted main process and returns bounded source
-metadata plus in-memory thumbnails through a narrow preload bridge. The
-renderer keeps the short-lived screen-share token, connects the least-privilege
-companion LiveKit room, creates the Chromium capture tracks, and publishes H.264
-video with presenter-selected 480p/720p/1080p and 15/30/60-fps ceilings. The
-default is 1080p/60 and the last successful quality is device-local. Audio is
-published only when requested and Chromium returns a system-audio track.
-`restrictOwnAudio` is requested, but the old Rust process-tree isolation proof
-does not exist in the Electron prototype; installed echo and application-audio
-isolation are therefore mandatory acceptance checks. Source termination,
-terminal LiveKit disconnect, voice leave, explicit stop, and window teardown
-disconnect the companion and release capture tracks. The desktop bundle minimum
-remains macOS 12.3.
+screen / Application picker before capture starts. A bundled
+`bakbak-screen-share-helper` enumerates sources, captures native video and
+process-isolated audio, and publishes the least-privilege companion tracks to
+LiveKit. Electron supervises it over a versioned JSON-lines protocol; the
+renderer never invokes Chromium display capture or publishes screen media.
+Entire-screen audio excludes Bakbak's Electron root process tree, while
+application audio includes only the selected process tree. If the helper cannot
+prove isolation, audio fails closed and video may continue without it. The
+tracked/default, PR, and release Electron builds also embed a fail-closed native
+audio rollout flag: they mask helper/source audio capabilities and reject an
+audio start before spawning the helper. Only exact-revision stabilization
+candidates embed the temporary enabled flag until the installed plan 0037
+matrix passes. The
+presenter still selects 480p/720p/1080p and 15/30/60 fps with exact 0.8–8 Mbps
+ceilings. Helper crash, timeout, malformed protocol, source end, voice leave,
+explicit stop, window teardown, and app quit terminate the native session and
+emit sanitized lifecycle state. The desktop bundle minimum remains macOS 12.3.
 
 Electron owns application metadata, secure window creation, the custom
 `app://bakbak` renderer protocol, CSP, least-privilege permission handling,
@@ -597,7 +645,8 @@ bakbak/
 │       ├── 0032-windows-screen-share-audio-isolation.md
 │       ├── 0033-friend-test-voice-presence-and-media-stabilization.md
 │       ├── 0034-buzz-inspired-unified-bakbak-redesign.md
-│       └── 0035-titlebar-space-motion-and-circular-voice-polish.md
+│       ├── 0035-titlebar-space-motion-and-circular-voice-polish.md
+│       └── 0036-arc-glass-shell-and-permission-recovery.md
 ├── public/
 │   ├── bakbak.svg                 # canonical favicon/native-icon source
 │   ├── fonts/roundo/              # pinned Roundo v2.0 variable WOFF2
@@ -641,13 +690,20 @@ architectural placeholder folders are not used.
 
 ## UI composition
 
-The renderer uses a titlebar, two-track desktop layout, and modal layer:
+The renderer uses a native-overlay, two-track desktop layout and modal layer:
 
-1. The 48 px titlebar keeps an empty, draggable centre. Its only signed-in
-   layout control hides or restores the sidebar from the leading platform-safe
-   area after macOS traffic-light clearance and at the far left on Windows or
-   the web. Renderer-owned Windows controls remain at the trailing edge.
-2. The 280 px default gradient sidebar begins with the Personal/Bakbak
+1. No full renderer titlebar or contextual header remains. The signed-in
+   native-safe overlay is zero-width and contains no renderer controls.
+   macOS keeps native traffic lights on the platform-standard left edge (inside
+   the sidebar when it is left-positioned) and vertically centers them in the
+   main drag strip when the sidebar is right-positioned; Windows keeps Window
+   Controls Overlay on the right. The main canvas contributes a 30 px,
+   action-free drag strip so the
+   frameless window always has a predictable grab target. The native View menu
+   and browser fallback expose the same `Cmd/Ctrl+B` action; blocking dialogs
+   suppress the toggle.
+2. The 280 px default sidebar is permanently unpainted over the current window
+   material or translucent theme and begins with the glass Personal/Bakbak
    segmented switch. Bakbak then shows a default-open, locally remembered
    collapsible Activity preview of six members plus a Show all row, followed by
    one flat Channels shelf; admins use one plus control to choose a text or
@@ -658,11 +714,19 @@ The renderer uses a titlebar, two-track desktop layout, and modal layer:
    both spaces. The active-call card uses a compact connection state/room
    block, isolated leave action, and three equal camera/share/soundboard
    controls. The dock is a 56 px, cover-free Buzz-like identity row with a
-   profile trigger, semantic presence label, and Settings/voice controls.
-   One resizer keeps the track within 248–340 px, and the hidden slot remains
-   mounted but inert.
-3. The flexible rounded solid canvas contains the contextual header and text or
-   voice conversation. Text channels and DMs use a 16 px Buzz/Slack-style
+   12 px rounded raised surface, profile trigger, semantic presence label, and
+   Settings/voice controls plus one adjacent keyboard-described sidebar-close
+   button. One resizer keeps the track within 248–340 px on either edge.
+   Appearance Settings can place the sidebar on the left or right without
+   changing its saved width or visibility. At zero width the dock control is
+   clipped and inaccessible with the mounted slot `aria-hidden` and inert.
+   `Cmd/Ctrl+B` or View → Toggle Sidebar restores it.
+3. Beneath the compact drag strip, the flexible solid canvas contains the text
+   or voice conversation without a contextual top bar. Its accessible
+   main-region name carries the selected
+   text channel, voice channel, DM, or Personal context. When the sidebar is
+   hidden, the canvas becomes borderless and full-window with no hidden overlay
+   clearance. Text channels and DMs use a 16 px Buzz/Slack-style
    timeline: author/avatar headers start five-minute groups, follow-ups compact,
    hover/focus actions float above the row, and the rounded composer stays at
    the bottom. Replies, mentions, rich media, reactions, deletion, unread
@@ -707,8 +771,11 @@ The renderer uses a titlebar, two-track desktop layout, and modal layer:
    seconds and labels the result as backend latency. LiveKit
    `ConnectionQualityChanged` events separately normalize the local participant as
    Unknown/Excellent/Good/Poor; reconnecting display takes precedence. The
-   conversation canvas stays solid while the sidebar uses the active space
-   gradient. Independent positive, danger, warning, and icon colors retain
+   conversation canvas remains solid while the sidebar slot stays transparent
+   and floating navigation and controls use Glass. Deliberate translucent
+   gradients remain scoped to their selected space. Independent positive,
+   danger, warning,
+   and icon colors retain
    their semantic roles; selection and ordinary controls use the active
    Bakbak or Personal accent.
    Renderer identity screens and the Personal empty state use the static
@@ -740,10 +807,16 @@ cached scopes.
 Electron owns the native window, application identity, desktop bundle, update
 client, source enumeration, and operating-system integrations. The main window
 keeps the established 1280×800 geometry with a 1024×680 minimum. macOS uses a
-hidden-inset titlebar with native traffic lights; Windows uses the renderer
-titlebar and Electron's Mica background material. CSS application drag regions
-replace imperative drag IPC. The native application menu retains Cmd/Ctrl `+`,
-Cmd/Ctrl `-`, and Cmd/Ctrl `0` zoom commands.
+hidden-inset titlebar with traffic lights at `{ x: 16, y: 16 }` for the left
+sidebar and `{ x: 16, y: 8 }` for the right sidebar's 30 px drag strip; the
+narrow preload bridge synchronizes position and visibility with signed-in
+sidebar state. Windows uses a hidden native titlebar plus Window Controls Overlay
+and Mica when supported. The renderer draws no caption buttons. CSS application
+drag regions replace imperative drag IPC. The native View menu owns
+`Cmd/Ctrl+B` Toggle Sidebar alongside the
+existing Cmd/Ctrl `+`, Cmd/Ctrl `-`, and Cmd/Ctrl `0` zoom commands. It emits a
+typed preload event rather than duplicating the installed-app accelerator in
+the renderer.
 
 The renderer runs with `contextIsolation`, sandboxing, and web security enabled,
 with Node.js integration disabled. Production content is served from the secure
@@ -754,9 +827,10 @@ starting Electron, avoiding an IPv6 `localhost` bind that Electron cannot
 reach. Navigation, popups, webviews, permission
 requests, and every IPC sender are checked against the current main frame and
 trusted origin. External opening accepts only HTTP(S). The preload exposes
-individual typed methods for window controls, native accent state, external
-links, relaunch/settings, screen-source selection, and updates; it never exposes
-`ipcRenderer` or a generic channel API. Native calls remain convenience
+individual typed methods/events for window appearance and sidebar toggling,
+native accent state, external links, relaunch, media-permission status/settings,
+structured screen-source selection, and updates; it never exposes `ipcRenderer`
+or a generic channel API. Native calls remain convenience
 boundaries, not substitutes for Supabase RLS or Edge Function authorization.
 Edge Function CORS accepts `app://bakbak` plus the legacy
 `tauri://localhost`/`http://tauri.localhost` origins during the updater handoff;
@@ -778,13 +852,25 @@ Electron updates use the same directory and electron-builder registry identity.
 
 `electron-updater` performs explicit check, download, progress, and
 install/restart operations against GitHub Releases. It is disabled for unpacked
-builds and unsupported platforms. Source capture is prepared with a 30-second,
-single-use selection bound to the trusted renderer and a user gesture. The
-short-lived LiveKit screen-share token never crosses into the main process;
-the renderer uses it directly to establish the companion room. Sanitized media
-diagnostics contain OS/build, source kind, capture backend, cursor capability,
-audio-isolation mode, and stable failure code. Focused voice media stays inside
-the normal application window and does not request native fullscreen.
+builds and unsupported platforms. Screen-share preload methods are limited to
+`capabilities`, `listSources`, `start`, `update`, `stop`, and `onLifecycle`;
+hello and shutdown remain internal. `start` transfers the five-minute companion
+URL/token once to the helper through trusted IPC; request payloads and raw child
+stderr are never logged. Protocol v1 requires hello before other commands,
+correlates every response by request ID, limits lines to 32 MiB, tokens to 16
+KiB, and source lists to 256. Hello times out at 5 seconds, start at 30 seconds,
+and other public commands at 15 seconds. A malformed response, unknown request
+ID, timeout, or crash rejects pending requests, kills the child, and emits a
+sanitized failed lifecycle for an active share.
+
+Packaged builds spawn only `resources/native/bakbak-screen-share-helper[.exe]`;
+development defaults to
+`native/screen-share-helper/target/{debug|release}` with an optional
+main-process-only path override. The helper receives an allowlisted environment
+without Bakbak, Supabase, or LiveKit service variables. Sanitized diagnostics
+contain source kind, native capture backend, audio-isolation mode, and stable
+failure code. Focused voice media stays inside the normal application window
+and does not request native fullscreen.
 
 ### Supabase
 
@@ -960,12 +1046,15 @@ An invite-management UI is deferred until post-v1.
    shelf while retaining shared active-call and current-user footers. Settings
    remains an overlay. The last selected active server text channel or Personal
    DM is cached per account; voice rooms are never restored or auto-joined.
-3. Layout preferences v3 store only sidebar visibility and its 248–340 px width.
-   The two-track grid keeps at least 420 px for the rounded canvas. A 9 px pointer
-   target overlays the visual separator; keyboard resizing supports arrows,
-   Shift+arrows, Home/End, and reset. The titlebar visibility control restores a
-   collapsed sidebar. Migration reads v2's left-side values and intentionally
-   discards all right-panel state.
+3. Layout preferences v5 store `sidebarVisible`, the sidebar's 248–340 px width,
+   and `sidebarPosition` (`left` or `right`). The two-track grid mirrors its
+   columns and resizer direction while keeping at least 420 px for the canvas. A
+   9 px pointer target overlays the visual separator; keyboard resizing supports
+   arrows, Shift+arrows, Home/End, and reset. The user-dock control, View menu,
+   and `Cmd/Ctrl+B` close or restore the mounted sidebar without changing
+   voice/share state. Migration reads v4, v3/v2 left-side values, and v1
+   visibility, defaults them to the left, then intentionally discards all
+   retired right-panel state.
 4. After Auth resolves the user ID, the renderer reads that account's
    normalized IndexedDB snapshot and may paint it as cached data. It then
    revalidates workspace, membership, profiles, DM summaries, unread state, and
@@ -994,10 +1083,11 @@ An invite-management UI is deferred until post-v1.
 8. Selecting a conversation loads its RLS-filtered history and advances the
    signed-in participant's monotonic read state when visible. Private read-state
    Realtime refreshes Personal unread markers.
-9. The DM conversation row and header hydrate the other participant's private
-   avatar poster through the shared profile-media cache. Activating the header
-   identity opens the existing profile surface, which can play their GIF avatar
-   and cover unless reduced motion is enabled. The Personal member picker
+9. The DM conversation row and conversation introduction hydrate the other
+   participant's private avatar poster through the shared profile-media cache.
+   Activating the introduction identity opens the existing profile surface,
+   which can play their GIF avatar and cover unless reduced motion is enabled.
+   The Personal member picker
    truncates long names and dismisses on outside pointer or Escape. Media
    resolves memory first, then the user-scoped IndexedDB blob, then authenticated
    Storage. Workspace metadata publishes before avatar hydration, so a slow
@@ -1008,9 +1098,12 @@ An invite-management UI is deferred until post-v1.
 1. The renderer imports locally installed Inter Variable before mounting React.
    A validated `auto | light | dark` preference applies before
    React mounts; Auto delegates to CSS `prefers-color-scheme`, so operating-
-   system changes continue to apply live. The Electron window starts with the
-   opaque fallback document underlay; Windows applies Mica at the native window
-   layer, while unsupported hosts retain the same deterministic fallback. Dark
+   system changes continue to apply live. The document starts on an opaque
+   fallback underlay before renderer initialization. Electron then reports
+   `vibrancy | mica | fallback` plus reduced-transparency state; Windows applies
+   Mica and macOS exposes under-window vibrancy only when native accessibility
+   state permits it. Unsupported, high-contrast, and reduced-transparency hosts
+   retain the deterministic opaque fallback. Dark
    canvas/panel/strong bases use
    64/72/84% black; light bases use 60/72/84% white. Accent mixes of 6/5/3%
    unify those surfaces while keeping wallpaper bleed subordinate. Primary
@@ -1025,14 +1118,18 @@ An invite-management UI is deferred until post-v1.
    52 px composer, and restrained 10/14/16/18 px curves. Hover transitions use
    color and border changes; reduced motion disables transitions and press
    scaling.
-2. Sidebar theme preferences are stored per account under
-   `bakbak.sidebarThemes.v1:<user ID>`. Each record contains independent
-   Personal and Bakbak solid/gradient colors, brightness, transparency, and
-   texture plus three bounded gradient points and the one-time setup completion
-   flag. Parsing clamps numeric values and rejects malformed colors or points.
-   Older v1 records receive default point positions. Skip keeps the defaults
-   and records completion; the full editor remains available in Appearance
-   Settings.
+2. Chrome theme preferences are stored per account under
+   `bakbak.chromeThemes.v2:<user ID>`. Each record contains independent Personal
+   and Bakbak `glass | gradient` modes, colors, brightness, 20–100%
+   transparency, texture, and three bounded gradient points. New and reset
+   Glass themes default to 100%. Parsing clamps
+   numeric values and rejects malformed colors or points. Migration reads both
+   current v2 and `bakbak.sidebarThemes.v1` records; untouched legacy defaults
+   become Glass, untouched v2 Glass records at the retired 45% default become
+   100%, legacy Solid becomes a single-color gradient, and genuine gradients
+   keep their colors and positions within the current clamp.
+   The onboarding completion flag and setup dialog are retired. The full editor
+   remains available in Appearance Settings.
 3. Profile edits validate a trimmed 1–50 character display name, a
    190-character plain-text description, integer 0–100 cover coordinates, and
    optional PNG/JPEG/WebP/GIF media. Avatars are limited to 5 MiB, covers to 10
@@ -1081,12 +1178,18 @@ An invite-management UI is deferred until post-v1.
    outgoing call, plays it through the selected output, compares raw and Studio
    meters, supports a live cleanup toggle, and warns headphones users before
    monitoring. An active call is temporarily muted and deafened for the test,
-   then returns to its exact previous state. Successful microphone permission
-   immediately refreshes device enumeration because macOS WebKit can reveal
-   named speakers only after capture permission. Microphone and output tests
-   acquire only temporary resources and release them when stopped or unmounted.
-   Preview buttons activate and play one modern interface-sound category
-   representative through the system output.
+   then returns to its exact previous state. Microphone join/test capture first
+   requests a typed permission snapshot only from that explicit user action.
+   Denied/restricted states produce platform-specific recovery copy instead of
+   string-sniffing a capture exception. Audio Settings re-reads status after an
+   input failure and on window focus, then offers the typed settings/restart
+   actions supported by that platform: macOS Privacy & Security plus restart,
+   or Windows' global microphone/desktop-app switches. Successful microphone
+   permission immediately refreshes device enumeration because macOS WebKit can
+   reveal named speakers only after capture permission. Microphone and output
+   tests acquire only temporary resources and release them when stopped or
+   unmounted. Preview buttons activate and play one modern interface-sound
+   category representative through the system output.
 9. Settings is a modal overlay over the current canvas. It traps focus, restores
    the opener on close, exposes compact active-call controls, and confirms
    logout. Closing discards staged profile edits and revokes preview URLs; a
@@ -1320,9 +1423,15 @@ An invite-management UI is deferred until post-v1.
 ### Desktop screen share
 
 1. A connected installed client opens a renderer confirmation with Entire
-   screen / Application tabs. Electron's trusted main process enumerates screen
-   and window sources and returns bounded labels and thumbnails through the
-   typed preload bridge. The confirmation exposes independent
+   screen / Application tabs. Electron's supervised helper enumerates native
+   screen/application sources and returns a discriminated result through
+   the typed preload bridge. Success contains bounded labels, thumbnails,
+   normalized permission status, global capabilities, and per-source audio
+   availability. A macOS denied/restricted result is distinct from source
+   enumeration failure and offers Privacy Settings/restart only when valid.
+   Windows enumeration failure explicitly states that Windows has no
+   Bakbak-specific screen-capture permission and offers Retry rather than a
+   fictional settings link. The confirmation exposes independent
    480p/720p/1080p and 15/30/60-fps controls, defaults to 1080p/60 on first use,
    and persists only the last successful quality under
    `bakbak.screenSharePreferences.v1`. Browser clients have no share UI and
@@ -1330,26 +1439,24 @@ An invite-management UI is deferred until post-v1.
 2. The renderer requests `{ channelId, purpose: "screen_share" }`. The function
    repeats authentication, membership, and voice-channel checks, then signs a
    five-minute companion identity tied to the same room and owner.
-3. The renderer sends only `{ sourceId, includeAudio }` to the main process.
-   Electron validates the current main frame and origin, records a single-use
-   30-second selection, and satisfies the next user-gesture display-media
-   request for exactly that enumerated source. The token and LiveKit URL do not
-   enter desktop IPC.
-4. The renderer connects the companion `Room` with `autoSubscribe: false`,
-   creates local screen tracks, and publishes H.264 screen video plus optional
-   `ScreenShareAudio`. The presenter ceiling uses the existing 0.8–8 Mbps
-   encoding limits across the nine quality combinations; LiveKit adaptive
-   layers may deliver less to a viewer. Live quality changes apply media-track
-   constraints and sender encoding limits.
-5. System audio is requested only when the presenter enables it and is
-   published only when Chromium returns an audio track. Chromium's
-   `restrictOwnAudio` constraint is requested, but it is a best-effort browser
-   control rather than the removed Rust process-tree proof. The first Electron
-   release therefore cannot claim selected-process or Bakbak-process exclusion
-   until installed macOS and Windows tests demonstrate it. A missing or failed
-   audio track leaves video live and reports a bounded unavailable reason.
-6. Explicit stop, source-track end, terminal companion disconnect, voice leave,
-   and window teardown disconnect the companion room. Structured capture
+3. The renderer sends the selected source, include-audio flag, exact quality
+   tuple, and short-lived companion URL/token through narrow `start` IPC.
+   Electron validates the trusted sender; the helper manager validates `wss`,
+   token length, source ID, and one of the nine supported quality tuples before
+   writing one correlated request to the child.
+4. The helper connects the companion with subscriptions disabled, captures and
+   publishes native screen video plus optional `ScreenShareAudio`. The renderer
+   owns UI state only. Quality changes call the helper's correlated `update` and
+   never mutate Chromium media tracks or WebRTC senders.
+5. System audio is requested only when the presenter enables it and the helper
+   reports process-tree isolation. Entire-screen capture excludes the Electron
+   root and all descendants; application capture includes only the selected
+   process tree. No Chromium loopback fallback is permitted. System-audio
+   capability and per-source availability are independent of Screen Recording
+   permission. A missing or failed audio track leaves video live and reports a
+   bounded unavailable reason instead of relabeling it as permission denial.
+6. Explicit stop, source end, terminal companion disconnect, voice leave,
+   window teardown, helper crash, timeout, and app quit disconnect the companion. Structured capture
    failures remain sanitized and never include the short-lived token or source
    content.
 7. Companion participants are merged into their owner's UI state and omitted
@@ -1363,7 +1470,7 @@ An invite-management UI is deferred until post-v1.
    The presenter's own companion video remains subscribed locally while its
    companion source audio is always forced unsubscribed.
    Deafen, selected output, and owner volume still apply to watched audio.
-8. Sidebar and member-rail LIVE remains presence information until a remote
+8. Sidebar and member-overlay LIVE remains presence information until a remote
    viewer activates its hover/focus Watch Stream action. That action stores a
    request ID, owner ID, and channel ID, joins or switches to the advertised
    voice room, and waits for the owner's authoritative LiveKit share before
@@ -1379,7 +1486,9 @@ An invite-management UI is deferred until post-v1.
 9. A focused share uses one `minmax(0, 1fr)` media stage without a metadata
    header, people filmstrip, Back control, or fullscreen mode. Shared media uses
    `object-fit: contain` against a black canvas and local presenter quality
-   controls share that surface. Activating the focused media returns to people
+   controls share that surface. The focused stage drops voice-view padding,
+   borders, radius, and shadow; with the sidebar hidden it fills the complete
+   native window. Activating the focused media returns to people
    without interrupting the watched share; target loss, disconnect, and
    teardown clear focus and perform the existing subscription cleanup.
 10. Explicit stop, voice leave, source termination, terminal native-room
@@ -1497,19 +1606,27 @@ Appearance stores only `auto`, `light`, or `dark` under
 `bakbak.appearancePreferences.*` entries remain inert rather than receiving a
 cleanup migration. The native system-accent bridge remains dormant for desktop
 compatibility; no accent preference or system-accent summary is exposed.
-Per-account sidebar themes use `bakbak.sidebarThemes.v1:<user ID>` and never
-leave the device; defaults restore independently for Personal and Bakbak when a
-record is absent or malformed.
+Per-account chrome themes use `bakbak.chromeThemes.v2:<user ID>` and never
+leave the device; Glass defaults restore independently for Personal and Bakbak
+when a record is absent or malformed. Migration reads
+`bakbak.sidebarThemes.v1:<user ID>`, promotes untouched legacy defaults to
+Glass, converts genuinely customized Solid records to single-color translucent
+gradients, and preserves customized gradient colors and positions. Current v2
+records receive the same normalization and 20–100% transparency clamp;
+untouched Glass records at the former 45% default become the new 100% default.
 It stores `{ enabled, volume, categories }` under
 `bakbak.interfaceSoundPreferences.v1`; the default is enabled at 55% with
 Messages, Voice, Screen share, and Status enabled. Interface sounds lazily
 preload after the first pointer/keyboard interaction, use the Web Audio system
 destination, never queue blocked pre-gesture events, cap concurrency at three,
 throttle messages to 350 ms, batch remote roster churn for 250 ms, and cool
-failure alerts for two seconds. Sidebar visibility and width use
-`bakbak.layoutPreferences.v3`; v2 migrates only its left-side values and drops
-retired right-side state. Malformed values restore the 280 px visible default,
-and widths are clamped to 248–340 px while leaving at least 420 px for canvas.
+failure alerts for two seconds. Sidebar visibility, width, and left/right
+position use `bakbak.layoutPreferences.v5`; v4 migrates visibility and width,
+v3/v2 migrate only their left-side values, v1 migrates visibility with the
+default width, and all legacy values default to the left while retired
+right-panel state is dropped. Malformed values restore the 280 px visible-left
+default, and widths are clamped to 248–340 px while leaving at least 420 px for
+canvas.
 All of these preferences are device-local and never part of the profile or
 Supabase schema.
 
@@ -1842,6 +1959,12 @@ and main/preload boundary tests, native macOS and Windows packages, compiled
 secret scans, and the bidirectional installed-client matrix in plan 0003. Pull
 requests always run the Ubuntu validation job and the native packaging matrix
 for both supported targets.
+Plan 0036 additionally covers layout/theme migrations, overlay/sidebar
+accessibility and shortcut behavior, focused-share geometry, window appearance,
+native menu/WCO source contracts, permission snapshots, structured source
+failures, and recovery actions. Automated checks do not replace installed
+macOS/Windows observation, and an ad-hoc macOS build cannot prove TCC grant
+continuity across future signatures.
 
 The stabilization-candidate workflow runs only when its exact label is added
 to a pull request or when an operator manually supplies a full commit SHA. It
@@ -1866,12 +1989,20 @@ that it has passed.
 
 ## Current limitations and deferred work
 
-- Plan 0034's two-track shell, Inter typography, distinct space palettes,
-  active-only flat room shelf, online preview, member overlay, v3 layout
-  preferences, retired release automation, hosted archival migration, and
-  hosted `system-events` removal are complete. Installed macOS/Windows native
-  material, offline-font, full visual matrix, and two-client
-  presence/Welcome/admin/Realtime/active-call acceptance remain required.
+- Plan 0036's native-overlay/full-bleed shell, layout v5 migration, compact
+  main-canvas drag strip, user-dock sidebar toggle, left/right placement, macOS traffic-light
+  ownership, rounded user dock, permanently transparent sidebar slot,
+  chrome-theme v2 Glass/gradient normalization, structured source failures, and typed
+  microphone recovery are implemented. Installed macOS/Windows window-control,
+  drag, material,
+  reduced-transparency, media-permission, and active-call continuity acceptance
+  remain required. The ad-hoc macOS signature cannot guarantee TCC continuity
+  across changing builds; Developer ID signing/notarization remains deferred.
+- Plan 0034's Inter typography, active-only flat room shelf, online preview,
+  member overlay, retired release automation, hosted archival migration, and
+  hosted `system-events` removal remain complete inside plan 0036's replacement
+  shell. Two-client presence/Welcome/admin/Realtime/active-call acceptance
+  remains required.
 - Plan 0027's protected link previews and deafen audio remain active. Plan 0034
   retires its release function/workflows and archives its System hierarchy.
   Hosted Supabase now runs the active-only plan 0034 channel schema.
@@ -1882,12 +2013,13 @@ that it has passed.
   before release acceptance.
 - Plan 0034 supersedes plan 0016's active typography and plan 0026's visible
   system-accent treatment with bundled Inter Variable and distinct Bakbak and
-  Personal palettes. Auto/Light/Dark remains the global canvas choice; the
-  sidebar palettes can now be customized independently per signed-in account.
-  Installed macOS/Windows glyph, clipping, native material, and offline-font
-  observation remain required.
+  Personal customization. Plan 0036 makes Glass the untouched default while
+  retaining translucent gradient customization and normalizing legacy Solid
+  choices. Auto/Light/Dark remains the
+  global canvas choice. Installed macOS/Windows glyph, clipping, native
+  material, fallback, and offline-font observation remain required.
 - Plan 0006's centered settings modal, sidebar call controls, and simplified
-  voice canvas remain active inside plan 0034's replacement two-track shell.
+  voice canvas remain active inside plan 0036's replacement two-track shell.
   The canonical browser-plus-native two-account call still requires human
   audio, camera, screen-share, soundboard, quality, reconnect, and
   dual-control-surface observation before distribution.
@@ -1946,18 +2078,20 @@ that it has passed.
   soundboard track as a second microphone-source track and distinguishes it by
   `bakbak-soundboard`; speech is independently named `bakbak-microphone` so mute
   and reuse never depend on publication order.
-- Electron desktop capture publishes screen/window video and optional Chromium
-  system audio on both supported targets. The former Rust
-  ScreenCaptureKit/WGC/WASAPI process-tree isolation implementation has been
-  removed. Chromium's `restrictOwnAudio` request is best effort, so echo,
-  application-only audio, black/protected content, teardown, and cross-platform
-  two-account behavior require a fresh installed-client matrix.
+- The native helper and Electron protocol integration are implemented, but
+  installed macOS/Windows capture, packaged helper signing, process-tree
+  isolation, application audio, protected content, teardown, and three-client
+  no-self/no-duplicate-audio behavior still require plan 0037's acceptance
+  matrix before release.
 - The current production renderer is roughly 406 kB compressed; LiveKit and
   Supabase can be lazy-loaded in a later performance pass if startup profiling
   shows a meaningful benefit.
 - The macOS app uses an ad-hoc hardened-runtime signature with audio-input and
   camera entitlements, but has no Developer ID signature or notarization, so
-  Gatekeeper warnings are expected outside the development machine.
+  Gatekeeper warnings are expected outside the development machine. TCC binds
+  grants to application identity/code requirements, so changing ad-hoc builds
+  may require microphone and Screen Recording approval again; the typed
+  recovery UI cannot make those grants durable.
 - The Windows release job produces an unsigned x64 NSIS installer until a
   Windows code-signing identity is configured, so SmartScreen warnings are
   expected during the initial friend test.

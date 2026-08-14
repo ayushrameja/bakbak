@@ -8,6 +8,10 @@ const packageMetadata = JSON.parse(
 );
 const main = await readFile(new URL("electron/main.ts", root), "utf8");
 const preload = await readFile(new URL("electron/preload.cts", root), "utf8");
+const screenShareService = await readFile(
+  new URL("src/features/voice/screen-share-service.ts", root),
+  "utf8",
+);
 const styles = await readFile(new URL("src/styles.css", root), "utf8");
 const macEntitlements = await readFile(
   new URL("build/entitlements.mac.plist", root),
@@ -33,7 +37,31 @@ test("Electron keeps the existing app and supported platform identities", () => 
   assert.match(main, /height: 800/);
   assert.match(main, /minWidth: 1024/);
   assert.match(main, /minHeight: 680/);
-  assert.match(main, /\{ role: "viewMenu" \}/);
+  assert.match(main, /label: "View"/);
+  assert.match(main, /label: "Toggle Sidebar"/);
+  assert.match(main, /accelerator: "CmdOrCtrl\+B"/);
+  assert.match(main, /webContents\.send\("window:toggle-sidebar"\)/);
+  assert.match(
+    main,
+    /MAC_WINDOW_CONTROLS_POSITIONS\s*=\s*\{[\s\S]*?left:\s*\{ x: 16, y: 16 \}[\s\S]*?right:\s*\{ x: 16, y: 8 \}/,
+  );
+  assert.match(
+    main,
+    /trafficLightPosition:\s*MAC_WINDOW_CONTROLS_POSITIONS\.left/,
+  );
+  assert.match(
+    main,
+    /window\.setWindowButtonPosition\([\s\S]*?MAC_WINDOW_CONTROLS_POSITIONS\[macWindowControlsSidebarPosition\]/,
+  );
+  assert.match(
+    main,
+    /window\.setWindowButtonVisibility\(macWindowControlsVisible\)/,
+  );
+  assert.match(main, /window\.on\("focus"/);
+  assert.match(main, /window\.on\("restore"/);
+  assert.match(main, /window\.on\("leave-full-screen"/);
+  assert.match(preload, /window:set-controls-visible/);
+  assert.match(preload, /sidebarPosition:\s*SidebarPosition = "left"/);
   assert.match(styles, /-webkit-app-region: drag/);
   assert.match(styles, /-webkit-app-region: no-drag/);
 });
@@ -49,4 +77,17 @@ test("the renderer is sandboxed behind a narrow validated preload bridge", () =>
   assert.match(main, /setWindowOpenHandler/);
   assert.match(preload, /contextBridge\.exposeInMainWorld\("bakbakDesktop"/);
   assert.doesNotMatch(preload, /exposeInMainWorld\([^]*ipcRenderer\s*[,}]/);
+});
+
+test("permission requests stay on trusted frames with one fullscreen embed exception", () => {
+  assert.match(main, /details\.isMainFrame/);
+  assert.match(main, /isTrustedRendererUrl\(details\.requestingUrl\)/);
+  assert.match(main, /isTrustedYouTubeEmbedUrl\(details\.requestingUrl\)/);
+  assert.match(main, /permission === "fullscreen"/);
+  assert.match(main, /hostname === "www\.youtube-nocookie\.com"/);
+  assert.match(main, /pathname\.startsWith\("\/embed\/"\)/);
+  assert.match(screenShareService, /"permission-denied"/);
+  assert.match(screenShareService, /"policy-blocked"/);
+  assert.match(screenShareService, /"unknown"/);
+  assert.doesNotMatch(screenShareService, /"enumeration-failed"/);
 });

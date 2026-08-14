@@ -68,7 +68,9 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
       - run: pnpm install --frozen-lockfile
+      - run: pnpm native:test
       - name: Validate live candidate environment
         env:
           VITE_BUILD_REVISION: ${{ steps.source.outputs.source_sha }}
@@ -103,6 +105,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     env:
       VITE_BUILD_REVISION: ${{ needs.prepare.outputs.source_sha }}
+      BAKBAK_NATIVE_SCREEN_AUDIO_CANDIDATE: "true"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -114,7 +117,9 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
       - run: pnpm install --frozen-lockfile
+      - run: pnpm native:test
       - run: node scripts/check-release-env.mjs
       - name: Build installable candidate without updater publication
         run: |

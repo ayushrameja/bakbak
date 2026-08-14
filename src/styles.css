@@ -3624,6 +3624,215 @@ button:active:not(:disabled) {
   }
 }
 
+.channel-intro__profile {
+  width: fit-content;
+  max-width: 100%;
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  margin: 0 0 8px;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.channel-intro__profile .avatar {
+  width: 56px;
+  height: 56px;
+}
+
+.channel-intro__profile h2 {
+  margin: 0;
+}
+
+/* 0036 — scheme-aware liquid glass lives on navigation and floating chrome.
+   Content and live media remain opaque so blur never becomes a GPU tax audit. */
+.app-frame[data-space][data-chrome-theme="glass"] {
+  --space-gradient: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--space-accent) 13%, transparent),
+    color-mix(in srgb, var(--space-accent-strong) 8%, transparent)
+  );
+}
+
+.app-frame[data-space][data-chrome-theme="glass"]
+  .titlebar-panel-controls
+  > button,
+.app-frame[data-space][data-chrome-theme="glass"] .composer,
+.app-frame[data-space][data-chrome-theme="glass"] .voice-control-dock,
+.app-frame[data-space][data-chrome-theme="glass"] .soundboard-drawer,
+.app-frame[data-space][data-chrome-theme="glass"] .sidebar-voice-panel,
+.app-frame[data-space][data-chrome-theme="glass"] .user-dock,
+.app-frame[data-space][data-chrome-theme="glass"] .modal-card,
+.app-frame[data-space][data-chrome-theme="glass"] .settings-page {
+  border-color: var(--glass-line);
+  background: var(--glass-panel);
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
+  backdrop-filter: blur(24px) saturate(120%);
+}
+
+.app-frame[data-space][data-chrome-theme="glass"] .space-switcher,
+.app-frame[data-space][data-chrome-theme="glass"] .sidebar-voice-panel,
+.app-frame[data-space][data-chrome-theme="glass"] .user-dock {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.sidebar-theme-editor__glass-preview {
+  min-height: 226px;
+  display: grid;
+  place-items: end start;
+  padding: 18px;
+  overflow: hidden;
+  border: 1px solid var(--glass-line-bright);
+  border-radius: 12px;
+  background:
+    radial-gradient(
+      circle at 26% 18%,
+      var(--space-accent-soft),
+      transparent 48%
+    ),
+    var(--glass-panel);
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
+  backdrop-filter: blur(24px) saturate(120%);
+}
+
+.sidebar-theme-editor__glass-preview span {
+  display: grid;
+  gap: 3px;
+}
+
+.sidebar-theme-editor__glass-preview small {
+  color: var(--muted);
+}
+
+.participant-video,
+.screen-share-stage__media,
+.screen-share-stage__media video,
+.voice-participant-orb__media,
+.avatar {
+  filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :root
+    .app-frame[data-space][data-chrome-theme="glass"]
+    .titlebar-panel-controls
+    > button,
+  :root .app-frame[data-space][data-chrome-theme="glass"] .composer,
+  :root .app-frame[data-space][data-chrome-theme="glass"] .voice-control-dock,
+  :root .app-frame[data-space][data-chrome-theme="glass"] .soundboard-drawer,
+  :root .app-frame[data-space][data-chrome-theme="glass"] .sidebar-voice-panel,
+  :root .app-frame[data-space][data-chrome-theme="glass"] .user-dock,
+  :root .app-frame[data-space][data-chrome-theme="glass"] .modal-card,
+  :root .app-frame[data-space][data-chrome-theme="glass"] .settings-page,
+  .sidebar-theme-editor__glass-preview {
+    background: var(--conversation-raised, var(--panel));
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  :root .modal-card {
+    background: var(--panel);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+html:is([data-window-material="fallback"], [data-reduced-transparency="true"])
+  .app-frame[data-space][data-chrome-theme="glass"]
+  .titlebar-panel-controls
+  > button,
+html:is([data-window-material="fallback"], [data-reduced-transparency="true"])
+  .app-frame[data-space][data-chrome-theme="glass"]
+  .composer,
+html:is([data-window-material="fallback"], [data-reduced-transparency="true"])
+  .app-frame[data-space][data-chrome-theme="glass"]
+  .voice-control-dock,
+html:is([data-window-material="fallback"], [data-reduced-transparency="true"])
+  .app-frame[data-space][data-chrome-theme="glass"]
+  .soundboard-drawer,
+html:is([data-window-material="fallback"], [data-reduced-transparency="true"])
+  .app-frame[data-space][data-chrome-theme="glass"]
+  .sidebar-voice-panel,
+html:is([data-window-material="fallback"], [data-reduced-transparency="true"])
+  .app-frame[data-space][data-chrome-theme="glass"]
+  .user-dock,
+html:is([data-window-material="fallback"], [data-reduced-transparency="true"])
+  .app-frame[data-space][data-chrome-theme="glass"]
+  .modal-card,
+html:is([data-window-material="fallback"], [data-reduced-transparency="true"])
+  .app-frame[data-space][data-chrome-theme="glass"]
+  .settings-page,
+html:is([data-window-material="fallback"], [data-reduced-transparency="true"])
+  .sidebar-theme-editor__glass-preview {
+  background: var(--conversation-raised, var(--panel));
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Modal cards are portalled to <body>, outside the themed app-frame. */
+html:is([data-window-material="fallback"], [data-reduced-transparency="true"])
+  .modal-card {
+  background: var(--panel);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+@media (forced-colors: active) {
+  .app-frame[data-space],
+  .app-frame[data-space] * {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+
+  .titlebar-panel-controls > button {
+    border: 1px solid ButtonText;
+    color: ButtonText;
+    background: Canvas;
+  }
+
+  .app-frame[data-space][data-chrome-theme="glass"]
+    :is(
+      .panel-slot--left,
+      .composer,
+      .voice-control-dock,
+      .soundboard-drawer,
+      .sidebar-voice-panel,
+      .user-dock,
+      .modal-card,
+      .settings-page
+    ),
+  .sidebar-theme-editor__glass-preview {
+    border-color: CanvasText !important;
+    color: CanvasText !important;
+    background: Canvas !important;
+  }
+
+  .modal-card {
+    border-color: CanvasText !important;
+    color: CanvasText !important;
+    background: Canvas !important;
+  }
+}
+
+.settings-permission-recovery {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-permission-recovery > p {
+  width: 100%;
+  margin: 0;
+}
+
 /* 0027 — automation rooms, links, and previews */
 .channel-row__readonly {
   flex: 0 0 auto;
@@ -5605,6 +5814,10 @@ body {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+}
+
+.sidebar-position-picker > div {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .appearance-theme-picker label {
@@ -8632,9 +8845,12 @@ body,
   background: var(--window-underlay);
 }
 
-html[data-window-material="native"],
-html[data-window-material="native"] body,
-html[data-window-material="native"] #root {
+html[data-window-material="vibrancy"],
+html[data-window-material="vibrancy"] body,
+html[data-window-material="vibrancy"] #root,
+html[data-window-material="mica"],
+html[data-window-material="mica"] body,
+html[data-window-material="mica"] #root {
   background: transparent;
 }
 
@@ -11033,10 +11249,12 @@ textarea {
 }
 
 .app-frame[data-space][data-desktop-runtime="false"] {
-  background-color: #101216;
+  background-color: var(--window-underlay);
 }
 
-.app-frame[data-space][data-theme-texture="dots"],
+.app-frame[data-space]:not(
+    [data-chrome-theme="glass"]
+  )[data-theme-texture="dots"],
 .sidebar-gradient-picker__field[data-theme-texture="dots"] {
   --space-texture-image: radial-gradient(
     circle,
@@ -11046,7 +11264,9 @@ textarea {
   --space-texture-size: 13px 13px;
 }
 
-.app-frame[data-space][data-theme-texture="grain"] {
+.app-frame[data-space]:not(
+    [data-chrome-theme="glass"]
+  )[data-theme-texture="grain"] {
   --space-texture-image:
     repeating-linear-gradient(
       117deg,
@@ -13460,63 +13680,6 @@ textarea {
   color: var(--text);
 }
 
-.sidebar-theme-setup-backdrop {
-  position: fixed;
-  z-index: 145;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 18px;
-  background: rgba(7, 8, 10, 0.68);
-  -webkit-backdrop-filter: blur(9px);
-  backdrop-filter: blur(9px);
-}
-
-.sidebar-theme-setup {
-  width: min(690px, 100%);
-  max-height: min(720px, 100%);
-  overflow: auto;
-  padding: 22px;
-  border: 1px solid var(--line-bright);
-  border-radius: var(--radius-dialog);
-  color: var(--text);
-  background: var(--bg-main);
-  box-shadow: var(--shadow);
-}
-
-.sidebar-theme-setup > header {
-  margin-bottom: 16px;
-}
-
-.sidebar-theme-setup > header h1 {
-  margin: 5px 0 4px;
-  font-size: 22px;
-}
-
-.sidebar-theme-setup > header p {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--font-ui);
-}
-
-.sidebar-theme-setup > footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 16px;
-}
-
-.sidebar-theme-setup > footer small {
-  color: var(--muted);
-  font-size: var(--font-caption);
-}
-
-.sidebar-theme-setup > footer > div {
-  display: flex;
-  gap: 8px;
-}
-
 @media (max-width: 760px) {
   .sidebar-theme-editor {
     grid-template-columns: minmax(0, 1fr);
@@ -13528,5 +13691,435 @@ textarea {
 
   .sidebar-gradient-picker__field {
     min-height: 150px;
+  }
+}
+
+/* 0036 — Arc-style full-bleed shell. Window chrome overlays instead of
+   consuming a layout row; the sidebar remains mounted when it is hidden. */
+.app-frame {
+  position: relative;
+  display: block;
+}
+
+.app-frame__content {
+  width: 100%;
+  height: 100%;
+}
+
+.window-titlebar,
+.app-frame[data-space] .window-titlebar,
+.app-frame[data-surface="entry"] .window-titlebar {
+  position: absolute;
+  z-index: 220;
+  inset: 0 0 auto;
+  width: 100%;
+  height: 48px;
+  min-height: 0;
+  display: block;
+  border: 0;
+  background: transparent;
+  pointer-events: none;
+  -webkit-app-region: no-drag;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.window-titlebar__drag {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: min(320px, 28vw);
+  height: 14px;
+  display: block;
+  pointer-events: auto;
+  transform: translateX(-50%);
+  -webkit-app-region: drag;
+}
+
+.window-titlebar[data-shell="true"] .window-titlebar__drag {
+  display: none;
+}
+
+.window-titlebar[data-platform="windows"] {
+  top: env(titlebar-area-y, 0px);
+  right: auto;
+  left: env(titlebar-area-x, 0px);
+  width: env(titlebar-area-width, 100%);
+}
+
+.app-frame[data-space] .window-titlebar[data-shell="true"] {
+  left: 0;
+  width: 0;
+}
+
+.window-controls-overlay-scrim {
+  position: absolute;
+  z-index: 219;
+  top: env(titlebar-area-y, 0px);
+  right: 0;
+  left: calc(env(titlebar-area-x, 0px) + env(titlebar-area-width, 100%));
+  width: auto;
+  height: env(titlebar-area-height, 40px);
+  background: linear-gradient(to left, rgba(8, 10, 14, 0.24), transparent);
+  pointer-events: none;
+}
+
+.app-frame[data-space] .desktop-shell,
+.app-frame[data-space] .desktop-shell[data-left-panel] {
+  height: 100%;
+  padding: 0;
+}
+
+.app-frame[data-space]
+  .desktop-shell
+  > :is(.panel-slot--left, .panel-resizer, .content-shell) {
+  grid-row: 1;
+}
+
+.app-frame[data-space] .channel-sidebar {
+  box-sizing: border-box;
+  padding-top: 48px;
+}
+
+.app-frame[data-space] .content-shell {
+  grid-template-rows: 30px minmax(0, 1fr);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.app-frame[data-space] .desktop-shell[data-left-panel="hidden"] {
+  padding: 0;
+}
+
+.app-frame[data-space] .desktop-shell[data-left-panel="hidden"] .content-shell {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.app-frame[data-space] .panel-slot--left {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.app-frame[data-space] .desktop-shell[data-sidebar-position="right"] {
+  grid-template-columns:
+    minmax(420px, 1fr) var(--left-divider-track)
+    var(--left-panel-track);
+}
+
+.app-frame[data-space]
+  .desktop-shell[data-sidebar-position="right"]
+  .panel-slot--left {
+  grid-column: 3;
+}
+
+.app-frame[data-space]
+  .desktop-shell[data-sidebar-position="right"]
+  .panel-slot__motion--left {
+  transform-origin: right center;
+}
+
+.app-frame[data-space]
+  .desktop-shell[data-sidebar-position="right"]
+  .panel-slot[data-visible="false"]
+  .panel-slot__motion--left {
+  transform: translateX(10px);
+}
+
+.app-frame[data-space]
+  .desktop-shell[data-sidebar-position="right"]
+  .panel-resizer {
+  grid-column: 2;
+}
+
+.app-frame[data-space]
+  .desktop-shell[data-sidebar-position="right"]
+  .content-shell {
+  grid-column: 1;
+}
+
+.app-frame[data-space] .user-dock {
+  border: 1px solid var(--conversation-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--conversation-raised) 72%, transparent);
+}
+
+.content-drag-bar {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  display: grid;
+  place-items: center;
+  border-bottom: 1px solid var(--conversation-border);
+  background: var(--conversation-canvas);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-app-region: drag;
+}
+
+.content-drag-bar span {
+  width: 42px;
+  height: 4px;
+  display: block;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 18%, transparent);
+  pointer-events: none;
+}
+
+.app-frame[data-space] .content-stage {
+  grid-row: 2;
+}
+
+.desktop-shell[data-left-panel="hidden"] .chat-view .message-list {
+  padding-top: 0;
+}
+
+.voice-room-view.is-connected.is-focused-share {
+  gap: 0;
+  padding: 0;
+}
+
+.voice-room-view.is-focused-share .voice-focus-layout,
+.voice-room-view.is-focused-share .screen-share-stage,
+.voice-room-view.is-focused-share .screen-share-stage__media {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.voice-room-view.is-connected.is-focused-share .screen-share-stage {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.app-frame[data-surface="entry"] .auth-story,
+.app-loading__sidebar {
+  padding-top: 56px;
+}
+
+/* The old gradient sidebar intentionally uses white copy in both schemes.
+   Glass follows scheme-aware tokens instead, including Auto on a light OS,
+   without changing genuinely customized solid/gradient themes. */
+.app-frame[data-space][data-chrome-theme="glass"] .channel-sidebar,
+.app-frame[data-space][data-chrome-theme="glass"] .personal-sidebar {
+  color: var(--text);
+}
+
+.app-frame[data-space][data-chrome-theme="glass"]
+  :is(.unified-sidebar, .personal-sidebar)
+  > .space-switcher {
+  border-color: var(--glass-line);
+  background: var(--glass-panel);
+  box-shadow: inset 0 1px var(--glass-line-bright);
+}
+
+.app-frame[data-space][data-chrome-theme="glass"]
+  :is(.unified-sidebar, .personal-sidebar)
+  > .space-switcher
+  button {
+  color: var(--muted);
+}
+
+.app-frame[data-space][data-chrome-theme="glass"]
+  :is(.unified-sidebar, .personal-sidebar)
+  > .space-switcher
+  button.is-active {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 11%, transparent);
+  box-shadow: 0 1px 8px
+    color-mix(in srgb, var(--window-underlay) 16%, transparent);
+}
+
+.app-frame[data-space][data-chrome-theme="glass"] .personal-sidebar__header {
+  border-color: var(--glass-line);
+  background: var(--glass-panel);
+}
+
+.app-frame[data-space][data-chrome-theme="glass"]
+  :is(
+    .activity-preview > header,
+    .activity-preview__empty,
+    .activity-preview__show-all,
+    .activity-preview__toggle svg,
+    .channel-nav__header,
+    .personal-sidebar__header span,
+    .personal-conversation small,
+    .personal-conversations__empty span,
+    .unified-sidebar .channel-row .channel-voice-duration,
+    .user-dock__identity .user-dock__status,
+    .sidebar-voice-panel__status span
+  ) {
+  color: var(--muted);
+}
+
+.app-frame[data-space][data-chrome-theme="glass"]
+  :is(
+    .activity-preview__person,
+    .channel-nav__header button,
+    .unified-sidebar .channel-row,
+    .unified-sidebar .channel-row-edit,
+    .personal-sidebar,
+    .personal-conversation
+  ) {
+  color: var(--text);
+}
+
+.app-frame[data-space][data-chrome-theme="glass"]
+  .activity-preview__person[data-status="online"]
+  > span:last-child,
+.app-frame[data-space][data-chrome-theme="glass"]
+  .unified-sidebar
+  .channel-row--unread {
+  color: var(--text);
+}
+
+.app-frame[data-space][data-chrome-theme="glass"]
+  :is(
+    .activity-preview__toggle:hover,
+    .activity-preview__toggle:focus-visible,
+    .activity-preview__person:hover,
+    .activity-preview__person:focus-visible,
+    .activity-preview__show-all:hover,
+    .activity-preview__show-all:focus-visible,
+    .channel-nav__header button:hover,
+    .channel-nav__header button:focus-visible,
+    .unified-sidebar .channel-row:hover,
+    .unified-sidebar .channel-row:focus-visible,
+    .unified-sidebar .channel-row.active,
+    .personal-conversation:hover,
+    .personal-conversation:focus-visible,
+    .personal-conversation.is-active
+  ) {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.app-frame[data-space][data-chrome-theme="glass"]
+  .unified-sidebar
+  .channel-row.active {
+  box-shadow: inset 2px 0 var(--space-accent-strong);
+}
+
+.app-frame[data-space][data-chrome-theme="glass"]
+  .unified-sidebar
+  .channel-row
+  > svg,
+.app-frame[data-space][data-chrome-theme="glass"]
+  .unified-sidebar
+  .channel-row
+  .channel-voice-duration {
+  color: var(--muted);
+}
+
+.app-frame[data-space][data-chrome-theme="glass"]
+  .unified-sidebar
+  .channel-row.active
+  > svg {
+  color: var(--text);
+}
+
+.app-frame[data-space][data-chrome-theme="glass"]
+  .unified-sidebar
+  .channel-row
+  .channel-voice-duration
+  .live-dot {
+  background: currentColor;
+}
+
+.app-frame[data-space][data-chrome-theme="glass"]
+  .unified-sidebar
+  .channel-row-edit,
+.app-frame[data-space][data-chrome-theme="glass"]
+  .channel-create-menu__popover {
+  border-color: var(--glass-line);
+  background: var(--glass-strong);
+}
+
+.app-frame[data-space][data-chrome-theme="glass"]
+  .channel-create-menu__popover
+  button {
+  color: var(--text);
+}
+
+.app-frame[data-space][data-chrome-theme="glass"]
+  .channel-create-menu__popover
+  button
+  svg {
+  color: var(--muted);
+}
+
+.app-frame[data-space][data-chrome-theme="glass"]
+  .channel-create-menu__popover
+  button:hover,
+.app-frame[data-space][data-chrome-theme="glass"]
+  .channel-create-menu__popover
+  button:focus-visible,
+.app-frame[data-space][data-chrome-theme="glass"]
+  .channel-create-menu
+  > button[aria-expanded="true"] {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.app-frame[data-space][data-chrome-theme="glass"]
+  :is(.sidebar-voice-panel, .user-dock) {
+  border-color: var(--glass-line);
+  color: var(--text);
+  background: var(--glass-panel);
+}
+
+.app-frame[data-space][data-chrome-theme="glass"]
+  .sidebar-voice-panel__actions
+  button {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+}
+
+.app-frame[data-space][data-chrome-theme="glass"]
+  .sidebar-voice-panel__actions
+  button:hover,
+.app-frame[data-space][data-chrome-theme="glass"]
+  .sidebar-voice-panel__actions
+  button:focus-visible,
+.app-frame[data-space][data-chrome-theme="glass"]
+  .user-dock
+  > .user-dock__profile:hover,
+.app-frame[data-space][data-chrome-theme="glass"]
+  .user-dock
+  > .user-dock__profile:focus-visible,
+.app-frame[data-space][data-chrome-theme="glass"]
+  .user-dock
+  > .user-dock__control:hover,
+.app-frame[data-space][data-chrome-theme="glass"]
+  .user-dock
+  > .user-dock__control:focus-visible {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+.app-frame[data-space][data-chrome-theme="glass"]
+  .user-dock[data-status="online"]
+  .user-dock__status,
+.app-frame[data-space][data-chrome-theme="glass"]
+  .user-dock[data-call-active="true"]
+  .user-dock__status {
+  color: var(--semantic-positive);
+}
+
+.app-frame[data-space][data-chrome-theme="glass"]
+  .user-dock[data-status="idle"]
+  .user-dock__status {
+  color: var(--semantic-warning);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-frame[data-space] .desktop-shell,
+  .app-frame[data-space] .panel-slot__motion {
+    transition: none;
   }
 }

@@ -7531,3 +7531,671 @@ supabase/functions/livekit-token/index.ts` — passed.
 - **Next:** Publish the repair branch, pass the native PR matrix, merge it with
   the default patch bump, inspect every v1.7.2 updater artifact, then rehearse a
   clean Tauri installation upgrading through the corrected archive.
+
+## 2026-08-12 — Implement Arc shell, Glass chrome, and typed permission recovery
+
+- **Completed:** Removed the layout-consuming titlebar and contextual top bar;
+  replaced renderer Windows caption buttons with native Window Controls Overlay;
+  added a native View-menu `Cmd/Ctrl+B` action and one platform-safe sidebar
+  close/reopen control; migrated layout preferences to v4; and made a hidden,
+  mounted/inert sidebar produce a borderless full-window canvas without changing
+  drafts, calls, shares, or soundboard state. Rehomed DM profile access to the
+  conversation introduction and added accessible main-region labels. Migrated
+  account-scoped appearance data to `bakbak.chromeThemes.v2`, made scheme-aware
+  Glass the untouched default, preserved deliberate solid/gradient choices and
+  dormant values, removed forced theme onboarding, and added vibrancy/Mica/opaque
+  capability fallbacks without filtering live media. Added typed microphone and
+  Screen Recording snapshots, explicit-action-only microphone requests,
+  structured screen-source/capture failures, focus rechecks, platform-correct
+  settings/restart actions, and strict Electron permission frame/origin checks.
+- **Decisions:** Kept macOS ad-hoc signing as requested and documented that it
+  cannot preserve TCC grants between changing builds. Windows microphone copy
+  describes the global desktop-app privacy switch and never invents a per-app
+  screen permission. Windows system output is offered only for whole-display
+  capture; application and macOS custom-picker sources remain video-only.
+  Chromium own-audio suppression is described as best effort, not isolation.
+  Existing customized themes migrate per space; exact old defaults become Glass.
+- **Validation:**
+  - Focused integration Vitest — passed 8 files / 160 tests after the final
+    permission, Glass, WCO, and blocking-dialog audit.
+  - Browser/mock visual and semantic pass — passed at 1280×800 and 1024×680 in
+    light/dark Glass with visible/hidden sidebars, text, voice, settings, modal
+    toggle suppression, full-bleed geometry, zero document overflow, and no
+    console warnings. The pass found and corrected pale-Glass white copy.
+  - `pnpm --pm-on-fail=ignore format:check` — passed.
+  - `pnpm --pm-on-fail=ignore lint` — passed with zero warnings.
+  - `pnpm --pm-on-fail=ignore typecheck` — passed renderer, Node, and Electron
+    strict TypeScript checks.
+  - `pnpm --pm-on-fail=ignore test` — passed 90 Vitest files / 531 tests and all
+    56 Node source-contract tests.
+  - `./node_modules/.bin/vite build` — passed the final production renderer
+    build; the existing large-chunk warning remains non-blocking.
+  - `pnpm --pm-on-fail=ignore version:check` — passed at `1.7.2`.
+  - `pnpm --pm-on-fail=ignore security:scan` — passed for `dist`,
+    `electron-dist`, and `release`.
+  - `./node_modules/.bin/tsc --pretty false -p tsconfig.electron.json` — passed
+    final Electron compilation.
+  - `./node_modules/.bin/electron-builder --mac --arm64 --publish never` — an
+    integration checkpoint passed native rebuild, ad-hoc signing, and Apple
+    Silicon ZIP/DMG plus block-map generation. The final exact-tree rerun was
+    blocked by the execution environment's usage limit after all source checks;
+    `codesign --verify --deep --strict --verbose=2` passed on the generated app.
+  - `git diff --check` — passed.
+- **Documentation updated:** Added plan 0036, revised the current architecture
+  and active v1 phase criteria, and appended this canonical entry.
+- **Known limitations:** Ad-hoc macOS updates may require microphone and Screen
+  Recording re-grants; Developer ID signing/notarization is the future persistence
+  path. Native Windows WCO/Mica/scaling/global-microphone/policy behavior and the
+  installed two-build permission matrix remain untested on this macOS host. The
+  final package rerun could not execute after the tool usage limit, and neither
+  platform's full installed interaction/accessibility matrix was performed.
+- **Next:** Run plan 0036's installed Apple Silicon macOS matrix, then Windows
+  x64 native-controls/Mica/fallback/scaling and permission-policy matrix. Before
+  claiming permission persistence, ship two consecutive Developer ID-signed and
+  notarized macOS builds with one stable Team ID and bundle identifier.
+
+## 2026-08-14 — Flatten the Arc shell to the full window
+
+- **Completed:** Removed the visible shell's right/bottom gutter plus the
+  conversation canvas border, radius, and shadow. Removed the default Glass
+  sidebar-slot fill and accent wash so the sidebar and text/voice canvas share
+  one continuous light/dark surface while floating controls retain their Glass
+  treatment. Kept the mounted sidebar, resizer, overlay toggle, internal chat
+  rhythm, voice people padding, and call lifecycle unchanged. Added source
+  contract coverage for the zero-padding, borderless canvas, and shared Glass
+  background.
+- **Decisions:** Scoped the flattened background to untouched Glass so a user
+  who deliberately selected a solid or gradient per-space theme keeps that
+  customization. Removed only shell-level spacing; content-specific padding
+  remains where it protects the overlay control or lays out chat and voice
+  contents.
+- **Validation:**
+  - `node --test scripts/glass-shell.test.mjs` — passed 7/7 focused Arc/Glass
+    shell contracts.
+  - Browser/mock visual and geometry pass at 1280×800 — passed light and dark
+    text chat plus dark connected voice with the visible sidebar. The shell,
+    content, and voice rectangles reached all four applicable viewport edges;
+    shell padding, canvas border, and radius computed to zero; frame and content
+    backgrounds matched; and the console reported no warnings or errors.
+  - Browser/mock hidden-sidebar voice pass — passed; the mounted sidebar reached
+    zero width, the connected call remained present, and content/voice expanded
+    to the complete 1280×800 viewport.
+  - `pnpm check` — passed formatting, zero-warning lint, renderer/Node/Electron
+    strict TypeScript, 90 Vitest files / 531 tests, all 56 Node source-contract
+    tests, version validation at `1.7.2`, the production renderer build, and the
+    compiled bundle secret scan. The existing large-chunk warning remains
+    non-blocking.
+  - `pnpm desktop:build` — passed renderer/Electron compilation, native
+    dependency rebuild, ad-hoc signing, Apple Silicon ZIP/DMG generation, and
+    both block maps. The first sandboxed builder attempt could not resolve
+    GitHub; the approved network retry and final canonical command passed.
+  - `git diff --check` — passed before the progress entry.
+- **Documentation updated:** Updated the Arc shell/current UI contract in
+  `docs/architecture.md`, the active v1 plan, plan 0036, and this canonical
+  progress log.
+- **Known limitations:** Windows x64 packaging and installed native
+  macOS/Windows observation remain outside this macOS browser/mock pass.
+  Custom solid/gradient themes retain their intentionally distinct sidebar
+  background and were not flattened.
+- **Next:** Run the installed plan 0036 macOS and Windows visual matrix with the
+  visible sidebar in text/voice/share views, then complete the remaining native
+  permission and material-fallback checks.
+
+## 2026-08-14 — Keep the sidebar transparent and restore window dragging
+
+- **Completed:** Made the signed-in sidebar slot permanently transparent for
+  both Glass and Gradient themes, removed Solid from Appearance Settings, and
+  kept an independent transparency slider for Personal and Bakbak in both
+  remaining modes. Added a 30 px, action-free drag strip to the top of the main
+  canvas so the frameless window has a reliable grab target without restoring a
+  contextual header. Normalized saved v1/v2 Solid records into single-color
+  translucent gradients, clamped theme transparency to 20–80%, and retained
+  customized gradient colors, points, shade, and texture. Added focused unit and
+  source-contract coverage for the editor, migration, style, and shell geometry.
+- **Decisions:** Kept the conversation canvas solid for legibility while the
+  sidebar reveals the native material or selected translucent theme. Preserved
+  old Solid colors through migration instead of discarding user choices. The
+  compact drag strip consumes only 30 px and contains no interactive or
+  contextual UI; the existing native-safe sidebar toggle remains an overlay.
+- **Validation:**
+  - Focused Vitest — passed 5 files / 58 tests covering App, Settings,
+    `SidebarThemeEditor`, `SidebarGradientPicker`, and chrome-theme preferences.
+  - `node --test scripts/glass-shell.test.mjs` — passed 7/7 Arc/Glass shell
+    source contracts.
+  - Browser/mock visual, semantic, and geometry pass at 1280×800 — passed dark
+    text and voice layouts with visible and hidden sidebars. The main drag strip
+    computed to 30 px with `-webkit-app-region: drag`; the sidebar background
+    computed fully transparent; Appearance exposed Glass/Gradient without Solid;
+    reset restored 45% Glass transparency; and the console had no warnings or
+    errors.
+  - `pnpm check` — the first network-restricted sandbox attempt produced no
+    output and was interrupted; the approved exact-tree retry passed formatting,
+    zero-warning lint, renderer/Node/Electron strict TypeScript, 90 Vitest files
+    / 532 tests, all 56 Node source-contract tests, version validation at
+    `1.7.2`, the production renderer build, and the compiled bundle secret scan.
+    The existing large-chunk warning remains non-blocking.
+  - `pnpm desktop:build` — passed renderer/Electron compilation, native
+    dependency rebuild, ad-hoc signing, Apple Silicon ZIP/DMG generation, and
+    both block maps. Notarization remained skipped because credentials are not
+    configured.
+  - `git diff --check` — passed after the final documentation update.
+- **Documentation updated:** Updated the current shell, appearance storage, and
+  migration contracts in `docs/architecture.md`; updated plan 0036 and the
+  active v1 plan; and appended this canonical entry.
+- **Known limitations:** The in-app browser can verify the CSS drag-region
+  contract but cannot physically move the native Electron window. Installed
+  Apple Silicon macOS and Windows x64 dragging, native material, reduced-
+  transparency, and permission-recovery observation remain open. The ad-hoc
+  macOS package is intentionally not notarized.
+- **Next:** Run the installed plan 0036 macOS matrix and confirm dragging from
+  the new main strip, then repeat the WCO/Mica/fallback/scaling and permission
+  matrix on Windows x64.
+
+## 2026-08-14 — Repair Arc sidebar chrome and round the user dock
+
+- **Completed:** Scoped the signed-in titlebar overlay to the current sidebar
+  width while visible and a 52 px reopen rail while hidden. Made the sidebar
+  toggle itself an explicit `no-drag` Electron hit region so it remains
+  clickable above the full-width main drag strip. Added a narrow typed preload
+  command that aligns macOS traffic lights at `{ x: 16, y: 16 }`, hides them
+  with the sidebar, and restores them when the sidebar or non-signed-in shell is
+  shown; Windows retains native Window Controls Overlay on the right. Changed
+  Glass's new/reset transparency default and slider maximum to 100%, promoted
+  untouched v2 Glass records from the former 45% default, and persisted that
+  normalization without overwriting custom gradients. Gave the current-user
+  dock a bordered 12 px rounded, scheme-aware raised background.
+- **Decisions:** Kept the hidden reopen button visible even while macOS native
+  caption buttons are hidden, so pointer users are not forced to discover
+  `Cmd/Ctrl+B`. Scoped native-button hiding to macOS; Windows caption placement
+  continues to follow Window Controls Overlay conventions. Migrated only the
+  exact former Glass default to 100%, preserving deliberate non-default theme
+  values.
+- **Validation:**
+  - Focused Vitest — passed 6 files / 68 tests covering App,
+    `WindowTitlebar`, theme preferences/editor/Settings, and the user dock.
+  - `node --test scripts/glass-shell.test.mjs scripts/window-chrome-config.test.mjs`
+    — passed 10/10 shell, native-control, preload, and packaging contracts.
+  - Focused strict TypeScript — passed renderer, Node, and Electron projects.
+  - Browser/mock visual, semantic, and geometry pass at 1280×806 — passed
+    visible → hidden → visible pointer interaction. The open overlay matched
+    the 340 px saved sidebar, the hidden rail measured 52 px, the toggle itself
+    computed `-webkit-app-region: no-drag`, and the main strip remained the drag
+    region. The dock computed a 12 px radius with a bordered raised background
+    in dark and light modes. Appearance Reset reported 100% and produced a
+    fully transparent Glass tint. The console had no warnings or errors.
+  - `pnpm check` — the first run stopped at one unbound-method lint error in the
+    new optional bridge call; calling through the bridge object fixed it. The
+    final exact-tree retry passed formatting, zero-warning lint,
+    renderer/Node/Electron strict TypeScript, 90 Vitest files / 534 tests, all
+    56 Node source-contract tests, version validation at `1.7.2`, the production
+    renderer build, and bundle secret scanning. The existing large-chunk
+    warning remains non-blocking.
+  - `pnpm desktop:build` — passed renderer/Electron compilation, native
+    dependency rebuild, ad-hoc signing, Apple Silicon ZIP/DMG generation, and
+    both block maps. Notarization remained skipped because credentials are not
+    configured.
+  - `git diff --check` — passed after the final documentation update.
+- **Documentation updated:** Updated the Arc overlay, native-control,
+  appearance migration, and rounded user-dock contracts in
+  `docs/architecture.md`, plan 0036, the active v1 plan, and this canonical log.
+- **Known limitations:** Browser/mock verifies the click and CSS hit regions but
+  cannot visually observe native macOS traffic lights hiding or physically move
+  the packaged window. Installed Apple Silicon macOS and Windows x64
+  window-control/scaling observation remains open. The ad-hoc macOS package is
+  intentionally not notarized.
+- **Next:** Install the generated Apple Silicon build and verify traffic-light
+  alignment plus repeated pointer collapse/reopen cycles, then repeat native
+  WCO/Mica/scaling checks on Windows x64.
+
+## 2026-08-14 — Harden collapsed macOS window controls
+
+- **Completed:** Confirmed the reported overlap came from a running
+  `desktop:dev` process whose Electron main process and preload predated the
+  renderer hot reload. Added an acknowledgement state so the collapsed-sidebar
+  control occupies the vacated macOS traffic-light area only after the native
+  visibility command resolves. A stale, absent, or failed preload now keeps the
+  control clickable in a wider nonoverlapping fallback rail and identifies the
+  restart requirement in its tooltip. Moved native visibility ownership into a
+  main-process helper and reapplied the last state after ready/show, focus,
+  restore, and fullscreen return.
+- **Decisions:** Kept native macOS traffic lights instead of recreating their
+  close/minimize/fullscreen semantics in HTML. The renderer treats successful
+  IPC completion as the boundary for reclaiming their space. The fallback is
+  intentionally wider only while native state cannot be managed; a restarted
+  current build returns to the normal 52 px reopen rail.
+- **Validation:**
+  - Temporary Electron 43 hidden-inset probe via
+    `./node_modules/.bin/electron scripts/.window-button-visibility-probe.cjs`
+    — passed on macOS: desktop-capture screenshots showed all three native
+    buttons before `setWindowButtonVisibility(false)` and none afterward; the
+    temporary probe source was removed.
+  - Focused Vitest — passed 2 files / 22 tests for `WindowTitlebar` and `App`,
+    including the native-acknowledgement transition.
+  - `node --test scripts/glass-shell.test.mjs scripts/window-chrome-config.test.mjs`
+    — passed 10/10 Arc shell and native lifecycle contracts.
+  - Full direct check equivalents — passed formatting, zero-warning lint,
+    renderer/Node/Electron strict TypeScript, 90 Vitest files / 535 tests, all
+    56 Node source-contract tests, and version validation at `1.7.2`.
+  - `./node_modules/.bin/vite build` — passed the production renderer build;
+    the existing large-chunk warning remains non-blocking.
+  - `./node_modules/.bin/tsc --pretty false -p tsconfig.electron.json` — passed
+    and refreshed the compiled main process/preload output.
+  - `./node_modules/.bin/electron-builder --publish never` — the sandboxed
+    attempt failed because GitHub DNS was unavailable; the approved network
+    retry passed native rebuild, ad-hoc signing, Apple Silicon ZIP/DMG and both
+    block maps. Notarization remained skipped without credentials.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist`,
+    `electron-dist`, and `release`.
+  - `git diff --check` and the added-line secret-pattern audit — passed.
+- **Documentation updated:** Clarified the main-process native-control
+  lifecycle and stale-preload fallback in `docs/architecture.md`, plan 0036,
+  the active v1 plan, and this canonical log.
+- **Known limitations:** The already-running development app must be fully quit
+  and relaunched because Vite cannot hot-reload Electron main/preload code. The
+  canonical `pnpm check` wrapper was interrupted when the machine's global pnpm
+  11.3 shim stalled while the project requires pnpm 11.17; every constituent
+  check was run directly and passed. Exact packaged-app collapse/reopen still
+  needs one post-relaunch visual confirmation, and Windows native observation
+  remains open.
+- **Next:** Fully restart the development or packaged app, confirm one
+  visible-sidebar → hidden-sidebar → visible-sidebar cycle on macOS, then run
+  the outstanding Windows x64 WCO/Mica/scaling acceptance matrix.
+
+## 2026-08-14 — Remove the hidden-sidebar reopen control
+
+- **Completed:** Removed the renderer sidebar control whenever the sidebar is
+  hidden, deleted the `PanelLeftOpen` path, collapsed the non-Windows titlebar
+  overlay from its former reopen rail to zero width, and removed the 52 px alert
+  clearance that only protected that overlay. The visible sidebar retains its
+  clickable close control. `Cmd/Ctrl+B` and View → Toggle Sidebar remain the
+  supported restore paths, while macOS traffic lights still hide and restore
+  through the main-process lifecycle.
+- **Decisions:** Applied the request only to the hidden state so the sidebar can
+  still be closed by pointer while visible. Accepted keyboard/menu-only restore
+  after hiding in exchange for a completely clean full-window canvas.
+- **Validation:**
+  - Focused Vitest — passed 2 files / 22 tests for `WindowTitlebar` and `App`,
+    including persisted hidden state and keyboard restoration.
+  - `node --test scripts/glass-shell.test.mjs scripts/window-chrome-config.test.mjs`
+    — passed 10/10 Arc shell and native chrome contracts.
+  - Browser/mock visual and geometry pass — passed visible → hidden → keyboard
+    restore. Hidden state had zero Hide/Show buttons, zero Sidebar controls
+    groups, a `0 px`-wide noninteractive titlebar overlay, the main drag bar as
+    the top-left hit target, and no console warnings or errors. `Cmd+B` restored
+    the sidebar and visible close button.
+  - Full direct check equivalents — passed formatting, zero-warning lint,
+    renderer/Node/Electron strict TypeScript, 90 Vitest files / 535 tests, all
+    56 Node source-contract tests, and version validation at `1.7.2`.
+  - `./node_modules/.bin/vite build` — passed the production renderer build;
+    the existing large-chunk warning remains non-blocking.
+  - `./node_modules/.bin/tsc --pretty false -p tsconfig.electron.json` — passed.
+  - `./node_modules/.bin/electron-builder --publish never` — passed native
+    rebuild, ad-hoc signing, Apple Silicon ZIP/DMG generation, and both block
+    maps. Notarization remained skipped without credentials.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist`,
+    `electron-dist`, and `release`.
+  - `git diff --check` and the added-line secret-pattern audit — passed.
+- **Documentation updated:** Updated the overlay and restore-path contracts in
+  `docs/architecture.md`, plan 0036, the active v1 plan, and this canonical log.
+- **Known limitations:** Hidden-sidebar restoration is intentionally keyboard or
+  native-menu only. Installed Windows x64 observation remains open, and the
+  ad-hoc macOS package is intentionally not notarized.
+- **Next:** Confirm the clean hidden state once in the refreshed desktop app,
+  then run the outstanding Windows x64 WCO/Mica/scaling acceptance matrix.
+
+## 2026-08-14 — Move the sidebar control and add right-side placement
+
+- **Completed:** Removed the signed-in renderer control from the empty
+  titlebar overlay and placed the sidebar-close button directly after Settings
+  in the bottom user dock. Added an Appearance Settings choice for Left or
+  Right navigation, mirrored the grid track, hidden-state motion, and resizer
+  direction, and persisted the position through layout preferences v5. The v5
+  parser migrates v4 visibility/width and every older layout to the safe left
+  default while retaining the existing 248–340 px clamp and keyboard/menu
+  restore paths.
+- **Decisions:** Kept Left as the default and made placement device-local rather
+  than account-scoped. Kept native caption buttons on their platform-standard
+  edge; on macOS the traffic lights coincide with the sidebar only when it is
+  left-positioned. Retained the mounted/inert zero-width sidebar so voice,
+  share, drafts, and selected context do not remount during collapse.
+- **Validation:**
+  - Focused Vitest — passed 7 files / 81 tests covering v5 migration, empty
+    titlebar chrome, dock control semantics, both sidebar compositions,
+    Appearance selection, app placement persistence, and collapse behavior.
+  - `node --test scripts/glass-shell.test.mjs scripts/window-chrome-config.test.mjs`
+    — passed 10/10 Arc shell and native chrome contracts during the focused
+    pass.
+  - Browser/mock interaction at 1280×720 — passed left and right full-height
+    geometry, Settings/toggle adjacency, zero titlebar controls, right-side
+    collapse to a 1280 px canvas, `Cmd+B` restoration, reversed keyboard
+    resizing, and right-side persistence after reload. The pass exposed and
+    fixed an initial CSS Grid auto-row split before acceptance.
+  - Full direct check equivalents — passed formatting, zero-warning lint,
+    renderer/Node/Electron strict TypeScript, 90 Vitest files / 538 tests, all
+    56 Node source-contract tests, and version validation at `1.7.2`.
+  - `./node_modules/.bin/vite build` — passed the production renderer build;
+    the existing large-chunk warning remains non-blocking.
+  - `./node_modules/.bin/electron-builder --publish never` — the sandboxed
+    attempt failed because GitHub DNS was unavailable; the approved network
+    retry passed native rebuild, Electron download, ad-hoc signing, Apple
+    Silicon ZIP/DMG generation, and both block maps. Notarization remained
+    skipped without credentials.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist`,
+    `electron-dist`, and `release`.
+  - `git diff --check` and the added-line secret-pattern audit — passed.
+- **Documentation updated:** Updated the current shell/layout contract in
+  `docs/architecture.md`, plan 0036, the active v1 plan, and this canonical log.
+- **Known limitations:** The global pnpm shim again produced no output for the
+  wrapper checks before the bounded wait, so their exact local binaries ran and
+  passed instead. Installed Windows x64 right-sidebar WCO behavior and packaged
+  macOS traffic-light/drag observation remain open; the macOS package remains
+  intentionally ad-hoc signed and unnotarized.
+- **Next:** Confirm left/right placement, collapse/restore, resizer direction,
+  and native caption controls in refreshed installed macOS and Windows builds,
+  then complete plan 0036's outstanding native acceptance matrix.
+
+## 2026-08-14 — Center right-sidebar macOS traffic lights
+
+- **Completed:** Extended the narrow native window-controls command to carry
+  the current sidebar position with visibility. macOS now retains
+  `{ x: 16, y: 16 }` inside the taller left-sidebar chrome and uses
+  `{ x: 16, y: 8 }` when the sidebar is on the right, centering the traffic
+  lights vertically in the compact 30 px main drag strip. Focus, restore,
+  ready-to-show, and fullscreen-return recovery reapply both position and
+  visibility. Authentication/unmount restores the left/default position.
+- **Decisions:** Kept the native buttons on macOS's platform-standard left edge
+  and changed only their vertical alignment. Preserved backward compatibility:
+  a renderer or preload that omits the new position argument safely defaults to
+  `left`, while invalid values are rejected in the trusted main process.
+- **Validation:**
+  - Screenshot inspection — confirmed the reported right-sidebar buttons used
+    the `y: 16` sidebar offset and visibly crossed the 30 px drag-strip bottom;
+    the correction removes that eight-pixel mismatch.
+  - Focused Vitest and source contracts — passed 2 files / 24 tests plus 10/10
+    Arc/native chrome Node tests, including right-position bridge arguments,
+    main-process coordinate constants, and native lifecycle reapplication.
+  - Full direct check equivalents — passed formatting, zero-warning lint,
+    renderer/Node/Electron strict TypeScript, 90 Vitest files / 539 tests, all
+    56 Node source-contract tests, and version validation at `1.7.2`.
+  - `./node_modules/.bin/vite build` — passed the production renderer build;
+    the existing large-chunk warning remains non-blocking.
+  - `./node_modules/.bin/electron-builder --publish never` — the sandboxed
+    attempt failed because GitHub DNS was unavailable; the approved network
+    retry passed native rebuild, Electron download, ad-hoc signing, Apple
+    Silicon ZIP/DMG generation, and both block maps. Notarization remained
+    skipped without credentials.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist`,
+    `electron-dist`, and `release`.
+  - `git diff --check` and the added-line secret-pattern audit — passed.
+- **Documentation updated:** Documented side-specific macOS traffic-light
+  coordinates and native-state synchronization in `docs/architecture.md`, plan
+  0036, the active v1 plan, and this canonical log.
+- **Known limitations:** Vite cannot hot-reload Electron main/preload changes,
+  so an already-running desktop development app must be fully quit and
+  relaunched before the corrected coordinates appear. The fresh package
+  compiled successfully, but final installed macOS observation and Windows WCO
+  acceptance remain open; the macOS package is still ad-hoc signed and
+  unnotarized.
+- **Next:** Fully restart Bakbak, select the right sidebar, confirm the traffic
+  lights are centered in the main drag strip through one focus/fullscreen
+  cycle, then complete the remaining native plan 0036 matrix.
+
+## 2026-08-14 — Fail closed screen audio and enforce exact-once playback
+
+- **Completed:** Made every current Windows and macOS Electron screen source
+  video-only. Main-process capabilities/source metadata now explain that Bakbak
+  call audio cannot be safely excluded, audio-enabled prepared selections are
+  rejected, and the display-media callback returns only the exact selected
+  video source with no Chromium loopback branch. The renderer independently
+  normalizes stale or unsafe bridge claims to video-only before capture. Added
+  an exact-once remote-audio invariant across LiveKit-like attach/unmute and
+  `volumechange`, blocked/restored room playback, output changes, `playing`, and
+  bounded pause/stall/error/ended recovery. Direct MediaStream routes rebuild
+  their gain stage on error/ended reattachment; a re-entry guard prevents
+  route mutations from recursively reacting to their own `volumechange`
+  events. Element fallback remains available. Privacy-safe diagnostics schema
+  v3 now includes route type, attachment state/count, and invariant status.
+- **Decisions:** Chose a product-level fail-closed boundary instead of treating
+  Chromium's best-effort `restrictOwnAudio` as process isolation. System audio
+  can return only through a native path that proves Bakbak's process tree is
+  excluded on installed Windows and macOS clients. Kept listener gain in one
+  renderer-owned route and reapplied its invariant after every known LiveKit,
+  recovery, and output mutation point rather than trusting one-time attach
+  state.
+- **Validation:**
+  - Focused Vitest — passed 4 files / 88 tests covering remote routing,
+    screen-share service normalization, room playback-status reconciliation,
+    and diagnostics.
+  - `node --test scripts/screen-share-audio-isolation.test.mjs` — passed 2/2
+    Electron video-only/fail-closed source-contract tests.
+  - `./node_modules/.bin/prettier --check .` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed with zero warnings.
+  - Direct strict TypeScript checks for the renderer, Node scripts, and
+    Electron process — all passed.
+  - Full Vitest — passed 90 files / 539 tests.
+  - `node --test scripts/*.test.mjs` — passed all 56 Node source-contract tests.
+  - `./node_modules/.bin/vite build` — passed after transforming 2,053 modules;
+    the existing large-chunk warning remains non-blocking.
+  - Electron compile plus `electron-builder --publish never` — the sandboxed
+    packaging attempt failed when `github.com` DNS was unavailable; the
+    approved network retry passed native rebuild, ad-hoc signing, Apple Silicon
+    ZIP/DMG generation, and both block maps. Notarization remained skipped
+    because credentials are not configured.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist`,
+    `electron-dist`, and `release`.
+  - `git diff --check` — passed.
+- **Documentation updated:** Updated `docs/architecture.md`, the active v1
+  plan, and this canonical progress log with the fail-closed capture boundary,
+  exact-once remote routing, diagnostic schema v3, and future native-isolation
+  gate.
+- **Known limitations:** System audio is intentionally unavailable for every
+  current Electron screen share. This removes shared-loopback self-return but
+  does not replace the required installed two-client Windows/macOS voice,
+  speaker echo-cancellation, reconnect, output-change, and video-share
+  observation. The element fallback cannot boost beyond the media element's
+  0–100% range when Web Audio graph creation is unavailable.
+- **Next:** Run the installed two-client matrix on Apple Silicon macOS and
+  Windows x64 to confirm one copy of remote speech across watch, reconnect,
+  playback recovery, and speaker changes; separately design and prove a native
+  process-isolated system-audio path before restoring the audio checkbox.
+
+## 2026-08-14 — Restore native Electron screen-audio isolation
+
+- **Completed:** Added the bundled `bakbak-screen-share-helper` contract and
+  Electron protocol-v1 supervisor with exact hello, correlated JSON-lines
+  requests, strict input/result validation, bounded lines/tokens/sources,
+  sanitized errors, lifecycle forwarding, timeout/crash cleanup, and graceful
+  shutdown. Replaced preload `prepare` with capabilities/list/start/update/stop
+  plus lifecycle methods. The renderer now delegates capture and companion
+  publication to the helper; Electron `desktopCapturer`, display-media handling,
+  `display-capture` permission, Chromium loopback, and renderer screen-track
+  publication are removed. Added locked Rust build/test/staging scripts,
+  `extraResources`, macOS/Windows CI checks, and a clean staging directory so
+  the executable lands at `resources/native`. Added the compile-time rollout
+  gate: default, PR, and release builds embed audio disabled, while only an
+  exact-revision stabilization candidate embeds it enabled.
+  Closing the last app window now invokes a bounded, restartable helper teardown
+  that stops or kills any active/in-flight share without preventing a later
+  macOS Dock activation from starting a fresh helper. On macOS, an audio
+  downgrade now reconfigures ScreenCaptureKit with native audio disabled while
+  preserving video and quality settings. `apple-metal` is pinned to 0.6.0; a
+  scoped dependency clean plus locked standard-target rebuild proved the staged
+  and packaged helpers have no unused MetalFX load dependency.
+- **Decisions:** Native audio fails closed unless the helper proves the Electron
+  process tree is excluded for display capture or only the selected process tree
+  is included for application capture. The helper receives an allowlisted
+  environment and neither request payloads nor raw stderr are logged. Only the
+  nine existing 854×480/1280×720/1920×1080 at 15/30/60 quality/bitrate tuples
+  are accepted. A protocol fault, unknown response, oversized remainder,
+  timeout, or crash kills the child and fails an active share. Audio rollout is
+  compiled into Electron rather than relying on an installer-time environment
+  variable.
+- **Validation:**
+  - `pnpm format:check` — interrupted without output because the machine's
+    global pnpm 11.3 shim stalls while the project requests pnpm 11.17; the
+    equivalent project-local checks below ran directly.
+  - `./node_modules/.bin/prettier --check .` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed.
+  - Renderer, Node, Electron, and Electron-test strict TypeScript commands —
+    passed all four configurations.
+  - `./node_modules/.bin/vitest run` — passed 91 files / 547 tests, including
+    helper handshake/correlation/malformed/timeout/crash/line-bound/URL/gate
+    coverage, restartable window teardown, and renderer downgrade/cleanup
+    behavior.
+  - `node --test scripts/*.test.mjs` — passed 60/60 source, rollout, CI, and
+    packaging contract tests.
+  - `cargo test --locked --manifest-path native/screen-share-helper/Cargo.toml
+--quiet` — passed 13 library tests plus 1 binary test; doc tests had 0.
+  - Locked `cargo fmt --check`/Clippy checks — passed.
+  - `cargo build --release --locked --manifest-path
+native/screen-share-helper/Cargo.toml` — the sandboxed attempt failed only
+    because DNS could not download LiveKit's pinned WebRTC archive; the approved
+    network retry passed and produced an Apple Silicon Mach-O helper.
+  - `cargo clean -p apple-metal --release` followed by the locked standard
+    release build — passed. `cargo tree --locked -i apple-metal` resolved only
+    0.6.0; staged and packaged helper `otool`/`strings` checks found no
+    MetalFX/MTLFX linkage or symbols, and `vtool -show-build` reported macOS
+    `minos 11.0`.
+  - Direct packaged-path helper pipe smoke — passed hello → ready → capabilities
+    → shutting-down → shutdown with correlated responses and exit 0.
+  - `./node_modules/.bin/vite build` and Electron compile — passed; Vite retains
+    the existing non-blocking large-chunk warning.
+  - `./node_modules/.bin/electron-builder --publish never` — passed native
+    rebuild, ad-hoc deep signing, Apple Silicon ZIP/DMG, and block maps after the
+    approved download. The packaged arm64 helper exists and is executable at
+    `Bakbak.app/Contents/Resources/native/bakbak-screen-share-helper`;
+    `codesign --verify --deep --strict` passed. Notarization was skipped without
+    credentials. After the clean native rebuild, the full Apple Silicon ZIP/DMG
+    and block maps were regenerated successfully and the packaged helper passed
+    the dependency and signing checks again.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist`,
+    `electron-dist`, and `release`.
+- **Documentation updated:** Replaced the Chromium capture contract in
+  `docs/architecture.md`, added plan 0037, updated the active v1 plan, and added
+  this canonical entry.
+- **Known limitations:** Native audio remains disabled in ordinary and release
+  builds. Installed Apple Silicon macOS and Windows x64 source/audio/permission,
+  signing, teardown, helper-crash, and application-audio matrices remain open,
+  as does the 30-minute three-client proof that the presenter hears no self
+  return and every remote speaker exactly once. Windows packaging runs only in
+  CI. The MetalFX/load-floor and ScreenCaptureKit stop-audio results are local
+  binary/unit evidence, not substitutes for that installed capture matrix. The
+  local macOS package is ad-hoc signed and intentionally not notarized.
+- **Next:** Build the exact-revision stabilization candidate on both supported
+  runners, complete plan 0037's installed matrices and three-client observation,
+  then record the evidence before enabling native audio in release builds.
+
+## 2026-08-14 — Integrate screen-audio isolation into arcify
+
+- **Completed:** Committed the pending Arc sidebar/window-control packet, then
+  merged the stacked fail-closed screen-audio, exact-once playback, native
+  helper, Electron supervision, renderer delegation, packaging, and rollout
+  changes into `arcify`. Preserved both chronological work-log histories while
+  resolving the append-only progress conflict. Built the complete merged
+  Apple Silicon application and verified the packaged helper and app signature.
+- **Decisions:** Kept native screen audio compiled off in ordinary and release
+  builds. Only stabilization candidates may enable it until the installed
+  macOS/Windows and three-client isolation matrix passes; the release-safe
+  fallback remains video-only with no Chromium loopback.
+- **Validation:**
+  - `./node_modules/.bin/prettier --check .` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed with zero warnings.
+  - Renderer, Node, Electron, and Electron-test strict TypeScript checks —
+    passed all four configurations.
+  - `./node_modules/.bin/vitest run` — passed 91 files / 555 tests.
+  - `node --test scripts/*.test.mjs` — passed 60/60 contracts.
+  - `./node_modules/.bin/vite build` — passed; the existing large-chunk warning
+    remains non-blocking.
+  - Locked Rust formatting and Clippy — passed with warnings denied.
+  - `cargo test --locked --offline --manifest-path
+native/screen-share-helper/Cargo.toml` — passed 13 library tests plus 1
+    binary test; doc tests had 0.
+  - Locked offline Rust release build — passed and produced an Apple Silicon
+    Mach-O helper.
+  - `./node_modules/.bin/electron-builder --publish never` — passed native
+    rebuild, ad-hoc deep signing, Apple Silicon ZIP/DMG, and block maps.
+  - Packaged-app/helper `codesign --verify`, helper `otool`/`vtool`, and bundle
+    secret scan — passed; no MetalFX/MTLFX dependency was present and helper
+    `minos` remained 11.0.
+- **Documentation updated:** Preserved the Arc, immediate safety, and native
+  isolation entries in this canonical log; architecture and plans 0001/0037
+  already describe the merged contracts and release gate.
+- **Known limitations:** The local macOS artifact is ad-hoc signed and not
+  notarized. Installed Windows x64 and Apple Silicon macOS capture/audio,
+  permission, crash, topology-loss, and application-audio validation remains
+  open, as does the 30-minute three-client no-self/no-duplicate-audio proof.
+- **Next:** Run the exact-revision stabilization candidate on both native
+  runners, complete plan 0037's installed matrix, and only then enable native
+  audio in ordinary release builds.
+
+## 2026-08-14 — Repair Windows helper settings-lock compilation
+
+- **Completed:** Replaced the Windows frame callback's
+  `Result::unwrap_or_default()` on `ScreenShareSettings` with explicit poisoned-
+  lock handling. A poisoned settings lock now drops the frame instead of
+  requiring a nonexistent `Default` implementation or inventing an invalid
+  zero-resolution/zero-frame-rate capture tuple.
+- **Decisions:** Kept `ScreenShareSettings` without `Default`; there is no safe
+  universal capture setting to substitute after synchronization state becomes
+  unavailable. Dropping the frame preserves the native helper's fail-closed
+  contract.
+- **Validation:**
+  - PR 60 Windows packaging run `31812162034`, job `94805138867` — failed before
+    this change with Rust `E0277` at `windows_legacy.rs:402` because
+    `ScreenShareSettings` does not implement `Default`.
+  - Full Prettier, zero-warning ESLint, renderer/Node/Electron/Electron-test
+    strict TypeScript, and Vite production build — passed.
+  - `./node_modules/.bin/vitest run` — passed 91 files / 555 tests.
+  - `node --test scripts/*.test.mjs` — passed 60/60 contracts.
+  - Locked Rust formatting, Clippy with warnings denied, 13 library plus 1
+    binary test, doc tests, and offline release build — passed on Apple Silicon
+    macOS.
+- **Documentation updated:** Added this canonical progress entry; architecture
+  and plan scope are unchanged.
+- **Known limitations:** The Windows-only module cannot be compiled by the
+  local macOS MSVC environment; the native Windows x64 GitHub runner remains
+  the authoritative compilation check.
+- **Next:** Push `arcify`, confirm PR 60's Windows package job compiles the
+  helper and packages the installer, then continue the installed plan 0037
+  acceptance matrix.
+
+## 2026-08-14 — Align the Windows helper MSVC runtime
+
+- **Completed:** Added a target-specific Cargo configuration for
+  `x86_64-pc-windows-msvc` that enables Rust's static CRT feature. This keeps
+  Rust and the `cc`/`cxx` bridge objects on the same `/MT` runtime as LiveKit's
+  pinned prebuilt WebRTC archive. Added a CI source-contract test that requires
+  the Windows target and `+crt-static` setting.
+- **Decisions:** Scoped the runtime selection to Windows x64 instead of setting
+  global Rust flags. The macOS helper and renderer builds remain unchanged.
+  Chose ABI alignment over linker suppression flags such as `/NODEFAULTLIB`;
+  suppressing one runtime would hide the mismatch rather than produce one
+  coherent C++ runtime boundary.
+- **Validation:**
+  - PR 60 replacement run `31813634370`, Windows job `94809933964` — the prior
+    Rust `E0277` compilation error was resolved, then native-test linking failed
+    with `LNK2038` because WebRTC objects used `MT_StaticRelease` while generated
+    bridge objects used `MD_DynamicRelease`, followed by duplicate C++ runtime
+    symbols and `LNK1169`.
+  - `node --test scripts/ci-workflow.test.mjs` — passed 2/2 focused contracts.
+  - `cargo metadata --locked --offline --no-deps`, locked Rust formatting,
+    Clippy with warnings denied, and tests — passed; tests remain 13 library plus
+    1 binary with 0 doc tests.
+  - Full Prettier, zero-warning ESLint, and renderer/Node/Electron/Electron-test
+    strict TypeScript — passed.
+  - `./node_modules/.bin/vitest run` — passed 91 files / 555 tests.
+  - `node --test scripts/*.test.mjs` — passed 61/61 contracts.
+  - Vite production build, version check, and bundle secret scan — passed; Vite
+    retains the existing non-blocking large-chunk warning.
+  - `pnpm check` — local wrapper stalled without output because the global pnpm
+    version differs from the repository's pinned version; it was interrupted,
+    and every underlying check was run directly with the successful outcomes
+    above.
+- **Documentation updated:** Added this canonical correction entry; architecture
+  and active-plan behavior are unchanged.
+- **Known limitations:** macOS cannot link or execute the MSVC target. A clean
+  Windows x64 GitHub runner remains the authoritative proof that the generated
+  bridge inherits `/MT` and that the helper and installer package successfully.
+- **Next:** Push `arcify`, monitor the replacement Windows job through native
+  tests, release helper build, Electron packaging, and artifact upload, then
+  continue plan 0037's installed three-client acceptance matrix.

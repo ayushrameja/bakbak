@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { BakbakDesktopBridge } from "../../lib/desktop-runtime";
 import type { AppUser, Channel, ServerMember } from "../../lib/types";
 import { mockSoundboardController } from "../soundboard/mock-catalog";
 import { VoiceRoom } from "./VoiceRoom";
@@ -65,6 +66,7 @@ function createVoice(
     voiceDiagnosticsAvailable: false,
     error: null,
     inputDeviceError: null,
+    microphonePermission: null,
     microphoneProcessingError: null,
     microphoneProcessingState: "active",
     outputDeviceError: null,
@@ -139,6 +141,7 @@ function createVoice(
 describe("VoiceRoom", () => {
   afterEach(() => {
     vi.useRealTimers();
+    Reflect.deleteProperty(window, "bakbakDesktop");
   });
 
   it("replaces the disconnected blank canvas with a rejoin invitation", async () => {
@@ -157,6 +160,34 @@ describe("VoiceRoom", () => {
       screen.getByRole("button", { name: `Rejoin ${channel.name}` }),
     );
     expect(voice.join).toHaveBeenCalledWith(channel);
+  });
+
+  it("keeps typed microphone recovery available after a failed rejoin", async () => {
+    const onOpenSettings = vi.fn();
+    render(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={createVoice({
+          status: "error",
+          error: "Bakbak could not use that microphone.",
+          inputDeviceError: "Bakbak could not use that microphone.",
+          microphonePermission: {
+            kind: "microphone",
+            status: "denied",
+            canRequest: false,
+            canOpenSettings: true,
+            requiresRestart: true,
+          },
+        })}
+        onOpenSettings={onOpenSettings}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Review microphone" }),
+    );
+    expect(onOpenSettings).toHaveBeenCalledOnce();
   });
 
   it("waits for the requested owner's authoritative share, then watches and focuses it", async () => {
@@ -289,6 +320,16 @@ describe("VoiceRoom", () => {
     );
     expect(voice.watchScreenShare).toHaveBeenCalledWith(screenShare.id);
     expect(screen.getByLabelText("Screen share stage")).toBeVisible();
+    expect(
+      screen.getByLabelText("Screen share stage").parentElement,
+    ).toHaveClass("voice-focus-layout");
+    expect(document.querySelector(".voice-room-view")).toHaveClass(
+      "is-focused-share",
+    );
+    expect(document.querySelector(".voice-room-view")).toHaveAttribute(
+      "data-view",
+      "focused-share",
+    );
     expect(screen.queryByRole("button", { name: /fullscreen/i })).toBeNull();
     expect(
       screen.queryByRole("button", { name: /back to people/i }),
@@ -344,6 +385,13 @@ describe("VoiceRoom", () => {
     );
 
     expect(voice.stopWatchingScreenShare).not.toHaveBeenCalled();
+    expect(container.querySelector(".voice-room-view")).not.toHaveClass(
+      "is-focused-share",
+    );
+    expect(container.querySelector(".voice-room-view")).toHaveAttribute(
+      "data-view",
+      "people",
+    );
     expect(document.querySelector(".voice-people-gallery")).toBeVisible();
     expect(container.querySelector(".voice-people-gallery video")).toBeNull();
     expect(screen.queryByText("Watch stream")).not.toBeInTheDocument();
@@ -485,6 +533,8 @@ describe("VoiceRoom", () => {
             message:
               "Windows is receiving only black or cursor-only application frames.",
             recommendedRetrySource: "display",
+            canOpenSettings: false,
+            restartRequired: false,
           },
           retryScreenShareWithEntireScreen,
         })}
@@ -496,6 +546,42 @@ describe("VoiceRoom", () => {
       screen.getByRole("button", { name: "Retry Entire screen" }),
     );
     expect(retryScreenShareWithEntireScreen).toHaveBeenCalledOnce();
+  });
+
+  it("renders structured screen-permission recovery actions", async () => {
+    const openSettings = vi.fn().mockResolvedValue(true);
+    const relaunch = vi.fn().mockResolvedValue(undefined);
+    window.bakbakDesktop = {
+      platform: "macos",
+      permissions: { openSettings },
+      app: { relaunch },
+    } as unknown as BakbakDesktopBridge;
+    render(
+      <VoiceRoom
+        channel={channel}
+        user={user}
+        voice={createVoice({
+          screenShareError: "Allow Bakbak in Screen Recording.",
+          screenShareFailure: {
+            code: "permission-denied",
+            message: "Allow Bakbak in Screen Recording.",
+            recommendedRetrySource: null,
+            canOpenSettings: true,
+            restartRequired: true,
+          },
+        })}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Open Privacy Settings" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Restart Bakbak" }),
+    );
+    expect(openSettings).toHaveBeenCalledWith("screen");
+    expect(relaunch).toHaveBeenCalledOnce();
   });
 
   it("does not render a manual pre-join or initial connection surface", () => {

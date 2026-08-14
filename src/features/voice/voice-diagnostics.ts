@@ -44,7 +44,7 @@ export interface VoiceTrackDiagnostic {
 }
 
 export interface VoiceDiagnosticSnapshot {
-  schemaVersion: 2;
+  schemaVersion: 3;
   capturedAt: string;
   trigger: string;
   appVersion: string;
@@ -114,7 +114,7 @@ export class VoiceDiagnosticsRecorder {
       ? await readRoomTracks(room, playbackByPublication)
       : (this.lastSnapshot?.tracks ?? []);
     const snapshot: VoiceDiagnosticSnapshot = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       capturedAt: new Date().toISOString(),
       trigger: sanitizeCode(trigger),
       appVersion: APP_VERSION,
