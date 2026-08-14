@@ -15,20 +15,26 @@ const voiceRoom = await readFile(
   "utf8",
 );
 
-test("Electron grants only the freshly selected capture source", () => {
+test("Electron grants only the freshly selected video source", () => {
   assert.match(main, /setDisplayMediaRequestHandler/);
   assert.match(main, /preparedCapture = null/);
   assert.match(main, /capture\.expiresAt < Date\.now\(\)/);
   assert.match(main, /candidate\.id === capture\.sourceId/);
   assert.match(main, /request\.userGesture/);
-  assert.match(main, /audio: "loopback"/);
+  assert.match(main, /callback\(\{ video: source \}\)/);
+  assert.doesNotMatch(main, /audio:\s*["']loopback["']/);
 });
 
-test("screen audio requests Chromium own-audio restriction and stays bounded", () => {
-  assert.match(service, /restrictOwnAudio: true/);
-  assert.match(service, /source: Track\.Source\.ScreenShareAudio/);
-  assert.match(service, /maxBitrate: 128_000/);
-  assert.match(service, /dtx: false/);
+test("Electron and the renderer fail closed when system audio is requested", () => {
+  assert.match(main, /systemAudioAvailable: false/);
+  assert.match(main, /const audioAvailable = false/);
+  assert.match(
+    main,
+    /typeof input\.includeAudio !== "boolean" \|\|\s*input\.includeAudio/,
+  );
+  assert.match(service, /systemAudio: false/);
+  assert.match(service, /audioAvailable: false/);
+  assert.match(service, /systemAudioAvailable: false/);
   assert.match(
     voiceRoom,
     /includeAudio:\s*includeAudio\s*&&\s*screenShareCapabilities\.systemAudio/,

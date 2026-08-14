@@ -132,6 +132,8 @@ const lifecycleListeners = new Set<
   (event: ScreenShareLifecycleEvent) => void
 >();
 let activeScreenShare: ActiveScreenShare | null = null;
+const SYSTEM_AUDIO_SAFETY_REASON =
+  "System audio sharing is temporarily disabled because Electron cannot exclude Bakbak call audio; video sharing still works.";
 
 export function isDesktopApp(): boolean {
   return isDesktopRuntime();
@@ -153,12 +155,9 @@ export async function getScreenShareCapabilities(): Promise<ScreenShareCapabilit
     };
   }
 
-  let systemAudioAvailable = false;
-  let systemAudioUnavailableReason =
-    "Bakbak could not confirm that system audio capture is supported.";
+  let systemAudioUnavailableReason = SYSTEM_AUDIO_SAFETY_REASON;
   try {
     const nativeCapabilities = await bridge.screenShare.getCapabilities();
-    systemAudioAvailable = nativeCapabilities.systemAudioAvailable;
     systemAudioUnavailableReason =
       nativeCapabilities.systemAudioUnavailableReason ??
       systemAudioUnavailableReason;
@@ -169,13 +168,13 @@ export async function getScreenShareCapabilities(): Promise<ScreenShareCapabilit
   return {
     available: true,
     nativeCapture: true,
-    systemAudio: systemAudioAvailable,
+    systemAudio: false,
     sourceKinds: ["display", "application"],
     resolutions: [...SCREEN_SHARE_RESOLUTIONS],
     frameRates: [...SCREEN_SHARE_FRAME_RATES],
     dynamicSettings: true,
     customPicker: true,
-    reason: systemAudioAvailable ? null : systemAudioUnavailableReason,
+    reason: systemAudioUnavailableReason,
   };
 }
 
@@ -198,17 +197,35 @@ export async function listScreenShareSources(): Promise<ScreenShareSourceListRes
     };
   }
   try {
-    return await bridge.screenShare.listSources();
+    const result = await bridge.screenShare.listSources();
+    const unavailableReason =
+      result.systemAudioUnavailableReason ?? SYSTEM_AUDIO_SAFETY_REASON;
+    if (!result.ok) {
+      return {
+        ...result,
+        sources: [],
+        systemAudioAvailable: false,
+        systemAudioUnavailableReason: unavailableReason,
+      };
+    }
+    return {
+      ...result,
+      sources: result.sources.map((source) => ({
+        ...source,
+        audioAvailable: false,
+        audioUnavailableReason: unavailableReason,
+      })),
+      systemAudioAvailable: false,
+      systemAudioUnavailableReason: unavailableReason,
+    };
   } catch {
     const windows = bridge.platform === "windows";
     return {
       ok: false,
       sources: [],
       permissionStatus: "unknown",
-      systemAudioAvailable: windows,
-      systemAudioUnavailableReason: windows
-        ? null
-        : "System audio sharing is unavailable on macOS; video sharing still works.",
+      systemAudioAvailable: false,
+      systemAudioUnavailableReason: SYSTEM_AUDIO_SAFETY_REASON,
       failure: {
         code: "unknown",
         message: windows

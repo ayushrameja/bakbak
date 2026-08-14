@@ -28,7 +28,6 @@ const WINDOWS_MICA_MIN_BUILD = 22_621;
 
 interface PreparedCapture {
   sourceId: string;
-  includeAudio: boolean;
   senderId: number;
   expiresAt: number;
 }
@@ -46,6 +45,9 @@ interface ScreenShareCapabilities {
   systemAudioAvailable: boolean;
   systemAudioUnavailableReason: string | null;
 }
+
+const SYSTEM_AUDIO_UNAVAILABLE_REASON =
+  "System audio sharing is temporarily disabled because Electron cannot exclude Bakbak call audio; video sharing still works.";
 
 type WindowMaterial = "vibrancy" | "mica" | "fallback";
 
@@ -275,16 +277,9 @@ function permissionSnapshot(kind: PermissionKind) {
 }
 
 function screenShareCapabilities(): ScreenShareCapabilities {
-  if (process.platform === "win32") {
-    return {
-      systemAudioAvailable: true,
-      systemAudioUnavailableReason: null,
-    };
-  }
   return {
     systemAudioAvailable: false,
-    systemAudioUnavailableReason:
-      "System audio sharing is unavailable on macOS; video sharing still works.",
+    systemAudioUnavailableReason: SYSTEM_AUDIO_UNAVAILABLE_REASON,
   };
 }
 
@@ -489,17 +484,14 @@ function registerIpcHandlers(): void {
         ok: true as const,
         sources: sources.map((source) => {
           const display = source.id.startsWith("screen:");
-          const audioAvailable = capabilities.systemAudioAvailable && display;
+          const audioAvailable = false;
           return {
             id: source.id,
             kind: display ? ("display" as const) : ("application" as const),
             label: source.name,
             applicationLabel: display ? null : source.name,
             audioAvailable,
-            audioUnavailableReason: audioAvailable
-              ? null
-              : (capabilities.systemAudioUnavailableReason ??
-                "Bakbak cannot isolate audio to one application; share an entire screen to include system audio."),
+            audioUnavailableReason: capabilities.systemAudioUnavailableReason,
             thumbnailDataUrl: source.thumbnail.isEmpty()
               ? null
               : source.thumbnail.toDataURL(),
@@ -523,15 +515,12 @@ function registerIpcHandlers(): void {
         input.sourceId.length < 1 ||
         input.sourceId.length > 256 ||
         typeof input.includeAudio !== "boolean" ||
-        (input.includeAudio &&
-          (!screenShareCapabilities().systemAudioAvailable ||
-            !input.sourceId.startsWith("screen:")))
+        input.includeAudio
       ) {
         throw new Error("Invalid screen-share selection.");
       }
       preparedCapture = {
         sourceId: input.sourceId,
-        includeAudio: input.includeAudio,
         senderId: event.sender.id,
         expiresAt: Date.now() + 30_000,
       };
@@ -661,14 +650,7 @@ function configureSession(): void {
             callback({});
             return;
           }
-          callback({
-            video: source,
-            ...(capture.includeAudio &&
-            screenShareCapabilities().systemAudioAvailable &&
-            source.id.startsWith("screen:")
-              ? { audio: "loopback" as const }
-              : {}),
-          });
+          callback({ video: source });
         })
         .catch(() => callback({}));
     },

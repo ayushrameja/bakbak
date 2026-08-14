@@ -152,16 +152,31 @@ describe("screen-share-service", () => {
     expect(desktop.listSources).not.toHaveBeenCalled();
   });
 
-  it("exposes only the supported Electron source and quality contract", async () => {
+  it("normalizes even an unsafe Electron capability response to video-only", async () => {
     installDesktopBridge();
     await expect(getScreenShareCapabilities()).resolves.toMatchObject({
       available: true,
       nativeCapture: true,
-      systemAudio: true,
+      systemAudio: false,
       sourceKinds: ["display", "application"],
     });
-    await expect(listScreenShareSources()).resolves.toEqual(
-      successfulSourceResult,
+    const sources = await listScreenShareSources();
+    expect(sources).toMatchObject({
+      ok: true,
+      permissionStatus: "granted",
+      sources: [
+        {
+          id: source.id,
+          audioAvailable: false,
+        },
+      ],
+      systemAudioAvailable: false,
+    });
+    expect(sources.sources[0]?.audioUnavailableReason).toContain(
+      "cannot exclude Bakbak call audio",
+    );
+    expect(sources.systemAudioUnavailableReason).toContain(
+      "cannot exclude Bakbak call audio",
     );
   });
 
@@ -190,18 +205,18 @@ describe("screen-share-service", () => {
     expect(desktop.openSettings).toHaveBeenCalledWith("screen");
   });
 
-  it("keeps macOS screen sharing video-only when loopback is unavailable", async () => {
+  it("keeps Electron screen sharing video-only when call-audio exclusion is unavailable", async () => {
     installDesktopBridge("macos");
     desktop.getCapabilities.mockResolvedValueOnce({
       systemAudioAvailable: false,
       systemAudioUnavailableReason:
-        "System audio sharing is unavailable on macOS; video sharing still works.",
+        "System audio sharing is temporarily disabled because Electron cannot exclude Bakbak call audio; video sharing still works.",
     });
     const videoOnlySource = {
       ...source,
       audioAvailable: false,
       audioUnavailableReason:
-        "System audio sharing is unavailable on macOS; video sharing still works.",
+        "System audio sharing is temporarily disabled because Electron cannot exclude Bakbak call audio; video sharing still works.",
     };
     desktop.listSources.mockResolvedValueOnce({
       ...successfulSourceResult,
@@ -215,7 +230,7 @@ describe("screen-share-service", () => {
       available: true,
       systemAudio: false,
     });
-    expect(capabilities.reason).toContain("unavailable on macOS");
+    expect(capabilities.reason).toContain("cannot exclude Bakbak call audio");
     const session = await startScreenShare({
       serverUrl: "wss://example.test",
       token: "short-lived-token",
@@ -232,7 +247,9 @@ describe("screen-share-service", () => {
       expect.objectContaining({ audio: false, systemAudio: "exclude" }),
     );
     expect(session.audioPublished).toBe(false);
-    expect(session.audioUnavailableReason).toContain("unavailable on macOS");
+    expect(session.audioUnavailableReason).toContain(
+      "cannot exclude Bakbak call audio",
+    );
     await stopScreenShare(session.sessionId);
   });
 
@@ -248,7 +265,7 @@ describe("screen-share-service", () => {
 
     expect(desktop.prepare).toHaveBeenCalledWith({
       sourceId: source.id,
-      includeAudio: true,
+      includeAudio: false,
     });
     expect(desktop.prepare.mock.calls.flat().join(" ")).not.toContain(
       "short-lived-token",
@@ -258,12 +275,18 @@ describe("screen-share-service", () => {
       "short-lived-token",
       { autoSubscribe: false },
     );
-    expect(livekit.room.localParticipant.publishTrack).toHaveBeenCalledTimes(2);
+    expect(livekit.createLocalScreenTracks).toHaveBeenCalledWith(
+      expect.objectContaining({ audio: false, systemAudio: "exclude" }),
+    );
+    expect(livekit.room.localParticipant.publishTrack).toHaveBeenCalledOnce();
     expect(session).toMatchObject({
       sourceLabel: "Screen 1",
       sourceKind: "display",
-      audioPublished: true,
+      audioPublished: false,
     });
+    expect(session.audioUnavailableReason).toContain(
+      "cannot exclude Bakbak call audio",
+    );
     await stopScreenShare(session.sessionId);
   });
 

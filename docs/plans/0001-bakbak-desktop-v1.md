@@ -350,7 +350,12 @@ product name, GitHub release channel, Apple Silicon macOS minimum, Windows x64
 target, renderer, Supabase contracts, and LiveKit room contracts stay stable.
 Electron uses a sandboxed renderer, secure custom protocol, and narrow typed
 preload bridge. The former native process-tree screen-audio isolation is not
-preserved by Chromium capture and is reopened as an installed acceptance gate.
+preserved by Chromium capture. The current Windows and macOS Electron paths
+therefore fail closed to video-only: capabilities and sources report system
+audio unavailable, prepared audio selections are rejected, and the
+display-media callback has no Chromium loopback branch. Re-enabling system
+audio requires a native path with installed proof that Bakbak's process tree is
+excluded; a best-effort `restrictOwnAudio` constraint is not sufficient.
 The first Electron release must serve Electron updater YAML and a signed legacy
 Tauri JSON bridge, then prove both the old-shell handoff and a subsequent pure
 Electron update on real supported machines before publication. Windows keeps
@@ -363,6 +368,9 @@ NSIS invocation so the handoff does not create a second application location.
       Windows under plans `0003-screen-sharing.md` and
       `0010-cross-platform-screen-share-and-focus.md`; plans 0015 and 0032's
       installed isolation matrices remain the release gate.
+- [x] Fail closed to video-only on every current Electron screen source until
+      a native path proves Bakbak call-audio exclusion on installed macOS and
+      Windows clients.
 - [ ] Add invite management UI.
 - [ ] Add desktop notifications and tray controls.
 - [x] Add locally persisted microphone, speaker, and camera preferences.
@@ -560,9 +568,10 @@ NSIS invocation so the handoff does not create a second application location.
 - [ ] Complete plan 0019's light/dark three-resolution and 200/240/360 px panel
       visual matrix plus installed macOS/Windows control/member observation.
 - [ ] Evaluate optional global push-to-talk.
-- [ ] Revalidate Electron's Chromium system-audio and own-audio restriction on
-      installed Windows x64 and Apple Silicon macOS clients; the removed native
-      process-tree proof cannot be credited to the new shell.
+- [ ] Before re-enabling system audio, validate a native process-isolated path
+      on installed Windows x64 and Apple Silicon macOS clients; Chromium
+      loopback and `restrictOwnAudio` cannot replace the removed process-tree
+      proof.
 - [ ] Complete the cross-platform installed-client acceptance matrix.
 - [x] Update architecture, plan status, and the append-only progress log for
       plan 0014.

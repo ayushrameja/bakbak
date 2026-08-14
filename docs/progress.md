@@ -7842,3 +7842,62 @@ supabase/functions/livekit-token/index.ts` — passed.
   ad-hoc macOS package is intentionally not notarized.
 - **Next:** Confirm the clean hidden state once in the refreshed desktop app,
   then run the outstanding Windows x64 WCO/Mica/scaling acceptance matrix.
+
+## 2026-08-14 — Fail closed screen audio and enforce exact-once playback
+
+- **Completed:** Made every current Windows and macOS Electron screen source
+  video-only. Main-process capabilities/source metadata now explain that Bakbak
+  call audio cannot be safely excluded, audio-enabled prepared selections are
+  rejected, and the display-media callback returns only the exact selected
+  video source with no Chromium loopback branch. The renderer independently
+  normalizes stale or unsafe bridge claims to video-only before capture. Added
+  an exact-once remote-audio invariant across LiveKit-like attach/unmute and
+  `volumechange`, blocked/restored room playback, output changes, `playing`, and
+  bounded pause/stall/error/ended recovery. Direct MediaStream routes rebuild
+  their gain stage on error/ended reattachment; a re-entry guard prevents
+  route mutations from recursively reacting to their own `volumechange`
+  events. Element fallback remains available. Privacy-safe diagnostics schema
+  v3 now includes route type, attachment state/count, and invariant status.
+- **Decisions:** Chose a product-level fail-closed boundary instead of treating
+  Chromium's best-effort `restrictOwnAudio` as process isolation. System audio
+  can return only through a native path that proves Bakbak's process tree is
+  excluded on installed Windows and macOS clients. Kept listener gain in one
+  renderer-owned route and reapplied its invariant after every known LiveKit,
+  recovery, and output mutation point rather than trusting one-time attach
+  state.
+- **Validation:**
+  - Focused Vitest — passed 4 files / 88 tests covering remote routing,
+    screen-share service normalization, room playback-status reconciliation,
+    and diagnostics.
+  - `node --test scripts/screen-share-audio-isolation.test.mjs` — passed 2/2
+    Electron video-only/fail-closed source-contract tests.
+  - `./node_modules/.bin/prettier --check .` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed with zero warnings.
+  - Direct strict TypeScript checks for the renderer, Node scripts, and
+    Electron process — all passed.
+  - Full Vitest — passed 90 files / 539 tests.
+  - `node --test scripts/*.test.mjs` — passed all 56 Node source-contract tests.
+  - `./node_modules/.bin/vite build` — passed after transforming 2,053 modules;
+    the existing large-chunk warning remains non-blocking.
+  - Electron compile plus `electron-builder --publish never` — the sandboxed
+    packaging attempt failed when `github.com` DNS was unavailable; the
+    approved network retry passed native rebuild, ad-hoc signing, Apple Silicon
+    ZIP/DMG generation, and both block maps. Notarization remained skipped
+    because credentials are not configured.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist`,
+    `electron-dist`, and `release`.
+  - `git diff --check` — passed.
+- **Documentation updated:** Updated `docs/architecture.md`, the active v1
+  plan, and this canonical progress log with the fail-closed capture boundary,
+  exact-once remote routing, diagnostic schema v3, and future native-isolation
+  gate.
+- **Known limitations:** System audio is intentionally unavailable for every
+  current Electron screen share. This removes shared-loopback self-return but
+  does not replace the required installed two-client Windows/macOS voice,
+  speaker echo-cancellation, reconnect, output-change, and video-share
+  observation. The element fallback cannot boost beyond the media element's
+  0–100% range when Web Audio graph creation is unavailable.
+- **Next:** Run the installed two-client matrix on Apple Silicon macOS and
+  Windows x64 to confirm one copy of remote speech across watch, reconnect,
+  playback recovery, and speaker changes; separately design and prove a native
+  process-isolated system-audio path before restoring the audio checkbox.

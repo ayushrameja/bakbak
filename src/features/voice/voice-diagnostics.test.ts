@@ -114,6 +114,12 @@ describe("VoiceDiagnosticsRecorder", () => {
         },
       }),
     ]);
+    expect(snapshot.tracks[0]?.playback).toMatchObject({
+      routeType: "element-fallback",
+      attachmentState: "attached",
+      attachmentCount: 1,
+      exactOnceInvariant: true,
+    });
     expect(snapshot.recentEvents[0]).toEqual(
       expect.objectContaining({
         code: "subscription_failed",
@@ -148,7 +154,7 @@ describe("VoiceDiagnosticsRecorder", () => {
 
     await expect(copyVoiceDiagnostics(snapshot, clipboard)).resolves.toBe(true);
     expect(clipboard.writeText).toHaveBeenCalledWith(
-      expect.stringContaining('"schemaVersion": 2'),
+      expect.stringContaining('"schemaVersion": 3'),
     );
     await expect(copyVoiceDiagnostics(snapshot, null)).resolves.toBe(false);
   });
