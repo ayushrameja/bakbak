@@ -3,6 +3,8 @@ import type { AppSpace } from "../server/app-space";
 import { SidebarGradientPicker } from "./SidebarGradientPicker";
 import {
   resetSpaceSidebarTheme,
+  MAX_CHROME_THEME_TRANSPARENCY,
+  MIN_CHROME_THEME_TRANSPARENCY,
   type SidebarThemeMode,
   type SidebarThemePreferences,
   type SidebarThemeTexture,
@@ -47,7 +49,11 @@ export function SidebarThemeEditor({
 
   return (
     <div className="sidebar-theme-editor">
-      <div className="sidebar-theme-editor__spaces" aria-label="Sidebar space">
+      <div
+        className="sidebar-theme-editor__spaces"
+        role="group"
+        aria-label="Chrome space"
+      >
         {(["server", "personal"] as const).map((space) => (
           <button
             type="button"
@@ -61,23 +67,36 @@ export function SidebarThemeEditor({
         ))}
       </div>
 
-      <SidebarGradientPicker
-        label={SPACE_LABELS[activeSpace]}
-        theme={theme}
-        onChange={updateTheme}
-      />
+      {theme.mode === "glass" ? (
+        <div
+          className="sidebar-theme-editor__glass-preview"
+          role="img"
+          aria-label={`${SPACE_LABELS[activeSpace]} liquid glass preview`}
+        >
+          <span>
+            <strong>Liquid glass</strong>
+            <small>Always transparent. Tune the level below.</small>
+          </span>
+        </div>
+      ) : (
+        <SidebarGradientPicker
+          label={SPACE_LABELS[activeSpace]}
+          theme={theme}
+          onChange={updateTheme}
+        />
+      )}
 
       <div className="sidebar-theme-editor__controls">
         <fieldset className="sidebar-theme-field">
-          <legend>Color</legend>
+          <legend>Chrome appearance</legend>
           <div className="sidebar-theme-segmented">
             <button
               type="button"
-              className={theme.mode === "solid" ? "is-selected" : ""}
-              aria-pressed={theme.mode === "solid"}
-              onClick={() => updateMode("solid")}
+              className={theme.mode === "glass" ? "is-selected" : ""}
+              aria-pressed={theme.mode === "glass"}
+              onClick={() => updateMode("glass")}
             >
-              Solid
+              Glass
             </button>
             <button
               type="button"
@@ -92,36 +111,13 @@ export function SidebarThemeEditor({
 
         <label className="sidebar-theme-range">
           <span>
-            <strong>Shade</strong>
-            <small>
-              {theme.brightness === 0
-                ? "Balanced"
-                : theme.brightness < 0
-                  ? "Darker"
-                  : "Lighter"}
-            </small>
-          </span>
-          <input
-            type="range"
-            min="-35"
-            max="35"
-            value={theme.brightness}
-            aria-label={`${SPACE_LABELS[activeSpace]} shade`}
-            onChange={(event) =>
-              updateTheme({ ...theme, brightness: Number(event.target.value) })
-            }
-          />
-        </label>
-
-        <label className="sidebar-theme-range">
-          <span>
             <strong>Transparency</strong>
             <small>{theme.transparency}%</small>
           </span>
           <input
             type="range"
-            min="0"
-            max="45"
+            min={MIN_CHROME_THEME_TRANSPARENCY}
+            max={MAX_CHROME_THEME_TRANSPARENCY}
             value={theme.transparency}
             aria-label={`${SPACE_LABELS[activeSpace]} transparency`}
             onChange={(event) =>
@@ -133,24 +129,56 @@ export function SidebarThemeEditor({
           />
         </label>
 
-        <fieldset className="sidebar-theme-field">
-          <legend>Texture</legend>
-          <div className="sidebar-theme-segmented">
-            {TEXTURES.map((texture) => (
-              <button
-                type="button"
-                className={theme.texture === texture.value ? "is-selected" : ""}
-                aria-pressed={theme.texture === texture.value}
-                onClick={() =>
-                  updateTheme({ ...theme, texture: texture.value })
+        {theme.mode === "gradient" ? (
+          <>
+            <label className="sidebar-theme-range">
+              <span>
+                <strong>Shade</strong>
+                <small>
+                  {theme.brightness === 0
+                    ? "Balanced"
+                    : theme.brightness < 0
+                      ? "Darker"
+                      : "Lighter"}
+                </small>
+              </span>
+              <input
+                type="range"
+                min="-35"
+                max="35"
+                value={theme.brightness}
+                aria-label={`${SPACE_LABELS[activeSpace]} shade`}
+                onChange={(event) =>
+                  updateTheme({
+                    ...theme,
+                    brightness: Number(event.target.value),
+                  })
                 }
-                key={texture.value}
-              >
-                {texture.label}
-              </button>
-            ))}
-          </div>
-        </fieldset>
+              />
+            </label>
+
+            <fieldset className="sidebar-theme-field">
+              <legend>Texture</legend>
+              <div className="sidebar-theme-segmented">
+                {TEXTURES.map((texture) => (
+                  <button
+                    type="button"
+                    className={
+                      theme.texture === texture.value ? "is-selected" : ""
+                    }
+                    aria-pressed={theme.texture === texture.value}
+                    onClick={() =>
+                      updateTheme({ ...theme, texture: texture.value })
+                    }
+                    key={texture.value}
+                  >
+                    {texture.label}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          </>
+        ) : null}
       </div>
 
       <button
@@ -158,7 +186,7 @@ export function SidebarThemeEditor({
         type="button"
         onClick={() => updateTheme(resetSpaceSidebarTheme(activeSpace))}
       >
-        Reset {SPACE_LABELS[activeSpace]}
+        Reset {SPACE_LABELS[activeSpace]} appearance
       </button>
     </div>
   );

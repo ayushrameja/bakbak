@@ -33,7 +33,19 @@ test("Electron keeps the existing app and supported platform identities", () => 
   assert.match(main, /height: 800/);
   assert.match(main, /minWidth: 1024/);
   assert.match(main, /minHeight: 680/);
-  assert.match(main, /\{ role: "viewMenu" \}/);
+  assert.match(main, /label: "View"/);
+  assert.match(main, /label: "Toggle Sidebar"/);
+  assert.match(main, /accelerator: "CmdOrCtrl\+B"/);
+  assert.match(main, /webContents\.send\("window:toggle-sidebar"\)/);
+  assert.match(main, /trafficLightPosition:\s*\{ x: 16, y: 16 \}/);
+  assert.match(
+    main,
+    /window\.setWindowButtonVisibility\(macWindowControlsVisible\)/,
+  );
+  assert.match(main, /window\.on\("focus"/);
+  assert.match(main, /window\.on\("restore"/);
+  assert.match(main, /window\.on\("leave-full-screen"/);
+  assert.match(preload, /window:set-controls-visible/);
   assert.match(styles, /-webkit-app-region: drag/);
   assert.match(styles, /-webkit-app-region: no-drag/);
 });
@@ -49,4 +61,17 @@ test("the renderer is sandboxed behind a narrow validated preload bridge", () =>
   assert.match(main, /setWindowOpenHandler/);
   assert.match(preload, /contextBridge\.exposeInMainWorld\("bakbakDesktop"/);
   assert.doesNotMatch(preload, /exposeInMainWorld\([^]*ipcRenderer\s*[,}]/);
+});
+
+test("permission requests stay on trusted frames with one fullscreen embed exception", () => {
+  assert.match(main, /details\.isMainFrame/);
+  assert.match(main, /isTrustedRendererUrl\(details\.requestingUrl\)/);
+  assert.match(main, /isTrustedYouTubeEmbedUrl\(details\.requestingUrl\)/);
+  assert.match(main, /permission === "fullscreen"/);
+  assert.match(main, /hostname === "www\.youtube-nocookie\.com"/);
+  assert.match(main, /pathname\.startsWith\("\/embed\/"\)/);
+  assert.match(main, /code: "permission-denied"/);
+  assert.match(main, /code: "policy-blocked"/);
+  assert.match(main, /code: "unknown"/);
+  assert.doesNotMatch(main, /code: "enumeration-failed"/);
 });

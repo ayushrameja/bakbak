@@ -43,17 +43,27 @@ starts with context instead of archaeological guessing.
 - Keep the trusted Electron main/preload code in `electron`, renderer-safe
   bridge types in `src/lib/desktop-runtime.ts`, and bundle resources in
   `build`. The renderer remains sandboxed without Node.js or generic IPC.
-- Use one neutral, system-accent-veiled glass interface with device-local Auto,
-  Light, and Dark choices; Auto follows the operating system and the accent
-  always follows the native OS color. Keep scoped semantic status colors. A
-  48 px app-owned titlebar places the
-  Personal/Bakbak switch at the left and `OG Nahan Gang` at the true center;
-  independently optional channel and member panels occupy an edge-to-edge
-  five-track shell around a flexible conversation canvas, centered settings
-  modal, sidebar call block, and auto-hiding floating voice dock. The renderer
-  uses the locally bundled Roundo family at comfortable 500–700 product
-  weights. A separate multi-server rail remains deferred until multi-server
-  navigation. Plan 0020 adds one bounded Bakbak identity exception: its
+- Use a device-local Auto/Light/Dark canvas with scoped semantic status colors
+  and account-scoped Personal/Bakbak chrome. Glass is the untouched default;
+  the sidebar remains permanently transparent over the current material or
+  translucent gradient while the conversation canvas stays solid and floating
+  controls retain the material. Glass and gradient themes remain available
+  with independent 20–100% transparency and a 100% Glass default. No full renderer titlebar or
+  contextual top bar remains; a compact 30 px main-canvas drag strip provides
+  a reliable grab target.
+  macOS aligns native traffic lights inside the visible sidebar and hides them
+  with it. Main-process state reapplies their visibility across focus, restore,
+  and fullscreen return. Windows uses Window Controls Overlay on the right, and
+  a native-safe overlay supplies one manual sidebar-close control at the visible
+  sidebar's top-right edge. `Cmd/Ctrl+B` or View → Toggle Sidebar restores it
+  after hiding. The 280 px default
+  unified sidebar resizes within 248–340 px, stays mounted and inert at zero
+  width, and reveals a borderless full-window text/voice/share canvas when
+  hidden. Settings remains centered, the sidebar retains its call block, and
+  the global voice dock remains auto-hiding. The renderer uses locally bundled
+  Inter Variable at 400–700 weights. A separate multi-server rail remains
+  deferred until multi-server navigation. Plan 0020 adds one bounded Bakbak
+  identity exception: its
   linked-`bb` native artwork, matching static identity-screen mark,
   theme-responsive logo-free server-header texture, and package-version-backed
   `β · vX.Y.Z` chip remain isolated while ordinary chrome stays neutral.
@@ -303,15 +313,35 @@ Participant circles are 20% larger. Non-LIVE circles stay passive behind an
 above-avatar action tooltip; LIVE alone opens a control-free share stage whose
 media returns to people, with no participant expansion or renderer fullscreen.
 
-The 2026-08-09 sidebar-theme amendment adds device-local, account-scoped
-Personal and Bakbak customization without changing the global light/dark
-canvas or semantic interaction accents. Both spaces support a solid color or
-three-stop gradient, darker/lighter adjustment, bounded transparency, and
-none/dots/grain texture. A skippable one-time post-login prompt uses the same
-editor that remains available in Appearance Settings.
-The follow-up picker uses draggable color points and a preset strip; Electron
-exposes macOS vibrancy or Windows Mica beneath translucent sidebar gradients
-while browser and unsupported-Windows fallback rendering remains opaque.
+Plan 0036 replaces plans 0034/0035's two visible header rows with a native-safe
+Arc-like shell. macOS keeps sidebar-scoped native traffic lights; Windows uses
+Window Controls Overlay. One overlay control, the native View menu, and `Cmd/Ctrl+B` manually
+toggle the mounted sidebar without changing call/share state. Layout v4
+persists its visibility and width, migrates v3/v2/v1, and lets the borderless
+conversation or focused-share canvas fill the window when hidden.
+Plan 0036 also supersedes the 2026-08-09 untouched gradient default and
+one-time setup prompt. Account-scoped chrome-theme v2 defaults both spaces to
+Glass, offers only Glass or translucent Gradient with independent 20–100%
+transparency and a 100% Glass default, and normalizes legacy Solid records to single-color gradients.
+The editor remains in Appearance Settings without onboarding state. Electron
+reports vibrancy/Mica/fallback and reduced-transparency state so inaccessible
+or unsupported glass falls back to an opaque scheme-aware surface without
+filtering message or live-media content. A 2026-08-14 follow-up removes the
+visible shell gutter, canvas border/radius/shadow, and separate default sidebar
+fill so both visible tracks use the complete window without an outer inset.
+A second 2026-08-14 follow-up keeps the sidebar slot permanently transparent,
+removes Solid from Appearance, clamps transparency to 20–100%, and adds a
+compact 30 px main-canvas drag strip without restoring contextual header UI.
+A third 2026-08-14 follow-up makes the sidebar toggle a direct clickable
+no-drag target inside the visible sidebar, removes it with the hidden sidebar,
+aligns and hides macOS traffic lights with the sidebar, promotes untouched 45%
+Glass records to the new 100% default, and rounds the current-user dock.
+Finally, plan 0036 adds typed microphone/screen permission snapshots and
+structured source-enumeration failures. macOS recovery can open the correct
+Privacy Settings and request restart; Windows microphone recovery targets the
+global desktop-app privacy switches and screen capture never claims an
+app-specific permission. Because macOS remains ad-hoc signed, changing builds
+can still lose TCC continuity until Developer ID signing/notarization exists.
 
 The 2026-08-09 Electron shell amendment supersedes Tauri-specific runtime,
 window, capture, packaging, and updater implementation details throughout the
@@ -557,10 +587,32 @@ NSIS invocation so the handoff does not create a second application location.
       clearer room timers, and 345 ms sidebar-only directional motion.
 - [x] Repair plan 0035's tooltip volume path so native range input updates the
       post-attachment LiveKit MediaStream gain for both attenuation and boost.
-- [x] Add account-scoped Personal/Bakbak sidebar themes, a one-time skippable
-      setup prompt, and the reusable Appearance Settings editor.
+- [x] Add account-scoped Personal/Bakbak sidebar themes and the reusable
+      Appearance Settings editor; plan 0036 later retires the setup prompt.
 - [ ] Complete plan 0035's light/dark two-resolution and installed
       macOS/Windows multi-client visual/interaction acceptance matrix.
+- [x] Implement plan 0036's native-overlay shell, Windows Window Controls
+      Overlay, native View-menu shortcut, layout v4 migration, mounted/inert
+      sidebar toggle, accessible main naming, and hidden-sidebar/focused-share
+      full-bleed behavior.
+- [x] Migrate plan 0036 chrome themes to account-scoped v2, make Glass the
+      untouched default, preserve genuinely customized gradients,
+      remove onboarding state/dialog, and expose vibrancy/Mica/opaque fallback
+      capability state.
+- [x] Keep the sidebar slot permanently transparent, remove Solid from the
+      editor, normalize saved Solid records, retain 20–100% transparency in
+      Glass and Gradient, and add the compact main-canvas drag strip.
+- [x] Keep the visible-sidebar close toggle clickable, remove its renderer
+      overlay when hidden, retain `Cmd/Ctrl+B` and View-menu restoration, align
+      and sidebar-scope macOS traffic lights, make 100% the Glass default, and
+      give the current-user dock a rounded raised surface.
+- [x] Add plan 0036's typed microphone/screen permission bridge, explicit
+      capture-action prompt boundary, structured source/capability failures,
+      and platform-correct settings/restart recovery.
+- [ ] Complete plan 0036's installed Apple Silicon macOS and Windows x64
+      window-control, drag, sidebar/call continuity, Glass/fallback, and media
+      permission-recovery acceptance matrix. Ad-hoc macOS TCC grants are not a
+      substitute for later Developer ID signing/notarization.
 
 ### Phase 6 — Distribution
 

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DesktopPermissionError } from "../../lib/desktop-runtime";
 import type { AppUser } from "../../lib/types";
 import { SettingsPage, type SettingsSection } from "./SettingsPage";
 import {
@@ -13,6 +14,11 @@ const giphyState = vi.hoisted(() => ({
   register: vi.fn(),
   resolveProfile: vi.fn(),
 }));
+const permissionState = vi.hoisted(() => ({
+  get: vi.fn(),
+  open: vi.fn(),
+  restart: vi.fn(),
+}));
 
 vi.mock("../../lib/giphy-service", () => ({
   GiphyRateLimitError: class GiphyRateLimitError extends Error {},
@@ -23,6 +29,12 @@ vi.mock("../../lib/giphy-service", () => ({
 
 vi.mock("../../lib/profile-giphy-media", () => ({
   resolveGiphyProfileMedia: giphyState.resolveProfile,
+}));
+
+vi.mock("../voice/screen-share-service", () => ({
+  getPermissionSnapshot: permissionState.get,
+  openPermissionSettings: permissionState.open,
+  restartDesktopApp: permissionState.restart,
 }));
 
 const giphyAsset = {
@@ -157,6 +169,79 @@ describe("SettingsPage", () => {
       coverPosterUrl: null,
       coverAnimationUrl: null,
     });
+    permissionState.get.mockResolvedValue({
+      kind: "microphone",
+      status: "unknown",
+      canRequest: false,
+      canOpenSettings: false,
+      requiresRestart: false,
+    });
+    permissionState.open.mockResolvedValue(true);
+    permissionState.restart.mockResolvedValue(undefined);
+  });
+
+  it("offers typed microphone recovery without prompting on settings open", async () => {
+    permissionState.get.mockResolvedValue({
+      kind: "microphone",
+      status: "denied",
+      canRequest: false,
+      canOpenSettings: true,
+      requiresRestart: true,
+    });
+    renderSettings("audio", {
+      inputError: "Bakbak cannot use the selected microphone.",
+    });
+
+    expect(permissionState.get).toHaveBeenCalledWith("microphone");
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Open microphone settings" }),
+    );
+    expect(permissionState.open).toHaveBeenCalledWith("microphone");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Restart Bakbak" }),
+    );
+    expect(permissionState.restart).toHaveBeenCalledOnce();
+  });
+
+  it("preserves typed recovery when an explicit microphone test is denied", async () => {
+    const permission = {
+      kind: "microphone" as const,
+      status: "denied" as const,
+      canRequest: false,
+      canOpenSettings: true,
+      requiresRestart: true,
+    };
+    permissionState.get.mockResolvedValue(permission);
+    const getUserMedia = vi.fn();
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia },
+    });
+    renderSettings("audio", {
+      onBeginMicrophoneTest: vi
+        .fn()
+        .mockRejectedValue(
+          new DesktopPermissionError(
+            permission,
+            "Allow Bakbak to use the microphone, then restart Bakbak.",
+          ),
+        ),
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Test microphone" }),
+    );
+
+    expect(
+      await screen.findByText(
+        "Allow Bakbak to use the microphone, then restart Bakbak.",
+      ),
+    ).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Open microphone settings" }),
+    );
+    expect(permissionState.open).toHaveBeenCalledWith("microphone");
+    expect(getUserMedia).not.toHaveBeenCalled();
   });
 
   it("reports account cache usage and confirms local clearing", async () => {
@@ -977,41 +1062,60 @@ describe("SettingsPage", () => {
     vi.unstubAllGlobals();
   });
 
-  it("changes the app theme and each space sidebar independently", async () => {
+  it("changes the app theme and each space chrome independently", async () => {
     const onAppearancePreferenceChange = vi.fn();
     const onSidebarThemePreferencesChange =
       vi.fn<(preferences: SidebarThemePreferences) => void>();
-    renderSettings("appearance", {
+    const { props, rerender } = renderSettings("appearance", {
       onAppearancePreferenceChange,
       onSidebarThemePreferencesChange,
     });
 
-    expect(screen.getByText("Sidebar")).toBeVisible();
+    expect(screen.getAllByText("Chrome appearance")[0]).toBeVisible();
     expect(screen.getByRole("radio", { name: /Auto/ })).toBeChecked();
     expect(screen.getByRole("radio", { name: /Dark/ })).not.toBeChecked();
     expect(screen.getByRole("radio", { name: /Light/ })).not.toBeChecked();
     await userEvent.click(screen.getByRole("radio", { name: /Dark/ }));
     expect(onAppearancePreferenceChange).toHaveBeenCalledWith("dark");
     await userEvent.click(screen.getByRole("button", { name: "Personal" }));
+    expect(screen.getByRole("button", { name: "Glass" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.queryByRole("button", { name: "Solid" })).toBeNull();
+    expect(
+      screen.getByRole("slider", { name: "Personal transparency" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("group", { name: "Color presets" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Gradient" }));
+    const gradientPreferences =
+      onSidebarThemePreferencesChange.mock.calls.at(-1)?.[0];
+    expect(gradientPreferences?.spaces.personal.mode).toBe("gradient");
+    rerender(
+      <SettingsPage
+        {...props}
+        sidebarThemePreferences={gradientPreferences!}
+      />,
+    );
     expect(screen.getByRole("group", { name: "Color presets" })).toBeVisible();
     expect(screen.getByLabelText("Personal color 1")).toHaveAttribute(
       "type",
       "color",
     );
     await userEvent.click(screen.getByRole("button", { name: "Dots" }));
-    expect(onSidebarThemePreferencesChange).toHaveBeenCalledOnce();
+    expect(onSidebarThemePreferencesChange).toHaveBeenCalledTimes(2);
     expect(
       onSidebarThemePreferencesChange.mock.calls.at(-1)?.[0].spaces.personal
         .texture,
     ).toBe("dots");
     fireEvent.change(
       screen.getByRole("slider", { name: "Personal transparency" }),
-      { target: { value: "45" } },
+      { target: { value: "70" } },
     );
     expect(
       onSidebarThemePreferencesChange.mock.calls.at(-1)?.[0].spaces.personal
         .transparency,
-    ).toBe(45);
+    ).toBe(70);
     expect(screen.queryByText("Typeface")).not.toBeInTheDocument();
     expect(screen.queryByText("Roundo")).not.toBeInTheDocument();
     expect(screen.getAllByRole("slider")).toHaveLength(2);

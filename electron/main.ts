@@ -24,6 +24,7 @@ const APP_HOST = "bakbak";
 const DEVELOPMENT_URL = "http://127.0.0.1:1420";
 const MAX_UPDATE_TIMEOUT_MS = 10 * 60_000;
 const MIN_UPDATE_TIMEOUT_MS = 1_000;
+const WINDOWS_MICA_MIN_BUILD = 22_621;
 
 interface PreparedCapture {
   sourceId: string;
@@ -37,8 +38,21 @@ interface PreparedCaptureInput {
   includeAudio: boolean;
 }
 
+type PermissionKind = "microphone" | "screen";
+type PermissionStatus =
+  "not-determined" | "granted" | "denied" | "restricted" | "unknown";
+
+interface ScreenShareCapabilities {
+  systemAudioAvailable: boolean;
+  systemAudioUnavailableReason: string | null;
+}
+
+type WindowMaterial = "vibrancy" | "mica" | "fallback";
+
 let mainWindow: BrowserWindow | null = null;
 let preparedCapture: PreparedCapture | null = null;
+let windowMaterial: WindowMaterial = "fallback";
+let macWindowControlsVisible = true;
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -81,6 +95,33 @@ function isTrustedRendererUrl(value: string): boolean {
   }
 }
 
+function isTrustedYouTubeEmbedUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      url.hostname === "www.youtube-nocookie.com" &&
+      url.port === "" &&
+      url.pathname.startsWith("/embed/")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isTrustedYouTubeOrigin(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      url.hostname === "www.youtube-nocookie.com" &&
+      url.port === ""
+    );
+  } catch {
+    return false;
+  }
+}
+
 function assertTrustedSender(event: IpcMainInvokeEvent): BrowserWindow {
   const window = mainWindow;
   const frameUrl = event.senderFrame?.url ?? event.sender.getURL();
@@ -94,6 +135,58 @@ function assertTrustedSender(event: IpcMainInvokeEvent): BrowserWindow {
     throw new Error("Rejected desktop request from an untrusted renderer.");
   }
   return window;
+}
+
+function windowsBuildNumber(): number {
+  if (process.platform !== "win32") return 0;
+  const match = process.getSystemVersion().match(/(?:^|\.)(\d+)$/);
+  return match?.[1] ? Number(match[1]) : 0;
+}
+
+function reducedTransparencyRequested(): boolean {
+  try {
+    return nativeTheme.prefersReducedTransparency;
+  } catch {
+    return false;
+  }
+}
+
+function opaqueMaterialRequired(): boolean {
+  return (
+    reducedTransparencyRequested() || nativeTheme.shouldUseHighContrastColors
+  );
+}
+
+function windowAppearance() {
+  return {
+    material: opaqueMaterialRequired() ? "fallback" : windowMaterial,
+    reducedTransparency: reducedTransparencyRequested(),
+  };
+}
+
+function setChromeScheme(window: BrowserWindow, scheme: unknown): void {
+  if (scheme !== "light" && scheme !== "dark") {
+    throw new Error("Invalid window chrome scheme.");
+  }
+  if (process.platform !== "win32") return;
+  window.setTitleBarOverlay({
+    color: "#00000000",
+    symbolColor: scheme === "dark" ? "#f5f5f3" : "#1b1b19",
+    height: 40,
+  });
+}
+
+function applyMacWindowControlsVisibility(window: BrowserWindow): void {
+  if (process.platform !== "darwin" || window.isDestroyed()) return;
+  window.setWindowButtonVisibility(macWindowControlsVisible);
+}
+
+function setMacWindowControlsVisibility(
+  window: BrowserWindow,
+  visible: boolean,
+): void {
+  macWindowControlsVisible = visible;
+  applyMacWindowControlsVisibility(window);
 }
 
 function parseTimeout(value: unknown): number {
@@ -133,6 +226,133 @@ function validatedExternalUrl(value: unknown): string {
   return parsed.toString();
 }
 
+function validatedPermissionKind(value: unknown): PermissionKind {
+  if (value !== "microphone" && value !== "screen") {
+    throw new Error("Invalid media permission kind.");
+  }
+  return value;
+}
+
+function normalizePermissionStatus(value: unknown): PermissionStatus {
+  switch (value) {
+    case "not-determined":
+    case "granted":
+    case "denied":
+    case "restricted":
+    case "unknown":
+      return value;
+    default:
+      return "unknown";
+  }
+}
+
+function getPermissionStatus(kind: PermissionKind): PermissionStatus {
+  try {
+    return normalizePermissionStatus(
+      systemPreferences.getMediaAccessStatus(kind),
+    );
+  } catch {
+    return "unknown";
+  }
+}
+
+function permissionSnapshot(kind: PermissionKind) {
+  const status = getPermissionStatus(kind);
+  const denied = status === "denied";
+  return {
+    kind,
+    status,
+    canRequest:
+      process.platform === "darwin" &&
+      kind === "microphone" &&
+      status === "not-determined",
+    canOpenSettings:
+      denied &&
+      (process.platform === "darwin" ||
+        (process.platform === "win32" && kind === "microphone")),
+    requiresRestart: process.platform === "darwin" && denied,
+  };
+}
+
+function screenShareCapabilities(): ScreenShareCapabilities {
+  if (process.platform === "win32") {
+    return {
+      systemAudioAvailable: true,
+      systemAudioUnavailableReason: null,
+    };
+  }
+  return {
+    systemAudioAvailable: false,
+    systemAudioUnavailableReason:
+      "System audio sharing is unavailable on macOS; video sharing still works.",
+  };
+}
+
+function screenShareSourceFailure(permissionStatus: PermissionStatus) {
+  const capabilities = screenShareCapabilities();
+  if (process.platform === "darwin" && permissionStatus === "denied") {
+    return {
+      ok: false as const,
+      sources: [] as [],
+      permissionStatus,
+      ...capabilities,
+      failure: {
+        code: "permission-denied" as const,
+        message:
+          "Allow Bakbak in macOS Privacy & Security > Screen Recording, then restart Bakbak.",
+        canOpenSettings: true,
+        restartRequired: true,
+      },
+    };
+  }
+  if (permissionStatus === "restricted") {
+    return {
+      ok: false as const,
+      sources: [] as [],
+      permissionStatus,
+      ...capabilities,
+      failure: {
+        code: "policy-blocked" as const,
+        message:
+          process.platform === "darwin"
+            ? "Screen recording is restricted by macOS or your device policy."
+            : "Screen capture is blocked by Windows or your device policy.",
+        canOpenSettings: false,
+        restartRequired: false,
+      },
+    };
+  }
+  return {
+    ok: false as const,
+    sources: [] as [],
+    permissionStatus,
+    ...capabilities,
+    failure: {
+      code: "unknown" as const,
+      message:
+        process.platform === "win32"
+          ? "Bakbak could not list screens or applications. Windows has no Bakbak-specific screen-capture permission; retry, or check device policy if this continues."
+          : "Bakbak could not list screens or applications. Retry, or restart Bakbak if macOS access changed while it was open.",
+      canOpenSettings: false,
+      restartRequired: false,
+    },
+  };
+}
+
+async function openPermissionSettings(kind: PermissionKind): Promise<boolean> {
+  const url =
+    process.platform === "darwin"
+      ? kind === "microphone"
+        ? "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+        : "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+      : kind === "microphone"
+        ? "ms-settings:privacy-microphone"
+        : null;
+  if (!url) return false;
+  await shell.openExternal(url);
+  return true;
+}
+
 function currentSystemAccent(): {
   red: number;
   green: number;
@@ -158,12 +378,10 @@ function currentSystemAccent(): {
 function emitSystemAccent(): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("system-accent:changed", currentSystemAccent());
-  }
-}
-
-function emitMaximized(window: BrowserWindow): void {
-  if (!window.isDestroyed()) {
-    window.webContents.send("window:maximized-changed", window.isMaximized());
+    mainWindow.webContents.send(
+      "window:appearance-changed",
+      windowAppearance(),
+    );
   }
 }
 
@@ -185,20 +403,20 @@ function configureUpdater(): void {
 }
 
 function registerIpcHandlers(): void {
-  ipcMain.handle("window:minimize", (event) => {
-    assertTrustedSender(event).minimize();
+  ipcMain.handle("window:get-appearance", (event) => {
+    assertTrustedSender(event);
+    return windowAppearance();
   });
-  ipcMain.handle("window:toggle-maximize", (event) => {
+  ipcMain.handle("window:set-chrome-scheme", (event, scheme: unknown) => {
+    setChromeScheme(assertTrustedSender(event), scheme);
+  });
+  ipcMain.handle("window:set-controls-visible", (event, visible: unknown) => {
     const window = assertTrustedSender(event);
-    if (window.isMaximized()) window.unmaximize();
-    else window.maximize();
+    if (typeof visible !== "boolean") {
+      throw new Error("Invalid window controls visibility.");
+    }
+    setMacWindowControlsVisibility(window, visible);
   });
-  ipcMain.handle("window:close", (event) => {
-    assertTrustedSender(event).close();
-  });
-  ipcMain.handle("window:is-maximized", (event) =>
-    assertTrustedSender(event).isMaximized(),
-  );
   ipcMain.handle("system-accent:get", (event) => {
     assertTrustedSender(event);
     return currentSystemAccent();
@@ -212,35 +430,88 @@ function registerIpcHandlers(): void {
     app.relaunch();
     app.exit(0);
   });
-  ipcMain.handle("app:open-screen-recording-settings", async (event) => {
+  ipcMain.handle("permissions:get", (event, rawKind: unknown) => {
     assertTrustedSender(event);
-    const url =
-      process.platform === "darwin"
-        ? "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
-        : "ms-settings:privacy-screenshots";
-    await shell.openExternal(url);
+    return permissionSnapshot(validatedPermissionKind(rawKind));
+  });
+  ipcMain.handle("permissions:request-microphone", async (event) => {
+    assertTrustedSender(event);
+    if (
+      process.platform === "darwin" &&
+      getPermissionStatus("microphone") === "not-determined"
+    ) {
+      try {
+        const granted = await systemPreferences.askForMediaAccess("microphone");
+        if (granted) {
+          return {
+            ...permissionSnapshot("microphone"),
+            status: "granted" as const,
+            canRequest: false,
+            canOpenSettings: false,
+            requiresRestart: false,
+          };
+        }
+      } catch {
+        // The snapshot below remains the renderer's normalized recovery path.
+      }
+    }
+    return permissionSnapshot("microphone");
+  });
+  ipcMain.handle(
+    "permissions:open-settings",
+    async (event, rawKind: unknown) => {
+      assertTrustedSender(event);
+      return openPermissionSettings(validatedPermissionKind(rawKind));
+    },
+  );
+  ipcMain.handle("screen-share:get-capabilities", (event) => {
+    assertTrustedSender(event);
+    return screenShareCapabilities();
   });
   ipcMain.handle("screen-share:list-sources", async (event) => {
     assertTrustedSender(event);
-    const sources = await desktopCapturer.getSources({
-      types: ["screen", "window"],
-      fetchWindowIcons: true,
-      thumbnailSize: { width: 320, height: 180 },
-    });
-    return sources.map((source) => {
-      const display = source.id.startsWith("screen:");
+    const initialPermissionStatus = getPermissionStatus("screen");
+    if (
+      process.platform === "darwin" &&
+      (initialPermissionStatus === "denied" ||
+        initialPermissionStatus === "restricted")
+    ) {
+      return screenShareSourceFailure(initialPermissionStatus);
+    }
+    try {
+      const sources = await desktopCapturer.getSources({
+        types: ["screen", "window"],
+        fetchWindowIcons: true,
+        thumbnailSize: { width: 320, height: 180 },
+      });
+      const capabilities = screenShareCapabilities();
       return {
-        id: source.id,
-        kind: display ? "display" : "application",
-        label: source.name,
-        applicationLabel: display ? null : source.name,
-        audioAvailable: true,
-        audioUnavailableReason: null,
-        thumbnailDataUrl: source.thumbnail.isEmpty()
-          ? null
-          : source.thumbnail.toDataURL(),
+        ok: true as const,
+        sources: sources.map((source) => {
+          const display = source.id.startsWith("screen:");
+          const audioAvailable = capabilities.systemAudioAvailable && display;
+          return {
+            id: source.id,
+            kind: display ? ("display" as const) : ("application" as const),
+            label: source.name,
+            applicationLabel: display ? null : source.name,
+            audioAvailable,
+            audioUnavailableReason: audioAvailable
+              ? null
+              : (capabilities.systemAudioUnavailableReason ??
+                "Bakbak cannot isolate audio to one application; share an entire screen to include system audio."),
+            thumbnailDataUrl: source.thumbnail.isEmpty()
+              ? null
+              : source.thumbnail.toDataURL(),
+          };
+        }),
+        permissionStatus: getPermissionStatus("screen"),
+        ...capabilities,
+        failure: null,
       };
-    });
+    } catch {
+      return screenShareSourceFailure(getPermissionStatus("screen"));
+    }
   });
   ipcMain.handle(
     "screen-share:prepare",
@@ -251,7 +522,10 @@ function registerIpcHandlers(): void {
         typeof input.sourceId !== "string" ||
         input.sourceId.length < 1 ||
         input.sourceId.length > 256 ||
-        typeof input.includeAudio !== "boolean"
+        typeof input.includeAudio !== "boolean" ||
+        (input.includeAudio &&
+          (!screenShareCapabilities().systemAudioAvailable ||
+            !input.sourceId.startsWith("screen:")))
       ) {
         throw new Error("Invalid screen-share selection.");
       }
@@ -307,15 +581,52 @@ function configureSession(): void {
   ]);
 
   currentSession.setPermissionCheckHandler(
-    (webContents, permission, requestingOrigin) =>
-      trustedWebContents(webContents) &&
-      isTrustedRendererUrl(requestingOrigin) &&
-      allowedPermissions.has(permission),
+    (webContents, permission, requestingOrigin, details) => {
+      if (
+        !trustedWebContents(webContents) ||
+        !allowedPermissions.has(permission)
+      ) {
+        return false;
+      }
+      if (details.isMainFrame) {
+        return (
+          isTrustedRendererUrl(requestingOrigin) &&
+          Boolean(
+            details.requestingUrl &&
+            isTrustedRendererUrl(details.requestingUrl),
+          ) &&
+          (!details.securityOrigin ||
+            isTrustedRendererUrl(details.securityOrigin))
+        );
+      }
+      return (
+        permission === "fullscreen" &&
+        isTrustedYouTubeOrigin(requestingOrigin) &&
+        Boolean(
+          details.embeddingOrigin &&
+          isTrustedRendererUrl(details.embeddingOrigin),
+        )
+      );
+    },
   );
   currentSession.setPermissionRequestHandler(
-    (webContents, permission, callback) => {
+    (webContents, permission, callback, details) => {
+      const trustedMainFrame =
+        details.isMainFrame && isTrustedRendererUrl(details.requestingUrl);
+      const trustedEmbedFullscreen =
+        permission === "fullscreen" &&
+        !details.isMainFrame &&
+        isTrustedYouTubeEmbedUrl(details.requestingUrl);
+      const trustedMediaOrigin =
+        permission !== "media" ||
+        !("securityOrigin" in details) ||
+        !details.securityOrigin ||
+        isTrustedRendererUrl(details.securityOrigin);
       callback(
-        trustedWebContents(webContents) && allowedPermissions.has(permission),
+        trustedWebContents(webContents) &&
+          allowedPermissions.has(permission) &&
+          trustedMediaOrigin &&
+          (trustedMainFrame || trustedEmbedFullscreen),
       );
     },
   );
@@ -352,7 +663,11 @@ function configureSession(): void {
           }
           callback({
             video: source,
-            ...(capture.includeAudio ? { audio: "loopback" as const } : {}),
+            ...(capture.includeAudio &&
+            screenShareCapabilities().systemAudioAvailable &&
+            source.id.startsWith("screen:")
+              ? { audio: "loopback" as const }
+              : {}),
           });
         })
         .catch(() => callback({}));
@@ -392,13 +707,37 @@ function installApplicationMenu(): void {
   const template: MenuItemConstructorOptions[] = [
     ...(process.platform === "darwin" ? [{ role: "appMenu" as const }] : []),
     { role: "editMenu" },
-    { role: "viewMenu" },
+    {
+      label: "View",
+      submenu: [
+        {
+          label: "Toggle Sidebar",
+          accelerator: "CmdOrCtrl+B",
+          click: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send("window:toggle-sidebar");
+            }
+          },
+        },
+        { type: "separator" },
+        { role: "reload" },
+        { role: "forceReload" },
+        { role: "toggleDevTools" },
+        { type: "separator" },
+        { role: "resetZoom" },
+        { role: "zoomIn" },
+        { role: "zoomOut" },
+        { type: "separator" },
+        { role: "togglefullscreen" },
+      ],
+    },
     { role: "windowMenu" },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 function createMainWindow(): BrowserWindow {
+  macWindowControlsVisible = true;
   const preload = fileURLToPath(new URL("./preload.cjs", import.meta.url));
   const window = new BrowserWindow({
     title: "Bakbak",
@@ -413,11 +752,18 @@ function createMainWindow(): BrowserWindow {
     ...(process.platform === "darwin"
       ? {
           titleBarStyle: "hiddenInset" as const,
-          trafficLightPosition: { x: 16, y: 20 },
+          trafficLightPosition: { x: 16, y: 16 },
           vibrancy: "under-window" as const,
           visualEffectState: "active" as const,
         }
-      : { frame: false }),
+      : {
+          titleBarStyle: "hidden" as const,
+          titleBarOverlay: {
+            color: "#00000000",
+            symbolColor: "#f5f5f3",
+            height: 40,
+          },
+        }),
     webPreferences: {
       preload,
       contextIsolation: true,
@@ -430,12 +776,31 @@ function createMainWindow(): BrowserWindow {
     },
   });
 
-  if (process.platform === "win32") {
-    window.setBackgroundMaterial("mica");
+  if (
+    process.platform === "win32" &&
+    windowsBuildNumber() >= WINDOWS_MICA_MIN_BUILD &&
+    !opaqueMaterialRequired()
+  ) {
+    try {
+      window.setBackgroundMaterial("mica");
+      windowMaterial = "mica";
+    } catch {
+      windowMaterial = "fallback";
+    }
+  } else if (process.platform === "darwin") {
+    windowMaterial = opaqueMaterialRequired() ? "fallback" : "vibrancy";
+  } else {
+    windowMaterial = "fallback";
   }
-  window.once("ready-to-show", () => window.show());
-  window.on("maximize", () => emitMaximized(window));
-  window.on("unmaximize", () => emitMaximized(window));
+  window.once("ready-to-show", () => {
+    window.show();
+    applyMacWindowControlsVisibility(window);
+  });
+  window.on("focus", () => applyMacWindowControlsVisibility(window));
+  window.on("restore", () => applyMacWindowControlsVisibility(window));
+  window.on("leave-full-screen", () =>
+    applyMacWindowControlsVisibility(window),
+  );
   window.on("closed", () => {
     if (mainWindow === window) mainWindow = null;
   });

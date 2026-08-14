@@ -11,6 +11,10 @@ import {
 } from "vitest";
 import type { AppUser, Channel } from "../../lib/types";
 import {
+  DesktopPermissionError,
+  type BakbakDesktopBridge,
+} from "../../lib/desktop-runtime";
+import {
   MAX_CONCURRENT_SOUNDS_PER_USER,
   clampSoundboardActivities,
 } from "../soundboard/limits";
@@ -26,7 +30,10 @@ import {
 import { AudioOutputRouter } from "./audio-output-router";
 import { SPEECH_MICROPHONE_TRACK_NAME } from "./microphone-publication";
 import { RemoteAudioRenderer } from "./remote-audio";
-import type { ScreenShareLifecycleEvent } from "./screen-share-service";
+import {
+  ScreenShareCaptureError,
+  type ScreenShareLifecycleEvent,
+} from "./screen-share-service";
 import {
   OUTPUT_DEVICE_NOTICE_DURATION_MS,
   MAX_SUBSCRIPTION_RECOVERY_ATTEMPTS,
@@ -98,6 +105,7 @@ const screenShareState = vi.hoisted(() => ({
   desktop: false,
   getCapabilities: vi.fn(),
   listSources: vi.fn(),
+  requestMicrophone: vi.fn(),
   start: vi.fn(),
   update: vi.fn(),
   stop: vi.fn(),
@@ -393,6 +401,8 @@ vi.mock("./screen-share-service", () => ({
         code: string;
         message: string;
         recommendedRetrySource: "display" | null;
+        canOpenSettings: boolean;
+        restartRequired: boolean;
       },
     ) {
       super(failure.message);
@@ -401,6 +411,7 @@ vi.mock("./screen-share-service", () => ({
   isDesktopApp: () => screenShareState.desktop,
   getScreenShareCapabilities: screenShareState.getCapabilities,
   listScreenShareSources: screenShareState.listSources,
+  requestMicrophonePermission: screenShareState.requestMicrophone,
   startScreenShare: screenShareState.start,
   updateScreenShareSettings: screenShareState.update,
   stopScreenShare: screenShareState.stop,
@@ -504,6 +515,7 @@ const tokenResponse = {
 describe("useVoiceRoom join lifecycle", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    Reflect.deleteProperty(window, "bakbakDesktop");
     void liveKitState.connectResults.splice(0);
     liveKitState.rooms.splice(0);
     liveKitState.instances.splice(0);
@@ -513,7 +525,22 @@ describe("useVoiceRoom join lifecycle", () => {
     screenShareState.desktop = false;
     screenShareState.getCapabilities.mockReset();
     screenShareState.listSources.mockReset();
-    screenShareState.listSources.mockResolvedValue([]);
+    screenShareState.listSources.mockResolvedValue({
+      ok: true,
+      sources: [],
+      permissionStatus: "granted",
+      systemAudioAvailable: false,
+      systemAudioUnavailableReason: null,
+      failure: null,
+    });
+    screenShareState.requestMicrophone.mockReset();
+    screenShareState.requestMicrophone.mockResolvedValue({
+      kind: "microphone",
+      status: "granted",
+      canRequest: false,
+      canOpenSettings: false,
+      requiresRestart: false,
+    });
     screenShareState.getCapabilities.mockResolvedValue({
       available: false,
       nativeCapture: false,
@@ -531,6 +558,7 @@ describe("useVoiceRoom join lifecycle", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    Reflect.deleteProperty(window, "bakbakDesktop");
   });
 
   it("shows configured Studio processing as ready while disconnected", () => {
@@ -675,6 +703,55 @@ describe("useVoiceRoom join lifecycle", () => {
       await result.current.leave();
     });
     expect(effects).toHaveBeenLastCalledWith({ type: "voice-self-left" });
+  });
+
+  it("requests microphone access on a join and a fresh rejoin", async () => {
+    supabaseState.invoke
+      .mockResolvedValueOnce(tokenResponse)
+      .mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+
+    await act(async () => {
+      await result.current.join(lounge);
+      await result.current.leave();
+      await result.current.join(lounge);
+    });
+
+    expect(screenShareState.requestMicrophone).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses Windows desktop-microphone recovery copy and skips capture when denied", async () => {
+    window.bakbakDesktop = {
+      platform: "windows",
+    } as unknown as BakbakDesktopBridge;
+    screenShareState.requestMicrophone.mockResolvedValueOnce({
+      kind: "microphone",
+      status: "denied",
+      canRequest: false,
+      canOpenSettings: true,
+      requiresRestart: false,
+    });
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+
+    expect(liveKitState.createLocalAudioTrack).not.toHaveBeenCalled();
+    expect(result.current.error).toContain(
+      "Let desktop apps access your microphone",
+    );
+    expect(result.current.inputDeviceError).toContain(
+      "Let desktop apps access your microphone",
+    );
+    expect(result.current.microphonePermission).toEqual({
+      kind: "microphone",
+      status: "denied",
+      canRequest: false,
+      canOpenSettings: true,
+      requiresRestart: false,
+    });
   });
 
   it("baselines the initial roster, filters share companions, and reports later room events", async () => {
@@ -1363,6 +1440,8 @@ describe("useVoiceRoom join lifecycle", () => {
           code: "audio-isolation-unavailable",
           message: reason,
           recommendedRetrySource: null,
+          canOpenSettings: false,
+          restartRequired: false,
         },
       });
     });
@@ -1447,6 +1526,44 @@ describe("useVoiceRoom join lifecycle", () => {
     expect(result.current.screenShareError).toBe(
       "macOS started capture but did not deliver a video frame.",
     );
+  });
+
+  it("keeps structured source recovery when native capture cannot start", async () => {
+    const failure = {
+      code: "permission-denied" as const,
+      message: "Allow Bakbak in Screen Recording, then restart Bakbak.",
+      recommendedRetrySource: null,
+      canOpenSettings: true,
+      restartRequired: true,
+    };
+    screenShareState.desktop = true;
+    screenShareState.getCapabilities.mockResolvedValue({
+      available: true,
+      nativeCapture: true,
+      systemAudio: false,
+      reason: null,
+    });
+    screenShareState.start.mockRejectedValueOnce(
+      new ScreenShareCaptureError(failure),
+    );
+    supabaseState.invoke
+      .mockResolvedValueOnce(tokenResponse)
+      .mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    await waitFor(() => expect(result.current.screenShareAvailable).toBe(true));
+    await act(async () => {
+      await result.current.startScreenShare(false, {
+        resolution: 1080,
+        frameRate: 60,
+      });
+    });
+
+    expect(result.current.screenShareError).toBe(failure.message);
+    expect(result.current.screenShareFailure).toEqual(failure);
   });
 
   it("rolls a failed live quality change back without ending the share", async () => {
@@ -1948,6 +2065,7 @@ describe("useVoiceRoom join lifecycle", () => {
     await act(async () => {
       restoreCallAudio = await result.current.beginMicrophoneTest();
     });
+    expect(screenShareState.requestMicrophone).toHaveBeenCalledTimes(2);
     expect(result.current.muted).toBe(true);
     expect(result.current.deafened).toBe(true);
 
@@ -1956,6 +2074,31 @@ describe("useVoiceRoom join lifecycle", () => {
     });
     expect(result.current.muted).toBe(false);
     expect(result.current.deafened).toBe(false);
+  });
+
+  it("preserves the typed snapshot when a Studio mic test is denied", async () => {
+    const denied = {
+      kind: "microphone" as const,
+      status: "denied" as const,
+      canRequest: false,
+      canOpenSettings: true,
+      requiresRestart: true,
+    };
+    screenShareState.requestMicrophone.mockResolvedValueOnce(denied);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+
+    let caught: unknown;
+    await act(async () => {
+      try {
+        await result.current.beginMicrophoneTest();
+      } catch (error) {
+        caught = error;
+      }
+    });
+
+    expect(caught).toBeInstanceOf(DesktopPermissionError);
+    expect((caught as DesktopPermissionError).permission).toEqual(denied);
+    expect(result.current.microphonePermission).toEqual(denied);
   });
 
   it("restores pre-existing mute and deafen after controls change during a Studio test", async () => {

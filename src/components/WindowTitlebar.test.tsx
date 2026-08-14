@@ -1,82 +1,32 @@
-import { act, render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
-import type { WindowChromeAdapter } from "../lib/window-chrome";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { BakbakDesktopBridge } from "../lib/desktop-runtime";
 import { WindowTitlebar } from "./WindowTitlebar";
 
-function createAdapter(
-  platform: WindowChromeAdapter["platform"],
-  initiallyMaximized = false,
-) {
-  let maximizedListener: ((maximized: boolean) => void) | undefined;
-  const minimize = vi.fn(() => Promise.resolve());
-  const toggleMaximize = vi.fn(() => Promise.resolve());
-  const close = vi.fn(() => Promise.resolve());
-  const startDragging = vi.fn(() => Promise.resolve());
-  const onMaximizedChange: WindowChromeAdapter["onMaximizedChange"] = vi.fn(
-    (listener: (maximized: boolean) => void) => {
-      maximizedListener = listener;
-      return Promise.resolve(vi.fn());
-    },
-  );
-  const adapter: WindowChromeAdapter = {
-    platform,
-    minimize,
-    toggleMaximize,
-    close,
-    startDragging,
-    isMaximized: vi.fn(() => Promise.resolve(initiallyMaximized)),
-    onMaximizedChange,
-  };
-  return {
-    adapter,
-    emitMaximized: (next: boolean) => maximizedListener?.(next),
-    spies: { minimize, toggleMaximize, close, startDragging },
-  };
-}
-
-function renderTitlebar(adapter: WindowChromeAdapter) {
-  return render(<WindowTitlebar showSpaceSwitcher chromeAdapter={adapter} />);
+function renderTitlebar(platform: "macos" | "windows" | "web") {
+  return render(<WindowTitlebar showSpaceSwitcher platform={platform} />);
 }
 
 describe("WindowTitlebar", () => {
-  it("controls and drags an undecorated Windows window", async () => {
-    const { adapter, emitMaximized, spies } = createAdapter("windows");
-    renderTitlebar(adapter);
-    await userEvent.click(
-      screen.getByRole("button", { name: "Minimize window" }),
-    );
-    await userEvent.click(
-      screen.getByRole("button", { name: "Maximize window" }),
-    );
-    await userEvent.click(screen.getByRole("button", { name: "Close window" }));
-    expect(spies.minimize).toHaveBeenCalledOnce();
-    expect(spies.toggleMaximize).toHaveBeenCalledOnce();
-    expect(spies.close).toHaveBeenCalledOnce();
-
-    act(() => emitMaximized(true));
-    expect(
-      await screen.findByRole("button", { name: "Restore window" }),
-    ).toBeVisible();
+  afterEach(() => {
+    Reflect.deleteProperty(window, "bakbakDesktop");
   });
 
-  it.each(["macos", "web"] as const)(
-    "keeps custom window controls out of the %s titlebar",
+  it.each(["macos", "windows", "web"] as const)(
+    "leaves native window controls to the %s shell",
     (platform) => {
-      const { adapter } = createAdapter(platform);
-      renderTitlebar(adapter);
+      renderTitlebar(platform);
       expect(
         screen.queryByRole("group", { name: "Window controls" }),
       ).toBeNull();
     },
   );
 
-  it("keeps the titlebar center empty and moves space navigation out of chrome", () => {
-    const { adapter } = createAdapter("macos");
-    const { container } = renderTitlebar(adapter);
-    expect(
-      container.querySelector(".window-titlebar__center"),
-    ).toBeEmptyDOMElement();
+  it("renders only a non-layout drag region before the signed-in shell", () => {
+    const { container } = renderTitlebar("macos");
+    expect(container.querySelector(".window-titlebar__drag")).not.toBeNull();
+    expect(container.querySelector("header")).toBeNull();
     expect(
       screen.queryByRole("navigation", { name: "Bakbak spaces" }),
     ).toBeNull();
@@ -84,47 +34,103 @@ describe("WindowTitlebar", () => {
       "data-platform",
       "macos",
     );
+    expect(container.querySelector(".window-titlebar")).not.toHaveAttribute(
+      "data-sidebar-visible",
+    );
   });
 
-  it("keeps only one sidebar visibility control in the leading chrome", async () => {
-    const onToggleLeftPanel = vi.fn();
-    const { adapter } = createAdapter("web");
+  it("keeps one keyboard-described sidebar visibility control", async () => {
+    const onToggleSidebar = vi.fn();
     render(
       <WindowTitlebar
         showSpaceSwitcher
         panelControls={{
-          leftPanelVisible: true,
+          sidebarVisible: true,
           disabled: false,
-          onToggleLeftPanel,
+          onToggleSidebar,
         }}
-        chromeAdapter={adapter}
+        platform="web"
       />,
     );
-    expect(screen.queryByRole("button", { name: /member panel/i })).toBeNull();
-    expect(
-      screen
-        .getByRole("button", { name: "Hide channel panel" })
-        .closest(".window-titlebar__leading"),
-    ).not.toBeNull();
-    expect(
-      screen
-        .getByRole("button", { name: "Hide channel panel" })
-        .closest(".window-titlebar__trailing"),
-    ).toBeNull();
-    await userEvent.click(
-      screen.getByRole("button", { name: "Hide channel panel" }),
+
+    const toggle = screen.getByRole("button", { name: "Hide sidebar" });
+    expect(toggle.closest(".window-titlebar")).toHaveAttribute(
+      "data-sidebar-visible",
+      "true",
     );
-    expect(onToggleLeftPanel).toHaveBeenCalledOnce();
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(toggle).toHaveAttribute("aria-keyshortcuts", "Meta+B Control+B");
+    expect(toggle).toHaveAttribute("aria-controls", "context-panel");
+    await userEvent.click(toggle);
+    expect(onToggleSidebar).toHaveBeenCalledOnce();
   });
 
-  it("keeps the pre-shell titlebar free of status and navigation", () => {
-    const { adapter } = createAdapter("web");
-    render(
-      <WindowTitlebar showSpaceSwitcher={false} chromeAdapter={adapter} />,
+  it("removes the sidebar control when the sidebar is hidden", () => {
+    const { container } = render(
+      <WindowTitlebar
+        showSpaceSwitcher
+        panelControls={{
+          sidebarVisible: false,
+          disabled: false,
+          onToggleSidebar: vi.fn(),
+        }}
+        platform="macos"
+      />,
     );
+
+    expect(screen.queryByRole("button", { name: "Show sidebar" })).toBeNull();
     expect(
-      document.querySelector(".window-titlebar__center"),
-    ).toBeEmptyDOMElement();
-    expect(screen.queryByRole("group", { name: "Panel controls" })).toBeNull();
+      screen.queryByRole("group", { name: "Sidebar controls" }),
+    ).toBeNull();
+    expect(container.querySelector(".window-titlebar")).toHaveAttribute(
+      "data-sidebar-visible",
+      "false",
+    );
+  });
+
+  it("hides native traffic lights without rendering a reopen control", async () => {
+    const setWindowControlsVisible = vi.fn().mockResolvedValue(undefined);
+    window.bakbakDesktop = {
+      platform: "macos",
+      window: { setWindowControlsVisible },
+    } as unknown as BakbakDesktopBridge;
+
+    render(
+      <WindowTitlebar
+        showSpaceSwitcher
+        panelControls={{
+          sidebarVisible: false,
+          disabled: false,
+          onToggleSidebar: vi.fn(),
+        }}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(setWindowControlsVisible).toHaveBeenCalledWith(false),
+    );
+    expect(screen.queryByRole("button", { name: "Show sidebar" })).toBeNull();
+  });
+
+  it("keeps the pre-shell overlay free of controls and navigation", () => {
+    render(<WindowTitlebar showSpaceSwitcher={false} platform="web" />);
+    expect(
+      screen.queryByRole("group", { name: "Sidebar controls" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("navigation", { name: "Bakbak spaces" }),
+    ).toBeNull();
+  });
+
+  it("places a separate localized scrim behind native Windows controls", () => {
+    const { container } = renderTitlebar("windows");
+    expect(
+      container.querySelector(".window-controls-overlay-scrim"),
+    ).not.toBeNull();
+    expect(
+      container.querySelector(
+        ".window-titlebar .window-controls-overlay-scrim",
+      ),
+    ).toBeNull();
   });
 });

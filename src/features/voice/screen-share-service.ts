@@ -7,7 +7,15 @@ import {
   createLocalScreenTracks,
   type LocalAudioTrack,
 } from "livekit-client";
-import { getDesktopBridge, isDesktopRuntime } from "../../lib/desktop-runtime";
+import {
+  getDesktopBridge,
+  isDesktopRuntime,
+  type DesktopPermissionKind,
+  type DesktopPermissionSnapshot,
+  type DesktopScreenShareSource,
+  type DesktopScreenShareSourceFailure,
+  type DesktopScreenShareSourceResult,
+} from "../../lib/desktop-runtime";
 import {
   DEFAULT_SCREEN_SHARE_SETTINGS,
   SCREEN_SHARE_FRAME_RATES,
@@ -32,15 +40,20 @@ export type ScreenShareLifecycleState =
 
 export type ScreenShareSourceKind = "display" | "window" | "application";
 export type ScreenShareFailureCode =
+  | "permission-denied"
+  | "policy-blocked"
+  | "capture-unavailable"
+  | "unknown"
   | "capture-black"
   | "cursor-unavailable"
-  | "audio-isolation-unavailable"
-  | "capture-failed";
+  | "audio-isolation-unavailable";
 
 export interface ScreenShareFailure {
   code: ScreenShareFailureCode;
   message: string;
   recommendedRetrySource: "display" | null;
+  canOpenSettings: boolean;
+  restartRequired: boolean;
 }
 
 export interface ScreenShareDiagnostics {
@@ -65,15 +78,9 @@ export interface ScreenShareCapabilities {
   reason: string | null;
 }
 
-export interface ScreenShareSource {
-  id: string;
-  kind: Extract<ScreenShareSourceKind, "display" | "application">;
-  label: string;
-  applicationLabel: string | null;
-  audioAvailable: boolean;
-  audioUnavailableReason: string | null;
-  thumbnailDataUrl: string | null;
-}
+export type ScreenShareSource = DesktopScreenShareSource;
+export type ScreenShareSourceListFailure = DesktopScreenShareSourceFailure;
+export type ScreenShareSourceListResult = DesktopScreenShareSourceResult;
 
 export interface StartScreenShareInput {
   serverUrl: string;
@@ -130,9 +137,10 @@ export function isDesktopApp(): boolean {
   return isDesktopRuntime();
 }
 
-export function getScreenShareCapabilities(): Promise<ScreenShareCapabilities> {
-  if (!isDesktopRuntime()) {
-    return Promise.resolve({
+export async function getScreenShareCapabilities(): Promise<ScreenShareCapabilities> {
+  const bridge = getDesktopBridge();
+  if (!bridge) {
+    return {
       available: false,
       nativeCapture: false,
       systemAudio: false,
@@ -142,28 +150,107 @@ export function getScreenShareCapabilities(): Promise<ScreenShareCapabilities> {
       dynamicSettings: false,
       customPicker: false,
       reason: "Screen sharing is available in the installed desktop app.",
-    });
+    };
   }
 
-  return Promise.resolve({
+  let systemAudioAvailable = false;
+  let systemAudioUnavailableReason =
+    "Bakbak could not confirm that system audio capture is supported.";
+  try {
+    const nativeCapabilities = await bridge.screenShare.getCapabilities();
+    systemAudioAvailable = nativeCapabilities.systemAudioAvailable;
+    systemAudioUnavailableReason =
+      nativeCapabilities.systemAudioUnavailableReason ??
+      systemAudioUnavailableReason;
+  } catch {
+    // Video capture remains useful if capability detection itself fails.
+  }
+
+  return {
     available: true,
     nativeCapture: true,
-    systemAudio: true,
+    systemAudio: systemAudioAvailable,
     sourceKinds: ["display", "application"],
     resolutions: [...SCREEN_SHARE_RESOLUTIONS],
     frameRates: [...SCREEN_SHARE_FRAME_RATES],
     dynamicSettings: true,
     customPicker: true,
-    reason: null,
-  });
+    reason: systemAudioAvailable ? null : systemAudioUnavailableReason,
+  };
 }
 
-export async function listScreenShareSources(): Promise<ScreenShareSource[]> {
-  return (await getDesktopBridge()?.screenShare.listSources()) ?? [];
+export async function listScreenShareSources(): Promise<ScreenShareSourceListResult> {
+  const bridge = getDesktopBridge();
+  if (!bridge) {
+    return {
+      ok: false,
+      sources: [],
+      permissionStatus: "unknown",
+      systemAudioAvailable: false,
+      systemAudioUnavailableReason:
+        "Screen sharing is available in the installed desktop app.",
+      failure: {
+        code: "capture-unavailable",
+        message: "Screen sharing is available in the installed desktop app.",
+        canOpenSettings: false,
+        restartRequired: false,
+      },
+    };
+  }
+  try {
+    return await bridge.screenShare.listSources();
+  } catch {
+    const windows = bridge.platform === "windows";
+    return {
+      ok: false,
+      sources: [],
+      permissionStatus: "unknown",
+      systemAudioAvailable: windows,
+      systemAudioUnavailableReason: windows
+        ? null
+        : "System audio sharing is unavailable on macOS; video sharing still works.",
+      failure: {
+        code: "unknown",
+        message: windows
+          ? "Bakbak could not list screens or applications. Windows has no Bakbak-specific screen-capture permission; retry, or check device policy if this continues."
+          : "Bakbak could not list screens or applications. Retry, or restart Bakbak if macOS access changed while it was open.",
+        canOpenSettings: false,
+        restartRequired: false,
+      },
+    };
+  }
 }
 
-export async function openScreenRecordingSettings(): Promise<void> {
-  await getDesktopBridge()?.app.openScreenRecordingSettings();
+export async function requestMicrophonePermission(): Promise<DesktopPermissionSnapshot> {
+  return (
+    (await getDesktopBridge()?.permissions.requestMicrophone()) ?? {
+      kind: "microphone",
+      status: "unknown",
+      canRequest: false,
+      canOpenSettings: false,
+      requiresRestart: false,
+    }
+  );
+}
+
+export async function getPermissionSnapshot(
+  kind: DesktopPermissionKind,
+): Promise<DesktopPermissionSnapshot> {
+  return (
+    (await getDesktopBridge()?.permissions.get(kind)) ?? {
+      kind,
+      status: "unknown",
+      canRequest: false,
+      canOpenSettings: false,
+      requiresRestart: false,
+    }
+  );
+}
+
+export async function openPermissionSettings(
+  kind: DesktopPermissionKind,
+): Promise<boolean> {
+  return (await getDesktopBridge()?.permissions.openSettings(kind)) ?? false;
 }
 
 export async function restartDesktopApp(): Promise<void> {
@@ -187,16 +274,32 @@ export async function startScreenShare(
   const sessionId = crypto.randomUUID();
   let room: Room | null = null;
   try {
-    const sources = await listScreenShareSources();
+    const sourceResult = await listScreenShareSources();
+    if (!sourceResult.ok) {
+      throw new ScreenShareCaptureError(
+        screenShareSourceFailure(sourceResult.failure),
+      );
+    }
+    const sources = sourceResult.sources;
     const source = input.sourceId
       ? sources.find((candidate) => candidate.id === input.sourceId)
       : (sources.find((candidate) => candidate.kind === "display") ??
         sources[0]);
-    if (!source) throw new Error("The selected screen source is unavailable.");
+    if (!source) {
+      throw new ScreenShareCaptureError({
+        code: "capture-unavailable",
+        message: "The selected screen source is unavailable.",
+        recommendedRetrySource: null,
+        canOpenSettings: false,
+        restartRequired: false,
+      });
+    }
+
+    const includeAudio = input.includeAudio && source.audioAvailable;
 
     await bridge.screenShare.prepare({
       sourceId: source.id,
-      includeAudio: input.includeAudio,
+      includeAudio,
     });
     room = new Room({
       adaptiveStream: false,
@@ -206,7 +309,7 @@ export async function startScreenShare(
     await room.connect(input.serverUrl, input.token, { autoSubscribe: false });
 
     const tracks = await createLocalScreenTracks({
-      audio: input.includeAudio
+      audio: includeAudio
         ? {
             autoGainControl: false,
             echoCancellation: false,
@@ -222,7 +325,7 @@ export async function startScreenShare(
       },
       contentHint: "detail",
       selfBrowserSurface: "exclude",
-      systemAudio: input.includeAudio ? "include" : "exclude",
+      systemAudio: includeAudio ? "include" : "exclude",
     });
     const videoTrack = tracks.find(
       (track) => track.kind === Track.Kind.Video,
@@ -246,7 +349,7 @@ export async function startScreenShare(
 
     let audioPublished = false;
     let audioUnavailableReason: string | null = null;
-    if (input.includeAudio && audioTrack) {
+    if (includeAudio && audioTrack) {
       try {
         await room.localParticipant.publishTrack(audioTrack.mediaStreamTrack, {
           name: "bakbak-screen-audio",
@@ -265,6 +368,7 @@ export async function startScreenShare(
       }
     } else if (input.includeAudio) {
       audioUnavailableReason =
+        source.audioUnavailableReason ??
         "The selected source did not provide a system-audio track.";
     }
 
@@ -274,7 +378,7 @@ export async function startScreenShare(
       sourceKind: source.kind,
       captureBackend: "electron-desktop-capturer",
       cursorCapability: "chromium-capture",
-      audioIsolationMode: input.includeAudio
+      audioIsolationMode: includeAudio
         ? "chromium-restrict-own-audio"
         : "disabled",
       failureCode: null,
@@ -319,8 +423,12 @@ export async function startScreenShare(
     return session;
   } catch (caught) {
     await room?.disconnect(true).catch(() => undefined);
-    const failure = parseScreenShareFailure(caught);
+    const failure =
+      caught instanceof ScreenShareCaptureError
+        ? caught.failure
+        : parseScreenShareFailure(caught);
     console.error(`[Bakbak screen share] ${failure.code}: ${failure.message}`);
+    if (caught instanceof ScreenShareCaptureError) throw caught;
     throw new ScreenShareCaptureError(failure);
   }
 }
@@ -448,21 +556,38 @@ export function defaultScreenShareSettings(): ScreenShareSettings {
 }
 
 export function parseScreenShareFailure(caught: unknown): ScreenShareFailure {
+  if (caught instanceof ScreenShareCaptureError) return caught.failure;
   if (isFailureRecord(caught)) return caught;
+  if (caught instanceof DOMException && caught.name === "NotFoundError") {
+    return {
+      code: "capture-unavailable",
+      message: "The selected screen source is no longer available.",
+      recommendedRetrySource: null,
+      canOpenSettings: false,
+      restartRequired: false,
+    };
+  }
   const raw =
     caught instanceof Error
       ? caught.message
       : typeof caught === "string" && caught.trim()
         ? caught
         : "Native screen sharing failed without an error message.";
-  const match = raw.match(
-    /^\[(capture-black|cursor-unavailable|audio-isolation-unavailable|capture-failed)\]\s*(.*)$/s,
-  );
-  const code = (match?.[1] ?? "capture-failed") as ScreenShareFailureCode;
   return {
-    code,
-    message: match?.[2]?.trim() || raw,
-    recommendedRetrySource: code === "capture-black" ? "display" : null,
+    code: "unknown",
+    message: raw,
+    recommendedRetrySource: null,
+    canOpenSettings: false,
+    restartRequired: false,
+  };
+}
+
+function screenShareSourceFailure(
+  failure: DesktopScreenShareSourceFailure,
+): ScreenShareFailure {
+  return {
+    ...failure,
+    recommendedRetrySource: null,
   };
 }
 
@@ -471,15 +596,22 @@ function isFailureRecord(value: unknown): value is ScreenShareFailure {
     typeof value === "object" &&
     value !== null &&
     "code" in value &&
-    (value.code === "capture-black" ||
+    (value.code === "permission-denied" ||
+      value.code === "policy-blocked" ||
+      value.code === "capture-unavailable" ||
+      value.code === "unknown" ||
+      value.code === "capture-black" ||
       value.code === "cursor-unavailable" ||
-      value.code === "audio-isolation-unavailable" ||
-      value.code === "capture-failed") &&
+      value.code === "audio-isolation-unavailable") &&
     "message" in value &&
     typeof value.message === "string" &&
     "recommendedRetrySource" in value &&
     (value.recommendedRetrySource === "display" ||
-      value.recommendedRetrySource === null)
+      value.recommendedRetrySource === null) &&
+    "canOpenSettings" in value &&
+    typeof value.canOpenSettings === "boolean" &&
+    "restartRequired" in value &&
+    typeof value.restartRequired === "boolean"
   );
 }
 

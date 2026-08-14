@@ -1,4 +1,4 @@
-import { CircleAlert, Ellipsis, Hash, Volume2 } from "lucide-react";
+import { CircleAlert } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -8,15 +8,13 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { Avatar } from "../components/Avatar";
 import { BakbakMark } from "../components/BakbakMark";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { PanelResizer } from "../components/PanelResizer";
 import { ProfilePopover } from "../components/ProfilePopover";
-import {
-  ProfileTrigger,
-  type LoadProfileMedia,
-  type OpenProfile,
+import type {
+  LoadProfileMedia,
+  OpenProfile,
 } from "../components/ProfileTrigger";
 import {
   UserContextMenu,
@@ -59,7 +57,7 @@ import {
 import { interfaceSoundController } from "../features/settings/interface-sounds";
 import {
   loadLayoutPreferences,
-  DEFAULT_CONTEXT_PANEL_WIDTH,
+  DEFAULT_SIDEBAR_WIDTH,
   MAX_SIDE_PANEL_WIDTH,
   MIN_SIDE_PANEL_WIDTH,
   saveLayoutPreferences,
@@ -70,7 +68,6 @@ import {
   type ProfileSaveInput,
   type SettingsSection,
 } from "../features/settings/SettingsPage";
-import { SidebarThemeSetupDialog } from "../features/settings/SidebarThemeSetupDialog";
 import {
   DEFAULT_SIDEBAR_THEME_PREFERENCES,
   loadSidebarThemePreferences,
@@ -99,7 +96,7 @@ import { sessionToAppUser, signOut } from "../lib/auth-service";
 import { useAutoHideScrollbars } from "../lib/use-auto-hide-scrollbars";
 import type { CommunicationEffectEvent } from "../lib/communication-effects";
 import { isConnectivityError } from "../lib/connectivity";
-import { isDesktopRuntime } from "../lib/desktop-runtime";
+import { getDesktopBridge, isDesktopRuntime } from "../lib/desktop-runtime";
 import {
   createLiveChannel,
   reconcileChannelCategories,
@@ -255,6 +252,10 @@ function toggleMockReaction<T extends ConversationMessage>(
     ];
     return { ...message, reactions };
   });
+}
+
+function hasBlockingModal(): boolean {
+  return Boolean(document.querySelector('[role="dialog"][aria-modal="true"]'));
 }
 
 export default function App() {
@@ -2637,15 +2638,16 @@ export default function App() {
     }
   }
 
-  function updateLayoutPreferences(
-    updater: (current: LayoutPreferences) => LayoutPreferences,
-  ) {
-    setLayoutPreferences((current) => {
-      const next = updater(current);
-      saveLayoutPreferences(next);
-      return next;
-    });
-  }
+  const updateLayoutPreferences = useCallback(
+    (updater: (current: LayoutPreferences) => LayoutPreferences) => {
+      setLayoutPreferences((current) => {
+        const next = updater(current);
+        saveLayoutPreferences(next);
+        return next;
+      });
+    },
+    [],
+  );
 
   async function handleCreateChannel(kind: ChannelKind, name: string) {
     if (dataFreshness === "offline") {
@@ -2859,18 +2861,60 @@ export default function App() {
   const personalUnread = directConversations.some(
     (conversation) => conversation.hasUnread,
   );
-  const sidebarThemeSetupOpen =
-    sidebarThemeAccountId === user?.id &&
-    startupAssembly === "complete" &&
-    !sidebarThemePreferences.onboardingComplete &&
-    activeView === "channel" &&
-    channelDialog === null &&
-    !screenShareDialogOpen;
   const blockingDialogOpen =
     activeView === "settings" ||
     channelDialog !== null ||
     screenShareDialogOpen ||
-    sidebarThemeSetupOpen;
+    membersOverlayOpen;
+
+  useEffect(() => {
+    // Electron owns this accelerator through the native View menu. Keeping a
+    // renderer listener there can dispatch the same shortcut twice on some
+    // platforms, so this fallback is browser/mock-only.
+    if (getDesktopBridge()) return;
+
+    const toggleSidebarFromKeyboard = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.repeat ||
+        event.altKey ||
+        event.shiftKey ||
+        (!event.metaKey && !event.ctrlKey) ||
+        event.key.toLowerCase() !== "b" ||
+        blockingDialogOpen ||
+        hasBlockingModal() ||
+        !document.querySelector(".desktop-shell")
+      ) {
+        return;
+      }
+      event.preventDefault();
+      updateLayoutPreferences((current) => ({
+        ...current,
+        sidebarVisible: !current.sidebarVisible,
+      }));
+    };
+    document.addEventListener("keydown", toggleSidebarFromKeyboard);
+    return () =>
+      document.removeEventListener("keydown", toggleSidebarFromKeyboard);
+  }, [blockingDialogOpen, updateLayoutPreferences]);
+
+  useEffect(() => {
+    const desktopWindow = getDesktopBridge()?.window;
+    if (!desktopWindow) return;
+    return desktopWindow.onToggleSidebar(() => {
+      if (
+        blockingDialogOpen ||
+        hasBlockingModal() ||
+        !document.querySelector(".desktop-shell")
+      ) {
+        return;
+      }
+      updateLayoutPreferences((current) => ({
+        ...current,
+        sidebarVisible: !current.sidebarVisible,
+      }));
+    });
+  }, [blockingDialogOpen, updateLayoutPreferences]);
 
   function renderAppFrame(
     content: ReactNode,
@@ -2888,23 +2932,40 @@ export default function App() {
         data-desktop-runtime={
           showSpaceSwitcher ? String(isDesktopRuntime()) : undefined
         }
-        data-theme-texture={showSpaceSwitcher ? theme.texture : undefined}
+        data-theme-texture={
+          showSpaceSwitcher && theme.mode !== "glass"
+            ? theme.texture
+            : undefined
+        }
+        data-chrome-theme={showSpaceSwitcher ? theme.mode : undefined}
         data-surface={surface}
         data-startup-assembly={showSpaceSwitcher ? startupAssembly : undefined}
-        style={showSpaceSwitcher ? sidebarThemeStyle(theme) : undefined}
+        style={
+          showSpaceSwitcher
+            ? ({
+                ...sidebarThemeStyle(theme),
+                "--context-panel-width": `${Math.min(
+                  layoutPreferences.sidebarWidth,
+                  MAX_SIDE_PANEL_WIDTH,
+                )}px`,
+              } as CSSProperties)
+            : undefined
+        }
       >
         <WindowTitlebar
           showSpaceSwitcher={showSpaceSwitcher}
           {...(showSpaceSwitcher
             ? {
                 panelControls: {
-                  leftPanelVisible: layoutPreferences.leftPanelVisible,
+                  sidebarVisible: layoutPreferences.sidebarVisible,
                   disabled: blockingDialogOpen,
-                  onToggleLeftPanel: () =>
+                  onToggleSidebar: () => {
+                    if (hasBlockingModal()) return;
                     updateLayoutPreferences((current) => ({
                       ...current,
-                      leftPanelVisible: !current.leftPanelVisible,
-                    })),
+                      sidebarVisible: !current.sidebarVisible,
+                    }));
+                  },
                 },
               }
             : {})}
@@ -2988,29 +3049,32 @@ export default function App() {
       ].map((member) => [member.id, member]),
     ).values(),
   );
-  const contextMaximum = MAX_SIDE_PANEL_WIDTH;
-  const contextPanelWidth = Math.min(
-    layoutPreferences.contextPanelWidth,
-    contextMaximum,
-  );
+  const sidebarMaximum = MAX_SIDE_PANEL_WIDTH;
+  const sidebarWidth = Math.min(layoutPreferences.sidebarWidth, sidebarMaximum);
   const shellStyle = {
-    "--context-panel-width": `${contextPanelWidth}px`,
+    "--context-panel-width": `${sidebarWidth}px`,
   } as CSSProperties;
+  const contentLabel =
+    activeSpace === "personal"
+      ? selectedConversation
+        ? `Direct message with ${selectedConversation.otherMember.displayName}`
+        : "Personal conversations"
+      : selectedChannel
+        ? `${selectedChannel.kind === "voice" ? "Voice" : "Text"} channel ${selectedChannel.name}`
+        : "Bakbak";
 
   return renderAppFrame(
     <div
       className="desktop-shell"
       style={shellStyle}
-      data-left-panel={
-        layoutPreferences.leftPanelVisible ? "visible" : "hidden"
-      }
+      data-left-panel={layoutPreferences.sidebarVisible ? "visible" : "hidden"}
       data-space-direction={spaceTransitionDirection ?? undefined}
     >
       <div
         className="panel-slot panel-slot--left"
-        data-visible={layoutPreferences.leftPanelVisible ? "true" : "false"}
-        aria-hidden={layoutPreferences.leftPanelVisible ? undefined : true}
-        inert={layoutPreferences.leftPanelVisible ? undefined : true}
+        data-visible={layoutPreferences.sidebarVisible ? "true" : "false"}
+        aria-hidden={layoutPreferences.sidebarVisible ? undefined : true}
+        inert={layoutPreferences.sidebarVisible ? undefined : true}
       >
         <div
           className="panel-slot__motion panel-slot__motion--left"
@@ -3096,33 +3160,22 @@ export default function App() {
       <PanelResizer
         label="Resize navigation panel"
         side="left"
-        enabled={layoutPreferences.leftPanelVisible}
-        value={contextPanelWidth}
+        enabled={layoutPreferences.sidebarVisible}
+        value={sidebarWidth}
         minimum={MIN_SIDE_PANEL_WIDTH}
-        maximum={contextMaximum}
-        defaultValue={DEFAULT_CONTEXT_PANEL_WIDTH}
-        onChange={(contextPanelWidth) =>
+        maximum={sidebarMaximum}
+        defaultValue={DEFAULT_SIDEBAR_WIDTH}
+        onChange={(sidebarWidth) =>
           updateLayoutPreferences((current) => ({
             ...current,
-            contextPanelWidth,
+            sidebarWidth,
           }))
         }
       />
-      <main className="content-shell">
-        <TopBar
-          channel={activeSpace === "server" ? selectedChannel : null}
-          directMember={
-            activeSpace === "personal"
-              ? (selectedConversation?.otherMember ?? null)
-              : null
-          }
-          loadProfileMedia={loadProfileMedia}
-          onOpenProfile={handleOpenProfile}
-          onOpenUserContextMenu={handleOpenUserContextMenu}
-          openProfileId={openProfile?.memberId ?? null}
-          onOpenMembers={() => setMembersOverlayOpen(true)}
-          onOpenAudioSettings={() => openSettings("audio")}
-        />
+      <main className="content-shell" aria-label={contentLabel}>
+        <div className="content-drag-bar" aria-hidden="true">
+          <span />
+        </div>
         <div
           className="content-stage content-stage--space-motion"
           key={`content-${activeSpace}`}
@@ -3466,158 +3519,8 @@ export default function App() {
           onClose={() => setActiveView("channel")}
         />
       ) : null}
-      {sidebarThemeSetupOpen ? (
-        <SidebarThemeSetupDialog
-          preferences={sidebarThemePreferences}
-          onSkip={() =>
-            handleSidebarThemePreferencesChange({
-              ...sidebarThemePreferences,
-              onboardingComplete: true,
-            })
-          }
-          onSave={handleSidebarThemePreferencesChange}
-        />
-      ) : null}
     </div>,
     true,
-  );
-}
-
-function TopBar({
-  channel,
-  directMember,
-  loadProfileMedia,
-  onOpenProfile,
-  onOpenUserContextMenu,
-  openProfileId,
-  onOpenMembers,
-  onOpenAudioSettings,
-}: {
-  channel: Channel | null;
-  directMember: ServerMember | null;
-  loadProfileMedia: LoadProfileMedia;
-  onOpenProfile: OpenProfile;
-  onOpenUserContextMenu?: OpenUserContextMenu | undefined;
-  openProfileId: string | null;
-  onOpenMembers?: () => void;
-  onOpenAudioSettings?: () => void;
-}) {
-  const [moreOpen, setMoreOpen] = useState(false);
-  const moreMenuRef = useRef<HTMLDivElement>(null);
-  const moreButtonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!moreOpen) return;
-    const handlePointerDown = (event: MouseEvent) => {
-      if (
-        event.target instanceof Node &&
-        !moreMenuRef.current?.contains(event.target)
-      ) {
-        setMoreOpen(false);
-      }
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      setMoreOpen(false);
-      moreButtonRef.current?.focus();
-    };
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [moreOpen]);
-
-  useEffect(() => {
-    setMoreOpen(false);
-  }, [channel?.id, directMember?.id]);
-
-  const openMembers = () => {
-    setMoreOpen(false);
-    onOpenMembers?.();
-  };
-  const openAudioSettings = () => {
-    setMoreOpen(false);
-    onOpenAudioSettings?.();
-  };
-
-  const identity = (
-    <>
-      {directMember ? (
-        <Avatar user={directMember} size="small" showStatus />
-      ) : channel?.kind === "voice" ? (
-        <Volume2 size={20} />
-      ) : (
-        <Hash size={20} />
-      )}
-      <div className="top-bar__channel-copy">
-        <strong>
-          {directMember?.displayName ?? channel?.name ?? "Personal"}
-        </strong>
-        {directMember ? (
-          <span>{`Private conversation · ${directMember.status}`}</span>
-        ) : channel?.kind === "voice" ? (
-          <span>{channel.topic}</span>
-        ) : null}
-      </div>
-    </>
-  );
-  return (
-    <header
-      className="top-bar"
-      data-context={channel ? "channel" : directMember ? "direct" : "home"}
-    >
-      <div className="top-bar__leading">
-        {directMember ? (
-          <ProfileTrigger
-            className="top-bar__channel top-bar__channel--profile"
-            member={directMember}
-            loadMedia={loadProfileMedia}
-            onOpenProfile={onOpenProfile}
-            onOpenContextMenu={onOpenUserContextMenu}
-            expanded={openProfileId === directMember.id}
-            aria-label={`View ${directMember.displayName}'s profile`}
-          >
-            {() => identity}
-          </ProfileTrigger>
-        ) : (
-          <div className="top-bar__channel">{identity}</div>
-        )}
-      </div>
-      {channel ? (
-        <div className="top-bar__actions" aria-label="Channel actions">
-          <div className="top-bar__more" ref={moreMenuRef}>
-            <button
-              ref={moreButtonRef}
-              className="top-bar__action"
-              type="button"
-              aria-label="More channel actions"
-              aria-expanded={moreOpen}
-              aria-haspopup="menu"
-              onClick={() => setMoreOpen((open) => !open)}
-            >
-              <Ellipsis size={17} aria-hidden="true" />
-            </button>
-            {moreOpen ? (
-              <div className="top-bar__menu" role="menu">
-                <button type="button" role="menuitem" onClick={openMembers}>
-                  Show members
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={openAudioSettings}
-                >
-                  Audio &amp; video settings
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-    </header>
   );
 }
 

@@ -31,6 +31,10 @@ import {
 import { Avatar } from "../../components/Avatar";
 import type { LoadProfileMedia } from "../../components/ProfileTrigger";
 import type { AppUser } from "../../lib/types";
+import {
+  DesktopPermissionError,
+  type DesktopPermissionSnapshot,
+} from "../../lib/desktop-runtime";
 import type { CacheStats, DataFreshness } from "../../lib/local-cache";
 import { registerGiphyAction, type GiphyAsset } from "../../lib/giphy-service";
 import { resolveGiphyProfileMedia } from "../../lib/profile-giphy-media";
@@ -58,6 +62,11 @@ import {
 } from "../voice/microphone-processing";
 import type { MicrophoneProcessingState } from "../voice/useVoiceRoom";
 import { setAudioElementOutput } from "../voice/media-devices";
+import {
+  getPermissionSnapshot,
+  openPermissionSettings,
+  restartDesktopApp,
+} from "../voice/screen-share-service";
 import { GiphyPicker } from "../chat/GiphyPicker";
 import { AppUpdateSettings } from "./AppUpdateSettings";
 import { SidebarThemeEditor } from "./SidebarThemeEditor";
@@ -1179,6 +1188,8 @@ function AudioSettings(props: SettingsPageProps) {
   const [refreshingDevices, setRefreshingDevices] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
   const [testNotice, setTestNotice] = useState<string | null>(null);
+  const [microphonePermission, setMicrophonePermission] =
+    useState<DesktopPermissionSnapshot | null>(null);
   const [diagnosticsCopyState, setDiagnosticsCopyState] = useState<
     "idle" | "copied" | "failed"
   >("idle");
@@ -1200,6 +1211,27 @@ function AudioSettings(props: SettingsPageProps) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!props.inputError && !testError) {
+      setMicrophonePermission(null);
+      return;
+    }
+    let active = true;
+    const refreshPermission = () => {
+      void getPermissionSnapshot("microphone")
+        .then((snapshot) => {
+          if (active) setMicrophonePermission(snapshot);
+        })
+        .catch(() => undefined);
+    };
+    refreshPermission();
+    window.addEventListener("focus", refreshPermission);
+    return () => {
+      active = false;
+      window.removeEventListener("focus", refreshPermission);
+    };
+  }, [props.inputError, testError]);
+
   function stopMicTest() {
     testRequestRef.current += 1;
     if (stopTestRef.current) stopTestRef.current();
@@ -1214,6 +1246,7 @@ function AudioSettings(props: SettingsPageProps) {
     const requestId = ++testRequestRef.current;
     setTestError(null);
     setTestNotice(null);
+    setMicrophonePermission(null);
     setTesting(true);
     let stream: MediaStream | null = null;
     let previewStream: MediaStream;
@@ -1332,6 +1365,9 @@ function AudioSettings(props: SettingsPageProps) {
       stopTestRef.current = null;
       if (mountedRef.current && requestId === testRequestRef.current) {
         setTesting(false);
+        if (caught instanceof DesktopPermissionError) {
+          setMicrophonePermission(caught.permission);
+        }
         setTestError(
           caught instanceof Error
             ? caught.message
@@ -1606,7 +1642,33 @@ function AudioSettings(props: SettingsPageProps) {
               </p>
             ) : null}
             {props.inputError ? (
-              <p className="settings-error">{props.inputError}</p>
+              <div className="settings-permission-recovery">
+                <p className="settings-error" role="alert">
+                  {props.inputError}
+                </p>
+                {microphonePermission?.canOpenSettings ? (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() =>
+                      void openPermissionSettings("microphone").catch(
+                        () => undefined,
+                      )
+                    }
+                  >
+                    Open microphone settings
+                  </button>
+                ) : null}
+                {microphonePermission?.requiresRestart ? (
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => void restartDesktopApp()}
+                  >
+                    Restart Bakbak
+                  </button>
+                ) : null}
+              </div>
             ) : null}
           </div>
         </section>
@@ -1890,9 +1952,31 @@ function AudioSettings(props: SettingsPageProps) {
         </section>
       </div>
       {testError ? (
-        <p className="settings-error" role="alert">
-          {testError}
-        </p>
+        <div className="settings-permission-recovery">
+          <p className="settings-error" role="alert">
+            {testError}
+          </p>
+          {microphonePermission?.canOpenSettings ? (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() =>
+                void openPermissionSettings("microphone").catch(() => undefined)
+              }
+            >
+              Open microphone settings
+            </button>
+          ) : null}
+          {microphonePermission?.requiresRestart ? (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => void restartDesktopApp()}
+            >
+              Restart Bakbak
+            </button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
@@ -2017,8 +2101,11 @@ function AppearanceSettings({
       </fieldset>
       <div className="appearance-sidebar-themes">
         <div>
-          <strong>Sidebar</strong>
-          <p>Give Personal and Bakbak their own color and texture.</p>
+          <strong>Chrome appearance</strong>
+          <p>
+            Personal and Bakbak stay transparent. Choose liquid glass or a
+            translucent gradient, then tune how much shows through.
+          </p>
         </div>
         <SidebarThemeEditor
           value={sidebarThemes}

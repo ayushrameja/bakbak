@@ -331,6 +331,7 @@ describe("ChatView controlled drafts", () => {
     };
     const onDraftChange = vi.fn();
     const onSend = vi.fn().mockRejectedValue(new Error("network"));
+    const onOpenProfile = vi.fn();
     render(
       <ConversationView
         target={{ kind: "direct", id: "direct-1", member: friend }}
@@ -341,6 +342,7 @@ describe("ChatView controlled drafts", () => {
         draft={{ text: "private thought", mentions: [] }}
         onDraftChange={onDraftChange}
         onSend={onSend}
+        onOpenProfile={onOpenProfile}
       />,
     );
 
@@ -348,6 +350,11 @@ describe("ChatView controlled drafts", () => {
       "private thought",
     );
     expect(screen.getByText("Send the first message to Mira.")).toBeVisible();
+    const introProfile = screen.getByRole("button", {
+      name: "View Mira's profile",
+    });
+    await userEvent.click(introProfile);
+    expect(onOpenProfile).toHaveBeenCalledWith(friend, introProfile);
     await userEvent.click(screen.getByRole("button", { name: "Send message" }));
     expect(onDraftChange.mock.calls).toEqual([
       [EMPTY_MESSAGE_DRAFT],

@@ -168,6 +168,7 @@ function createVoice(
     voiceDiagnosticsAvailable: false,
     error: null,
     inputDeviceError: null,
+    microphonePermission: null,
     microphoneProcessingError: null,
     microphoneProcessingState: "active",
     outputDeviceError: null,

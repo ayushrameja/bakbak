@@ -11,7 +11,6 @@ import { interfaceSoundController } from "../features/settings/interface-sounds"
 import {
   DEFAULT_SIDEBAR_THEME_PREFERENCES,
   saveSidebarThemePreferences,
-  sidebarThemeStorageKey,
 } from "../features/settings/sidebar-theme-preferences";
 import App from "./App";
 
@@ -30,50 +29,57 @@ vi.mock("../lib/env", () => ({
 describe("App navigation state", () => {
   beforeEach(() => {
     window.localStorage.clear();
-    saveSidebarThemePreferences("user-ayush", {
-      ...structuredClone(DEFAULT_SIDEBAR_THEME_PREFERENCES),
-      onboardingComplete: true,
-    });
+    saveSidebarThemePreferences(
+      "user-ayush",
+      structuredClone(DEFAULT_SIDEBAR_THEME_PREFERENCES),
+    );
   });
 
-  it("offers sidebar setup once per user and lets them skip", async () => {
-    window.localStorage.removeItem(sidebarThemeStorageKey("user-ayush"));
-    const view = render(<App />);
-    await userEvent.click(
-      screen.getByRole("button", { name: "Enter the preview" }),
-    );
-
-    const setup = await screen.findByRole("dialog", {
-      name: "Make the sidebar yours",
-    });
-    expect(
-      within(setup).getByRole("button", { name: "Bakbak" }),
-    ).toHaveAttribute("aria-pressed", "true");
-    await userEvent.click(within(setup).getByRole("button", { name: "Skip" }));
-    expect(
-      JSON.parse(
-        window.localStorage.getItem(sidebarThemeStorageKey("user-ayush")) ??
-          "null",
-      ),
-    ).toEqual(expect.objectContaining({ onboardingComplete: true }));
-
-    view.unmount();
+  it("enters the shell without a first-run theme dialog", async () => {
     render(<App />);
     await userEvent.click(
       screen.getByRole("button", { name: "Enter the preview" }),
     );
+
     await waitFor(() => {
       expect(document.querySelector(".app-frame")).toHaveAttribute(
         "data-startup-assembly",
         "complete",
       );
     });
-    expect(
-      screen.queryByRole("dialog", { name: "Make the sidebar yours" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("shows app chrome everywhere and locks space switching behind settings", async () => {
+  it("keeps dormant custom texture out of Glass until its gradient returns", async () => {
+    const preferences = structuredClone(DEFAULT_SIDEBAR_THEME_PREFERENCES);
+    preferences.spaces.server.texture = "dots";
+    saveSidebarThemePreferences("user-ayush", preferences);
+
+    render(<App />);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Enter the preview" }),
+    );
+
+    await waitFor(() => {
+      expect(document.querySelector(".app-frame[data-space]")).toHaveAttribute(
+        "data-chrome-theme",
+        "glass",
+      );
+    });
+    const frame = document.querySelector(".app-frame[data-space]");
+    expect(frame).not.toHaveAttribute("data-theme-texture");
+
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await userEvent.click(screen.getByRole("button", { name: "Appearance" }));
+    await userEvent.click(screen.getByRole("button", { name: "Gradient" }));
+
+    await waitFor(() => {
+      expect(frame).toHaveAttribute("data-chrome-theme", "gradient");
+      expect(frame).toHaveAttribute("data-theme-texture", "dots");
+    });
+  });
+
+  it("keeps only overlay window chrome and locks shell controls behind settings", async () => {
     render(<App />);
     expect(document.querySelector(".app-frame")).toHaveAttribute(
       "data-surface",
@@ -86,13 +92,18 @@ describe("App navigation state", () => {
     expect(
       screen.queryByRole("navigation", { name: "Bakbak spaces" }),
     ).not.toBeInTheDocument();
+    expect(document.querySelector(".window-titlebar")?.tagName).toBe("DIV");
 
     await userEvent.click(
       screen.getByRole("button", { name: "Enter the preview" }),
     );
+    expect(document.querySelector(".window-titlebar__drag")).not.toBeNull();
+    expect(document.querySelector(".top-bar")).toBeNull();
     expect(
-      document.querySelector(".window-titlebar__center"),
-    ).toBeEmptyDOMElement();
+      screen
+        .getByRole("main", { name: "Text channel Chat" })
+        .querySelector(".content-drag-bar"),
+    ).toHaveAttribute("aria-hidden", "true");
     expect(document.querySelector(".app-frame")).toHaveAttribute(
       "data-startup-assembly",
       expect.stringMatching(/running|complete/),
@@ -105,9 +116,7 @@ describe("App navigation state", () => {
     expect(
       screen.getByRole("button", { name: "Bakbak server" }),
     ).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: "Hide channel panel" }),
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Hide sidebar" })).toBeDisabled();
 
     await userEvent.click(
       screen.getByRole("button", { name: "Close settings" }),
@@ -115,7 +124,7 @@ describe("App navigation state", () => {
     expect(screen.getByRole("button", { name: "Personal" })).toBeEnabled();
   });
 
-  it("keeps the text-channel topic in the intro instead of the top bar", async () => {
+  it("keeps channel context and member access without a top bar", async () => {
     render(<App />);
     await userEvent.click(
       screen.getByRole("button", { name: "Enter the preview" }),
@@ -125,36 +134,12 @@ describe("App navigation state", () => {
     expect(
       screen.getByText("A private conversation for server members."),
     ).toBeVisible();
+    expect(document.querySelector(".top-bar")).toBeNull();
     expect(
-      document.querySelector(".top-bar .top-bar__channel span"),
-    ).toBeNull();
-
-    const topBar = document.querySelector<HTMLElement>(".top-bar")!;
-    expect(topBar).toHaveAttribute("data-context", "channel");
-    expect(
-      within(topBar).getByText("Chat", { selector: "strong" }),
+      screen.getByRole("main", { name: "Text channel Chat" }),
     ).toBeVisible();
-    expect(
-      within(topBar).queryByRole("button", { name: "Show 4 members" }),
-    ).toBeNull();
-    expect(
-      within(topBar).queryByRole("button", { name: "Open audio settings" }),
-    ).toBeNull();
-    await userEvent.click(
-      within(topBar).getByRole("button", { name: "More channel actions" }),
-    );
-    expect(screen.getByRole("menu")).toBeVisible();
-    await userEvent.keyboard("{Escape}");
-    expect(
-      within(topBar).getByRole("button", { name: "More channel actions" }),
-    ).toHaveAttribute("aria-expanded", "false");
 
-    await userEvent.click(
-      within(topBar).getByRole("button", { name: "More channel actions" }),
-    );
-    await userEvent.click(
-      screen.getByRole("menuitem", { name: "Show members" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Show all" }));
     expect(screen.getByRole("dialog", { name: "Members" })).toBeVisible();
     await userEvent.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Members" })).toBeNull();
@@ -203,15 +188,11 @@ describe("App navigation state", () => {
     expect(document.querySelector(".panel-resizer--right")).toBeNull();
     expect(
       screen
-        .getByRole("button", { name: "Hide channel panel" })
+        .getByRole("button", { name: "Hide sidebar" })
         .closest(".window-titlebar"),
     ).not.toBeNull();
-    expect(
-      document.querySelector(".top-bar [aria-controls='context-panel']"),
-    ).not.toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole("button", { name: "Hide channel panel" }),
-    );
+    expect(document.querySelector(".top-bar")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Hide sidebar" }));
     expect(shell).toHaveAttribute("data-left-panel", "hidden");
     const leftSlot = document.querySelector(".panel-slot--left");
     const leftResizer = document.querySelector(".panel-resizer--left");
@@ -221,19 +202,53 @@ describe("App navigation state", () => {
     expect(leftSlot?.querySelector(".channel-sidebar")).not.toBeNull();
     expect(leftResizer).toHaveAttribute("data-enabled", "false");
     expect(leftResizer).toHaveAttribute("aria-hidden", "true");
+    expect(screen.queryByRole("button", { name: "Show sidebar" })).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Show channel panel" }),
-    ).toHaveAttribute("aria-expanded", "false");
+      screen.queryByRole("group", { name: "Sidebar controls" }),
+    ).toBeNull();
 
     first.unmount();
     render(<App />);
     await userEvent.click(
       screen.getByRole("button", { name: "Enter the preview" }),
     );
-    expect(
-      screen.getByRole("button", { name: "Show channel panel" }),
-    ).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Show sidebar" })).toBeNull();
+    fireEvent.keyDown(document, { key: "b", metaKey: true });
+    expect(document.querySelector(".desktop-shell")).toHaveAttribute(
+      "data-left-panel",
+      "visible",
+    );
+    expect(screen.getByRole("button", { name: "Hide sidebar" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: /member panel/i })).toBeNull();
+  });
+
+  it("toggles the mounted sidebar with Cmd/Ctrl+B outside dialogs", async () => {
+    render(<App />);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Enter the preview" }),
+    );
+
+    const shell = document.querySelector(".desktop-shell");
+    fireEvent.keyDown(document, { key: "b", metaKey: true });
+    expect(shell).toHaveAttribute("data-left-panel", "hidden");
+    expect(document.querySelector(".panel-slot--left")).toHaveAttribute(
+      "inert",
+    );
+
+    fireEvent.keyDown(document, { key: "B", ctrlKey: true });
+    expect(shell).toHaveAttribute("data-left-panel", "visible");
+
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
+    fireEvent.keyDown(document, { key: "b", metaKey: true });
+    expect(shell).toHaveAttribute("data-left-panel", "visible");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Close settings" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Show all" }));
+    expect(screen.getByRole("button", { name: "Hide sidebar" })).toBeDisabled();
+    fireEvent.keyDown(document, { key: "b", metaKey: true });
+    expect(shell).toHaveAttribute("data-left-panel", "visible");
   });
 
   it("does not expose text chat inside voice channels", async () => {
