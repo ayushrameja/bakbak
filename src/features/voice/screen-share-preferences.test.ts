@@ -7,6 +7,7 @@ import {
   loadScreenShareSettings,
   saveScreenShareSettings,
   screenShareBitrate,
+  screenSharePublicationProfile,
 } from "./screen-share-preferences";
 
 describe("screen-share preferences", () => {
@@ -40,5 +41,40 @@ describe("screen-share preferences", () => {
       ),
     );
     expect(actual).toEqual(expected);
+  });
+
+  it("keeps static shares detail-first and makes game-rate fallback layers smooth", () => {
+    expect(
+      screenSharePublicationProfile({ resolution: 1080, frameRate: 15 }),
+    ).toEqual({
+      width: 1920,
+      height: 1080,
+      contentHint: "detail",
+      degradationPreference: "maintain-resolution",
+      simulcastLayer: null,
+    });
+    expect(
+      screenSharePublicationProfile({ resolution: 1080, frameRate: 60 }),
+    ).toEqual({
+      width: 1920,
+      height: 1080,
+      contentHint: "motion",
+      degradationPreference: "maintain-framerate",
+      simulcastLayer: {
+        width: 960,
+        height: 540,
+        maxBitrate: 2_000_000,
+        maxFramerate: 30,
+      },
+    });
+    expect(
+      screenSharePublicationProfile({ resolution: 480, frameRate: 30 })
+        .simulcastLayer,
+    ).toEqual({
+      width: 426,
+      height: 240,
+      maxBitrate: 600_000,
+      maxFramerate: 30,
+    });
   });
 });

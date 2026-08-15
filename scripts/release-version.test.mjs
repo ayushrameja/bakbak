@@ -159,7 +159,26 @@ test("release builds only Apple Silicon macOS and Windows Electron installers", 
   assert.doesNotMatch(workflow, /name: macOS Intel/);
   assert.match(workflow, /name: Windows x64\n {12}runner: windows-latest\n/);
   assert.match(workflow, /builder_args: --win --x64/);
-  assert.match(workflow, /pnpm exec electron-builder/);
+  assert.match(workflow, /Build signed and notarized macOS release/);
+  assert.match(workflow, /Build Windows release/);
+  assert.match(workflow, /secrets\.MAC_CSC_LINK/);
+  assert.match(workflow, /secrets\.MAC_CSC_KEY_PASSWORD/);
+  assert.match(workflow, /secrets\.APPLE_API_KEY/);
+  assert.match(workflow, /secrets\.APPLE_API_KEY_ID/);
+  assert.match(workflow, /secrets\.APPLE_API_ISSUER/);
+  assert.match(workflow, /secrets\.APPLE_TEAM_ID/);
+  assert.match(workflow, /--config\.mac\.identity="Developer ID Application"/);
+  assert.match(workflow, /--config\.mac\.notarize=true/);
+  assert.match(workflow, /xcrun stapler validate "\$app_path"/);
+  assert.match(workflow, /spctl --assess --verbose=2 --type exec "\$app_path"/);
+  assert.match(
+    workflow,
+    /helper_path="\$app_path\/Contents\/Resources\/native\/bakbak-screen-share-helper"/,
+  );
+  assert.match(
+    workflow,
+    /codesign --verify --strict --verbose=2 "\$helper_path"/,
+  );
   assert.match(workflow, /latest-mac\.yml/);
   assert.match(workflow, /latest\.yml/);
   assert.match(workflow, /create-legacy-updater-manifest\.mjs/);

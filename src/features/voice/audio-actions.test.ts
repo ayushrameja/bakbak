@@ -19,8 +19,13 @@ describe("restartAudioInput", () => {
 
   it("reports a successful microphone restart", async () => {
     const restartTrack = vi.fn().mockResolvedValue(undefined);
+    const getDeviceId = vi.fn().mockResolvedValue("studio-mic");
     await expect(
-      restartAudioInput({ restartTrack }, nextOptions, previousOptions),
+      restartAudioInput(
+        { getDeviceId, restartTrack },
+        nextOptions,
+        previousOptions,
+      ),
     ).resolves.toEqual({ ok: true });
     expect(restartTrack).toHaveBeenCalledWith(nextOptions);
   });
@@ -30,8 +35,9 @@ describe("restartAudioInput", () => {
       .fn()
       .mockRejectedValueOnce(new Error("device vanished"))
       .mockResolvedValueOnce(undefined);
+    const getDeviceId = vi.fn().mockResolvedValue("default");
     const result = await restartAudioInput(
-      { restartTrack },
+      { getDeviceId, restartTrack },
       nextOptions,
       previousOptions,
     );
@@ -46,8 +52,9 @@ describe("restartAudioInput", () => {
 
   it("distinguishes a failed switch whose rollback also fails", async () => {
     const restartTrack = vi.fn().mockRejectedValue(new Error("capture failed"));
+    const getDeviceId = vi.fn();
     const result = await restartAudioInput(
-      { restartTrack },
+      { getDeviceId, restartTrack },
       nextOptions,
       previousOptions,
     );
@@ -56,6 +63,24 @@ describe("restartAudioInput", () => {
     if (!result.ok) {
       expect(result.message).toContain("couldn't restore the previous one");
     }
+  });
+
+  it("rolls back when capture resolves without opening the selected device", async () => {
+    const restartTrack = vi.fn().mockResolvedValue(undefined);
+    const getDeviceId = vi
+      .fn()
+      .mockResolvedValueOnce("built-in-mic")
+      .mockResolvedValueOnce("default");
+
+    await expect(
+      restartAudioInput(
+        { getDeviceId, restartTrack },
+        nextOptions,
+        previousOptions,
+      ),
+    ).resolves.toEqual(expect.objectContaining({ ok: false }));
+    expect(restartTrack).toHaveBeenNthCalledWith(1, nextOptions);
+    expect(restartTrack).toHaveBeenNthCalledWith(2, previousOptions);
   });
 });
 

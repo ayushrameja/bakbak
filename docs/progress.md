@@ -8199,3 +8199,126 @@ native/screen-share-helper/Cargo.toml` — passed 13 library tests plus 1
 - **Next:** Push `arcify`, monitor the replacement Windows job through native
   tests, release helper build, Electron packaging, and artifact upload, then
   continue plan 0037's installed three-client acceptance matrix.
+
+## 2026-08-15 — Restore screen video, login rhythm, and truthful microphone switching
+
+- **Completed:** Fixed the native-helper handshake rejection caused by Rust's
+  nullable lifecycle fields not matching Electron's validator. Ordinary and
+  release builds now keep screen video available on macOS and Windows through
+  a narrow Electron source picker and trusted display-media handler; Electron
+  revalidates the selected source, expires it after 60 seconds, and grants
+  video only. Stabilization candidates retain the process-isolated native
+  helper, with automatic video-only fallback after a helper failure. Added the
+  missing 8 px top inset to the authentication and loading canvases so their
+  top/bottom rhythm matches the current entry redesign. Non-default microphone
+  capture now uses an exact device constraint and verifies LiveKit's normalized
+  active device before committing UI/preferences; a silent browser fallback
+  rolls back to the previous microphone and reports an error.
+- **Decisions:** Kept unrestricted Chromium loopback absent and native system
+  audio disabled in ordinary/release builds. Used the existing room participant
+  for safe Electron video instead of requesting a companion token. Accepted
+  both JSON `null` and omitted lifecycle optionals because the shipped Rust v1
+  protocol serializes absent `Option` values as `null`.
+- **Validation:**
+  - Focused Vitest — passed 5 files / 98 tests, including real-shape nullable
+    helper lifecycle, Electron video selection ordering, and microphone
+    mismatch rollback.
+  - Focused Node contracts — passed 7/7 for entry geometry, video-only Electron
+    capture, forbidden loopback, helper protocol, and rollout gating.
+  - `./node_modules/.bin/prettier --check .` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed with zero warnings.
+  - Renderer, Node, Electron, and Electron-test strict TypeScript — passed all
+    four configurations.
+  - `./node_modules/.bin/vitest run` — passed 91 files / 560 tests.
+  - `node --test scripts/*.test.mjs` — passed 61/61 contracts.
+  - `./node_modules/.bin/vite build` — passed with the existing non-blocking
+    large-chunk warning; Electron compile and version check also passed.
+  - `cargo test --locked --offline --manifest-path
+native/screen-share-helper/Cargo.toml` — passed 13 library plus 1 binary
+    test; doc tests had 0. The locked offline release helper build passed.
+  - Actual debug helper through compiled `ScreenShareHelperManager` — passed
+    hello/lifecycle/capabilities/shutdown with video available and gated audio.
+  - The first sandboxed Electron builder attempt stalled after configuration
+    and was interrupted. The approved retry outside the sandbox passed native
+    rebuild, ad-hoc signing, Apple Silicon app/ZIP/DMG, and block maps;
+    notarization was skipped without credentials. Deep app signature and
+    packaged executable-helper checks passed.
+  - `node scripts/check-bundle-secrets.mjs` — passed for `dist`,
+    `electron-dist`, and `release`; `git diff --check` passed.
+  - `pnpm typecheck` — the local global-pnpm shim stalled without output and
+    was interrupted; the four underlying project-local TypeScript commands
+    passed directly.
+- **Documentation updated:** Updated `docs/architecture.md`, the active v1
+  plan's video-only contract, and this canonical progress log.
+- **Known limitations:** This macOS host cannot compile or execute the Windows
+  MSVC target; Windows x64 CI remains the authoritative native compilation and
+  installer check. Installed source selection, macOS Screen Recording recovery,
+  Windows whole-screen/window capture, and physical multi-microphone switching
+  still require device testing. Native system audio remains candidate-only
+  pending plan 0037's three-client isolation matrix.
+- **Next:** Run the Windows x64 package workflow and install this revision on
+  one macOS and one Windows machine; verify screen/window video, denied/regranted
+  permissions, and two physical microphone switches before publishing the next
+  release.
+
+## 2026-08-15 — Repair macOS updates and high-motion screen sharing
+
+- **Completed:** Kept the native updater in control of its macOS
+  `before-quit` install handoff instead of diverting that quit through the
+  normal native-helper shutdown path. Added a payload-free renderer error
+  signal for failures that arrive after the archive download completes, so the
+  update UI recovers from `Installing` and offers a retry. Gated production
+  macOS releases on a stable Developer ID Application identity, Apple
+  notarization, stapling, Gatekeeper acceptance, and matching app/helper team
+  identities. Made 30/60 fps shares motion-aware in both the Electron and
+  native-helper publishers: they now prefer frame rate, request hardware H.264
+  in the helper, and publish a 30 fps half-resolution fallback layer instead of
+  LiveKit's low-frame-rate default screen layer. The 15 fps profile remains
+  detail/resolution-first for static content.
+- **Decisions:** Kept local macOS packages ad-hoc signed and made the release
+  workflow override that identity, because contributors should not need the
+  distribution certificate while production updates and TCC continuity do.
+  The release now fails closed when any Apple signing/notarization credential
+  is missing. Existing ad-hoc installs require one final manual replacement
+  with the first Developer ID build; later builds signed by the same team can
+  preserve the stable macOS identity. Kept Windows signing outside this task.
+- **Validation:**
+  - `./node_modules/.bin/prettier --check .` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed with zero
+    warnings.
+  - Renderer, Node, Electron, and Electron-test strict TypeScript — passed all
+    four configurations.
+  - `./node_modules/.bin/vitest run` — passed 91 files / 562 tests.
+  - `node --test scripts/*.test.mjs` — passed 62/62 repository contracts,
+    including updater quit ownership and the macOS release identity gate.
+  - `node scripts/set-version.mjs --check` — passed for version 1.8.0.
+  - Locked offline Rust formatting and Clippy with warnings denied — passed.
+  - `cargo test --locked --offline --manifest-path
+native/screen-share-helper/Cargo.toml` — passed 15 library tests plus 1 binary
+    test; doc tests had 0.
+  - `./node_modules/.bin/vite build`, Electron compile, and the locked offline
+    Rust release build — passed; Vite retains its existing non-blocking
+    large-chunk warning.
+  - The sandboxed Electron packager stalled after reading configuration and
+    was interrupted. The approved retry outside the sandbox passed native
+    rebuild, Apple Silicon app packaging, local ad-hoc signing, DMG/ZIP, update
+    metadata, and block maps. Strict app/helper signature checks passed; the
+    packaged helper is an arm64 Mach-O executable.
+  - `node scripts/check-bundle-secrets.mjs` and `git diff --check` — passed.
+  - The global `pnpm` shim stalled before reporting its version and was
+    interrupted; every underlying repository check and build was run directly
+    from the project-local tools with the outcomes above.
+- **Documentation updated:** Updated `docs/architecture.md`, active plan 0001,
+  screen-share plan 0010, the release workflow contracts, and this canonical
+  progress log.
+- **Known limitations:** The Apple Developer certificate and App Store Connect
+  API credentials are repository secrets, so a real signed/notarized CI build
+  was not available locally. The first ad-hoc-to-Developer-ID replacement,
+  a later same-team auto-update, Screen Recording permission continuity, and a
+  two-client game-share test at 720p30/1080p60 still require installed-device
+  validation. This macOS host cannot compile the Windows MSVC target, and the
+  Windows installer remains unsigned.
+- **Next:** Load the six Apple release secrets, run the macOS release job,
+  manually replace one current ad-hoc installation with that first signed DMG,
+  then prove a signed-to-signed update preserves Screen Recording permission
+  and keeps a two-client high-motion game share fluid at 720p30 and 1080p60.

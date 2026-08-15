@@ -8,6 +8,7 @@ import {
   Track,
   TrackPublication,
   VideoQuality,
+  VideoPreset,
   VideoPresets,
   createLocalAudioTrack,
   type Participant,
@@ -105,6 +106,7 @@ import {
   listenForScreenShareLifecycle,
   requestMicrophonePermission,
   ScreenShareCaptureError,
+  selectVideoOnlyScreenShareSource,
   startScreenShare as startNativeScreenShare,
   stopScreenShare as stopNativeScreenShare,
   updateScreenShareSettings as updateNativeScreenShareSettings,
@@ -117,6 +119,7 @@ import {
   loadScreenShareSettings,
   saveScreenShareSettings,
   screenShareBitrate,
+  screenSharePublicationProfile,
   type ScreenShareSettings,
 } from "./screen-share-preferences";
 import { chooseFeaturedScreenShare } from "./screen-share-selection";
@@ -746,6 +749,7 @@ export function useVoiceRoom(
         if (cancelled) return;
         if (
           !capabilities.nativeCapture &&
+          !capabilities.customPicker &&
           typeof navigator.mediaDevices?.getDisplayMedia !== "function"
         ) {
           setScreenShareCapabilities({
@@ -2847,14 +2851,22 @@ export function useVoiceRoom(
           return;
         }
 
+        if (screenShareCapabilities.customPicker) {
+          if (!sourceId) {
+            throw new Error("Choose a screen or application to share.");
+          }
+          await selectVideoOnlyScreenShareSource(sourceId);
+        }
+        const publicationProfile =
+          screenSharePublicationProfile(requestedSettings);
         const publication = await room.localParticipant.setScreenShareEnabled(
           true,
           {
             audio: false,
-            contentHint: "detail",
+            contentHint: publicationProfile.contentHint,
             resolution: {
-              width: requestedSettings.resolution * (16 / 9),
-              height: requestedSettings.resolution,
+              width: publicationProfile.width,
+              height: publicationProfile.height,
               frameRate: requestedSettings.frameRate,
             },
           },
@@ -2864,6 +2876,14 @@ export function useVoiceRoom(
               maxFramerate: requestedSettings.frameRate,
             },
             simulcast: true,
+            degradationPreference: publicationProfile.degradationPreference,
+            ...(publicationProfile.simulcastLayer
+              ? {
+                  screenShareSimulcastLayers: [
+                    new VideoPreset(publicationProfile.simulcastLayer),
+                  ],
+                }
+              : {}),
           },
         );
         if (

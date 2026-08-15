@@ -69,6 +69,7 @@ interface RoomDouble {
     getTrackPublications: Mock<() => PublicationDouble[]>;
     setMicrophoneEnabled: ReturnType<typeof vi.fn>;
     setCameraEnabled: ReturnType<typeof vi.fn>;
+    setScreenShareEnabled: ReturnType<typeof vi.fn>;
     publishData: ReturnType<typeof vi.fn>;
     publishTrack: ReturnType<typeof vi.fn>;
     unpublishTrack: ReturnType<typeof vi.fn>;
@@ -106,6 +107,7 @@ const screenShareState = vi.hoisted(() => ({
   getCapabilities: vi.fn(),
   listSources: vi.fn(),
   requestMicrophone: vi.fn(),
+  selectVideoSource: vi.fn(),
   start: vi.fn(),
   update: vi.fn(),
   stop: vi.fn(),
@@ -120,6 +122,15 @@ vi.mock("livekit-client", () => {
   class LocalAudioTrack {
     readonly stop = vi.fn();
     readonly restartTrack = vi.fn().mockResolvedValue(undefined);
+    readonly getDeviceId = vi.fn(() => {
+      const options = this.restartTrack.mock.calls.at(-1)?.[0] as
+        { deviceId?: string | { exact?: string } } | undefined;
+      return Promise.resolve(
+        typeof options?.deviceId === "string"
+          ? options.deviceId
+          : (options?.deviceId?.exact ?? "default"),
+      );
+    });
     readonly getProcessor = vi.fn(() => null);
     readonly mute = vi.fn(() => {
       this.isMuted = true;
@@ -165,6 +176,7 @@ vi.mock("livekit-client", () => {
       getTrackPublications: vi.fn(() => [...this.trackPublications]),
       setMicrophoneEnabled: vi.fn().mockResolvedValue(undefined),
       setCameraEnabled: vi.fn().mockResolvedValue(undefined),
+      setScreenShareEnabled: vi.fn().mockResolvedValue({}),
       publishData: vi.fn().mockResolvedValue(undefined),
       publishTrack: vi.fn(
         (
@@ -301,6 +313,11 @@ vi.mock("livekit-client", () => {
         Unsubscribed: "unsubscribed",
       },
     },
+    VideoPreset: class {
+      constructor(options: object) {
+        Object.assign(this, options);
+      }
+    },
     VideoPresets: { h720: { resolution: { width: 1280, height: 720 } } },
     createLocalAudioTrack:
       liveKitState.createLocalAudioTrack.mockImplementation(() =>
@@ -412,6 +429,7 @@ vi.mock("./screen-share-service", () => ({
   getScreenShareCapabilities: screenShareState.getCapabilities,
   listScreenShareSources: screenShareState.listSources,
   requestMicrophonePermission: screenShareState.requestMicrophone,
+  selectVideoOnlyScreenShareSource: screenShareState.selectVideoSource,
   startScreenShare: screenShareState.start,
   updateScreenShareSettings: screenShareState.update,
   stopScreenShare: screenShareState.stop,
@@ -541,6 +559,8 @@ describe("useVoiceRoom join lifecycle", () => {
       canOpenSettings: false,
       requiresRestart: false,
     });
+    screenShareState.selectVideoSource.mockReset();
+    screenShareState.selectVideoSource.mockResolvedValue(undefined);
     screenShareState.getCapabilities.mockResolvedValue({
       available: false,
       nativeCapture: false,
@@ -1412,6 +1432,64 @@ describe("useVoiceRoom join lifecycle", () => {
     );
   });
 
+  it("selects a safe Electron video source before publishing on macOS or Windows", async () => {
+    screenShareState.desktop = true;
+    screenShareState.getCapabilities.mockResolvedValue({
+      available: true,
+      nativeCapture: false,
+      systemAudio: false,
+      sourceKinds: ["display", "application"],
+      resolutions: [480, 720, 1080],
+      frameRates: [15, 30, 60],
+      dynamicSettings: false,
+      customPicker: true,
+      reason: "Screen video is available without system audio.",
+    });
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    await waitFor(() => expect(result.current.screenShareAvailable).toBe(true));
+
+    await act(async () => {
+      await result.current.startScreenShare(
+        false,
+        { resolution: 720, frameRate: 30 },
+        "screen:1:0",
+      );
+    });
+
+    const localParticipant = liveKitState.rooms[0]!.localParticipant;
+    expect(screenShareState.selectVideoSource).toHaveBeenCalledWith(
+      "screen:1:0",
+    );
+    expect(localParticipant.setScreenShareEnabled).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({ audio: false, contentHint: "motion" }),
+      expect.objectContaining({
+        degradationPreference: "maintain-framerate",
+        simulcast: true,
+        screenShareSimulcastLayers: [
+          expect.objectContaining({
+            width: 640,
+            height: 360,
+            maxBitrate: 600_000,
+            maxFramerate: 30,
+          }),
+        ],
+      }),
+    );
+    expect(
+      screenShareState.selectVideoSource.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      localParticipant.setScreenShareEnabled.mock.invocationCallOrder[0]!,
+    );
+    expect(supabaseState.invoke).toHaveBeenCalledTimes(1);
+    expect(result.current.screenShareEnabled).toBe(true);
+  });
+
   it("keeps native video live when Windows isolation downgrades audio", async () => {
     let onLifecycle: ((event: ScreenShareLifecycleEvent) => void) | undefined;
     screenShareState.desktop = true;
@@ -1778,7 +1856,7 @@ describe("useVoiceRoom join lifecycle", () => {
     });
 
     expect(microphone.restartTrack).toHaveBeenCalledWith({
-      deviceId: "usb-microphone",
+      deviceId: { exact: "usb-microphone" },
       echoCancellation: true,
       noiseSuppression: true,
       autoGainControl: true,
@@ -1884,6 +1962,35 @@ describe("useVoiceRoom join lifecycle", () => {
 
     await act(async () => {
       await result.current.setInputDevice("missing-microphone");
+    });
+
+    expect(microphone.restartTrack).toHaveBeenCalledTimes(2);
+    expect(result.current.selectedInputId).toBe("default");
+    expect(result.current.inputDeviceError).toContain(
+      "previous microphone is still active",
+    );
+  });
+
+  it("does not commit a device when the browser silently keeps the old microphone", async () => {
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    const microphone = liveKitState.rooms[0]?.localParticipant
+      .getTrackPublications()
+      .find(
+        (publication) => publication.trackName === SPEECH_MICROPHONE_TRACK_NAME,
+      )?.track as unknown as {
+      restartTrack: Mock;
+      getDeviceId: Mock;
+    };
+    microphone.getDeviceId
+      .mockResolvedValueOnce("built-in-microphone")
+      .mockResolvedValueOnce("default");
+
+    await act(async () => {
+      await result.current.setInputDevice("usb-microphone");
     });
 
     expect(microphone.restartTrack).toHaveBeenCalledTimes(2);

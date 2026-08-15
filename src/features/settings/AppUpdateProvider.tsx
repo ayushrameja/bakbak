@@ -133,6 +133,15 @@ export function AppUpdateProvider({
     return () => window.clearTimeout(timeout);
   }, [autoCheck, checkForUpdates, startupDelayMs]);
 
+  useEffect(() => {
+    const bridge = getDesktopBridge();
+    if (!bridge) return;
+    return bridge.updates.onInstallError(() => {
+      setFailure("install");
+      setStatus("install-failed");
+    });
+  }, []);
+
   const installUpdate = useCallback(async () => {
     const bridge = getDesktopBridge();
     if (!updateAvailable || !bridge) return;

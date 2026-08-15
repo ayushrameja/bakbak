@@ -17,7 +17,10 @@ const CAMERA_SWITCH_ERROR =
 
 type AudioInputRoom = Pick<Room, "switchActiveDevice">;
 type AudioPlaybackRoom = Pick<Room, "startAudio">;
-type RestartableAudioTrack = Pick<LocalAudioTrack, "restartTrack">;
+type RestartableAudioTrack = Pick<
+  LocalAudioTrack,
+  "getDeviceId" | "restartTrack"
+>;
 
 interface DeafenAudioTargets {
   isCurrent: () => boolean;
@@ -34,15 +37,44 @@ export async function restartAudioInput(
 ): Promise<AudioActionResult> {
   try {
     await track.restartTrack(nextOptions);
+    if (!(await audioTrackUsesOptions(track, nextOptions))) {
+      throw new Error("The requested microphone did not become active.");
+    }
     return { ok: true };
   } catch {
     try {
       await track.restartTrack(previousOptions);
+      if (!(await audioTrackUsesOptions(track, previousOptions))) {
+        throw new Error("The previous microphone was not restored.");
+      }
       return { ok: false, message: INPUT_SWITCH_ERROR };
     } catch {
       return { ok: false, message: INPUT_SWITCH_RESTORE_ERROR };
     }
   }
+}
+
+async function audioTrackUsesOptions(
+  track: RestartableAudioTrack,
+  options: AudioCaptureOptions,
+): Promise<boolean> {
+  const requested = requestedAudioDevice(options.deviceId);
+  const active = await track.getDeviceId();
+  return active === requested;
+}
+
+function requestedAudioDevice(
+  deviceId: AudioCaptureOptions["deviceId"],
+): string {
+  if (typeof deviceId === "string") return deviceId;
+  if (
+    deviceId &&
+    !Array.isArray(deviceId) &&
+    typeof deviceId.exact === "string"
+  ) {
+    return deviceId.exact;
+  }
+  return "default";
 }
 
 export async function switchAudioOutput(

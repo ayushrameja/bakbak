@@ -175,7 +175,7 @@ export function microphoneCaptureOptions(
   echoCancellation = true,
 ) {
   return {
-    ...(deviceId === "default" ? {} : { deviceId }),
+    ...(deviceId === "default" ? {} : { deviceId: { exact: deviceId } }),
     echoCancellation,
     noiseSuppression: true,
     autoGainControl: true,

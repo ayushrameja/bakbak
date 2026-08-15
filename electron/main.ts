@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  desktopCapturer,
   ipcMain,
   Menu,
   nativeTheme,
@@ -43,7 +44,14 @@ type SidebarPosition = keyof typeof MAC_WINDOW_CONTROLS_POSITIONS;
 
 let mainWindow: BrowserWindow | null = null;
 let screenShareHelper: ScreenShareHelperManager | null = null;
+let nativeScreenShareUsable = NATIVE_SCREEN_AUDIO_ENABLED;
+let pendingElectronVideoSource: {
+  sourceId: string;
+  selectedAt: number;
+} | null = null;
 let helperShutdownStarted = false;
+let updateInstallInProgress = false;
+let quitForUpdate = false;
 let windowMaterial: WindowMaterial = "fallback";
 let macWindowControlsVisible = true;
 let macWindowControlsSidebarPosition: SidebarPosition = "left";
@@ -299,10 +307,124 @@ function configureScreenShareHelper(): void {
     nativeAudioEnabled: NATIVE_SCREEN_AUDIO_ENABLED,
   });
   screenShareHelper.onLifecycle((event) => {
+    if (event.state === "failed") nativeScreenShareUsable = false;
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("screen-share:lifecycle", event);
     }
   });
+}
+
+const ELECTRON_VIDEO_SOURCE_TTL_MS = 60_000;
+const ELECTRON_VIDEO_AUDIO_REASON =
+  "Screen video is available. Isolated system audio is not enabled in this build.";
+
+function electronVideoCapabilities() {
+  const video = process.platform === "darwin" || process.platform === "win32";
+  return {
+    captureBackend: "electron-video" as const,
+    video,
+    systemAudio: false,
+    applicationAudio: false,
+    processTreeIsolation: false,
+    minOsVersion: null,
+    reason: video
+      ? ELECTRON_VIDEO_AUDIO_REASON
+      : "Screen sharing is supported on macOS and Windows.",
+  };
+}
+
+async function screenShareCapabilities() {
+  if (nativeScreenShareUsable) {
+    try {
+      return {
+        ...(await getScreenShareHelper().capabilities()),
+        captureBackend: "native-helper" as const,
+      };
+    } catch {
+      nativeScreenShareUsable = false;
+    }
+  }
+  return electronVideoCapabilities();
+}
+
+function electronSourceKind(sourceId: string): "display" | "application" {
+  return sourceId.startsWith("screen:") ? "display" : "application";
+}
+
+async function listElectronVideoSources(includeThumbnails: boolean) {
+  const available = electronVideoCapabilities().video;
+  if (!available) {
+    return { sources: [], truncated: false };
+  }
+  const allSources = await desktopCapturer.getSources({
+    types: ["screen", "window"],
+    thumbnailSize: includeThumbnails
+      ? { width: 320, height: 180 }
+      : { width: 0, height: 0 },
+    fetchWindowIcons: false,
+  });
+  const truncated = allSources.length > 256;
+  return {
+    sources: allSources.slice(0, 256).map((source) => ({
+      id: source.id.slice(0, 512),
+      kind: electronSourceKind(source.id),
+      label: (source.name.trim() || "Untitled window").slice(0, 512),
+      applicationLabel: null,
+      audioAvailable: false,
+      audioUnavailableReason: ELECTRON_VIDEO_AUDIO_REASON,
+      thumbnailDataUrl:
+        includeThumbnails && !source.thumbnail.isEmpty()
+          ? source.thumbnail.toDataURL()
+          : null,
+    })),
+    truncated,
+  };
+}
+
+async function listScreenShareSources(input: unknown) {
+  const includeThumbnails =
+    typeof input === "object" &&
+    input !== null &&
+    "includeThumbnails" in input &&
+    input.includeThumbnails === true;
+  if (nativeScreenShareUsable) {
+    try {
+      return await getScreenShareHelper().listSources({ includeThumbnails });
+    } catch {
+      nativeScreenShareUsable = false;
+    }
+  }
+  return listElectronVideoSources(includeThumbnails);
+}
+
+async function selectElectronVideoSource(input: unknown): Promise<void> {
+  if (
+    typeof input !== "object" ||
+    input === null ||
+    !("sourceId" in input) ||
+    typeof input.sourceId !== "string" ||
+    input.sourceId.length === 0 ||
+    input.sourceId.length > 512 ||
+    input.sourceId.includes("\n") ||
+    input.sourceId.includes("\r")
+  ) {
+    throw new Error("Invalid screen-share video source.");
+  }
+  if (nativeScreenShareUsable) {
+    throw new Error("Native screen sharing owns source selection.");
+  }
+  const sources = await desktopCapturer.getSources({
+    types: ["screen", "window"],
+    thumbnailSize: { width: 0, height: 0 },
+    fetchWindowIcons: false,
+  });
+  if (!sources.some((source) => source.id === input.sourceId)) {
+    throw new Error("The selected screen source is no longer available.");
+  }
+  pendingElectronVideoSource = {
+    sourceId: input.sourceId,
+    selectedAt: Date.now(),
+  };
 }
 
 async function openPermissionSettings(kind: PermissionKind): Promise<boolean> {
@@ -365,6 +487,12 @@ function configureUpdater(): void {
   });
   autoUpdater.on("error", (error) => {
     console.error(`[Bakbak updater] ${error.message}`);
+    if (!updateInstallInProgress) return;
+    updateInstallInProgress = false;
+    quitForUpdate = false;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("updates:install-error");
+    }
   });
 }
 
@@ -442,16 +570,24 @@ function registerIpcHandlers(): void {
   );
   ipcMain.handle("screen-share:capabilities", async (event) => {
     assertTrustedSender(event);
-    return getScreenShareHelper().capabilities();
+    return screenShareCapabilities();
   });
   ipcMain.handle("screen-share:list-sources", async (event, input: unknown) => {
     assertTrustedSender(event);
-    return getScreenShareHelper().listSources(
-      input && typeof input === "object" ? input : {},
-    );
+    return listScreenShareSources(input);
   });
+  ipcMain.handle(
+    "screen-share:select-video-source",
+    async (event, input: unknown) => {
+      assertTrustedSender(event);
+      await selectElectronVideoSource(input);
+    },
+  );
   ipcMain.handle("screen-share:start", async (event, input: unknown) => {
     assertTrustedSender(event);
+    if (!nativeScreenShareUsable) {
+      throw new Error("Native screen sharing is unavailable.");
+    }
     return getScreenShareHelper().start(
       input as Parameters<ScreenShareHelperManager["start"]>[0],
     );
@@ -489,8 +625,31 @@ function registerIpcHandlers(): void {
       assertTrustedSender(event);
       if (!app.isPackaged)
         throw new Error("Updates require an installed build.");
-      await withTimeout(autoUpdater.downloadUpdate(), parseTimeout(rawTimeout));
-      setImmediate(() => autoUpdater.quitAndInstall(false, true));
+      updateInstallInProgress = true;
+      try {
+        await withTimeout(
+          autoUpdater.downloadUpdate(),
+          parseTimeout(rawTimeout),
+        );
+      } catch (error) {
+        updateInstallInProgress = false;
+        throw error;
+      }
+      setImmediate(() => {
+        try {
+          // Squirrel.Mac emits app.before-quit only after it has staged the
+          // downloaded update. Let that updater-owned quit complete instead of
+          // converting it into the normal helper-shutdown quit path.
+          quitForUpdate = true;
+          autoUpdater.quitAndInstall(false, true);
+        } catch {
+          updateInstallInProgress = false;
+          quitForUpdate = false;
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send("updates:install-error");
+          }
+        }
+      });
     },
   );
 }
@@ -560,6 +719,37 @@ function configureSession(): void {
       );
     },
   );
+  currentSession.setDisplayMediaRequestHandler((request, callback) => {
+    const selection = pendingElectronVideoSource;
+    pendingElectronVideoSource = null;
+    const trustedFrame =
+      request.frame !== null &&
+      request.frame === request.frame.top &&
+      isTrustedRendererUrl(request.frame.url) &&
+      isTrustedRendererUrl(request.securityOrigin);
+    if (
+      !trustedFrame ||
+      !request.videoRequested ||
+      !selection ||
+      Date.now() - selection.selectedAt > ELECTRON_VIDEO_SOURCE_TTL_MS
+    ) {
+      callback({});
+      return;
+    }
+    void desktopCapturer
+      .getSources({
+        types: ["screen", "window"],
+        thumbnailSize: { width: 0, height: 0 },
+        fetchWindowIcons: false,
+      })
+      .then((sources) => {
+        const source = sources.find(
+          (candidate) => candidate.id === selection.sourceId,
+        );
+        callback(source ? { video: { id: source.id, name: source.name } } : {});
+      })
+      .catch(() => callback({}));
+  });
 }
 
 function registerAppProtocol(): void {
@@ -751,6 +941,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", (event) => {
+  if (quitForUpdate) return;
   if (helperShutdownStarted || !screenShareHelper) return;
   event.preventDefault();
   helperShutdownStarted = true;

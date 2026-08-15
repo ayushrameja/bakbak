@@ -30,6 +30,14 @@ test("loading motion stays bounded and resolves immediately for reduced motion",
   );
   assert.match(
     styles,
+    /\.app-frame\[data-surface="entry"\] \.auth-shell\s*\{[^}]*padding:\s*8px 8px 8px 0/,
+  );
+  assert.match(
+    styles,
+    /\.app-loading--animated\s*\{[^}]*padding:\s*8px 8px 8px 0/,
+  );
+  assert.match(
+    styles,
     /\.app-loading__track i\s*\{[\s\S]*entry-loading-track 1\.2s/,
   );
   assert.match(styles, /:root\[data-color-scheme="dark"\]/);

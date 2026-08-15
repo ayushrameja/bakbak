@@ -15,6 +15,7 @@ import {
   SCREEN_SHARE_RESOLUTIONS,
   parseScreenShareSettings,
   screenShareBitrate,
+  screenShareDimensions,
   type ScreenShareFrameRate,
   type ScreenShareResolution,
   type ScreenShareSettings,
@@ -151,13 +152,13 @@ export async function getScreenShareCapabilities(): Promise<ScreenShareCapabilit
 
   return {
     available: nativeCapabilities.video,
-    nativeCapture: true,
+    nativeCapture: nativeCapabilities.captureBackend === "native-helper",
     systemAudio:
       nativeCapabilities.systemAudio && nativeCapabilities.processTreeIsolation,
     sourceKinds: ["display", "application"],
     resolutions: [...SCREEN_SHARE_RESOLUTIONS],
     frameRates: [...SCREEN_SHARE_FRAME_RATES],
-    dynamicSettings: true,
+    dynamicSettings: nativeCapabilities.captureBackend === "native-helper",
     customPicker: true,
     reason: nativeCapabilities.reason,
   };
@@ -262,6 +263,18 @@ export async function openPermissionSettings(
 
 export async function restartDesktopApp(): Promise<void> {
   await getDesktopBridge()?.app.relaunch();
+}
+
+export async function selectVideoOnlyScreenShareSource(
+  sourceId: string,
+): Promise<void> {
+  const bridge = getDesktopBridge();
+  if (!bridge) {
+    throw new Error(
+      "Screen sharing is available in the installed desktop app.",
+    );
+  }
+  await bridge.screenShare.selectVideoSource({ sourceId });
 }
 
 export async function startScreenShare(
@@ -446,12 +459,9 @@ function mapNativeLifecycle(
 }
 
 function nativeSettings(settings: ScreenShareSettings) {
+  const dimensions = screenShareDimensions(settings.resolution);
   return {
-    width:
-      settings.resolution === 480
-        ? 854
-        : Math.round(settings.resolution * (16 / 9)),
-    height: settings.resolution,
+    ...dimensions,
     frameRate: settings.frameRate,
     maxBitrate: screenShareBitrate(settings),
   };

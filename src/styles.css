@@ -13117,7 +13117,7 @@ textarea {
   min-height: 0;
   grid-template-columns: 280px minmax(420px, 1fr);
   gap: 0;
-  padding: 0 8px 8px 0;
+  padding: 8px 8px 8px 0;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -13264,7 +13264,7 @@ textarea {
   align-items: stretch;
   justify-content: stretch;
   gap: 0;
-  padding: 0 8px 8px 0;
+  padding: 8px 8px 8px 0;
   color: var(--text);
   background: transparent;
 }

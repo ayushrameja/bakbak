@@ -61,7 +61,7 @@ describe("microphone processing", () => {
 
   it("keeps browser echo control while requesting mono 48 kHz capture", () => {
     expect(microphoneCaptureOptions("usb-mic")).toEqual({
-      deviceId: "usb-mic",
+      deviceId: { exact: "usb-mic" },
       echoCancellation: true,
       noiseSuppression: true,
       autoGainControl: true,

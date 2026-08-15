@@ -31,6 +31,7 @@ export class DesktopPermissionError extends Error {
 }
 
 export interface DesktopScreenShareCapabilities {
+  captureBackend: "native-helper" | "electron-video";
   video: boolean;
   systemAudio: boolean;
   applicationAudio: boolean;
@@ -117,7 +118,7 @@ export interface DesktopNativeScreenShareSession {
 }
 
 export interface DesktopNativeScreenShareLifecycleEvent {
-  sessionId?: string;
+  sessionId?: string | null;
   state:
     | "ready"
     | "starting"
@@ -127,9 +128,9 @@ export interface DesktopNativeScreenShareLifecycleEvent {
     | "stopped"
     | "failed"
     | "shutting-down";
-  reasonCode?: string;
-  message?: string;
-  audioPublished?: boolean;
+  reasonCode?: string | null;
+  message?: string | null;
+  audioPublished?: boolean | null;
 }
 
 export interface DesktopUpdateCheckResult {
@@ -177,6 +178,7 @@ export interface BakbakDesktopBridge {
     listSources(input?: {
       includeThumbnails?: boolean;
     }): Promise<DesktopNativeScreenShareSourceResult>;
+    selectVideoSource(input: { sourceId: string }): Promise<void>;
     start(
       input: DesktopNativeScreenShareStartInput,
     ): Promise<DesktopNativeScreenShareSession>;
@@ -201,6 +203,7 @@ export interface BakbakDesktopBridge {
     check(timeoutMs: number): Promise<DesktopUpdateCheckResult>;
     downloadAndInstall(timeoutMs: number): Promise<void>;
     onProgress(listener: (progress: DesktopUpdateProgress) => void): () => void;
+    onInstallError(listener: () => void): () => void;
   };
 }
 

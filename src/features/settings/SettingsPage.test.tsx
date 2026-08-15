@@ -708,7 +708,7 @@ describe("SettingsPage", () => {
     await waitFor(() => expect(getUserMedia).toHaveBeenCalledOnce());
     expect(getUserMedia).toHaveBeenCalledWith({
       audio: {
-        deviceId: "studio-mic",
+        deviceId: { exact: "studio-mic" },
         echoCancellation: false,
         noiseSuppression: true,
         autoGainControl: true,

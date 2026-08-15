@@ -78,6 +78,11 @@ const bridge = Object.freeze({
         "screen-share:list-sources",
         input,
       ) as Promise<unknown>,
+    selectVideoSource: (input: { sourceId: string }) =>
+      ipcRenderer.invoke(
+        "screen-share:select-video-source",
+        input,
+      ) as Promise<void>,
     start: (input: unknown) =>
       ipcRenderer.invoke("screen-share:start", input) as Promise<unknown>,
     update: (input: unknown) =>
@@ -101,6 +106,8 @@ const bridge = Object.freeze({
         total: number | null;
       }) => void,
     ) => subscribe("updates:progress", listener),
+    onInstallError: (listener: () => void) =>
+      subscribe("updates:install-error", listener),
   }),
 });
 
