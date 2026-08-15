@@ -89,13 +89,18 @@ Windows recovery points to the global microphone and desktop-app privacy
 switches. Screen-source enumeration reports macOS denied/restricted states,
 source and system-audio capabilities, and enumeration failure separately; on
 Windows it never claims a Bakbak-specific screen-capture permission exists.
-Local macOS packages remain ad-hoc signed, but production releases are gated on
-one stable Developer ID Application identity for both `Bakbak.app` and the
-screen-share helper, followed by notarization, stapling, and Gatekeeper
-assessment. The first Developer ID release changes identity from older ad-hoc
-installs and can require one final manual replacement and permission grant;
-subsequent releases signed by the same team preserve the code requirement that
-macOS uses for microphone and Screen Recording continuity.
+Local macOS packages remain ad-hoc signed. When Apple credentials are
+available, releases use one stable Developer ID Application identity for both
+`Bakbak.app` and the screen-share helper, followed by notarization, stapling,
+and Gatekeeper assessment. Until the project can enroll in the Apple Developer
+Program, an explicit all-credentials-missing fallback publishes only an ad-hoc
+DMG plus a manual-install warning. It removes the macOS ZIP, `latest-mac.yml`,
+and legacy macOS updater payload instead of advertising an unsafe automatic
+update; partially configured credentials still fail the build. The first
+Developer ID release changes identity from older ad-hoc installs and can
+require one final manual replacement and permission grant; subsequent releases
+signed by the same team preserve the code requirement that macOS uses for
+microphone and Screen Recording continuity.
 
 Inter Variable is bundled locally at weights 400–700 with `Inter`,
 `Avenir Next`, `Segoe UI`, and `sans-serif` fallbacks. The rem-based scale uses
@@ -1702,18 +1707,25 @@ model; Jitsi's Apache/MIT notice and Xiph.Org's BSD 3-Clause notice ship under
 5. The release checkout writes the calculated version to `package.json`, then
    electron-builder produces an Apple Silicon DMG/ZIP with
    `latest-mac.yml` and a Windows x64 NSIS installer with `latest.yml`. The
-   macOS build refuses to run without the protected Developer ID certificate,
-   notarization API credentials, and expected Apple team ID. It overrides the
-   local ad-hoc identity, signs the app and nested helper with that team,
-   notarizes/staples the result, and verifies strict code signatures plus
-   Gatekeeper assessment before artifacts continue. Intel macOS builds ended at
-   v0.4.0.
+   macOS build selects exactly one of two explicit modes. With the complete
+   protected Developer ID certificate, notarization API credentials, and
+   expected Apple team ID, it overrides the local ad-hoc identity, signs the
+   app and nested helper with that team, notarizes/staples the result, and
+   verifies strict code signatures plus Gatekeeper assessment before artifacts
+   continue. With all six values absent, it produces an ad-hoc DMG for manual
+   installation, verifies that the app/helper have no team identity, writes a
+   warning asset, and removes the ZIP, block maps, and `latest-mac.yml`. A
+   partially configured credential set fails rather than guessing. Intel macOS
+   builds ended at v0.4.0.
 6. For the shell transition, the macOS job first verifies the Electron app's
    nested code-signature seal, then archives the `.app` as `.app.tar.gz` with
    macOS metadata sidecars and extended attributes disabled. The release jobs
    sign that archive and the NSIS executable with the existing Tauri updater
    key through a pinned signing CLI, and the publish job generates legacy
-   `latest.json`. Before a draft can
+   `latest.json`. The temporary ad-hoc mode omits the macOS archive/signature
+   and emits an explicitly Windows-only legacy manifest, so neither Tauri nor
+   Electron macOS clients are offered an automatic update to an unstable code
+   identity. Before a signed draft can
    be created, the Linux publish boundary enumerates the macOS archive and
    rejects AppleDouble/`__MACOSX` metadata, traversal, extra roots, or a missing
    Bakbak executable/Info.plist. This keeps a Tauri extractor from materializing
@@ -1959,11 +1971,13 @@ the payload accepted by existing Tauri updater clients. The key/password are
 never Vite variables, Electron renderer inputs, release assets, or committed
 files. Future Electron releases use electron-builder update metadata and must
 use configured operating-system signing identities before public distribution.
-Production macOS releases additionally read `MAC_CSC_LINK`,
+Signed production macOS releases additionally read `MAC_CSC_LINK`,
 `MAC_CSC_KEY_PASSWORD`, `APPLE_API_KEY`, `APPLE_API_KEY_ID`,
 `APPLE_API_ISSUER`, and `APPLE_TEAM_ID` only from GitHub Actions secrets. These
 hold the Developer ID certificate/password, notarization credentials, and
-expected signing team; none enter Vite, the renderer, or release assets.
+expected signing team; none enter Vite, the renderer, or release assets. All
+six absent selects the temporary manual-install-only ad-hoc path; any partial
+set fails closed.
 
 ## Validation strategy
 
@@ -2129,12 +2143,13 @@ that it has passed.
 - The current production renderer is roughly 406 kB compressed; LiveKit and
   Supabase can be lazy-loaded in a later performance pass if startup profiling
   shows a meaningful benefit.
-- Local macOS packages use an ad-hoc hardened-runtime signature and are not a
-  TCC-continuity proof. The first production Developer ID release replaces the
-  old ad-hoc identity, so existing users can require one final manual DMG
-  replacement and microphone/Screen Recording grant. Release CI now refuses
-  unsigned/unnotarized macOS artifacts, but the first signed installed update
-  and subsequent signed-to-signed update still require real-device validation.
+- Local and temporary unenrolled macOS packages use an ad-hoc hardened-runtime
+  signature and are not a TCC-continuity proof. Temporary releases publish the
+  DMG for manual installation only and deliberately omit macOS updater
+  metadata. The first production Developer ID release replaces the old ad-hoc
+  identity, so existing users can require one final manual DMG replacement and
+  microphone/Screen Recording grant. The first signed installed update and
+  subsequent signed-to-signed update still require real-device validation.
 - The Windows release job produces an unsigned x64 NSIS installer until a
   Windows code-signing identity is configured, so SmartScreen warnings are
   expected during the initial friend test.

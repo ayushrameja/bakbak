@@ -115,6 +115,7 @@ jobs:
               release/latest-mac.yml
               release/*.app.tar.gz
               release/*.app.tar.gz.sig
+              release/MACOS-MANUAL-INSTALL.txt
           - id: windows-x64
             name: Windows x64
             runner: windows-latest
@@ -144,7 +145,8 @@ jobs:
       - run: node scripts/set-version.mjs ${{ needs.prepare.outputs.version }}
       - run: node scripts/check-release-env.mjs
       - run: pnpm desktop:prepare
-      - name: Build signed and notarized macOS release
+      - name: Select macOS signing mode
+        id: mac-signing
         if: matrix.id == 'macos-arm64'
         shell: bash
         env:
@@ -155,20 +157,55 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          test -n "$CSC_LINK"
-          test -n "$CSC_KEY_PASSWORD"
-          test -n "$APPLE_API_KEY"
-          test -n "$APPLE_API_KEY_ID"
-          test -n "$APPLE_API_ISSUER"
-          test -n "$APPLE_TEAM_ID"
+          credential_names=(
+            CSC_LINK
+            CSC_KEY_PASSWORD
+            APPLE_API_KEY
+            APPLE_API_KEY_ID
+            APPLE_API_ISSUER
+            APPLE_TEAM_ID
+          )
+          missing=()
+          for name in "${credential_names[@]}"; do
+            if [[ -z "${!name}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if [[ "${#missing[@]}" -eq 0 ]]; then
+            echo "mode=signed" >> "$GITHUB_OUTPUT"
+          elif [[ "${#missing[@]}" -eq "${#credential_names[@]}" ]]; then
+            echo "mode=adhoc" >> "$GITHUB_OUTPUT"
+            echo "::warning::Apple signing credentials are unavailable. Building a manual-install-only ad-hoc DMG; macOS updater metadata will not be published."
+          else
+            printf '::error::Apple signing is only partially configured. Missing: %s\n' "${missing[*]}"
+            exit 1
+          fi
+      - name: Build signed and notarized macOS release
+        if: matrix.id == 'macos-arm64' && steps.mac-signing.outputs.mode == 'signed'
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
           pnpm exec electron-builder ${{ matrix.builder_args }} --publish never \
             --config.mac.identity="Developer ID Application" \
             --config.mac.notarize=true
+      - name: Build temporary ad-hoc macOS release
+        if: matrix.id == 'macos-arm64' && steps.mac-signing.outputs.mode == 'adhoc'
+        shell: bash
+        run: |
+          pnpm exec electron-builder ${{ matrix.builder_args }} --publish never \
+            --config.mac.identity=- \
+            --config.mac.notarize=false
       - name: Build Windows release
         if: matrix.id == 'windows-x64'
         run: pnpm exec electron-builder ${{ matrix.builder_args }} --publish never
       - name: Verify macOS distribution identity and notarization
-        if: matrix.id == 'macos-arm64'
+        if: matrix.id == 'macos-arm64' && steps.mac-signing.outputs.mode == 'signed'
         shell: bash
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -186,8 +223,26 @@ jobs:
           test "$(printf '%s\n' "$helper_signature" | sed -n 's/^TeamIdentifier=//p')" = "$APPLE_TEAM_ID"
           xcrun stapler validate "$app_path"
           spctl --assess --verbose=2 --type exec "$app_path"
+      - name: Verify and isolate temporary ad-hoc macOS package
+        if: matrix.id == 'macos-arm64' && steps.mac-signing.outputs.mode == 'adhoc'
+        shell: bash
+        run: |
+          app_path="release/mac-arm64/Bakbak.app"
+          helper_path="$app_path/Contents/Resources/native/bakbak-screen-share-helper"
+          test -x "$helper_path"
+          for target in "$app_path" "$helper_path"; do
+            codesign --verify --deep --strict --verbose=2 "$target"
+            signature="$(codesign --display --verbose=4 "$target" 2>&1)"
+            printf '%s\n' "$signature" | grep -q '^Signature=adhoc$'
+            printf '%s\n' "$signature" | grep -q '^TeamIdentifier=not set$'
+          done
+          rm -f release/*.zip release/*.zip.blockmap release/*.dmg.blockmap release/latest-mac.yml
+          printf '%s\n' \
+            'This macOS build is ad-hoc signed and is for manual installation only.' \
+            'Automatic updates and Screen Recording permission continuity are unavailable until Bakbak has an Apple Developer ID.' \
+            > release/MACOS-MANUAL-INSTALL.txt
       - name: Create legacy macOS updater payload
-        if: matrix.id == 'macos-arm64'
+        if: matrix.id == 'macos-arm64' && steps.mac-signing.outputs.mode == 'signed'
         shell: bash
         env:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
@@ -237,15 +292,29 @@ jobs:
         shell: bash
         run: |
           mac_archive="release-assets/Bakbak-${RELEASE_VERSION}-macos-arm64.app.tar.gz"
-          tar -tzf "$mac_archive" | node scripts/verify-legacy-macos-archive.mjs
-          node scripts/create-legacy-updater-manifest.mjs \
-            --version "$RELEASE_VERSION" \
-            --repository "$GITHUB_REPOSITORY" \
-            --tag "$RELEASE_TAG" \
-            --mac-artifact "$mac_archive" \
-            --windows-artifact "release-assets/Bakbak-${RELEASE_VERSION}-windows-x64-setup.exe" \
-            --output release-assets/latest.json
-          node scripts/verify-updater-manifest.mjs release-assets/latest.json "$RELEASE_VERSION"
+          windows_artifact="release-assets/Bakbak-${RELEASE_VERSION}-windows-x64-setup.exe"
+          if [[ -f release-assets/MACOS-MANUAL-INSTALL.txt ]]; then
+            test ! -e "$mac_archive"
+            node scripts/create-legacy-updater-manifest.mjs \
+              --version "$RELEASE_VERSION" \
+              --repository "$GITHUB_REPOSITORY" \
+              --tag "$RELEASE_TAG" \
+              --windows-only \
+              --windows-artifact "$windows_artifact" \
+              --output release-assets/latest.json
+            node scripts/verify-updater-manifest.mjs \
+              release-assets/latest.json "$RELEASE_VERSION" --allow-missing-macos
+          else
+            tar -tzf "$mac_archive" | node scripts/verify-legacy-macos-archive.mjs
+            node scripts/create-legacy-updater-manifest.mjs \
+              --version "$RELEASE_VERSION" \
+              --repository "$GITHUB_REPOSITORY" \
+              --tag "$RELEASE_TAG" \
+              --mac-artifact "$mac_archive" \
+              --windows-artifact "$windows_artifact" \
+              --output release-assets/latest.json
+            node scripts/verify-updater-manifest.mjs release-assets/latest.json "$RELEASE_VERSION"
+          fi
       - name: Create draft and upload release assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -253,12 +322,18 @@ jobs:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         shell: bash
         run: |
+          release_title="Bakbak v${RELEASE_VERSION}"
+          if [[ -f release-assets/MACOS-MANUAL-INSTALL.txt ]]; then
+            release_title="${release_title} — macOS manual install"
+          fi
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release create "$RELEASE_TAG" \
               --draft \
               --generate-notes \
               --target "$GITHUB_SHA" \
-              --title "Bakbak v${RELEASE_VERSION}"
+              --title "$release_title"
+          else
+            gh release edit "$RELEASE_TAG" --title "$release_title"
           fi
           gh release upload "$RELEASE_TAG" release-assets/* --clobber
       - name: Verify supported installers and update metadata
@@ -269,12 +344,20 @@ jobs:
         run: |
           assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
           test "$(printf '%s\n' "$assets" | grep -Ec '\.dmg$')" -eq 1
-          test "$(printf '%s\n' "$assets" | grep -Ec '\.zip$')" -eq 1
           test "$(printf '%s\n' "$assets" | grep -Ec '\.exe$')" -eq 1
-          test "$(printf '%s\n' "$assets" | grep -Ec '^latest-mac\.yml$')" -eq 1
           test "$(printf '%s\n' "$assets" | grep -Ec '^latest\.yml$')" -eq 1
           test "$(printf '%s\n' "$assets" | grep -Ec '^latest\.json$')" -eq 1
           test "$(printf '%s\n' "$assets" | grep -Eic '(darwin|macos).*(x86_64|x64)')" -eq 0
+          if [[ -f release-assets/MACOS-MANUAL-INSTALL.txt ]]; then
+            test "$(printf '%s\n' "$assets" | grep -Ec '\.zip$')" -eq 0
+            test "$(printf '%s\n' "$assets" | grep -Ec '^latest-mac\.yml$')" -eq 0
+            test "$(printf '%s\n' "$assets" | grep -Ec '\.app\.tar\.gz(\.sig)?$')" -eq 0
+            test "$(printf '%s\n' "$assets" | grep -Ec '^MACOS-MANUAL-INSTALL\.txt$')" -eq 1
+          else
+            test "$(printf '%s\n' "$assets" | grep -Ec '\.zip$')" -eq 1
+            test "$(printf '%s\n' "$assets" | grep -Ec '^latest-mac\.yml$')" -eq 1
+            test "$(printf '%s\n' "$assets" | grep -Ec '^MACOS-MANUAL-INSTALL\.txt$')" -eq 0
+          fi
       - name: Publish verified release
         env:
           GH_TOKEN: ${{ github.token }}

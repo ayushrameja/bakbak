@@ -11,7 +11,7 @@ export async function createLegacyUpdaterManifest({
   version,
   repository,
   tag,
-  macArtifact,
+  macArtifact = null,
   windowsArtifact,
   publishedAt = new Date().toISOString(),
 }) {
@@ -20,40 +20,46 @@ export async function createLegacyUpdaterManifest({
     throw new Error("Invalid GitHub repository.");
   }
   if (tag !== `v${version}`) throw new Error("Release tag and version differ.");
-  if (!macArtifact.endsWith(".app.tar.gz")) {
+  if (macArtifact && !macArtifact.endsWith(".app.tar.gz")) {
     throw new Error("The legacy macOS artifact must be an app tarball.");
   }
   if (!windowsArtifact.endsWith(".exe")) {
     throw new Error("The legacy Windows artifact must be an NSIS installer.");
   }
 
-  const [macSignature, windowsSignature] = await Promise.all([
-    readFile(`${macArtifact}.sig`, "utf8"),
-    readFile(`${windowsArtifact}.sig`, "utf8"),
-  ]);
-  const mac = {
-    signature: macSignature.trim(),
-    url: releaseAssetUrl(repository, tag, macArtifact),
-  };
+  const windowsSignature = await readFile(`${windowsArtifact}.sig`, "utf8");
   const windows = {
     signature: windowsSignature.trim(),
     url: releaseAssetUrl(repository, tag, windowsArtifact),
   };
-  if (!mac.signature || !windows.signature) {
-    throw new Error("Legacy updater signatures must not be empty.");
+  if (!windows.signature) {
+    throw new Error("The legacy Windows updater signature must not be empty.");
+  }
+  const platforms = {
+    "windows-x86_64": windows,
+    "windows-x86_64-nsis": windows,
+  };
+
+  if (macArtifact) {
+    const macSignature = (await readFile(`${macArtifact}.sig`, "utf8")).trim();
+    if (!macSignature) {
+      throw new Error("The legacy macOS updater signature must not be empty.");
+    }
+    const mac = {
+      signature: macSignature,
+      url: releaseAssetUrl(repository, tag, macArtifact),
+    };
+    platforms["darwin-aarch64"] = mac;
+    platforms["darwin-aarch64-app"] = mac;
   }
 
   return {
     version,
-    notes:
-      "Bakbak now uses Electron. This compatibility update moves supported Tauri installations to the new desktop shell.",
+    notes: macArtifact
+      ? "Bakbak now uses Electron. This compatibility update moves supported Tauri installations to the new desktop shell."
+      : "Bakbak now uses Electron on Windows. This release requires a manual DMG installation on macOS.",
     pub_date: publishedAt,
-    platforms: {
-      "darwin-aarch64": mac,
-      "darwin-aarch64-app": mac,
-      "windows-x86_64": windows,
-      "windows-x86_64-nsis": windows,
-    },
+    platforms,
   };
 }
 
@@ -68,11 +74,21 @@ if (
 ) {
   const output = argument("--output");
   if (!output) throw new Error("An output path is required.");
+  const windowsOnly = process.argv.includes("--windows-only");
+  const macArtifact = argument("--mac-artifact");
+  if (windowsOnly && macArtifact) {
+    throw new Error("A Windows-only manifest cannot include a macOS artifact.");
+  }
+  if (!windowsOnly && !macArtifact) {
+    throw new Error(
+      "A macOS artifact is required unless --windows-only is explicit.",
+    );
+  }
   const manifest = await createLegacyUpdaterManifest({
     version: argument("--version"),
     repository: argument("--repository"),
     tag: argument("--tag"),
-    macArtifact: argument("--mac-artifact"),
+    macArtifact: windowsOnly ? null : macArtifact,
     windowsArtifact: argument("--windows-artifact"),
   });
   await writeFile(output, `${JSON.stringify(manifest, null, 2)}\n`);
