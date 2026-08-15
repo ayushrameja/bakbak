@@ -11,7 +11,11 @@ function matchesTarget(key, target) {
   return key === target || key.startsWith(`${target}-`);
 }
 
-export function verifyUpdaterManifest(manifest, expectedVersion) {
+export function verifyUpdaterManifest(
+  manifest,
+  expectedVersion,
+  { allowMissingMacos = false } = {},
+) {
   if (manifest.version !== expectedVersion) {
     throw new Error(
       `Updater manifest version ${manifest.version ?? "<missing>"} does not match ${expectedVersion}.`,
@@ -43,6 +47,7 @@ export function verifyUpdaterManifest(manifest, expectedVersion) {
   for (const [target, aliases] of Object.entries(requiredTargets)) {
     const matchingKeys = aliases.filter((key) => platformKeys.includes(key));
     if (matchingKeys.length === 0) {
+      if (target === "darwin-aarch64" && allowMissingMacos) continue;
       throw new Error(
         `Updater manifest is missing ${target}. Found: ${platformKeys.join(", ") || "<none>"}.`,
       );
@@ -72,8 +77,11 @@ if (
   }
 
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-  verifyUpdaterManifest(manifest, expectedVersion);
+  const allowMissingMacos = process.argv.includes("--allow-missing-macos");
+  verifyUpdaterManifest(manifest, expectedVersion, { allowMissingMacos });
   process.stdout.write(
-    `Updater manifest ${expectedVersion} contains Apple Silicon macOS and Windows x64 targets.\n`,
+    allowMissingMacos
+      ? `Updater manifest ${expectedVersion} contains Windows x64 targets; macOS is manual-install only.\n`
+      : `Updater manifest ${expectedVersion} contains Apple Silicon macOS and Windows x64 targets.\n`,
   );
 }

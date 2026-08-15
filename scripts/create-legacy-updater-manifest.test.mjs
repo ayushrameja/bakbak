@@ -35,3 +35,27 @@ test("creates a signed bridge manifest for both legacy desktop targets", async (
     "windows-signature",
   );
 });
+
+test("creates a Windows-only bridge when macOS is manual-install only", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "bakbak-windows-update-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const windowsArtifact = join(directory, "Bakbak-1.8.0-windows-x64-setup.exe");
+  await writeFile(`${windowsArtifact}.sig`, "windows-signature\n");
+
+  const manifest = await createLegacyUpdaterManifest({
+    version: "1.8.0",
+    repository: "ayushrameja/bakbak",
+    tag: "v1.8.0",
+    windowsArtifact,
+    publishedAt: "2026-08-15T12:00:00.000Z",
+  });
+
+  assert.doesNotThrow(() =>
+    verifyUpdaterManifest(manifest, "1.8.0", { allowMissingMacos: true }),
+  );
+  assert.deepEqual(Object.keys(manifest.platforms).sort(), [
+    "windows-x86_64",
+    "windows-x86_64-nsis",
+  ]);
+  assert.match(manifest.notes, /manual DMG installation on macOS/);
+});

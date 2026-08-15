@@ -105,6 +105,25 @@ test("validates every supported updater alias", () => {
   );
 });
 
+test("allows an explicit Windows-only bridge for manual macOS releases", () => {
+  const entry = { signature: "signed", url: "https://example.com/update" };
+  const manifest = {
+    version: "0.2.1",
+    platforms: {
+      "windows-x86_64": entry,
+      "windows-x86_64-nsis": entry,
+    },
+  };
+
+  assert.throws(
+    () => verifyUpdaterManifest(manifest, "0.2.1"),
+    /missing darwin-aarch64/,
+  );
+  assert.doesNotThrow(() =>
+    verifyUpdaterManifest(manifest, "0.2.1", { allowMissingMacos: true }),
+  );
+});
+
 test("rejects Intel macOS and other unsupported updater targets", () => {
   const entry = { signature: "signed", url: "https://example.com/update" };
   const supportedPlatforms = {
@@ -160,6 +179,7 @@ test("release builds only Apple Silicon macOS and Windows Electron installers", 
   assert.match(workflow, /name: Windows x64\n {12}runner: windows-latest\n/);
   assert.match(workflow, /builder_args: --win --x64/);
   assert.match(workflow, /Build signed and notarized macOS release/);
+  assert.match(workflow, /Build temporary ad-hoc macOS release/);
   assert.match(workflow, /Build Windows release/);
   assert.match(workflow, /secrets\.MAC_CSC_LINK/);
   assert.match(workflow, /secrets\.MAC_CSC_KEY_PASSWORD/);
@@ -169,6 +189,18 @@ test("release builds only Apple Silicon macOS and Windows Electron installers", 
   assert.match(workflow, /secrets\.APPLE_TEAM_ID/);
   assert.match(workflow, /--config\.mac\.identity="Developer ID Application"/);
   assert.match(workflow, /--config\.mac\.notarize=true/);
+  assert.match(workflow, /--config\.mac\.identity=-/);
+  assert.match(workflow, /--config\.mac\.notarize=false/);
+  assert.match(workflow, /mode=adhoc/);
+  assert.match(workflow, /Apple signing is only partially configured/);
+  assert.match(workflow, /MACOS-MANUAL-INSTALL\.txt/);
+  assert.match(workflow, /--windows-only/);
+  assert.match(workflow, /--allow-missing-macos/);
+  assert.match(workflow, /rm -f release\/\*\.zip .*release\/latest-mac\.yml/);
+  assert.match(
+    workflow,
+    /if: matrix\.id == 'macos-arm64' && steps\.mac-signing\.outputs\.mode == 'signed'[\s\S]*?Create legacy macOS updater payload/,
+  );
   assert.match(workflow, /xcrun stapler validate "\$app_path"/);
   assert.match(workflow, /spctl --assess --verbose=2 --type exec "\$app_path"/);
   assert.match(

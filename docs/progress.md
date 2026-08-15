@@ -8322,3 +8322,59 @@ native/screen-share-helper/Cargo.toml` — passed 15 library tests plus 1 binary
   manually replace one current ad-hoc installation with that first signed DMG,
   then prove a signed-to-signed update preserves Screen Recording permission
   and keeps a two-client high-motion game share fluid at 720p30 and 1080p60.
+
+## 2026-08-15 — Add a manual-only macOS release fallback
+
+- **Completed:** Changed the release workflow to select an explicit macOS
+  signing mode. A complete six-secret Apple credential set retains the existing
+  Developer ID/notarization path; all six missing now produces a verified
+  ad-hoc DMG, and a partial set fails with the missing credential names. The
+  ad-hoc path deletes macOS ZIP/block-map/update YAML output, skips the legacy
+  macOS Tauri archive, publishes a `MACOS-MANUAL-INSTALL.txt` warning, and labels
+  the GitHub Release title as a macOS manual install. Extended the legacy
+  manifest generator/verifier with explicit Windows-only modes so Windows
+  automatic updates continue without advertising an unsafe macOS update.
+- **Decisions:** Kept ad-hoc fallback separate from the signed path instead of
+  weakening signing verification. An ad-hoc release may distribute only the
+  DMG for manual replacement; neither Electron `latest-mac.yml` nor a Tauri
+  macOS platform entry may point clients at an identity-changing build. Kept
+  partial Apple credentials fatal because silently choosing one mode from an
+  incomplete secret set would conceal operator error.
+- **Validation:**
+  - `./node_modules/.bin/prettier --check .` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed with zero
+    warnings.
+  - Renderer, Node, Electron, and Electron-test strict TypeScript — passed all
+    four configurations.
+  - `./node_modules/.bin/vitest run` — passed 91 files / 562 tests.
+  - `node --test scripts/*.test.mjs` — passed 64/64 repository contracts,
+    including the Windows-only legacy manifest and ad-hoc release workflow.
+  - `node scripts/set-version.mjs --check` — passed for version 1.8.0.
+  - `cargo test --locked --offline --manifest-path
+native/screen-share-helper/Cargo.toml` — passed 15 library tests plus 1 binary
+    test; doc tests had 0.
+  - `./node_modules/.bin/vite build`, Electron compile, and the locked offline
+    Rust release build — passed; Vite retains its existing non-blocking
+    large-chunk warning.
+  - The exact CI fallback command,
+    `./node_modules/.bin/electron-builder --mac --arm64 --publish never
+--config.mac.identity=- --config.mac.notarize=false`, passed outside the
+    sandbox and produced the Apple Silicon app/DMG/ZIP before the workflow's
+    manual-only cleanup boundary.
+  - Strict deep app signature verification passed. Both the packaged app and
+    native helper reported `Signature=adhoc` and `TeamIdentifier=not set`, as
+    required by the fallback verifier.
+  - Ruby parsed `.github/workflows/release.yml`; the bundle secret scan and
+    `git diff --check` passed.
+- **Documentation updated:** Updated `docs/architecture.md`, active plan 0001,
+  workflow/source contracts, and this canonical progress log.
+- **Known limitations:** This change cannot provide macOS automatic updates,
+  notarization, Gatekeeper trust, or Screen Recording permission continuity.
+  Existing macOS users must download and replace Bakbak from the DMG for every
+  ad-hoc release. The revised hosted release job and final release asset set
+  remain unverified until the change is pushed and Actions reruns.
+- **Next:** Push the workflow change, rerun the failed release, and verify that
+  macOS publishes exactly one DMG plus `MACOS-MANUAL-INSTALL.txt`, no ZIP or
+  `latest-mac.yml`, while Windows retains its installer and both update
+  manifests. Replace this fallback with the signed path after Apple Developer
+  enrollment.

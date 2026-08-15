@@ -346,11 +346,13 @@ Finally, plan 0036 adds typed microphone/screen permission snapshots and
 structured source-enumeration failures. macOS recovery can open the correct
 Privacy Settings and request restart; Windows microphone recovery targets the
 global desktop-app privacy switches and screen capture never claims an
-app-specific permission. Local macOS packages remain ad-hoc, while production
-release CI now requires one stable Developer ID identity for the app and helper
-plus notarization. The first signed release may require one last permission
-grant after the ad-hoc transition; later same-team releases preserve TCC
-continuity.
+app-specific permission. Local macOS packages remain ad-hoc. Release CI uses
+one stable Developer ID identity for the app/helper plus notarization when the
+complete Apple credential set exists; while enrollment is unavailable, the
+all-missing fallback publishes a clearly marked manual-only DMG and omits
+macOS updater metadata. Partial credentials fail. The first signed release may
+require one last permission grant after the ad-hoc transition; later same-team
+releases preserve TCC continuity.
 
 The 2026-08-09 Electron shell amendment supersedes Tauri-specific runtime,
 window, capture, packaging, and updater implementation details throughout the
@@ -683,9 +685,14 @@ NSIS invocation so the handoff does not create a second application location.
 - [x] Cross-build and inspect a Windows x64 Electron/NSIS installer locally.
 - [ ] Build and validate the Windows x64 installer in GitHub Actions.
 - [ ] Add Linux installer builds after friend testing.
-- [x] Configure Developer ID signing/notarization as a mandatory macOS release
-      gate, including app/helper team checks, stapling, and Gatekeeper
+- [x] Configure Developer ID signing/notarization when credentials are
+      available, including app/helper team checks, stapling, and Gatekeeper
       assessment.
+- [x] Keep the temporary unenrolled macOS fallback manual-install only: publish
+      an ad-hoc DMG warning while omitting Electron and legacy-Tauri macOS
+      updater metadata; reject partial Apple credential configuration.
+- [ ] Make Developer ID signing mandatory before enabling macOS automatic
+      updates or accepting Screen Recording permission continuity.
 - [ ] Configure Windows code signing before treating Windows distribution as
       production-ready.
 - [x] Update architecture, plan status, and the append-only progress log.
