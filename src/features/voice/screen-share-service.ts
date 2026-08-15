@@ -15,6 +15,7 @@ import {
   SCREEN_SHARE_RESOLUTIONS,
   parseScreenShareSettings,
   screenShareBitrate,
+  screenShareDimensions,
   type ScreenShareFrameRate,
   type ScreenShareResolution,
   type ScreenShareSettings,
@@ -458,12 +459,9 @@ function mapNativeLifecycle(
 }
 
 function nativeSettings(settings: ScreenShareSettings) {
+  const dimensions = screenShareDimensions(settings.resolution);
   return {
-    width:
-      settings.resolution === 480
-        ? 854
-        : Math.round(settings.resolution * (16 / 9)),
-    height: settings.resolution,
+    ...dimensions,
     frameRate: settings.frameRate,
     maxBitrate: screenShareBitrate(settings),
   };

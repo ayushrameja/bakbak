@@ -89,10 +89,13 @@ Windows recovery points to the global microphone and desktop-app privacy
 switches. Screen-source enumeration reports macOS denied/restricted states,
 source and system-audio capabilities, and enumeration failure separately; on
 Windows it never claims a Bakbak-specific screen-capture permission exists.
-The macOS package remains ad-hoc signed, so a differently signed or rebuilt
-update can lose its TCC identity and require microphone/Screen Recording access
-again. The recovery flow makes that limitation explicit but cannot preserve
-TCC grants without a stable Developer ID signature and notarization.
+Local macOS packages remain ad-hoc signed, but production releases are gated on
+one stable Developer ID Application identity for both `Bakbak.app` and the
+screen-share helper, followed by notarization, stapling, and Gatekeeper
+assessment. The first Developer ID release changes identity from older ad-hoc
+installs and can require one final manual replacement and permission grant;
+subsequent releases signed by the same team preserve the code requirement that
+macOS uses for microphone and Screen Recording continuity.
 
 Inter Variable is bundled locally at weights 400–700 with `Inter`,
 `Avenir Next`, `Segoe UI`, and `sans-serif` fallbacks. The rem-based scale uses
@@ -858,8 +861,13 @@ Electron updates use the same directory and electron-builder registry identity.
 
 `electron-updater` performs explicit check, download, progress, and
 install/restart operations against GitHub Releases. It is disabled for unpacked
-builds and unsupported platforms. Screen-share preload methods are limited to
-`capabilities`, `listSources`, `start`, `update`, `stop`, and `onLifecycle`;
+builds and unsupported platforms. A staged update owns its `before-quit`
+handoff so the normal native-helper shutdown interception cannot turn
+Squirrel.Mac's install quit into an ordinary quit. A terminal updater error
+after the archive download crosses the preload as a payload-free event and
+returns the renderer to its visible retry/manual-download state. Screen-share
+preload methods are limited to `capabilities`, `listSources`,
+`selectVideoSource`, `start`, `update`, `stop`, and `onLifecycle`;
 hello and shutdown remain internal. `start` transfers the five-minute companion
 URL/token once to the helper through trusted IPC; request payloads and raw child
 stderr are never logged. Protocol v1 requires hello before other commands,
@@ -1451,7 +1459,10 @@ An invite-management UI is deferred until post-v1.
    selection for at most 60 seconds, and grants exactly that video source to the
    next trusted top-frame `getDisplayMedia` request. It never grants an audio
    stream. LiveKit publishes the resulting video on the existing room
-   participant.
+   participant. A 15-fps share remains detail-first. A 30/60-fps share is
+   marked as motion, preserves frame rate rather than resolution under
+   congestion, and publishes a half-resolution 30-fps fallback layer instead
+   of LiveKit's static-screen 3-fps fallback.
 3. For the candidate native backend, the renderer requests
    `{ channelId, purpose: "screen_share" }`. The function
    repeats authentication, membership, and voice-channel checks, then signs a
@@ -1462,9 +1473,13 @@ An invite-management UI is deferred until post-v1.
    token length, source ID, and one of the nine supported quality tuples before
    writing one correlated request to the child.
 5. The helper connects the companion with subscriptions disabled, captures and
-   publishes native screen video plus optional `ScreenShareAudio`. The renderer
-   owns UI state only. Quality changes call the helper's correlated `update` and
-   never mutate Chromium media tracks or WebRTC senders.
+   publishes native screen video plus optional `ScreenShareAudio`. Native H.264
+   publication prefers the platform hardware encoder with a safe SDK fallback.
+   Its 30/60-fps profiles use frame-rate-first congestion adaptation and the
+   same half-resolution 30-fps simulcast fallback; 15-fps keeps
+   resolution-first detail behavior. The renderer owns UI state only. Quality
+   changes call the helper's correlated `update` and never mutate Chromium
+   media tracks or WebRTC senders.
 6. System audio is requested only when the presenter enables it and the helper
    reports process-tree isolation. Entire-screen capture excludes the Electron
    root and all descendants; application capture includes only the selected
@@ -1686,8 +1701,13 @@ model; Jitsi's Apache/MIT notice and Xiph.Org's BSD 3-Clause notice ship under
    checkout.
 5. The release checkout writes the calculated version to `package.json`, then
    electron-builder produces an Apple Silicon DMG/ZIP with
-   `latest-mac.yml` and a Windows x64 NSIS installer with `latest.yml`. Intel
-   macOS builds ended at v0.4.0.
+   `latest-mac.yml` and a Windows x64 NSIS installer with `latest.yml`. The
+   macOS build refuses to run without the protected Developer ID certificate,
+   notarization API credentials, and expected Apple team ID. It overrides the
+   local ad-hoc identity, signs the app and nested helper with that team,
+   notarizes/staples the result, and verifies strict code signatures plus
+   Gatekeeper assessment before artifacts continue. Intel macOS builds ended at
+   v0.4.0.
 6. For the shell transition, the macOS job first verifies the Electron app's
    nested code-signature seal, then archives the `.app` as `.app.tar.gz` with
    macOS metadata sidecars and extended attributes disabled. The release jobs
@@ -1939,6 +1959,11 @@ the payload accepted by existing Tauri updater clients. The key/password are
 never Vite variables, Electron renderer inputs, release assets, or committed
 files. Future Electron releases use electron-builder update metadata and must
 use configured operating-system signing identities before public distribution.
+Production macOS releases additionally read `MAC_CSC_LINK`,
+`MAC_CSC_KEY_PASSWORD`, `APPLE_API_KEY`, `APPLE_API_KEY_ID`,
+`APPLE_API_ISSUER`, and `APPLE_TEAM_ID` only from GitHub Actions secrets. These
+hold the Developer ID certificate/password, notarization credentials, and
+expected signing team; none enter Vite, the renderer, or release assets.
 
 ## Validation strategy
 
@@ -2104,12 +2129,12 @@ that it has passed.
 - The current production renderer is roughly 406 kB compressed; LiveKit and
   Supabase can be lazy-loaded in a later performance pass if startup profiling
   shows a meaningful benefit.
-- The macOS app uses an ad-hoc hardened-runtime signature with audio-input and
-  camera entitlements, but has no Developer ID signature or notarization, so
-  Gatekeeper warnings are expected outside the development machine. TCC binds
-  grants to application identity/code requirements, so changing ad-hoc builds
-  may require microphone and Screen Recording approval again; the typed
-  recovery UI cannot make those grants durable.
+- Local macOS packages use an ad-hoc hardened-runtime signature and are not a
+  TCC-continuity proof. The first production Developer ID release replaces the
+  old ad-hoc identity, so existing users can require one final manual DMG
+  replacement and microphone/Screen Recording grant. Release CI now refuses
+  unsigned/unnotarized macOS artifacts, but the first signed installed update
+  and subsequent signed-to-signed update still require real-device validation.
 - The Windows release job produces an unsigned x64 NSIS installer until a
   Windows code-signing identity is configured, so SmartScreen warnings are
   expected during the initial friend test.

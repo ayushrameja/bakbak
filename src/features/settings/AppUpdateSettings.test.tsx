@@ -17,6 +17,7 @@ function installDesktopBridge(): void {
       check: mocks.check,
       downloadAndInstall: vi.fn(),
       onProgress: () => () => undefined,
+      onInstallError: () => () => undefined,
     },
     external: { open: mocks.openExternal },
   } as unknown as BakbakDesktopBridge;

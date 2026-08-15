@@ -24,6 +24,10 @@ and browser exclusion.
 - The first-run presenter profile is 1080p/60 fps. Resolution
   (480p/720p/1080p) and frame rate (15/30/60) are independently selectable
   before and during a share, and the last successful profile is device-local.
+- 30/60-fps profiles are motion-aware: they prefer frame rate under congestion,
+  publish a half-resolution 30-fps fallback simulcast layer, and prefer native
+  hardware H.264 when available. The 15-fps profile retains detail-first
+  adaptation for text and static interfaces.
 - Source audio defaults on whenever matched audio is available for the selected
   source; the presenter can turn it off with a switch. The choice is not
   persisted across shares. The presenter controls the outgoing ceiling; LiveKit
@@ -59,6 +63,8 @@ and browser exclusion.
 - [x] Add gallery/focus/fullscreen UI and selective subscription behavior.
 - [x] Fix soundboard outside-click ownership and focus behavior.
 - [x] Pass focused TypeScript/Rust tests and repository checks.
+- [x] Keep game-motion fallback layers at 30 fps instead of the static-screen
+      3-fps LiveKit default and cover both native and Electron video paths.
 - [x] Pass the local macOS native app build and compiled secret scans.
 - [ ] Pass a native Windows build. Windows-only code and tests cross-compile
       with cargo-xwin, but the cross-host LiveKit linker remains blocked on its

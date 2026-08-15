@@ -7,7 +7,10 @@ mod native {
 
     use livekit::{
         Room, RoomEvent, RoomOptions,
-        options::{AudioEncoding, TrackPublishOptions, VideoCodec, VideoEncoding},
+        options::{
+            AudioEncoding, DegradationPreference, TrackPublishOptions, VideoCodec,
+            VideoEncoderBackend, VideoEncoding, VideoPreset,
+        },
         prelude::TrackSid,
         track::{LocalAudioTrack, LocalTrack, LocalVideoTrack, TrackSource},
         webrtc::{
@@ -340,19 +343,7 @@ mod native {
         settings: CaptureSettings,
     ) -> Result<TrackSid, HelperError> {
         room.local_participant()
-            .publish_track(
-                LocalTrack::Video(track),
-                TrackPublishOptions {
-                    source: TrackSource::Screenshare,
-                    video_codec: VideoCodec::H264,
-                    video_encoding: Some(VideoEncoding {
-                        max_bitrate: settings.max_bitrate,
-                        max_framerate: settings.frame_rate as f64,
-                    }),
-                    simulcast: true,
-                    ..Default::default()
-                },
-            )
+            .publish_track(LocalTrack::Video(track), video_publish_options(settings))
             .await
             .map(|publication| publication.sid())
             .map_err(|error| {
@@ -364,6 +355,79 @@ mod native {
                     ),
                 )
             })
+    }
+
+    fn video_publish_options(settings: CaptureSettings) -> TrackPublishOptions {
+        let high_motion = settings.frame_rate >= 30;
+        let simulcast_layers = high_motion.then(|| {
+            vec![VideoPreset::new(
+                (settings.width / 4) * 2,
+                (settings.height / 4) * 2,
+                600_000_u64.max(settings.max_bitrate / 4),
+                30_f64.min(settings.frame_rate as f64),
+            )]
+        });
+        TrackPublishOptions {
+            source: TrackSource::Screenshare,
+            video_codec: VideoCodec::H264,
+            video_encoding: Some(VideoEncoding {
+                max_bitrate: settings.max_bitrate,
+                max_framerate: settings.frame_rate as f64,
+            }),
+            video_encoder: VideoEncoderBackend::Hardware,
+            simulcast: true,
+            simulcast_layers,
+            degradation_preference: Some(if high_motion {
+                DegradationPreference::MaintainFramerate
+            } else {
+                DegradationPreference::MaintainResolution
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn game_rate_shares_keep_motion_in_the_fallback_layer() {
+            let options = video_publish_options(CaptureSettings {
+                width: 1920,
+                height: 1080,
+                frame_rate: 60,
+                max_bitrate: 8_000_000,
+            });
+
+            assert_eq!(options.video_codec, VideoCodec::H264);
+            assert_eq!(options.video_encoder, VideoEncoderBackend::Hardware);
+            assert!(matches!(
+                options.degradation_preference,
+                Some(DegradationPreference::MaintainFramerate)
+            ));
+            let layers = options.simulcast_layers.expect("motion fallback");
+            assert_eq!(layers.len(), 1);
+            assert_eq!(layers[0].width, 960);
+            assert_eq!(layers[0].height, 540);
+            assert_eq!(layers[0].encoding.max_bitrate, 2_000_000);
+            assert_eq!(layers[0].encoding.max_framerate, 30.0);
+        }
+
+        #[test]
+        fn static_shares_keep_detail_first_adaptation() {
+            let options = video_publish_options(CaptureSettings {
+                width: 1920,
+                height: 1080,
+                frame_rate: 15,
+                max_bitrate: 2_500_000,
+            });
+
+            assert!(matches!(
+                options.degradation_preference,
+                Some(DegradationPreference::MaintainResolution)
+            ));
+            assert!(options.simulcast_layers.is_none());
+        }
     }
 }
 

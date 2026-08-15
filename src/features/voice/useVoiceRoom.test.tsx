@@ -313,6 +313,11 @@ vi.mock("livekit-client", () => {
         Unsubscribed: "unsubscribed",
       },
     },
+    VideoPreset: class {
+      constructor(options: object) {
+        Object.assign(this, options);
+      }
+    },
     VideoPresets: { h720: { resolution: { width: 1280, height: 720 } } },
     createLocalAudioTrack:
       liveKitState.createLocalAudioTrack.mockImplementation(() =>
@@ -1462,8 +1467,19 @@ describe("useVoiceRoom join lifecycle", () => {
     );
     expect(localParticipant.setScreenShareEnabled).toHaveBeenCalledWith(
       true,
-      expect.objectContaining({ audio: false, contentHint: "detail" }),
-      expect.any(Object),
+      expect.objectContaining({ audio: false, contentHint: "motion" }),
+      expect.objectContaining({
+        degradationPreference: "maintain-framerate",
+        simulcast: true,
+        screenShareSimulcastLayers: [
+          expect.objectContaining({
+            width: 640,
+            height: 360,
+            maxBitrate: 600_000,
+            maxFramerate: 30,
+          }),
+        ],
+      }),
     );
     expect(
       screenShareState.selectVideoSource.mock.invocationCallOrder[0],

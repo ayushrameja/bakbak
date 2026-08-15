@@ -47,6 +47,19 @@ test("desktop packaging builds and bundles the native screen-share helper", () =
   ]);
 });
 
+test("the updater owns its quit after Squirrel stages a downloaded update", () => {
+  assert.match(electronMain, /let quitForUpdate = false/);
+  assert.match(
+    electronMain,
+    /quitForUpdate = true;\s*autoUpdater\.quitAndInstall\(false, true\)/,
+  );
+  assert.match(
+    electronMain,
+    /app\.on\("before-quit", \(event\) => \{\s*if \(quitForUpdate\) return;/,
+  );
+  assert.match(electronMain, /webContents\.send\("updates:install-error"\)/);
+});
+
 test("Windows installer bridges the existing Tauri installation", () => {
   assert.equal(packageJson.build.nsis.include, "build/installer.nsh");
   assert.match(installer, /StrCpy \$INSTDIR "\$LOCALAPPDATA\\Bakbak"/);

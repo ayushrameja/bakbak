@@ -106,6 +106,8 @@ const bridge = Object.freeze({
         total: number | null;
       }) => void,
     ) => subscribe("updates:progress", listener),
+    onInstallError: (listener: () => void) =>
+      subscribe("updates:install-error", listener),
   }),
 });
 

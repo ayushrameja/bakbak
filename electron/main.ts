@@ -50,6 +50,8 @@ let pendingElectronVideoSource: {
   selectedAt: number;
 } | null = null;
 let helperShutdownStarted = false;
+let updateInstallInProgress = false;
+let quitForUpdate = false;
 let windowMaterial: WindowMaterial = "fallback";
 let macWindowControlsVisible = true;
 let macWindowControlsSidebarPosition: SidebarPosition = "left";
@@ -485,6 +487,12 @@ function configureUpdater(): void {
   });
   autoUpdater.on("error", (error) => {
     console.error(`[Bakbak updater] ${error.message}`);
+    if (!updateInstallInProgress) return;
+    updateInstallInProgress = false;
+    quitForUpdate = false;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("updates:install-error");
+    }
   });
 }
 
@@ -617,8 +625,31 @@ function registerIpcHandlers(): void {
       assertTrustedSender(event);
       if (!app.isPackaged)
         throw new Error("Updates require an installed build.");
-      await withTimeout(autoUpdater.downloadUpdate(), parseTimeout(rawTimeout));
-      setImmediate(() => autoUpdater.quitAndInstall(false, true));
+      updateInstallInProgress = true;
+      try {
+        await withTimeout(
+          autoUpdater.downloadUpdate(),
+          parseTimeout(rawTimeout),
+        );
+      } catch (error) {
+        updateInstallInProgress = false;
+        throw error;
+      }
+      setImmediate(() => {
+        try {
+          // Squirrel.Mac emits app.before-quit only after it has staged the
+          // downloaded update. Let that updater-owned quit complete instead of
+          // converting it into the normal helper-shutdown quit path.
+          quitForUpdate = true;
+          autoUpdater.quitAndInstall(false, true);
+        } catch {
+          updateInstallInProgress = false;
+          quitForUpdate = false;
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send("updates:install-error");
+          }
+        }
+      });
     },
   );
 }
@@ -910,6 +941,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", (event) => {
+  if (quitForUpdate) return;
   if (helperShutdownStarted || !screenShareHelper) return;
   event.preventDefault();
   helperShutdownStarted = true;

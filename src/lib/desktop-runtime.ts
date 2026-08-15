@@ -203,6 +203,7 @@ export interface BakbakDesktopBridge {
     check(timeoutMs: number): Promise<DesktopUpdateCheckResult>;
     downloadAndInstall(timeoutMs: number): Promise<void>;
     onProgress(listener: (progress: DesktopUpdateProgress) => void): () => void;
+    onInstallError(listener: () => void): () => void;
   };
 }
 

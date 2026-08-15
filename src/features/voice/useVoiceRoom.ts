@@ -8,6 +8,7 @@ import {
   Track,
   TrackPublication,
   VideoQuality,
+  VideoPreset,
   VideoPresets,
   createLocalAudioTrack,
   type Participant,
@@ -118,6 +119,7 @@ import {
   loadScreenShareSettings,
   saveScreenShareSettings,
   screenShareBitrate,
+  screenSharePublicationProfile,
   type ScreenShareSettings,
 } from "./screen-share-preferences";
 import { chooseFeaturedScreenShare } from "./screen-share-selection";
@@ -2855,14 +2857,16 @@ export function useVoiceRoom(
           }
           await selectVideoOnlyScreenShareSource(sourceId);
         }
+        const publicationProfile =
+          screenSharePublicationProfile(requestedSettings);
         const publication = await room.localParticipant.setScreenShareEnabled(
           true,
           {
             audio: false,
-            contentHint: "detail",
+            contentHint: publicationProfile.contentHint,
             resolution: {
-              width: requestedSettings.resolution * (16 / 9),
-              height: requestedSettings.resolution,
+              width: publicationProfile.width,
+              height: publicationProfile.height,
               frameRate: requestedSettings.frameRate,
             },
           },
@@ -2872,6 +2876,14 @@ export function useVoiceRoom(
               maxFramerate: requestedSettings.frameRate,
             },
             simulcast: true,
+            degradationPreference: publicationProfile.degradationPreference,
+            ...(publicationProfile.simulcastLayer
+              ? {
+                  screenShareSimulcastLayers: [
+                    new VideoPreset(publicationProfile.simulcastLayer),
+                  ],
+                }
+              : {}),
           },
         );
         if (

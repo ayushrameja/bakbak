@@ -8260,3 +8260,65 @@ native/screen-share-helper/Cargo.toml` — passed 13 library plus 1 binary
   one macOS and one Windows machine; verify screen/window video, denied/regranted
   permissions, and two physical microphone switches before publishing the next
   release.
+
+## 2026-08-15 — Repair macOS updates and high-motion screen sharing
+
+- **Completed:** Kept the native updater in control of its macOS
+  `before-quit` install handoff instead of diverting that quit through the
+  normal native-helper shutdown path. Added a payload-free renderer error
+  signal for failures that arrive after the archive download completes, so the
+  update UI recovers from `Installing` and offers a retry. Gated production
+  macOS releases on a stable Developer ID Application identity, Apple
+  notarization, stapling, Gatekeeper acceptance, and matching app/helper team
+  identities. Made 30/60 fps shares motion-aware in both the Electron and
+  native-helper publishers: they now prefer frame rate, request hardware H.264
+  in the helper, and publish a 30 fps half-resolution fallback layer instead of
+  LiveKit's low-frame-rate default screen layer. The 15 fps profile remains
+  detail/resolution-first for static content.
+- **Decisions:** Kept local macOS packages ad-hoc signed and made the release
+  workflow override that identity, because contributors should not need the
+  distribution certificate while production updates and TCC continuity do.
+  The release now fails closed when any Apple signing/notarization credential
+  is missing. Existing ad-hoc installs require one final manual replacement
+  with the first Developer ID build; later builds signed by the same team can
+  preserve the stable macOS identity. Kept Windows signing outside this task.
+- **Validation:**
+  - `./node_modules/.bin/prettier --check .` — passed.
+  - `./node_modules/.bin/eslint . --max-warnings=0` — passed with zero
+    warnings.
+  - Renderer, Node, Electron, and Electron-test strict TypeScript — passed all
+    four configurations.
+  - `./node_modules/.bin/vitest run` — passed 91 files / 562 tests.
+  - `node --test scripts/*.test.mjs` — passed 62/62 repository contracts,
+    including updater quit ownership and the macOS release identity gate.
+  - `node scripts/set-version.mjs --check` — passed for version 1.8.0.
+  - Locked offline Rust formatting and Clippy with warnings denied — passed.
+  - `cargo test --locked --offline --manifest-path
+native/screen-share-helper/Cargo.toml` — passed 15 library tests plus 1 binary
+    test; doc tests had 0.
+  - `./node_modules/.bin/vite build`, Electron compile, and the locked offline
+    Rust release build — passed; Vite retains its existing non-blocking
+    large-chunk warning.
+  - The sandboxed Electron packager stalled after reading configuration and
+    was interrupted. The approved retry outside the sandbox passed native
+    rebuild, Apple Silicon app packaging, local ad-hoc signing, DMG/ZIP, update
+    metadata, and block maps. Strict app/helper signature checks passed; the
+    packaged helper is an arm64 Mach-O executable.
+  - `node scripts/check-bundle-secrets.mjs` and `git diff --check` — passed.
+  - The global `pnpm` shim stalled before reporting its version and was
+    interrupted; every underlying repository check and build was run directly
+    from the project-local tools with the outcomes above.
+- **Documentation updated:** Updated `docs/architecture.md`, active plan 0001,
+  screen-share plan 0010, the release workflow contracts, and this canonical
+  progress log.
+- **Known limitations:** The Apple Developer certificate and App Store Connect
+  API credentials are repository secrets, so a real signed/notarized CI build
+  was not available locally. The first ad-hoc-to-Developer-ID replacement,
+  a later same-team auto-update, Screen Recording permission continuity, and a
+  two-client game-share test at 720p30/1080p60 still require installed-device
+  validation. This macOS host cannot compile the Windows MSVC target, and the
+  Windows installer remains unsigned.
+- **Next:** Load the six Apple release secrets, run the macOS release job,
+  manually replace one current ad-hoc installation with that first signed DMG,
+  then prove a signed-to-signed update preserves Screen Recording permission
+  and keeps a two-client high-motion game share fluid at 720p30 and 1080p60.

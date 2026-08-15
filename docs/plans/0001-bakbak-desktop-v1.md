@@ -346,8 +346,11 @@ Finally, plan 0036 adds typed microphone/screen permission snapshots and
 structured source-enumeration failures. macOS recovery can open the correct
 Privacy Settings and request restart; Windows microphone recovery targets the
 global desktop-app privacy switches and screen capture never claims an
-app-specific permission. Because macOS remains ad-hoc signed, changing builds
-can still lose TCC continuity until Developer ID signing/notarization exists.
+app-specific permission. Local macOS packages remain ad-hoc, while production
+release CI now requires one stable Developer ID identity for the app and helper
+plus notarization. The first signed release may require one last permission
+grant after the ad-hoc transition; later same-team releases preserve TCC
+continuity.
 
 The 2026-08-09 Electron shell amendment supersedes Tauri-specific runtime,
 window, capture, packaging, and updater implementation details throughout the
@@ -630,10 +633,13 @@ NSIS invocation so the handoff does not create a second application location.
 - [x] Add plan 0036's typed microphone/screen permission bridge, explicit
       capture-action prompt boundary, structured source/capability failures,
       and platform-correct settings/restart recovery.
+- [x] Make 30/60-fps screen shares motion-aware with frame-rate-first
+      congestion behavior, a 30-fps fallback layer, and preferred native
+      hardware H.264; retain detail-first behavior for 15-fps shares.
 - [ ] Complete plan 0036's installed Apple Silicon macOS and Windows x64
       window-control, drag, sidebar/call continuity, Glass/fallback, and media
-      permission-recovery acceptance matrix. Ad-hoc macOS TCC grants are not a
-      substitute for later Developer ID signing/notarization.
+      permission-recovery acceptance matrix. The first Developer ID build and
+      one later same-team update must prove TCC continuity.
 
 ### Phase 6 — Distribution
 
@@ -677,8 +683,11 @@ NSIS invocation so the handoff does not create a second application location.
 - [x] Cross-build and inspect a Windows x64 Electron/NSIS installer locally.
 - [ ] Build and validate the Windows x64 installer in GitHub Actions.
 - [ ] Add Linux installer builds after friend testing.
-- [ ] Configure Developer ID signing/notarization and Windows code signing
-      before treating the Electron updater as production-ready.
+- [x] Configure Developer ID signing/notarization as a mandatory macOS release
+      gate, including app/helper team checks, stapling, and Gatekeeper
+      assessment.
+- [ ] Configure Windows code signing before treating Windows distribution as
+      production-ready.
 - [x] Update architecture, plan status, and the append-only progress log.
 
 ## Test and documentation requirements

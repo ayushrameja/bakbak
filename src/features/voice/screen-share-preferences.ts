@@ -11,6 +11,19 @@ export interface ScreenShareSettings {
   frameRate: ScreenShareFrameRate;
 }
 
+export interface ScreenSharePublicationProfile {
+  width: number;
+  height: number;
+  contentHint: "detail" | "motion";
+  degradationPreference: "maintain-resolution" | "maintain-framerate";
+  simulcastLayer: {
+    width: number;
+    height: number;
+    maxBitrate: number;
+    maxFramerate: number;
+  } | null;
+}
+
 export const DEFAULT_SCREEN_SHARE_SETTINGS: ScreenShareSettings = {
   resolution: 1080,
   frameRate: 60,
@@ -64,6 +77,41 @@ export function screenShareBitrate(settings: ScreenShareSettings): number {
     1080: { 15: 2_500_000, 30: 5_000_000, 60: 8_000_000 },
   };
   return bitrateByProfile[settings.resolution][settings.frameRate];
+}
+
+export function screenShareDimensions(resolution: ScreenShareResolution): {
+  width: number;
+  height: number;
+} {
+  return {
+    width: resolution === 480 ? 854 : Math.round(resolution * (16 / 9)),
+    height: resolution,
+  };
+}
+
+export function screenSharePublicationProfile(
+  settings: ScreenShareSettings,
+): ScreenSharePublicationProfile {
+  const dimensions = screenShareDimensions(settings.resolution);
+  const highMotion = settings.frameRate >= 30;
+  return {
+    ...dimensions,
+    contentHint: highMotion ? "motion" : "detail",
+    degradationPreference: highMotion
+      ? "maintain-framerate"
+      : "maintain-resolution",
+    simulcastLayer: highMotion
+      ? {
+          width: Math.floor(dimensions.width / 4) * 2,
+          height: Math.floor(dimensions.height / 4) * 2,
+          maxBitrate: Math.max(
+            600_000,
+            Math.floor(screenShareBitrate(settings) / 4),
+          ),
+          maxFramerate: Math.min(30, settings.frameRate),
+        }
+      : null,
+  };
 }
 
 function isResolution(value: unknown): value is ScreenShareResolution {
