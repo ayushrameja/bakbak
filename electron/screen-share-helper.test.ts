@@ -64,6 +64,19 @@ function createFakeHelper(
       const request = JSON.parse(line) as Record<string, unknown>;
       requests.push(request);
       if (request.command === "hello") {
+        // Rust serializes absent Option fields as null. The protocol accepts
+        // that real hello lifecycle before the correlated hello response.
+        helper.respond({
+          protocolVersion: 1,
+          event: "lifecycle",
+          payload: {
+            sessionId: null,
+            state: "ready",
+            reasonCode: null,
+            message: null,
+            audioPublished: null,
+          },
+        });
         helper.respond({
           protocolVersion: 1,
           requestId: request.requestId,

@@ -59,7 +59,7 @@ export interface NativeScreenShareSession {
 }
 
 export interface NativeScreenShareLifecycleEvent {
-  sessionId?: string;
+  sessionId?: string | null;
   state:
     | "ready"
     | "starting"
@@ -69,9 +69,9 @@ export interface NativeScreenShareLifecycleEvent {
     | "stopped"
     | "failed"
     | "shutting-down";
-  reasonCode?: string;
-  message?: string;
-  audioPublished?: boolean;
+  reasonCode?: string | null;
+  message?: string | null;
+  audioPublished?: boolean | null;
 }
 
 export interface ScreenShareHelperConfig {
@@ -837,13 +837,10 @@ function isLifecycleEvent(
   return (
     isRecord(value) &&
     states.includes(String(value.state)) &&
-    (value.sessionId === undefined ||
-      isBoundedString(value.sessionId, 1, 256)) &&
-    (value.reasonCode === undefined ||
-      isBoundedString(value.reasonCode, 1, 128)) &&
-    (value.message === undefined || isBoundedString(value.message, 1, 512)) &&
-    (value.audioPublished === undefined ||
-      typeof value.audioPublished === "boolean")
+    (value.sessionId == null || isBoundedString(value.sessionId, 1, 256)) &&
+    (value.reasonCode == null || isBoundedString(value.reasonCode, 1, 128)) &&
+    (value.message == null || isBoundedString(value.message, 1, 512)) &&
+    (value.audioPublished == null || typeof value.audioPublished === "boolean")
   );
 }
 

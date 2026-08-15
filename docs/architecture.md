@@ -7,7 +7,7 @@ and phase completion belong in the numbered files under `docs/plans`.
 
 ## Current implementation state
 
-As of 2026-08-14, Bakbak has a complete local/mock product path and production
+As of 2026-08-15, Bakbak has a complete local/mock product path and production
 Supabase and LiveKit adapters. The signed-in renderer uses an Arc-like
 two-track shell with no full app titlebar or contextual conversation header.
 A zero-width native-safe overlay contains no renderer controls, while the main
@@ -24,7 +24,9 @@ Authentication and loading keep the same full-window geometry without adding
 a renderer header row. Authentication keeps only the Bakbak lockup, a short
 private-space label, and the focused sign-in/invite form; narrow windows
 collapse to the canvas and compact lockup. Loading shows the same empty shell
-with one bounded progress cue. Sign-in and invite mode preserve native autofill
+with one bounded progress cue. Their form/loading canvas uses the same 8 px top,
+right, and bottom inset while the story rail remains flush to the left window
+edge. Sign-in and invite mode preserve native autofill
 and validation, explicit password visibility, and keyboard-accessible tabs.
 
 macOS uses a hidden-inset titlebar, native overlay traffic lights, and
@@ -543,11 +545,15 @@ voice, video, device, soundboard, reconnect, and crash-expiry rehearsal remains
 open for human observation.
 
 Installed Apple Silicon macOS and Windows x64 clients share one Bakbak Entire
-screen / Application picker before capture starts. A bundled
-`bakbak-screen-share-helper` enumerates sources, captures native video and
-process-isolated audio, and publishes the least-privilege companion tracks to
-LiveKit. Electron supervises it over a versioned JSON-lines protocol; the
-renderer never invokes Chromium display capture or publishes screen media.
+screen / Application picker before capture starts. Ordinary and release builds
+enumerate those sources with Electron and grant only the explicitly selected
+video source to Chromium; the renderer publishes that video through its
+existing voice-room participant. The display-media handler never grants audio.
+A bundled `bakbak-screen-share-helper` remains the stabilization-candidate
+backend for native video and process-isolated audio, publishing least-privilege
+companion tracks to LiveKit over a supervised, versioned JSON-lines protocol.
+If its handshake or runtime fails, Electron downgrades that app run to the
+video-only backend instead of disabling the Share action.
 Entire-screen audio excludes Bakbak's Electron root process tree, while
 application audio includes only the selected process tree. If the helper cannot
 prove isolation, audio fails closed and video may continue without it. The
@@ -901,11 +907,13 @@ Before publication, the renderer may replace the speech track's source with
 the output of its device-local microphone AudioWorklet. LiveKit receives only
 that selected processed or fallback speech track; it does not configure or
 host the RNNoise stage. Live input changes restart that same named track with
-the complete device and capture constraints; LiveKit restarts the attached
-processor and retains track mute state without republishing a second
-microphone. After publication or restart, Bakbak explicitly updates LiveKit's
-active audio-input device bookkeeping for later recovery while leaving the
-separate synthetic soundboard microphone publication untouched.
+an exact non-default device constraint and the complete capture settings;
+LiveKit restarts the attached processor and retains track mute state without
+republishing a second microphone. Bakbak reads LiveKit's normalized active
+device after the restart and commits the selector/device map only when it
+matches. A silent fallback to the previous device triggers rollback and an
+actionable error, leaving the separate synthetic soundboard microphone
+publication untouched.
 A protected Supabase Edge Function is the only component allowed to sign
 LiveKit participant tokens. Voice tokens allow microphone, camera, data, and
 video-only screen publication. Screen-companion tokens use generated identities
@@ -1354,8 +1362,9 @@ An invite-management UI is deferred until post-v1.
 6. Direct channel switching unpublishes the current microphone without
    stopping it, disconnects the old room, republishes it into the new room,
    and preserves its processor plus mute/deafen state. Input-device changes
-   restart the processor on the replacement source and update LiveKit's active
-   input-device map only after success. Leave, sign-out, a failed switch, and
+   restart the processor on the replacement source with an exact constraint,
+   verify the normalized active device, and update LiveKit's active input-device
+   map only after that proof. Leave, sign-out, a failed switch, and
    teardown stop every retained or pending microphone. Sign-out and application
    teardown close the shared processing context.
 7. The renderer generation-gates all token, connection, and microphone work so
@@ -1423,9 +1432,10 @@ An invite-management UI is deferred until post-v1.
 ### Desktop screen share
 
 1. A connected installed client opens a renderer confirmation with Entire
-   screen / Application tabs. Electron's supervised helper enumerates native
-   screen/application sources and returns a discriminated result through
-   the typed preload bridge. Success contains bounded labels, thumbnails,
+   screen / Application tabs. Electron enumerates screen/window sources for the
+   release-safe video backend; stabilization candidates use the supervised
+   helper's native enumeration. Both return a discriminated result through the
+   typed preload bridge. Success contains bounded labels, thumbnails,
    normalized permission status, global capabilities, and per-source audio
    availability. A macOS denied/restricted result is distinct from source
    enumeration failure and offers Privacy Settings/restart only when valid.
@@ -1436,30 +1446,37 @@ An invite-management UI is deferred until post-v1.
    and persists only the last successful quality under
    `bakbak.screenSharePreferences.v1`. Browser clients have no share UI and
    force every screen publication unsubscribed.
-2. The renderer requests `{ channelId, purpose: "screen_share" }`. The function
+2. In ordinary/release builds, the renderer sends the selected source ID over a
+   narrow preload method. Electron re-enumerates it, retains the validated
+   selection for at most 60 seconds, and grants exactly that video source to the
+   next trusted top-frame `getDisplayMedia` request. It never grants an audio
+   stream. LiveKit publishes the resulting video on the existing room
+   participant.
+3. For the candidate native backend, the renderer requests
+   `{ channelId, purpose: "screen_share" }`. The function
    repeats authentication, membership, and voice-channel checks, then signs a
    five-minute companion identity tied to the same room and owner.
-3. The renderer sends the selected source, include-audio flag, exact quality
+4. The renderer sends the selected source, include-audio flag, exact quality
    tuple, and short-lived companion URL/token through narrow `start` IPC.
    Electron validates the trusted sender; the helper manager validates `wss`,
    token length, source ID, and one of the nine supported quality tuples before
    writing one correlated request to the child.
-4. The helper connects the companion with subscriptions disabled, captures and
+5. The helper connects the companion with subscriptions disabled, captures and
    publishes native screen video plus optional `ScreenShareAudio`. The renderer
    owns UI state only. Quality changes call the helper's correlated `update` and
    never mutate Chromium media tracks or WebRTC senders.
-5. System audio is requested only when the presenter enables it and the helper
+6. System audio is requested only when the presenter enables it and the helper
    reports process-tree isolation. Entire-screen capture excludes the Electron
    root and all descendants; application capture includes only the selected
    process tree. No Chromium loopback fallback is permitted. System-audio
    capability and per-source availability are independent of Screen Recording
    permission. A missing or failed audio track leaves video live and reports a
    bounded unavailable reason instead of relabeling it as permission denial.
-6. Explicit stop, source end, terminal companion disconnect, voice leave,
-   window teardown, helper crash, timeout, and app quit disconnect the companion. Structured capture
-   failures remain sanitized and never include the short-lived token or source
-   content.
-7. Companion participants are merged into their owner's UI state and omitted
+7. Explicit stop, source end, terminal companion disconnect, voice leave,
+   window teardown, helper crash, timeout, and app quit disconnect the
+   companion. Structured capture failures remain sanitized and never include
+   the short-lived token or source content.
+8. Companion participants are merged into their owner's UI state and omitted
    from ordinary participant cards. Every remote screen video/audio publication
    is immediately unsubscribed. `watchedScreenShareId` is the sole subscription
    gate: selecting an in-room LIVE circle unsubscribes the previous remote share
@@ -1470,7 +1487,7 @@ An invite-management UI is deferred until post-v1.
    The presenter's own companion video remains subscribed locally while its
    companion source audio is always forced unsubscribed.
    Deafen, selected output, and owner volume still apply to watched audio.
-8. Sidebar and member-overlay LIVE remains presence information until a remote
+9. Sidebar and member-overlay LIVE remains presence information until a remote
    viewer activates its hover/focus Watch Stream action. That action stores a
    request ID, owner ID, and channel ID, joins or switches to the advertised
    voice room, and waits for the owner's authoritative LiveKit share before
@@ -1483,19 +1500,19 @@ An invite-management UI is deferred until post-v1.
    room. This is plan 0028's narrow supersession of plan 0015's
    informational-only/cross-room restriction; plan 0015's isolation,
    source-audio, explicit-subscription, and cleanup contracts remain active.
-9. A focused share uses one `minmax(0, 1fr)` media stage without a metadata
-   header, people filmstrip, Back control, or fullscreen mode. Shared media uses
-   `object-fit: contain` against a black canvas and local presenter quality
-   controls share that surface. The focused stage drops voice-view padding,
-   borders, radius, and shadow; with the sidebar hidden it fills the complete
-   native window. Activating the focused media returns to people
-   without interrupting the watched share; target loss, disconnect, and
-   teardown clear focus and perform the existing subscription cleanup.
-10. Explicit stop, voice leave, source termination, terminal native-room
+10. A focused share uses one `minmax(0, 1fr)` media stage without a metadata
+    header, people filmstrip, Back control, or fullscreen mode. Shared media uses
+    `object-fit: contain` against a black canvas and local presenter quality
+    controls share that surface. The focused stage drops voice-view padding,
+    borders, radius, and shadow; with the sidebar hidden it fills the complete
+    native window. Activating the focused media returns to people
+    without interrupting the watched share; target loss, disconnect, and
+    teardown clear focus and perform the existing subscription cleanup.
+11. Explicit stop, voice leave, source termination, terminal native-room
     disconnect, or main-window close releases capture immediately and closes the
     companion. Multiple app instances may present concurrently, but each app
     instance owns at most one share.
-11. Local and remote share lifecycle changes emit typed start/stop effects after
+12. Local and remote share lifecycle changes emit typed start/stop effects after
     room baselining. Remote cues play at reduced gain, and deafen suppresses
     remote Voice/Screen-share cues without suppressing self actions, Messages,
     or Status.
@@ -2082,7 +2099,8 @@ that it has passed.
   installed macOS/Windows capture, packaged helper signing, process-tree
   isolation, application audio, protected content, teardown, and three-client
   no-self/no-duplicate-audio behavior still require plan 0037's acceptance
-  matrix before release.
+  matrix before native audio can ship. Ordinary/release video does not depend
+  on that gate: it uses Electron's selected-source, no-audio handler.
 - The current production renderer is roughly 406 kB compressed; LiveKit and
   Supabase can be lazy-loaded in a later performance pass if startup profiling
   shows a meaningful benefit.

@@ -23,16 +23,19 @@ const preload = await readFile(
   "utf8",
 );
 
-test("Electron screen sharing is helper-only with no Chromium loopback route", () => {
+test("Electron keeps video available without opening a Chromium audio route", () => {
   assert.match(main, /ScreenShareHelperManager/);
+  assert.match(main, /desktopCapturer/);
+  assert.match(main, /setDisplayMediaRequestHandler/);
+  assert.match(main, /captureBackend: "electron-video"/);
   assert.match(main, /screen-share:capabilities/);
+  assert.match(main, /screen-share:select-video-source/);
   assert.match(main, /screen-share:start/);
   assert.match(main, /screen-share:update/);
   assert.match(main, /screen-share:stop/);
   assert.match(main, /screenShareHelper\?\.stopActive\(\)/);
-  assert.doesNotMatch(main, /desktopCapturer/);
-  assert.doesNotMatch(main, /setDisplayMediaRequestHandler/);
   assert.doesNotMatch(main, /audio: "loopback"/);
+  assert.doesNotMatch(main, /loopbackWithMute/);
   assert.doesNotMatch(main, /display-capture/);
 });
 
@@ -43,11 +46,12 @@ test("renderer delegates native publication and exposes only narrow helper metho
   assert.doesNotMatch(service, /createLocalScreenTracks|publishTrack|new Room/);
   assert.match(preload, /capabilities:/);
   assert.match(preload, /listSources:/);
+  assert.match(preload, /selectVideoSource:/);
   assert.match(preload, /start:/);
   assert.match(preload, /update:/);
   assert.match(preload, /stop:/);
   assert.match(preload, /onLifecycle:/);
-  assert.doesNotMatch(preload, /prepare:/);
+  assert.doesNotMatch(preload, /ipcRenderer\.invoke\([^)]*loopback/);
   assert.match(
     voiceRoom,
     /includeAudio:\s*includeAudio\s*&&\s*screenShareCapabilities\.systemAudio/,

@@ -11,6 +11,7 @@ import {
   openPermissionSettings,
   requestMicrophonePermission,
   screenShareServiceTesting,
+  selectVideoOnlyScreenShareSource,
   startScreenShare,
   stopScreenShare,
   type ScreenShareLifecycleEvent,
@@ -23,6 +24,7 @@ let nativeLifecycle:
 const desktop = vi.hoisted(() => ({
   capabilities: vi.fn(),
   listSources: vi.fn(),
+  selectVideoSource: vi.fn(),
   start: vi.fn(),
   update: vi.fn(),
   stop: vi.fn(),
@@ -43,6 +45,7 @@ function installDesktopBridge(platform: "macos" | "windows" = "windows"): void {
     screenShare: {
       capabilities: desktop.capabilities,
       listSources: desktop.listSources,
+      selectVideoSource: desktop.selectVideoSource,
       start: desktop.start,
       update: desktop.update,
       stop: desktop.stop,
@@ -62,6 +65,7 @@ const source = {
 };
 
 const nativeCapabilities = {
+  captureBackend: "native-helper" as const,
   video: true,
   systemAudio: true,
   applicationAudio: true,
@@ -80,6 +84,7 @@ describe("screen-share-service", () => {
       sources: [source],
       truncated: false,
     });
+    desktop.selectVideoSource.mockResolvedValue(undefined);
     desktop.start.mockResolvedValue({
       sessionId: "native-session-1",
       sourceLabel: source.label,
@@ -158,6 +163,33 @@ describe("screen-share-service", () => {
       nativeCapture: true,
       systemAudio: false,
       reason: "Process-tree exclusion is unavailable.",
+    });
+  });
+
+  it("uses the safe Electron picker when native audio capture is gated", async () => {
+    installDesktopBridge();
+    desktop.capabilities.mockResolvedValueOnce({
+      ...nativeCapabilities,
+      captureBackend: "electron-video",
+      systemAudio: false,
+      applicationAudio: false,
+      processTreeIsolation: false,
+      reason: "Screen video is available without system audio.",
+    });
+    await expect(getScreenShareCapabilities()).resolves.toMatchObject({
+      available: true,
+      nativeCapture: false,
+      systemAudio: false,
+      customPicker: true,
+      dynamicSettings: false,
+    });
+  });
+
+  it("selects Electron video through the narrow desktop bridge", async () => {
+    installDesktopBridge();
+    await selectVideoOnlyScreenShareSource("screen:1:0");
+    expect(desktop.selectVideoSource).toHaveBeenCalledWith({
+      sourceId: "screen:1:0",
     });
   });
 

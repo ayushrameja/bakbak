@@ -375,7 +375,8 @@ NSIS invocation so the handoff does not create a second application location.
       installed isolation matrices remain the release gate.
 - [x] Fail closed to video-only in ordinary and release Electron builds until
       plan 0037 proves native call-audio exclusion on installed macOS and
-      Windows clients.
+      Windows clients. Video source enumeration/selection uses Electron on both
+      platforms and never requests unrestricted loopback audio.
 - [ ] Add invite management UI.
 - [ ] Add desktop notifications and tray controls.
 - [x] Add locally persisted microphone, speaker, and camera preferences.

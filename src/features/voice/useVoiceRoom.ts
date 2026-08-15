@@ -105,6 +105,7 @@ import {
   listenForScreenShareLifecycle,
   requestMicrophonePermission,
   ScreenShareCaptureError,
+  selectVideoOnlyScreenShareSource,
   startScreenShare as startNativeScreenShare,
   stopScreenShare as stopNativeScreenShare,
   updateScreenShareSettings as updateNativeScreenShareSettings,
@@ -746,6 +747,7 @@ export function useVoiceRoom(
         if (cancelled) return;
         if (
           !capabilities.nativeCapture &&
+          !capabilities.customPicker &&
           typeof navigator.mediaDevices?.getDisplayMedia !== "function"
         ) {
           setScreenShareCapabilities({
@@ -2847,6 +2849,12 @@ export function useVoiceRoom(
           return;
         }
 
+        if (screenShareCapabilities.customPicker) {
+          if (!sourceId) {
+            throw new Error("Choose a screen or application to share.");
+          }
+          await selectVideoOnlyScreenShareSource(sourceId);
+        }
         const publication = await room.localParticipant.setScreenShareEnabled(
           true,
           {

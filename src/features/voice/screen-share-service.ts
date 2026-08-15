@@ -151,13 +151,13 @@ export async function getScreenShareCapabilities(): Promise<ScreenShareCapabilit
 
   return {
     available: nativeCapabilities.video,
-    nativeCapture: true,
+    nativeCapture: nativeCapabilities.captureBackend === "native-helper",
     systemAudio:
       nativeCapabilities.systemAudio && nativeCapabilities.processTreeIsolation,
     sourceKinds: ["display", "application"],
     resolutions: [...SCREEN_SHARE_RESOLUTIONS],
     frameRates: [...SCREEN_SHARE_FRAME_RATES],
-    dynamicSettings: true,
+    dynamicSettings: nativeCapabilities.captureBackend === "native-helper",
     customPicker: true,
     reason: nativeCapabilities.reason,
   };
@@ -262,6 +262,18 @@ export async function openPermissionSettings(
 
 export async function restartDesktopApp(): Promise<void> {
   await getDesktopBridge()?.app.relaunch();
+}
+
+export async function selectVideoOnlyScreenShareSource(
+  sourceId: string,
+): Promise<void> {
+  const bridge = getDesktopBridge();
+  if (!bridge) {
+    throw new Error(
+      "Screen sharing is available in the installed desktop app.",
+    );
+  }
+  await bridge.screenShare.selectVideoSource({ sourceId });
 }
 
 export async function startScreenShare(
