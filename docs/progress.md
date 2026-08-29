@@ -8627,3 +8627,50 @@ docs/plans/0038-tauri-2-reliability-upgrade.md docs/progress.md` — passed.
   stabilization candidates, execute the private signed Windows update rehearsal,
   and complete every installed macOS/Windows acceptance row. Publish `2.0.0`
   and remove Electron only after those results are recorded here.
+
+## 2026-08-29 — Fix Linux helper lint and Deno cache cleanup failures
+
+- **Completed:** Limited the native capture event, metadata, Tokio channel, and
+  capture-settings surface to the macOS and Windows builds that use it. Removed
+  the empty unsupported-platform capture placeholders instead of suppressing
+  Linux dead-code warnings. Disabled `setup-deno` dependency caching in the CI,
+  stabilization-candidate, and release validation jobs so an earlier Rust
+  failure cannot leave the Deno post-job cache hook pointing at a directory that
+  was never created. Added workflow contracts that keep the fragile cache mode
+  disabled.
+- **Decisions:** Use compile-time platform boundaries rather than
+  `allow(dead_code)` for native-only types. Keep Deno setup deterministic and
+  uncached in validation jobs; the small speed optimization is not worth a
+  secondary cleanup failure that can obscure the original job failure.
+- **Validation:**
+  - `cargo fmt --check --manifest-path native/screen-share-helper/Cargo.toml`
+    and locked all-target Clippy with warnings denied — passed on Apple Silicon
+    macOS with zero warnings.
+  - `cargo test --locked --manifest-path native/screen-share-helper/Cargo.toml`
+    — passed 22/22 library tests and 1/1 binary test.
+  - `deno task --config supabase/deno.json check` — checked 30 files and all
+    five entrypoints; `deno task --config supabase/deno.json test` — passed
+    44/44 tests.
+  - Local Prettier, ESLint, four strict TypeScript checks, version validation,
+    production Vite build, compiled-artifact secret scan, and Ruby parsing of
+    all three changed workflow YAML files — passed. Vite retained its existing
+    non-fatal large-chunk warning.
+  - `./node_modules/.bin/vitest run` — passed 101 files / 619 tests;
+    `node --test scripts/*.test.mjs` — passed 93/93 repository contracts.
+  - A pinned Linux cross-target Clippy attempt was not completed: `rustup`
+    reported downloading `x86_64-unknown-linux-gnu`, but the active pinned
+    toolchain did not list the target and Cargo stopped before compiling Bakbak
+    with `can't find crate for core`. The hosted Ubuntu rerun remains the exact
+    proof for the originally failing platform.
+  - `pnpm check` was interrupted after its local launcher produced no output for
+    35 seconds. Its constituent repository checks were run successfully through
+    the installed project binaries as listed above.
+- **Documentation updated:** Appended this canonical progress entry. Runtime
+  architecture and user-facing behavior did not change.
+- **Known limitations:** The corrected workflows have not yet run on GitHub's
+  Ubuntu or Windows runners. Tauri packaging, installed-product checks, pgTAP,
+  and the manual multi-client release matrix were outside this focused CI fix.
+- **Next:** Push this revision and rerun the failed GitHub job. Confirm that the
+  Ubuntu screen-helper Clippy step passes and that Deno teardown no longer emits
+  a cache path-validation error; then continue the outstanding plan 0038
+  installed-platform acceptance matrix.

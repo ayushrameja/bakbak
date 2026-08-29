@@ -43,6 +43,7 @@ test("PR CI validates the complete Tauri stack and packages supported targets", 
   assert.equal(workflow.match(/dtolnay\/rust-toolchain@1\.93\.1/g)?.length, 2);
   assert.match(workflow, /denoland\/setup-deno@v2/);
   assert.match(workflow, /deno-version-file: \.dvmrc/);
+  assert.doesNotMatch(workflow, /deno-version-file: \.dvmrc\n\s+cache: true/);
   assert.match(
     workflow,
     /cargo fmt --check --manifest-path native\/screen-share-helper\/Cargo\.toml/,

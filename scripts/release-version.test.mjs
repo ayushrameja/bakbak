@@ -242,6 +242,7 @@ test("release builds only Apple Silicon macOS and Windows Tauri installers", asy
   assert.equal(workflow.match(/version: 11\.17\.0/g)?.length, 2);
   assert.equal(workflow.match(/node-version-file: \.node-version/g)?.length, 4);
   assert.equal(workflow.match(/dtolnay\/rust-toolchain@1\.93\.1/g)?.length, 2);
+  assert.doesNotMatch(workflow, /deno-version-file: \.dvmrc\n\s+cache: true/);
   assert.match(workflow, /deno task --config supabase\/deno\.json check/);
   assert.match(workflow, /deno task --config supabase\/deno\.json test/);
   assert.match(

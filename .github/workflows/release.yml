@@ -115,7 +115,6 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version-file: .dvmrc
-          cache: true
       - uses: dtolnay/rust-toolchain@1.93.1
         with:
           components: clippy, rustfmt
