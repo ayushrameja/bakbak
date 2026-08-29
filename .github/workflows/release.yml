@@ -1,4 +1,4 @@
-name: Desktop release
+name: Tauri desktop release
 
 on:
   push:
@@ -11,17 +11,21 @@ on:
         default: patch
         type: choice
         options: [patch, minor, major]
-      migration_rehearsal_passed:
-        description: Confirm the installed Tauri-to-Electron rehearsal passed on macOS and Windows
+      tauri_2_acceptance_matrix_passed:
+        description: Confirm both installed product matrices, 30-minute screen/external-audio runs, and migration/update rehearsals passed
         required: true
         default: false
         type: boolean
+      acceptance_matrix_source_sha:
+        description: Exact 40-character candidate commit SHA that passed the installed matrix
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: desktop-release
+  group: tauri-desktop-release
   cancel-in-progress: false
 
 env:
@@ -37,8 +41,10 @@ env:
 jobs:
   prepare:
     if: >-
-      vars.ELECTRON_MIGRATION_REHEARSED == 'true' ||
-      (github.event_name == 'workflow_dispatch' && inputs.migration_rehearsal_passed)
+      vars.TAURI_2_ACCEPTANCE_MATRIX_SHA == github.sha ||
+      (github.event_name == 'workflow_dispatch' &&
+       inputs.tauri_2_acceptance_matrix_passed &&
+       inputs.acceptance_matrix_source_sha == github.sha)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -51,6 +57,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
       - name: Read merged pull request labels
         id: labels
         env:
@@ -76,6 +85,18 @@ jobs:
             --fallback "$fallback" \
             --labels "$LABELS" \
             --bump "$MANUAL_BUMP" >> "$GITHUB_OUTPUT"
+      - name: Require the accepted candidate to carry the release version
+        if: steps.version.outputs.skip != 'true'
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          node scripts/set-version.mjs --check
+          tracked_version="$(node -p "JSON.parse(require('fs').readFileSync('package.json')).version")"
+          if [[ "$tracked_version" != "$RELEASE_VERSION" ]]; then
+            echo "Tracked version $tracked_version does not match resolved release $RELEASE_VERSION. Merge a version bump and rerun the candidate." >&2
+            exit 1
+          fi
 
   validate:
     needs: prepare
@@ -85,17 +106,56 @@ jobs:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
+          version: 11.17.0
           run_install: false
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: pnpm
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version-file: .dvmrc
+          cache: true
+      - uses: dtolnay/rust-toolchain@1.93.1
+        with:
+          components: clippy, rustfmt
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Install Linux native build prerequisites
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          libasound2-dev
+          libayatana-appindicator3-dev
+          librsvg2-dev
+          libssl-dev
+          libwebkit2gtk-4.1-dev
+          libxdo-dev
       - run: pnpm install --frozen-lockfile
-      - run: pnpm native:test
-      - run: node scripts/check-release-env.mjs
-      - run: pnpm check
-      - run: pnpm electron:compile
+      - name: Validate native Rust crates
+        run: |
+          cargo fmt --check --manifest-path native/screen-share-helper/Cargo.toml
+          cargo clippy --locked --manifest-path native/screen-share-helper/Cargo.toml --all-targets -- -D warnings
+          cargo test --locked --manifest-path native/screen-share-helper/Cargo.toml
+          cargo fmt --check --manifest-path native/external-audio/Cargo.toml
+          cargo clippy --locked --manifest-path native/external-audio/Cargo.toml --all-targets -- -D warnings
+          cargo test --locked --manifest-path native/external-audio/Cargo.toml
+          cargo fmt --check --manifest-path src-tauri/Cargo.toml
+          cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+          cargo test --locked --manifest-path src-tauri/Cargo.toml
+      - name: Validate Supabase Edge Functions
+        run: |
+          deno task --config supabase/deno.json check
+          deno task --config supabase/deno.json test
+      - name: Validate renderer and fallback shell
+        run: |
+          node scripts/check-release-env.mjs
+          pnpm check
+          pnpm electron:compile
+      - name: Validate database policies with pgTAP
+        run: |
+          supabase start --exclude vector
+          supabase test db
 
   build:
     needs: [prepare, validate]
@@ -104,166 +164,140 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - id: macos-arm64
+          - id: macos-aarch64
             name: macOS Apple Silicon
             runner: macos-26
-            builder_args: --mac --arm64
+            rust_target: aarch64-apple-darwin
+            tauri_config: src-tauri/tauri.macos.conf.json
             artifact_paths: |
-              release/*.dmg
-              release/*.zip
-              release/*.blockmap
-              release/latest-mac.yml
-              release/*.app.tar.gz
-              release/*.app.tar.gz.sig
-              release/MACOS-MANUAL-INSTALL.txt
+              release-tauri/*.dmg
+              release-tauri/MACOS-MANUAL-INSTALL.txt
           - id: windows-x64
             name: Windows x64
             runner: windows-latest
-            builder_args: --win --x64
+            rust_target: x86_64-pc-windows-msvc
+            tauri_config: src-tauri/tauri.windows.conf.json
             artifact_paths: |
-              release/*.exe
-              release/*.blockmap
-              release/latest.yml
-              release/*.exe.sig
-    name: Build ${{ matrix.name }}
+              release-tauri/*.exe
+              release-tauri/*.exe.sig
+    name: Build Tauri ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
-    env:
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
+          version: 11.17.0
           run_install: false
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: pnpm
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.93.1
+        with:
+          components: clippy, rustfmt
+          targets: ${{ matrix.rust_target }}
       - run: pnpm install --frozen-lockfile
-      - run: pnpm native:test
-      - run: node scripts/set-version.mjs ${{ needs.prepare.outputs.version }}
       - run: node scripts/check-release-env.mjs
-      - run: pnpm desktop:prepare
-      - name: Select macOS signing mode
-        id: mac-signing
-        if: matrix.id == 'macos-arm64'
-        shell: bash
-        env:
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Validate platform-native Rust controllers
         run: |
-          credential_names=(
-            CSC_LINK
-            CSC_KEY_PASSWORD
-            APPLE_API_KEY
-            APPLE_API_KEY_ID
-            APPLE_API_ISSUER
-            APPLE_TEAM_ID
-          )
-          missing=()
-          for name in "${credential_names[@]}"; do
-            if [[ -z "${!name}" ]]; then
-              missing+=("$name")
-            fi
-          done
-          if [[ "${#missing[@]}" -eq 0 ]]; then
-            echo "mode=signed" >> "$GITHUB_OUTPUT"
-          elif [[ "${#missing[@]}" -eq "${#credential_names[@]}" ]]; then
-            echo "mode=adhoc" >> "$GITHUB_OUTPUT"
-            echo "::warning::Apple signing credentials are unavailable. Building a manual-install-only ad-hoc DMG; macOS updater metadata will not be published."
-          else
-            printf '::error::Apple signing is only partially configured. Missing: %s\n' "${missing[*]}"
-            exit 1
-          fi
-      - name: Build signed and notarized macOS release
-        if: matrix.id == 'macos-arm64' && steps.mac-signing.outputs.mode == 'signed'
-        shell: bash
-        env:
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          cargo clippy --locked --manifest-path native/screen-share-helper/Cargo.toml --all-targets --target ${{ matrix.rust_target }} -- -D warnings
+          cargo test --locked --manifest-path native/screen-share-helper/Cargo.toml --target ${{ matrix.rust_target }}
+          cargo clippy --locked --manifest-path native/external-audio/Cargo.toml --all-targets --target ${{ matrix.rust_target }} -- -D warnings
+          cargo test --locked --manifest-path native/external-audio/Cargo.toml --target ${{ matrix.rust_target }}
+          cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --target ${{ matrix.rust_target }} -- -D warnings
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --target ${{ matrix.rust_target }}
+      - name: Prepare helper and renderer without signing secrets
         run: |
-          pnpm exec electron-builder ${{ matrix.builder_args }} --publish never \
-            --config.mac.identity="Developer ID Application" \
-            --config.mac.notarize=true
-      - name: Build temporary ad-hoc macOS release
-        if: matrix.id == 'macos-arm64' && steps.mac-signing.outputs.mode == 'adhoc'
+          pnpm tauri:prepare
+          pnpm build
+      - name: Build verifiable macOS application
+        if: matrix.id == 'macos-aarch64'
+        run: >-
+          pnpm exec tauri build
+          --bundles app
+          --target ${{ matrix.rust_target }}
+          --config src-tauri/tauri.sidecar.conf.json
+          --config ${{ matrix.tauri_config }}
+          --config src-tauri/tauri.prebuilt.conf.json
+      - name: Verify ad-hoc signed macOS application
+        if: matrix.id == 'macos-aarch64'
         shell: bash
         run: |
-          pnpm exec electron-builder ${{ matrix.builder_args }} --publish never \
-            --config.mac.identity=- \
-            --config.mac.notarize=false
-      - name: Build Windows release
-        if: matrix.id == 'windows-x64'
-        run: pnpm exec electron-builder ${{ matrix.builder_args }} --publish never
-      - name: Verify macOS distribution identity and notarization
-        if: matrix.id == 'macos-arm64' && steps.mac-signing.outputs.mode == 'signed'
-        shell: bash
-        env:
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          app_path="release/mac-arm64/Bakbak.app"
-          helper_path="$app_path/Contents/Resources/native/bakbak-screen-share-helper"
+          app_path="src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos/Bakbak.app"
+          test -d "$app_path"
+          helper_path="$(find "$app_path/Contents/MacOS" -maxdepth 1 -type f -name 'bakbak-screen-share-helper*' -print -quit)"
+          test -n "$helper_path"
           codesign --verify --deep --strict --verbose=2 "$app_path"
           signature="$(codesign --display --verbose=4 "$app_path" 2>&1)"
-          printf '%s\n' "$signature" | grep -q '^Authority=Developer ID Application:'
-          test "$(printf '%s\n' "$signature" | sed -n 's/^TeamIdentifier=//p')" = "$APPLE_TEAM_ID"
-          test -x "$helper_path"
-          codesign --verify --strict --verbose=2 "$helper_path"
-          helper_signature="$(codesign --display --verbose=4 "$helper_path" 2>&1)"
-          printf '%s\n' "$helper_signature" | grep -q '^Authority=Developer ID Application:'
-          test "$(printf '%s\n' "$helper_signature" | sed -n 's/^TeamIdentifier=//p')" = "$APPLE_TEAM_ID"
-          xcrun stapler validate "$app_path"
-          spctl --assess --verbose=2 --type exec "$app_path"
-      - name: Verify and isolate temporary ad-hoc macOS package
-        if: matrix.id == 'macos-arm64' && steps.mac-signing.outputs.mode == 'adhoc'
-        shell: bash
-        run: |
-          app_path="release/mac-arm64/Bakbak.app"
-          helper_path="$app_path/Contents/Resources/native/bakbak-screen-share-helper"
-          test -x "$helper_path"
-          for target in "$app_path" "$helper_path"; do
-            codesign --verify --deep --strict --verbose=2 "$target"
-            signature="$(codesign --display --verbose=4 "$target" 2>&1)"
-            printf '%s\n' "$signature" | grep -q '^Signature=adhoc$'
-            printf '%s\n' "$signature" | grep -q '^TeamIdentifier=not set$'
-          done
-          rm -f release/*.zip release/*.zip.blockmap release/*.dmg.blockmap release/latest-mac.yml
-          printf '%s\n' \
-            'This macOS build is ad-hoc signed and is for manual installation only.' \
-            'Automatic updates and Screen Recording permission continuity are unavailable until Bakbak has an Apple Developer ID.' \
-            > release/MACOS-MANUAL-INSTALL.txt
-      - name: Create legacy macOS updater payload
-        if: matrix.id == 'macos-arm64' && steps.mac-signing.outputs.mode == 'signed'
-        shell: bash
+          printf '%s\n' "$signature" | grep -q '^Signature=adhoc$'
+      - name: Build manual-install macOS DMG
+        if: matrix.id == 'macos-aarch64'
+        run: >-
+          pnpm exec tauri build
+          --bundles dmg
+          --target ${{ matrix.rust_target }}
+          --config src-tauri/tauri.sidecar.conf.json
+          --config ${{ matrix.tauri_config }}
+          --config src-tauri/tauri.prebuilt.conf.json
+      - name: Build signed Windows Tauri release
+        if: matrix.id == 'windows-x64'
         env:
-          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: bash
         run: |
-          artifact="release/Bakbak-${RELEASE_VERSION}-macos-arm64.app.tar.gz"
-          codesign --verify --deep --strict release/mac-arm64/Bakbak.app
-          tar --no-mac-metadata --no-xattrs -czf "$artifact" -C release/mac-arm64 Bakbak.app
-          pnpm dlx @tauri-apps/cli@2.11.4 signer sign "$artifact"
-      - name: Sign legacy Windows updater payload
+          test -n "${TAURI_SIGNING_PRIVATE_KEY:-}"
+          test -n "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
+          pnpm exec tauri build \
+            --target ${{ matrix.rust_target }} \
+            --config src-tauri/tauri.sidecar.conf.json \
+            --config ${{ matrix.tauri_config }} \
+            --config src-tauri/tauri.prebuilt.conf.json
+      - name: Verify and collect manual-only macOS package
+        if: matrix.id == 'macos-aarch64'
+        shell: bash
+        run: |
+          bundle_root="src-tauri/target/${{ matrix.rust_target }}/release/bundle"
+          dmgs=("$bundle_root/dmg/"*.dmg)
+          test "${#dmgs[@]}" -eq 1
+          test -f "${dmgs[0]}"
+          hdiutil verify "${dmgs[0]}"
+          if find "$bundle_root" -type f \( -name '*.sig' -o -name 'latest*.json' -o -name 'latest*.yml' \) -print -quit | grep -q .; then
+            echo "macOS updater metadata must not be produced" >&2
+            exit 1
+          fi
+          mkdir -p release-tauri
+          cp "${dmgs[0]}" release-tauri/
+          printf '%s\n' \
+            'Bakbak 2.0 for macOS is ad-hoc signed and must be installed manually from this DMG.' \
+            'Automatic macOS updates and permission continuity require Developer ID signing and notarization.' \
+            > release-tauri/MACOS-MANUAL-INSTALL.txt
+      - name: Verify and collect signed Windows updater package
         if: matrix.id == 'windows-x64'
         shell: pwsh
         env:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          $artifact = "release/Bakbak-$env:RELEASE_VERSION-windows-x64-setup.exe"
-          pnpm dlx @tauri-apps/cli@2.11.4 signer sign $artifact
+          $bundleRoot = "src-tauri/target/${{ matrix.rust_target }}/release/bundle/nsis"
+          $installers = @(Get-ChildItem -Path $bundleRoot -Filter "*-setup.exe")
+          if ($installers.Count -ne 1) { throw "Expected exactly one Windows NSIS installer." }
+          $signature = "$($installers[0].FullName).sig"
+          if (!(Test-Path $signature) -or (Get-Item $signature).Length -eq 0) {
+            throw "The Windows updater signature is required."
+          }
+          New-Item -ItemType Directory -Force -Path release-tauri | Out-Null
+          $target = "release-tauri/Bakbak-$env:RELEASE_VERSION-windows-x64-setup.exe"
+          Copy-Item $installers[0].FullName $target
+          Copy-Item $signature "$target.sig"
+          node scripts/verify-tauri-updater-signature.mjs `
+            --artifact $target `
+            --signature "$target.sig" `
+            --config src-tauri/tauri.conf.json
       - name: Scan compiled application for forbidden secrets
         run: node scripts/check-bundle-secrets.mjs
       - uses: actions/upload-artifact@v4
         with:
-          name: bakbak-release-${{ matrix.id }}
+          name: bakbak-tauri-release-${{ matrix.id }}
           path: ${{ matrix.artifact_paths }}
           if-no-files-found: error
           retention-days: 3
@@ -279,42 +313,33 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version
       - uses: actions/download-artifact@v4
         with:
-          pattern: bakbak-release-*
+          pattern: bakbak-tauri-release-*
           path: release-assets
           merge-multiple: true
-      - name: Generate and verify legacy updater manifest
+      - name: Generate and verify Windows Tauri updater manifest
         env:
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         shell: bash
         run: |
-          mac_archive="release-assets/Bakbak-${RELEASE_VERSION}-macos-arm64.app.tar.gz"
           windows_artifact="release-assets/Bakbak-${RELEASE_VERSION}-windows-x64-setup.exe"
-          if [[ -f release-assets/MACOS-MANUAL-INSTALL.txt ]]; then
-            test ! -e "$mac_archive"
-            node scripts/create-legacy-updater-manifest.mjs \
-              --version "$RELEASE_VERSION" \
-              --repository "$GITHUB_REPOSITORY" \
-              --tag "$RELEASE_TAG" \
-              --windows-only \
-              --windows-artifact "$windows_artifact" \
-              --output release-assets/latest.json
-            node scripts/verify-updater-manifest.mjs \
-              release-assets/latest.json "$RELEASE_VERSION" --allow-missing-macos
-          else
-            tar -tzf "$mac_archive" | node scripts/verify-legacy-macos-archive.mjs
-            node scripts/create-legacy-updater-manifest.mjs \
-              --version "$RELEASE_VERSION" \
-              --repository "$GITHUB_REPOSITORY" \
-              --tag "$RELEASE_TAG" \
-              --mac-artifact "$mac_archive" \
-              --windows-artifact "$windows_artifact" \
-              --output release-assets/latest.json
-            node scripts/verify-updater-manifest.mjs release-assets/latest.json "$RELEASE_VERSION"
-          fi
+          test -s "$windows_artifact"
+          test -s "$windows_artifact.sig"
+          node scripts/verify-tauri-updater-signature.mjs \
+            --artifact "$windows_artifact" \
+            --signature "$windows_artifact.sig" \
+            --config src-tauri/tauri.conf.json
+          node scripts/create-tauri-updater-manifest.mjs \
+            --version "$RELEASE_VERSION" \
+            --repository "$GITHUB_REPOSITORY" \
+            --tag "$RELEASE_TAG" \
+            --windows-artifact "$windows_artifact" \
+            --output release-assets/latest.json
+          node scripts/verify-updater-manifest.mjs \
+            release-assets/latest.json "$RELEASE_VERSION" --allow-missing-macos
       - name: Create draft and upload release assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -322,19 +347,31 @@ jobs:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         shell: bash
         run: |
-          release_title="Bakbak v${RELEASE_VERSION}"
-          if [[ -f release-assets/MACOS-MANUAL-INSTALL.txt ]]; then
-            release_title="${release_title} — macOS manual install"
-          fi
-          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+          require_exact_draft() {
+            local release_state="$1"
+            local is_draft
+            local target_commitish
+            is_draft="$(jq -r '.isDraft' <<< "$release_state")"
+            target_commitish="$(jq -r '.targetCommitish' <<< "$release_state")"
+            if [[ "$is_draft" != "true" || "$target_commitish" != "$GITHUB_SHA" ]]; then
+              echo "Release $RELEASE_TAG must be a draft targeting exact accepted source $GITHUB_SHA." >&2
+              exit 1
+            fi
+          }
+
+          release_title="Bakbak v${RELEASE_VERSION} — Tauri · macOS manual install"
+          if release_state="$(gh release view "$RELEASE_TAG" --json isDraft,targetCommitish 2>/dev/null)"; then
+            require_exact_draft "$release_state"
+            gh release edit "$RELEASE_TAG" --title "$release_title"
+          else
             gh release create "$RELEASE_TAG" \
               --draft \
               --generate-notes \
               --target "$GITHUB_SHA" \
               --title "$release_title"
-          else
-            gh release edit "$RELEASE_TAG" --title "$release_title"
           fi
+          release_state="$(gh release view "$RELEASE_TAG" --json isDraft,targetCommitish)"
+          require_exact_draft "$release_state"
           gh release upload "$RELEASE_TAG" release-assets/* --clobber
       - name: Verify supported installers and update metadata
         env:
@@ -345,74 +382,18 @@ jobs:
           assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
           test "$(printf '%s\n' "$assets" | grep -Ec '\.dmg$')" -eq 1
           test "$(printf '%s\n' "$assets" | grep -Ec '\.exe$')" -eq 1
-          test "$(printf '%s\n' "$assets" | grep -Ec '^latest\.yml$')" -eq 1
+          test "$(printf '%s\n' "$assets" | grep -Ec '\.exe\.sig$')" -eq 1
           test "$(printf '%s\n' "$assets" | grep -Ec '^latest\.json$')" -eq 1
+          test "$(printf '%s\n' "$assets" | grep -Ec '^MACOS-MANUAL-INSTALL\.txt$')" -eq 1
+          test "$(printf '%s\n' "$assets" | grep -Ec '\.zip$|\.app\.tar\.gz|^latest(-mac)?\.yml$')" -eq 0
           test "$(printf '%s\n' "$assets" | grep -Eic '(darwin|macos).*(x86_64|x64)')" -eq 0
-          if [[ -f release-assets/MACOS-MANUAL-INSTALL.txt ]]; then
-            test "$(printf '%s\n' "$assets" | grep -Ec '\.zip$')" -eq 0
-            test "$(printf '%s\n' "$assets" | grep -Ec '^latest-mac\.yml$')" -eq 0
-            test "$(printf '%s\n' "$assets" | grep -Ec '\.app\.tar\.gz(\.sig)?$')" -eq 0
-            test "$(printf '%s\n' "$assets" | grep -Ec '^MACOS-MANUAL-INSTALL\.txt$')" -eq 1
-          else
-            test "$(printf '%s\n' "$assets" | grep -Ec '\.zip$')" -eq 1
-            test "$(printf '%s\n' "$assets" | grep -Ec '^latest-mac\.yml$')" -eq 1
-            test "$(printf '%s\n' "$assets" | grep -Ec '^MACOS-MANUAL-INSTALL\.txt$')" -eq 0
-          fi
       - name: Publish verified release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
-        run: gh release edit "$RELEASE_TAG" --draft=false --latest
-
-  sync-version:
-    needs: [prepare, publish]
-    if: needs.prepare.outputs.skip != 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Synchronize tracked application version
-        id: version
-        env:
-          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         shell: bash
         run: |
-          node scripts/set-version.mjs "$RELEASE_VERSION"
-          if git diff --quiet -- package.json; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Commit synchronized version
-        id: commit
-        if: steps.version.outputs.changed == 'true'
-        env:
-          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
-        shell: bash
-        run: |
-          branch="automation/release-v${RELEASE_VERSION}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch -c "$branch"
-          git add package.json
-          git commit -m "chore(release): sync version to ${RELEASE_VERSION} [skip ci]"
-          git push origin "$branch"
-          echo "branch=$branch" >> "$GITHUB_OUTPUT"
-          echo "head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      - name: Merge synchronized version
-        if: steps.version.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
-          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
-          VERSION_BRANCH: ${{ steps.commit.outputs.branch }}
-          VERSION_HEAD: ${{ steps.commit.outputs.head }}
-        shell: bash
-        run: node scripts/sync-release-pr.mjs
+          release_state="$(gh release view "$RELEASE_TAG" --json isDraft,targetCommitish)"
+          test "$(jq -r '.isDraft' <<< "$release_state")" = "true"
+          test "$(jq -r '.targetCommitish' <<< "$release_state")" = "$GITHUB_SHA"
+          gh release edit "$RELEASE_TAG" --draft=false --latest

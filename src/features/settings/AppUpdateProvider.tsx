@@ -59,6 +59,7 @@ export function AppUpdateProvider({
   startupDelayMs = DEFAULT_STARTUP_DELAY_MS,
   retryDelaysMs = DEFAULT_RETRY_DELAYS_MS,
 }: AppUpdateProviderProps) {
+  const deliveryMode = getDesktopBridge()?.updates.deliveryMode ?? "automatic";
   const [status, setStatus] = useState<AppUpdateStatus>("idle");
   const [failure, setFailure] = useState<AppUpdateFailure | null>(null);
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -126,7 +127,14 @@ export function AppUpdateProvider({
   }, [maxAttempts, retryDelaysMs]);
 
   useEffect(() => {
-    if (!autoCheck || !isDesktopRuntime()) return;
+    const bridge = getDesktopBridge();
+    if (
+      !autoCheck ||
+      !isDesktopRuntime() ||
+      bridge?.updates.deliveryMode === "manual"
+    ) {
+      return;
+    }
     const timeout = window.setTimeout(() => {
       void checkForUpdates();
     }, startupDelayMs);
@@ -135,16 +143,33 @@ export function AppUpdateProvider({
 
   useEffect(() => {
     const bridge = getDesktopBridge();
-    if (!bridge) return;
+    if (!bridge || bridge.updates.deliveryMode === "manual") return;
     return bridge.updates.onInstallError(() => {
       setFailure("install");
       setStatus("install-failed");
     });
   }, []);
 
+  const openReleasesPage = useCallback(async () => {
+    const bridge = getDesktopBridge();
+    if (bridge) {
+      try {
+        await bridge.external.open(RELEASES_URL);
+        return;
+      } catch {
+        // The browser fallback still gives the user a manual recovery path.
+      }
+    }
+    window.open(RELEASES_URL, "_blank", "noopener,noreferrer");
+  }, []);
+
   const installUpdate = useCallback(async () => {
     const bridge = getDesktopBridge();
     if (!updateAvailable || !bridge) return;
+    if (bridge.updates.deliveryMode === "manual") {
+      await openReleasesPage();
+      return;
+    }
     setStatus("installing");
     setFailure(null);
     setDownloadedBytes(0);
@@ -163,26 +188,14 @@ export function AppUpdateProvider({
     } finally {
       stopProgress();
     }
-  }, [updateAvailable]);
-
-  const openReleasesPage = useCallback(async () => {
-    const bridge = getDesktopBridge();
-    if (bridge) {
-      try {
-        await bridge.external.open(RELEASES_URL);
-        return;
-      } catch {
-        // The browser fallback still gives the user a manual recovery path.
-      }
-    }
-    window.open(RELEASES_URL, "_blank", "noopener,noreferrer");
-  }, []);
+  }, [openReleasesPage, updateAvailable]);
 
   const copyDiagnostics = useCallback(async () => {
     const diagnostics = JSON.stringify(
       {
         appVersion: APP_VERSION,
         buildRevision: BUILD_REVISION,
+        deliveryMode,
         status,
         failure,
         availableVersion,
@@ -204,6 +217,7 @@ export function AppUpdateProvider({
   }, [
     attempt,
     availableVersion,
+    deliveryMode,
     failure,
     lastCheckedAt,
     lastSuccessfulCheckAt,
@@ -213,6 +227,7 @@ export function AppUpdateProvider({
 
   const value = useMemo<AppUpdateContextValue>(
     () => ({
+      deliveryMode,
       status,
       failure,
       availableVersion,
@@ -234,6 +249,7 @@ export function AppUpdateProvider({
       contentLength,
       copyDiagnostics,
       downloadedBytes,
+      deliveryMode,
       failure,
       installUpdate,
       lastCheckedAt,

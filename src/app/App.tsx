@@ -10,6 +10,7 @@ import {
 } from "react";
 import { BakbakMark } from "../components/BakbakMark";
 import { LoadingScreen } from "../components/LoadingScreen";
+import { Modal } from "../components/Modal";
 import { PanelResizer } from "../components/PanelResizer";
 import { ProfilePopover } from "../components/ProfilePopover";
 import type {
@@ -81,6 +82,7 @@ import {
   shouldDismissSoundboardForPointer,
 } from "../features/soundboard/soundboard-dismissal";
 import { useSoundboardCatalog } from "../features/soundboard/useSoundboardCatalog";
+import { useExternalAudio } from "../features/soundboard/useExternalAudio";
 import { ScreenShareDialog } from "../features/voice/ScreenShareDialog";
 import { VoiceControlDock } from "../features/voice/VoiceControlDock";
 import {
@@ -307,6 +309,8 @@ export default function App() {
   const [soundboardOpen, setSoundboardOpen] = useState(false);
   const soundboardDrawerRef = useRef<HTMLElement>(null);
   const [channelDialog, setChannelDialog] = useState<ChannelDialogState>(null);
+  const [pendingVoiceChannel, setPendingVoiceChannel] =
+    useState<Channel | null>(null);
   const [drafts, setDrafts] = useState<Record<string, MessageDraft>>({});
   const [screenShareDialogOpen, setScreenShareDialogOpen] = useState(false);
   const [openProfile, setOpenProfile] = useState<OpenProfileState | null>(null);
@@ -390,6 +394,11 @@ export default function App() {
     appConfig.dataMode,
     soundboard,
     handleCommunicationEffect,
+  );
+  const externalAudio = useExternalAudio(
+    signedInUserId,
+    !authLoading,
+    soundboard,
   );
   useAutoHideScrollbars();
 
@@ -2712,6 +2721,7 @@ export default function App() {
 
   async function handleSignOut() {
     setSoundboardOpen(false);
+    await externalAudio.stop();
     await voice.leave("sign-out");
     await releaseMicrophoneProcessing();
     await presenceSubscriptionRef.current?.setVoiceState(null);
@@ -2733,6 +2743,14 @@ export default function App() {
       setSpaceTransitionDirection(space === "personal" ? "left" : "right");
     }
     setActiveSpace(space);
+  }
+
+  async function requestVoiceJoin(channel: Channel) {
+    if (externalAudio.blocksVoice()) {
+      setPendingVoiceChannel(channel);
+      return;
+    }
+    await voice.join(channel);
   }
 
   function handleSelectChannel(channel: Channel) {
@@ -2758,7 +2776,29 @@ export default function App() {
         voice.status === "error")
     ) {
       setSoundboardOpen(false);
-      void voice.join(channel);
+      void requestVoiceJoin(channel).catch((caught: unknown) => {
+        setAppError(
+          caught instanceof Error
+            ? caught.message
+            : "Bakbak could not join voice.",
+        );
+      });
+    }
+  }
+
+  async function confirmJoinVoice() {
+    const channel = pendingVoiceChannel;
+    if (!channel) return;
+    setPendingVoiceChannel(null);
+    try {
+      await externalAudio.stop();
+      await requestVoiceJoin(channel);
+    } catch (caught) {
+      setAppError(
+        caught instanceof Error
+          ? caught.message
+          : "Bakbak could not join voice.",
+      );
     }
   }
 
@@ -3299,7 +3339,7 @@ export default function App() {
                 channel={selectedChannel}
                 user={user}
                 members={workspace.members}
-                voice={voice}
+                voice={{ ...voice, join: requestVoiceJoin }}
                 onOpenSettings={() => openSettings("audio")}
                 loadProfileMedia={loadProfileMedia}
                 onOpenProfile={handleOpenProfile}
@@ -3339,11 +3379,10 @@ export default function App() {
               loading={voice.soundboard.loading}
               error={voice.soundboard.error}
               volume={voice.soundboardVolume}
-              activeLocalSoundCount={voice.activeLocalSoundCount}
-              maxConcurrentSounds={voice.maxConcurrentSounds}
+              activeSoundId={voice.activeLocalSound?.soundId ?? null}
               readOnly={dataFreshness === "offline"}
               onPlay={voice.dispatchSound}
-              onStopAll={voice.stopLocalSounds}
+              onStopCurrent={voice.stopLocalSound}
               onVolumeChange={voice.setSoundboardVolume}
               onRetry={voice.soundboard.retrySound}
               onToggleFavorite={voice.soundboard.toggleFavorite}
@@ -3451,6 +3490,54 @@ export default function App() {
           onClose={() => setChannelDialog(null)}
         />
       ) : null}
+      {pendingVoiceChannel ? (
+        <Modal
+          title="Switch audio modes?"
+          onClose={() => setPendingVoiceChannel(null)}
+        >
+          <p>
+            Bakbak voice and External Soundboard cannot use your microphone at
+            the same time. Stop the external microphone before joining “
+            {pendingVoiceChannel.name}”?
+          </p>
+          <div className="dialog-actions">
+            <button type="button" onClick={() => setPendingVoiceChannel(null)}>
+              Keep External Soundboard
+            </button>
+            <button
+              className="primary-button"
+              type="button"
+              onClick={() => void confirmJoinVoice()}
+            >
+              Stop external mic and join
+            </button>
+          </div>
+        </Modal>
+      ) : null}
+      {externalAudio.closeExplanationRequested ? (
+        <Modal
+          title="Bakbak will keep the external mic live"
+          onClose={externalAudio.dismissCloseExplanation}
+        >
+          <p>
+            Closing the main window now hides Bakbak in the tray so your Discord
+            or Meet microphone keeps working. Use “Stop External Microphone” in
+            the tray—or Quit—to silence and release it.
+          </p>
+          <div className="dialog-actions">
+            <button
+              className="primary-button"
+              type="button"
+              onClick={() => {
+                externalAudio.dismissCloseExplanation();
+                void getDesktopBridge()?.window.close?.();
+              }}
+            >
+              Got it, hide Bakbak
+            </button>
+          </div>
+        </Modal>
+      ) : null}
       {activeView === "settings" ? (
         <SettingsPage
           user={user}
@@ -3496,7 +3583,13 @@ export default function App() {
           voiceDiagnosticsAvailable={voice.voiceDiagnosticsAvailable}
           onToggleMute={voice.toggleMute}
           onToggleDeafen={voice.toggleDeafen}
-          onLeaveVoice={() => void voice.leave()}
+          onLeaveVoice={voice.leave}
+          externalAudio={externalAudio}
+          onOpenExternal={async (url) => {
+            const bridge = getDesktopBridge();
+            if (bridge) await bridge.external.open(url);
+            else window.open(url, "_blank", "noopener,noreferrer");
+          }}
           onCopyVoiceDiagnostics={voice.copyVoiceDiagnostics}
           onSectionChange={setSettingsSection}
           onSaveProfile={handleSaveProfile}

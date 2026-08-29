@@ -13,6 +13,7 @@ export default tseslint.config(
       "public/vendor",
       "electron-dist",
       "release",
+      "src-tauri/target",
       "native/**/target",
       "native/**/check-target",
       "supabase/functions",

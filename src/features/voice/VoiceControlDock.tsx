@@ -47,7 +47,7 @@ export function VoiceControlDock({
   const focusInsideRef = useRef(false);
   const active = Boolean(voice.channel) && voice.status !== "disconnected";
   const connected = voice.status === "connected";
-  const localSoundsActive = voice.activeLocalSoundCount > 0;
+  const localSoundActive = Boolean(voice.activeLocalSound);
 
   const clearHideTimer = useCallback(() => {
     if (hideTimerRef.current !== null) {
@@ -63,14 +63,14 @@ export function VoiceControlDock({
       focusInsideRef.current ||
       moreOpen ||
       soundboardOpen ||
-      localSoundsActive
+      localSoundActive
     )
       return;
     hideTimerRef.current = window.setTimeout(
       () => setVisible(false),
       VOICE_DOCK_HIDE_DELAY_MS,
     );
-  }, [clearHideTimer, localSoundsActive, moreOpen, soundboardOpen]);
+  }, [clearHideTimer, localSoundActive, moreOpen, soundboardOpen]);
 
   const reveal = useCallback(() => {
     if (!active) return;
@@ -120,7 +120,7 @@ export function VoiceControlDock({
   useEffect(() => () => clearHideTimer(), [clearHideTimer]);
 
   useEffect(() => {
-    if (soundboardOpen || moreOpen || localSoundsActive) {
+    if (soundboardOpen || moreOpen || localSoundActive) {
       clearHideTimer();
       setVisible(true);
     } else if (active) {
@@ -129,7 +129,7 @@ export function VoiceControlDock({
   }, [
     active,
     clearHideTimer,
-    localSoundsActive,
+    localSoundActive,
     moreOpen,
     scheduleHide,
     soundboardOpen,
@@ -290,17 +290,15 @@ export function VoiceControlDock({
             </div>
           ) : null}
         </div>
-        {localSoundsActive ? (
+        {localSoundActive ? (
           <button
             className="voice-control-dock__stop-sounds"
             type="button"
-            aria-label={`Stop my sounds (${voice.activeLocalSoundCount} playing)`}
-            onClick={() => void voice.stopLocalSounds()}
+            aria-label="Stop current sound"
+            onClick={() => void voice.stopLocalSound()}
           >
             <Square size={18} />
-            <span>
-              {voice.activeLocalSoundCount}/{voice.maxConcurrentSounds}
-            </span>
+            <span aria-hidden="true">LIVE</span>
           </button>
         ) : null}
         <button

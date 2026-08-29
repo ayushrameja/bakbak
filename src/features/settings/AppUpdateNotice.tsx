@@ -1,4 +1,4 @@
-import { Download, RefreshCw, Sparkles, X } from "lucide-react";
+import { Download, ExternalLink, RefreshCw, Sparkles, X } from "lucide-react";
 import { useState } from "react";
 import { useAppUpdate } from "./app-update-context";
 
@@ -7,6 +7,7 @@ export function AppUpdateNotice() {
   const [dismissed, setDismissed] = useState(false);
   if (!updater.availableVersion || dismissed) return null;
 
+  const manualDelivery = updater.deliveryMode === "manual";
   const progress =
     updater.contentLength && updater.contentLength > 0
       ? Math.min(
@@ -14,8 +15,8 @@ export function AppUpdateNotice() {
           Math.round((updater.downloadedBytes / updater.contentLength) * 100),
         )
       : null;
-  const installing = updater.status === "installing";
-  const installFailed = updater.status === "install-failed";
+  const installing = !manualDelivery && updater.status === "installing";
+  const installFailed = !manualDelivery && updater.status === "install-failed";
 
   return (
     <aside className="update-notice" role="status" aria-live="polite">
@@ -25,13 +26,15 @@ export function AppUpdateNotice() {
       <div className="update-notice__content">
         <strong>Bakbak {updater.availableVersion} is ready</strong>
         <span>
-          {installing
-            ? progress === null
-              ? "Downloading the update…"
-              : `Downloading the update… ${progress}%`
-            : installFailed
-              ? "The update could not be installed. Your current app is unchanged."
-              : "Update when you are between conversations."}
+          {manualDelivery
+            ? "Download the ad-hoc-signed DMG, quit Bakbak, then replace it in Applications. Permissions may need to be granted again."
+            : installing
+              ? progress === null
+                ? "Downloading the update…"
+                : `Downloading the update… ${progress}%`
+              : installFailed
+                ? "The update could not be installed. Your current app is unchanged."
+                : "Update when you are between conversations."}
         </span>
         {installing && progress !== null ? (
           <div
@@ -50,14 +53,24 @@ export function AppUpdateNotice() {
             className="primary-button update-notice__install"
             type="button"
             disabled={installing}
-            onClick={() => void updater.installUpdate()}
+            onClick={() =>
+              void (manualDelivery
+                ? updater.openReleasesPage()
+                : updater.installUpdate())
+            }
           >
-            {installing ? (
+            {manualDelivery ? (
+              <ExternalLink size={14} />
+            ) : installing ? (
               <RefreshCw className="spin" size={14} />
             ) : (
               <Download size={14} />
             )}
-            {installFailed ? "Try again" : "Update and restart"}
+            {manualDelivery
+              ? "Download DMG"
+              : installFailed
+                ? "Try again"
+                : "Update and restart"}
           </button>
           <button
             className="text-button"

@@ -26,8 +26,10 @@ export function createStabilizationCandidateManifest({
   }
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: "bakbak-stabilization-candidate",
+    desktopShell: "tauri",
+    packageFormat: platform === "macos-aarch64" ? "dmg" : "nsis",
     appVersion: packageMetadata.version,
     sourceRevision: sourceSha.toLowerCase(),
     platform,

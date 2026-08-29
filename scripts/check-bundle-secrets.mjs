@@ -1,16 +1,17 @@
-import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
-import { extname, join, relative } from "node:path";
+import {
+  closeSync,
+  existsSync,
+  lstatSync,
+  openSync,
+  readSync,
+  readdirSync,
+} from "node:fs";
+import { join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const readableExtensions = new Set([
-  ".css",
-  ".html",
-  ".js",
-  ".json",
-  ".map",
-  ".txt",
-]);
 const forbiddenNames = ["LIVEKIT_API_SECRET", "SUPABASE_SERVICE_ROLE_KEY"];
+const forbiddenPrefixes = ["sb_secret_"];
+const SCAN_CHUNK_BYTES = 1024 * 1024;
 
 export function findCompiledBundleRoots(cwd = process.cwd()) {
   const roots = [];
@@ -21,6 +22,51 @@ export function findCompiledBundleRoots(cwd = process.cwd()) {
   add(join(cwd, "dist"));
   add(join(cwd, "electron-dist"));
   add(join(cwd, "release"));
+  add(join(cwd, "release-tauri"));
+  add(join(cwd, "src-tauri", "target", "release", "bundle"));
+  for (const target of ["aarch64-apple-darwin", "x86_64-pc-windows-msvc"]) {
+    add(join(cwd, "src-tauri", "target", target, "release", "bundle"));
+    add(
+      join(
+        cwd,
+        "src-tauri",
+        "target",
+        target,
+        "release",
+        target === "x86_64-pc-windows-msvc" ? "bakbak.exe" : "bakbak",
+      ),
+    );
+    add(
+      join(
+        cwd,
+        "src-tauri",
+        "binaries",
+        `bakbak-screen-share-helper-${target}${
+          target === "x86_64-pc-windows-msvc" ? ".exe" : ""
+        }`,
+      ),
+    );
+  }
+  add(
+    join(
+      cwd,
+      "native",
+      "screen-share-helper",
+      "target",
+      "release",
+      "bakbak-screen-share-helper",
+    ),
+  );
+  add(
+    join(
+      cwd,
+      "native",
+      "screen-share-helper",
+      "target",
+      "release",
+      "bakbak-screen-share-helper.exe",
+    ),
+  );
   return roots;
 }
 
@@ -43,18 +89,28 @@ export function inspectCompiledBundles({
       return;
     }
 
-    if (!readableExtensions.has(extname(path)) || metadata.size > 10_000_000)
-      return;
-    const contents = readFileSync(path, "utf8");
+    if (!metadata.isFile() || metadata.size === 0) return;
+    const matches = scanFile(path, [
+      ...forbiddenNames,
+      ...forbiddenPrefixes,
+      ...configuredSecrets,
+    ]);
     for (const name of forbiddenNames) {
-      if (contents.includes(name)) {
+      if (matches.has(name)) {
         findings.push(
           `${relative(cwd, path)}: contains forbidden variable name ${name}`,
         );
       }
     }
+    for (const prefix of forbiddenPrefixes) {
+      if (matches.has(prefix)) {
+        findings.push(
+          `${relative(cwd, path)}: contains forbidden secret prefix ${prefix}`,
+        );
+      }
+    }
     for (const secret of configuredSecrets) {
-      if (contents.includes(secret)) {
+      if (matches.has(secret)) {
         findings.push(
           `${relative(cwd, path)}: contains a configured secret value`,
         );
@@ -67,6 +123,45 @@ export function inspectCompiledBundles({
     roots: roots.map((root) => relative(cwd, root)),
     findings,
   };
+}
+
+function scanFile(path, needles) {
+  const encoded = needles.map((value) => ({
+    value,
+    bytes: Buffer.from(value),
+  }));
+  const remaining = new Set(needles);
+  const overlap = Math.max(0, ...encoded.map(({ bytes }) => bytes.length - 1));
+  const buffer = Buffer.allocUnsafe(SCAN_CHUNK_BYTES);
+  let carry = Buffer.alloc(0);
+  const handle = openSync(path, "r");
+  try {
+    for (;;) {
+      const bytesRead = readSync(handle, buffer, 0, buffer.length, null);
+      if (bytesRead === 0) break;
+      const chunk = buffer.subarray(0, bytesRead);
+      const searchable = carry.length
+        ? Buffer.concat([carry, chunk], carry.length + chunk.length)
+        : chunk;
+      for (const needle of encoded) {
+        if (
+          remaining.has(needle.value) &&
+          searchable.indexOf(needle.bytes) !== -1
+        ) {
+          remaining.delete(needle.value);
+        }
+      }
+      if (remaining.size === 0) break;
+      carry = overlap
+        ? Buffer.from(
+            searchable.subarray(Math.max(0, searchable.length - overlap)),
+          )
+        : Buffer.alloc(0);
+    }
+  } finally {
+    closeSync(handle);
+  }
+  return new Set(needles.filter((needle) => !remaining.has(needle)));
 }
 
 if (

@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 use super::{windows_legacy as legacy, *};
 use crate::{
     ScreenShareSettings, ScreenShareSourceKind,
-    windows_process::{WebViewProcessTracker, prove_electron_tree, verify_direct_parent},
+    windows_process::{WebViewProcessTracker, prove_host_tree, verify_direct_parent},
 };
 
 pub struct PreparedCapture {
@@ -71,10 +71,10 @@ pub fn capabilities() -> Capabilities {
 }
 
 pub fn verify_host(host: &HostIdentity) -> Result<(), HelperError> {
-    verify_direct_parent(host.electron_root_pid).map_err(|_| {
+    verify_direct_parent(host.host_root_pid).map_err(|_| {
         HelperError::invalid(
             "untrusted-parent",
-            "The helper is not a direct child of the declared Electron root.",
+            "The helper is not a direct child of the declared desktop host.",
         )
     })
 }
@@ -86,7 +86,7 @@ pub async fn sources(
     // Process proof controls audio availability, not whether video sources can
     // be listed. A transient proof failure therefore stays fail-closed for
     // audio while keeping the picker useful.
-    let proof = prove_electron_tree(host.electron_root_pid).ok();
+    let proof = prove_host_tree(host.audio_root_pid).ok();
     let mut sources = legacy::sources(proof).map_err(|_| {
         HelperError::retryable(
             "source-enumeration-failed",
@@ -119,10 +119,10 @@ pub async fn prepare(
     settings: CaptureSettings,
     events: CaptureEventSender,
 ) -> Result<PreparedCapture, HelperError> {
-    let tracker = WebViewProcessTracker::start_electron(host.electron_root_pid).map_err(|_| {
+    let tracker = WebViewProcessTracker::start_audio_root(host.audio_root_pid).map_err(|_| {
         HelperError::invalid(
             "audio-isolation-unavailable",
-            "The Electron process tree could not be verified.",
+            "The desktop host process tree could not be verified.",
         )
     })?;
     let (audio_failure_tx, mut audio_failure_rx) = mpsc::unbounded_channel();

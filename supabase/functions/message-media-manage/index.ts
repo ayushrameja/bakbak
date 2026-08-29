@@ -106,7 +106,7 @@ function createDependencies(
       const { adminClient } = clients();
       return { cleaned: await cleanupUserMedia(adminClient, user) };
     },
-    deleteMessage: async (user, messageKind, messageId) => {
+    deleteMessage: async (_user, messageKind, messageId) => {
       const { requestClient, adminClient } = clients();
       const { data, error } = await requestClient.rpc("delete_own_message", {
         p_message_kind: messageKind,

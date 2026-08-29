@@ -164,10 +164,10 @@ pub fn capabilities() -> Capabilities {
 
 pub fn verify_host(host: &HostIdentity) -> Result<(), HelperError> {
     let parent = unsafe { libc::getppid() } as u32;
-    if parent != host.electron_root_pid {
+    if parent != host.host_root_pid {
         return Err(HelperError::invalid(
             "untrusted-parent",
-            "The native helper was not launched by the declared Electron process.",
+            "The native helper was not launched by the declared desktop host.",
         ));
     }
     Ok(())
@@ -790,7 +790,7 @@ fn is_shareable_application(
 ) -> bool {
     !application.application_name().trim().is_empty()
         && !is_host_application(application, host)
-        && !process_trees_overlap(application.process_id(), host.electron_root_pid as i32)
+        && !process_trees_overlap(application.process_id(), host.host_root_pid as i32)
         && windows.iter().any(|window| {
             window.is_on_screen()
                 && window
@@ -800,20 +800,16 @@ fn is_shareable_application(
 }
 
 fn is_host_application(application: &SCRunningApplication, host: &HostIdentity) -> bool {
-    // The Electron audio renderer can be a helper process with a different
+    // The desktop audio renderer can be a helper process with a different
     // bundle identifier. Exclude every shareable application whose process is
-    // positively proven beneath the declared Electron root, not just the root
+    // positively proven beneath the declared host root, not just the root
     // application's bundle identifier.
-    process_is_in_tree(
-        application.process_id(),
-        host.electron_root_pid as i32,
-        false,
-    )
+    process_is_in_tree(application.process_id(), host.host_root_pid as i32, false)
 }
 
 fn host_process_tree_is_proven(host: &HostIdentity, applications: &[SCRunningApplication]) -> bool {
     applications.iter().any(|application| {
-        application.process_id() == host.electron_root_pid as i32
+        application.process_id() == host.host_root_pid as i32
             && application.bundle_identifier() == host.bundle_id
     })
 }

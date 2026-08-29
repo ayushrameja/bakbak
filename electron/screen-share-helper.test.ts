@@ -131,7 +131,7 @@ describe("ScreenShareHelperManager", () => {
     expect(helper.requests[0]).toMatchObject({
       protocolVersion: 1,
       payload: {
-        electronRootPid: 123,
+        hostRootPid: 123,
         bundleId: "com.bakbak.desktop",
         appVersion: "1.7.2",
       },

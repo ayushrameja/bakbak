@@ -12,7 +12,7 @@ const bakbakSound = mockSoundboardSounds[23]!;
 function renderSoundboard(overrides: Record<string, unknown> = {}) {
   const onUpdate = vi.fn().mockResolvedValue(undefined);
   const onVolumeChange = vi.fn();
-  const onStopAll = vi.fn().mockResolvedValue(undefined);
+  const onStopCurrent = vi.fn().mockResolvedValue(undefined);
   const onToggleFavorite = vi.fn().mockResolvedValue(undefined);
   const onUpload = vi.fn().mockResolvedValue(undefined);
   const onDelete = vi.fn().mockResolvedValue(undefined);
@@ -28,10 +28,9 @@ function renderSoundboard(overrides: Record<string, unknown> = {}) {
       loading={false}
       error={null}
       volume={0.7}
-      activeLocalSoundCount={2}
-      maxConcurrentSounds={5}
+      activeSoundId={systemSound.id}
       onPlay={vi.fn().mockResolvedValue(undefined)}
-      onStopAll={onStopAll}
+      onStopCurrent={onStopCurrent}
       onVolumeChange={onVolumeChange}
       onRetry={vi.fn().mockResolvedValue(undefined)}
       onToggleFavorite={onToggleFavorite}
@@ -43,7 +42,7 @@ function renderSoundboard(overrides: Record<string, unknown> = {}) {
   );
   return {
     onDelete,
-    onStopAll,
+    onStopCurrent,
     onToggleFavorite,
     onUpdate,
     onUpload,
@@ -182,36 +181,32 @@ describe("Soundboard", () => {
   });
 
   it("exposes volume and the standalone stop control", async () => {
-    const { onStopAll, onVolumeChange } = renderSoundboard();
+    const { onStopCurrent, onVolumeChange } = renderSoundboard();
     fireEvent.change(
       screen.getByRole("slider", { name: "Soundboard volume" }),
       { target: { value: "0.4" } },
     );
     expect(onVolumeChange).toHaveBeenCalledWith(0.4);
-    expect(screen.getByText("2/5")).toBeVisible();
+    expect(screen.getByText("Playing")).toBeVisible();
     const stopButton = screen.getByRole("button", {
-      name: "Stop my sounds (2/5 playing)",
+      name: "Stop current sound",
     });
     expect(stopButton.closest(".soundboard-stop-control")).toBeInstanceOf(
       HTMLDivElement,
     );
     expect(stopButton.closest("footer")).toBeNull();
     await userEvent.click(stopButton);
-    expect(onStopAll).toHaveBeenCalledOnce();
+    expect(onStopCurrent).toHaveBeenCalledOnce();
   });
 
-  it("disables ready sounds at five but keeps retryable downloads available", () => {
+  it("keeps every ready sound available while one is already playing", () => {
     renderSoundboard({
-      activeLocalSoundCount: 5,
       favoriteSoundIds: new Set(),
-      sounds: [{ ...bakbakSound, assetStatus: "error" }],
+      activeSoundId: systemSound.id,
     });
 
-    expect(screen.getByText("5/5")).toBeVisible();
     expect(
-      screen.getByRole("button", {
-        name: `${bakbakSound.label}, retry download`,
-      }),
+      screen.getByRole("button", { name: bakbakSound.label }),
     ).toBeEnabled();
   });
 

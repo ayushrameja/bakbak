@@ -17,7 +17,7 @@ fn main() {
             break;
         }
     }
-    // Production packaging copies the Swift runtime next to Electron's
+    // Production packaging copies the Swift runtime next to the desktop host's
     // Frameworks. /usr/lib/swift covers modern systems where it is dyld-cached.
     println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
     println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path/../Frameworks");

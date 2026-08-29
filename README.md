@@ -6,8 +6,9 @@ account favorites and five-second member uploads from audio or video. Its Warm
 Adda interface includes light/dark theming, in-app profile and media settings,
 private member avatars, automation-only System rooms, safe link previews, local
 RNNoise microphone cleanup, opt-in voice effects, and admin-managed ordinary
-text and voice rooms. It uses React, strict TypeScript, Vite, Electron, Supabase,
-and LiveKit.
+text and voice rooms. Bakbak 2 uses React, strict TypeScript, Vite, Tauri 2,
+Rust, Supabase, and LiveKit. Electron remains temporarily buildable only as the
+rollback shell until the installed `2.0.0` acceptance matrix passes.
 
 The default local experience is fully interactive and needs no account or
 credentials. Production integrations are present behind live mode and remain
@@ -15,8 +16,9 @@ protected by Supabase Row Level Security and a token-issuing Edge Function.
 
 ## Start locally
 
-Prerequisites: Node.js 22 and pnpm. Electron and its packaging tools are local
-project dependencies; Rust and platform WebView toolchains are no longer used.
+Pinned prerequisites are Node.js 22.23.1, pnpm 11.17.0, Rust 1.93.1, and Deno
+2.7.10. Install the normal [Tauri 2 platform prerequisites](https://v2.tauri.app/start/prerequisites/),
+including Xcode command-line tools on macOS or WebView2/MSVC on Windows.
 
 Distributed builds support Apple Silicon Macs running macOS 12.3 or later and
 Windows x64. Bakbak v0.4.0 is the final Intel Mac release; existing Intel
@@ -28,24 +30,23 @@ cp .env.example .env
 pnpm dev
 ```
 
-Open the Vite URL and choose **Enter the preview**. For the desktop window with
-live reload, run:
+Open the Vite URL and choose **Enter the preview**. For the Tauri desktop window
+with live reload, run:
 
 ```sh
-pnpm desktop:dev
+pnpm tauri:dev
 ```
 
-To create an unpacked local application without publishing updater metadata,
-run:
+To create this host's unpacked local Tauri application without updater
+metadata, run:
 
 ```sh
-pnpm desktop:pack:local
+pnpm tauri:build:local
 ```
 
-To create this host's supported DMG/ZIP or NSIS artifacts, run
-`pnpm desktop:build`. GitHub is the only supported place to publish update
-metadata and the transitional signed payload consumed by existing Tauri
-installations.
+To create this host's supported DMG or NSIS artifacts, run `pnpm tauri:build`.
+The `desktop:*` Electron commands are fallback-only and are removed after the
+installed migration gate. GitHub is the only supported update-metadata channel.
 
 Before a stabilization release, add the `stabilization:candidate` label to the
 ready pull request. The candidate workflow validates that exact PR-head commit,
@@ -57,6 +58,18 @@ disable updater artifacts and never create or publish a GitHub Release. If the
 PR head changes, discard the old artifacts and remove/re-add the label. Once
 the workflow exists on `main`, it may also be dispatched manually with an exact
 40-character commit SHA.
+
+For the Windows signed-update gate, manually dispatch that workflow with the
+exact source SHA and enable **Windows update rehearsal**. This opt-in job builds
+the tracked base version and its derived next patch from the same source, signs
+and verifies both NSIS payloads, and uploads one private seven-day Actions
+artifact. The kit contains both installers and signatures, a loopback-only
+`latest.json`, SHA-256 provenance, the rehearsal config, and exact local test
+instructions. It never creates a GitHub Release. Follow
+`REHEARSAL-INSTRUCTIONS.txt` on the Windows test machine: serve the extracted
+folder only on `127.0.0.1:41793`, install the base, and update through Bakbak
+Settings. Generating the kit is not acceptance evidence; record the observed
+installed base-to-next result before marking the update gate complete.
 
 Mock mode is selected by `VITE_DATA_MODE=mock`; it never connects to Supabase
 or LiveKit.
@@ -114,19 +127,42 @@ LiveKit secret or Supabase service-role key there.
 ## Screen-share compatibility
 
 - Apple Silicon macOS 12.3 or later and Windows x64 use Bakbak's Entire screen /
-  Application picker backed by Chromium desktop capture. Source audio can be
-  requested and is published only when Chromium returns an audio track. On
-  macOS, grant Bakbak access under **System Settings → Privacy & Security →
-  Screen & System Audio Recording** and relaunch after changing permission.
-- Electron requests Chromium's own-audio restriction, but the prototype no
-  longer contains the former Rust process-tree capture proof. Treat echo and
-  application-only audio isolation as an installed-client acceptance gate, not
-  a guarantee made by the picker.
+  Application picker backed by the supervised native sidecar. On macOS, grant
+  Bakbak access under **System Settings → Privacy & Security → Screen & System
+  Audio Recording** and relaunch after changing permission.
+- macOS 14.2 or newer and supported Windows builds 20348 or newer can publish
+  isolated screen/application audio. Entire-screen audio excludes Bakbak's
+  proven process tree; application audio includes only the selected process
+  tree. Missing process or isolation proof always falls back to video-only.
+- macOS 12.3–14.1 remains supported for video-only sharing with a clear picker
+  explanation. Windows also falls back to video-only until its WebView2 audio
+  process relationship is proven.
 - Presenters can choose 480p, 720p, or 1080p and 15, 30, or 60 fps before
   sharing and change those caps while a share is live.
 - Browser and Linux clients do not publish or view shares in this phase.
 - Protected or DRM-controlled content can be black or silent by operating
   system policy.
+
+## Soundboard in Discord or Meet
+
+External-call mode needs a virtual cable installed by the user: [BlackHole 2ch](https://github.com/ExistentialAudio/BlackHole)
+on macOS or [VB-CABLE](https://vb-audio.com/Cable/) on Windows. Bakbak does not
+bundle or silently install drivers.
+
+In **Settings → Audio → External-call soundboard**, choose:
+
+1. your physical microphone;
+2. the cable playback/render endpoint;
+3. the paired cable capture endpoint shown by the wizard; and
+4. headphones for effect monitoring.
+
+Use the meters, sound test, and short local recording before starting. Then
+select the paired cable capture endpoint as the microphone in Discord, Meet, or
+the other call app. Do not choose the cable as Bakbak's physical microphone or
+headphone output; the wizard rejects feedback routes. Bakbak voice and external
+mode cannot run together and always ask before switching. The mixer monitors
+effects, never your live microphone, and stores/uploads/logs no microphone
+samples. Aggressive call-app noise suppression may remove effects.
 
 For the internal rehearsal, email/password authentication remains enabled while
 email confirmation may be disabled temporarily. Before external friend testing,
@@ -141,12 +177,15 @@ pnpm typecheck
 pnpm test
 pnpm build
 pnpm security:scan
-pnpm desktop:build
+pnpm tauri:build
+deno task --config supabase/deno.json check
+deno task --config supabase/deno.json test
 ```
 
+Rust changes also require format, clippy-with-warnings-denied, and tests for
+`native/screen-share-helper`, `native/external-audio`, and `src-tauri`.
 Database policy tests run through the Supabase CLI when local Supabase is
-available. Edge Function unit tests run with Deno; see the backend README for
-the exact command.
+available: `supabase start --exclude vector`, then `supabase test db`.
 
 The locally bundled, reduced FFmpeg soundboard core and its reproducible Docker
 recipe/license notices live under `third_party/ffmpeg-soundboard`. Maintainers
@@ -160,12 +199,15 @@ RNNoise notices bundled with the local microphone processor live under
 Bakbak uses SemVer and starts the updater-enabled release line at `0.2.0`.
 Every merge to `main` publishes a patch release after validation unless the
 pull request has `release:skip`; `release:minor` and `release:major` select a
-larger bump. A manual workflow run can also choose the bump explicitly. After
-the installers and updater metadata are verified and the release is published,
-the workflow opens and merges a small protected-branch-compatible PR that
-synchronizes the released version in `package.json`. That bot commit does not start
-another release. A separate three-retry job also posts every verified stable
-release to `#releases`;
+larger bump. A manual workflow run can also choose the bump explicitly. The
+version must be synchronized in `package.json`, the Tauri config, Cargo
+manifest, and lockfile before the stabilization candidate is built and
+accepted. Release automation verifies that tracked version and exact candidate
+SHA without rewriting source. It also cryptographically verifies the renamed
+Windows installer signature against the committed Tauri updater public key
+before artifact upload and again before manifest generation. Existing GitHub
+Releases can be reused only as drafts targeting that exact candidate. A
+separate three-retry job also posts every verified stable release to `#releases`;
 publication itself remains successful if announcement delivery needs a rerun.
 The manual System history workflow imports stable releases oldest-first and is
 idempotent by GitHub release ID.
@@ -175,30 +217,31 @@ candidate artifacts from the same revision pass the installed friend-test
 gate. The candidate workflow is deliberately separate because “publish first,
 test later” is a thrilling plot device and a terrible release process.
 
-Because `main` requires pull requests, repository **Settings → Actions →
-General → Workflow permissions** must allow GitHub Actions to create and
-approve pull requests. The release job requests only the `contents: write` and
-`pull-requests: write` permissions needed for its version-sync PR.
+The publish job requests `contents: write` only for the exact-SHA draft and its
+verified assets. Version bumps use the ordinary protected-branch pull-request
+path before candidate acceptance.
 
-The release workflow builds one Apple Silicon DMG and ZIP plus one Windows x64
-NSIS installer. It rejects Intel macOS assets and keeps the GitHub Release in
-draft state until Electron's `latest-mac.yml` and `latest.yml` plus the signed
-legacy `latest.json` are present. Electron clients use the YAML metadata for
-future updates. The legacy JSON points existing Tauri clients at an Electron
-`.app.tar.gz` on macOS and the same NSIS executable on Windows, preserving the
-application identifier and release channel. On Windows, the Electron NSIS shim
-keeps Tauri's `%LOCALAPPDATA%\Bakbak` install location, translates its passive
-and restart arguments, and removes the obsolete Tauri uninstaller registration.
-This bridge must pass installed `Tauri 1.6.0/latest -> first Electron release ->
-later Electron release` rehearsals on both platforms before publication;
-generating the files is not proof that either installer has completed that
-surgery successfully.
+`2.0.0` is a one-time manual shell replacement: macOS users replace Bakbak from
+the DMG, Windows users uninstall Electron Bakbak and install the Tauri NSIS, and
+everyone signs in again. Before Supabase starts, Tauri performs a one-time local
+generation reset; cloud data returns after login, but local drafts, layout,
+cache, device preferences, and authentication are intentionally not migrated.
+
+The release workflow builds one Apple Silicon DMG plus one Windows x64 NSIS
+installer and rejects Intel assets. macOS is manual-install-only while ad-hoc
+signed: there is no ZIP, updater entry, or promise of permission continuity.
+Windows requires the updater private key, an NSIS `.exe.sig`, and a Windows-only
+`latest.json`. After the initial manual install, Windows may update
+automatically only after the installed `2.0.0 → 2.0.1` rehearsal passes. macOS
+continues with manual DMG replacement for `2.0.1`.
 
 Until that matrix passes, push-triggered releases stop at the workflow gate.
-Set the non-secret repository variable `ELECTRON_MIGRATION_REHEARSED=true` only
-after both installed paths pass, or explicitly confirm the equivalent checkbox
-on a manual release run. The first Electron version must be greater than the
-newest published Tauri tag.
+Set the non-secret repository variable `TAURI_2_ACCEPTANCE_MATRIX_SHA` to the
+exact 40-character candidate commit only after the installed shell/product,
+screen-share, external-audio, migration, and update matrices pass. A manual
+dispatch requires the same exact SHA plus explicit confirmation. A newer commit
+invalidates that evidence automatically. Electron stays in source until the
+same revision-bound evidence authorizes removal.
 
 Release builds require these GitHub Actions repository variables:
 
@@ -208,14 +251,21 @@ Release builds require these GitHub Actions repository variables:
 - `VITE_BACKEND_REGION`
 - `VITE_GIPHY_API_KEY`
 
-The transitional first Electron release also requires the existing
-`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` GitHub
-Actions secrets solely to sign the payload accepted by older Tauri clients; no
-Tauri runtime or Rust code remains. System release announcements additionally
+Windows updater releases require `TAURI_SIGNING_PRIVATE_KEY` and
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; unsigned updater payloads are rejected.
+The release job prepares the helper and renderer before those secrets exist,
+then exposes them only to the conditional Windows Tauri packaging step. That
+step consumes the prebuilt renderer with Tauri's `beforeBuildCommand` disabled;
+the macOS job receives neither updater-signing secret. The optional private
+update-rehearsal job uses the same boundary independently for its base and
+next-patch packaging steps; its fixed insecure HTTP endpoint exists only in
+`tauri.update-rehearsal.conf.json` and accepts loopback traffic only. System
+release announcements additionally
 require `BAKBAK_SYSTEM_EVENTS_SECRET`, matching the Supabase Function Secret.
 Private values must remain backed up and must never be committed. Current macOS
-builds are ad-hoc signed and Windows builds are unsigned, so Developer ID
-signing/notarization and Windows code signing remain production blockers rather
+builds are ad-hoc signed, and the Windows updater signature is not a substitute
+for operating-system executable signing. Developer ID signing/notarization and
+Windows code signing remain production blockers rather
 than decorative paperwork wearing a lanyard.
 
 ## Project memory

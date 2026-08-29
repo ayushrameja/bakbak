@@ -8378,3 +8378,252 @@ native/screen-share-helper/Cargo.toml` — passed 15 library tests plus 1 binary
   `latest-mac.yml`, while Windows retains its installer and both update
   manifests. Replace this fallback with the signed path after Apple Developer
   enrollment.
+
+## 2026-08-23 — Serialize latest-wins soundboard fade handoffs
+
+- **Completed:** Added a shared replacement-stop barrier to the soundboard
+  playback coordinator. A replacement now waits for the outgoing playback's
+  de-click fade and `finished` signal before it may start. Rapid A → B → C
+  replacement cancels B while it waits and starts only C after A finishes;
+  stop-current cancels a waiting replacement without allowing it to start
+  later. Updated the voice lifecycle mock to honor the playback contract that
+  `stop()` eventually settles `finished`.
+- **Decisions:** Reuse one in-flight stop barrier across every rapid
+  replacement instead of starting parallel fade chains. Treat either
+  fulfillment or rejection of the outgoing `finished` promise as completion of
+  that barrier so a teardown failure cannot permanently strand the coordinator.
+- **Validation:**
+  - `./node_modules/.bin/vitest run src/features/soundboard/soundboard-playback-coordinator.test.ts src/features/soundboard/soundboard-audio.test.ts src/features/voice/useVoiceRoom.test.tsx` — passed 3 files / 70 tests.
+  - `./node_modules/.bin/tsc --noEmit --pretty false` — passed renderer strict
+    TypeScript.
+  - Targeted ESLint for the coordinator, coordinator tests, and voice hook
+    tests — passed with zero warnings or errors.
+  - Targeted Prettier check for the same files — passed.
+  - Targeted `git diff --check` — passed.
+- **Documentation updated:** Added this canonical progress entry. The current
+  architecture and active plan already describe the latest-wins fade/stop
+  boundary, so their product contract did not change.
+- **Known limitations:** An aborted asset download or Web Audio decode is
+  logically fenced from playback, but the underlying download/decode work is
+  not physically interruptible through the current catalog API. The full
+  repository/build matrix and installed multi-client listening check were not
+  rerun for this focused race fix.
+- **Next:** Run the aggregate repository gates, then verify on an installed
+  two-client call that rapid triggers never overlap audibly across the 20 ms
+  de-click handoff.
+
+## 2026-08-23 — Bind releases to exact versioned candidates
+
+- **Completed:** Made the release prepare job require synchronized
+  `package.json`, Tauri config, Cargo manifest, and Cargo lock metadata whose
+  tracked version already equals the resolved release version. Removed the
+  build-time version rewrite and the post-publication version-sync job. Existing
+  GitHub Releases are now reusable only when they remain drafts targeting the
+  exact accepted `github.sha`; new and reused drafts are checked again
+  immediately before publication. Added a dependency-free Node verifier for
+  Tauri's outer-base64 Minisign envelopes; it checks key identity, Ed25519 or
+  prehashed Ed25519/BLAKE2b-512 artifact signatures, and the trusted-comment
+  signature against the committed updater public key. The workflow verifies
+  the exact renamed Windows installer before CI artifact upload and again
+  before updater-manifest generation. Dependency installation, native checks,
+  helper staging, and renderer compilation now finish without updater-signing
+  secrets. The key/password are injected only into the conditional Windows
+  Tauri packaging step, while a final prebuilt config disables Tauri's renderer
+  build hook; the macOS matrix leg receives neither secret.
+- **Decisions:** Treat a version bump as ordinary source that must pass a fresh
+  candidate and installed acceptance run. Release automation may verify that
+  source but never create a differently versioned build after the exact-SHA
+  gate. Keep draft checks fail-closed on missing, malformed, published, or
+  differently targeted release metadata. Mirror Tauri's verifier locally
+  instead of treating a nonempty signature file as proof or downloading a
+  release-time verification dependency. Treat build orchestration as part of
+  the secret boundary: prebuild everything possible first, and let the narrow
+  signing step package only those already-built inputs.
+- **Validation:**
+  - `node --test scripts/release-version.test.mjs` — passed 11/11 focused
+    release contracts.
+  - `node --test scripts/verify-tauri-updater-signature.test.mjs` — passed 5/5
+    deterministic compatibility, stale-artifact, tampered-comment, malformed,
+    wrong-key, and exact CLI file-path cases.
+  - `node --test scripts/*.test.mjs` — passed 89/89 repository Node contracts.
+  - `node scripts/set-version.mjs --check` plus the workflow's exact-version
+    comparison — passed for tracked/resolved version `2.0.0`.
+  - `./node_modules/.bin/prettier --check .github/workflows/release.yml
+scripts/release-version.test.mjs src-tauri/tauri.prebuilt.conf.json
+scripts/verify-tauri-updater-signature.mjs
+scripts/verify-tauri-updater-signature.test.mjs README.md docs/architecture.md
+docs/plans/0038-tauri-2-reliability-upgrade.md docs/progress.md` — passed.
+  - `./node_modules/.bin/eslint scripts/release-version.test.mjs
+--max-warnings=0` — passed with zero warnings.
+  - Ruby YAML parsing of `.github/workflows/release.yml` and `git diff --check`
+    — passed.
+  - The pinned Tauri CLI's `build --help` confirmed that later `--config`
+    values overwrite earlier ones; the focused contract also proved the final
+    prebuilt override leaves `beforeBuildCommand` empty and that signing-secret
+    references occur only inside the Windows-only build step.
+  - Independent release-gate review compared the implementation with pinned
+    `tauri-plugin-updater` 2.10.1 / `minisign-verify` 0.2.5 semantics and found
+    no P0/P1 gap.
+- **Documentation updated:** Updated `README.md`, `docs/architecture.md`, plan
+  0038's release contract, the workflow/verifier contract tests, and this
+  canonical progress log.
+- **Known limitations:** `actionlint` and a project-local JavaScript YAML parser
+  are not installed, so Ruby performed the local YAML syntax check. The hosted
+  GitHub Actions run, a real installer signed by the protected secret, and live
+  create/reuse/publish draft API paths remain to be exercised. An optional
+  local no-bundle Tauri smoke build stalled while checking installed Tauri
+  package versions and was interrupted before compilation, so it supplies no
+  additional package-level evidence.
+- **Next:** Merge the next synchronized version bump, generate and accept a new
+  candidate from that exact commit, then dispatch the release and confirm its
+  draft retains that SHA through publication.
+
+## 2026-08-23 — Stop screen sharing before renderer recovery
+
+- **Completed:** Made every main Tauri renderer recovery fail closed for an
+  active native screen share. macOS web-content termination now kills the
+  supervised helper before reloading the main webview, Windows WebView2
+  `ProcessFailed` handling kills it before renderer reload or application
+  restart, and the native Reload menu kills it before reloading the main
+  window. Added pure recovery-policy coverage plus source-order contracts for
+  all three entry points.
+- **Decisions:** Keep native screen sharing and external-call audio as separate
+  lifecycles. Main-renderer reloads stop the screen helper because its owning
+  renderer session cannot be recovered safely, but an overlay-only macOS reload
+  leaves that main-owned share alone. Renderer reloads do not stop the native
+  external-call mixer; a true process restart or quit still releases both
+  services through the existing application teardown path. Recovered WebView2
+  auxiliary-process failures remain non-destructive because they do not reload
+  or restart the renderer.
+- **Validation:**
+  - `node --test scripts/tauri-shell-boundary.test.mjs` — passed 4/4 shell and
+    recovery boundary contracts.
+  - `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` — passed.
+  - `cargo test --locked --manifest-path src-tauri/Cargo.toml` — passed 34/34
+    host Rust tests; doc tests and the binary's zero-test target also passed.
+  - `cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`
+    — passed with zero warnings.
+  - `pnpm tauri:check` — interrupted after roughly 90 seconds with no output;
+    the focused Cargo test and clippy invocations completed successfully.
+- **Documentation updated:** Updated `docs/architecture.md` with the
+  stop-before-reload/restart ordering and external-audio survival contract, and
+  appended this canonical progress entry.
+- **Known limitations:** The Windows-only pure Rust action test is target-gated
+  and therefore did not execute on this macOS host; the cross-platform Node
+  source contract verifies its call ordering. Installed macOS termination and
+  Windows WebView2 crash injection remain part of the platform acceptance
+  matrix.
+- **Next:** On installed Apple Silicon macOS and x64 Windows packages, inject a
+  renderer failure during a live screen share and confirm the helper and remote
+  companion track end before recovery while an active external-call mixer
+  survives a successful renderer-only reload.
+
+## 2026-08-23 — Add private signed Windows update rehearsal kit
+
+- **Completed:** Added an opt-in, manual-dispatch-only Windows job to the
+  stabilization-candidate workflow. It verifies one exact source revision,
+  prepares dependencies, the native helper, and the base renderer before
+  signing, then builds the tracked base version and a derived next patch from
+  that same source. The two Tauri packaging steps alone receive the updater key
+  and password. Both renamed NSIS installers and signatures are verified
+  against the committed updater public key. The job uploads a private seven-day
+  artifact containing both installer/signature pairs, a loopback-only
+  `latest.json`, the isolated rehearsal config, SHA-256/size/source/workflow
+  provenance, and Windows operator instructions.
+- **Decisions:** Preserve the ordinary unsigned macOS/Windows functional
+  candidate matrix. Keep insecure updater transport in one rehearsal-only
+  config pinned to `http://127.0.0.1:41793/latest.json`; normal candidate and
+  release configs do not inherit it. Mark generated provenance as `not-run` so
+  building the kit cannot be mistaken for installed acceptance. Derive only
+  the next patch version and rebuild its renderer outside the signing boundary
+  so the displayed and native versions agree.
+- **Validation:**
+  - `node --test scripts/update-rehearsal.test.mjs scripts/stabilization-candidate.test.mjs scripts/verify-tauri-updater-signature.test.mjs`
+    — passed 11/11 version, kit, workflow-boundary, loopback, provenance, and
+    Minisign verification cases.
+  - `./node_modules/.bin/eslint scripts/update-rehearsal-version.mjs scripts/create-update-rehearsal-kit.mjs scripts/update-rehearsal.test.mjs scripts/stabilization-candidate.test.mjs --max-warnings=0`
+    — passed with zero warnings.
+  - Targeted `prettier --check` for the workflow, config, scripts, tests,
+    README, architecture, and plan — passed.
+  - Ruby YAML parsing of `.github/workflows/stabilization-candidate.yml` and
+    targeted `git diff --check` — passed.
+- **Documentation updated:** Updated `README.md`, `docs/architecture.md`, plan
+  0038's installation/update checklist, and this canonical progress log with
+  the private rehearsal workflow and truthful acceptance boundary.
+- **Known limitations:** The protected-key GitHub Actions job, generated signed
+  installers, local Windows loopback server, installed base-to-next update, and
+  full platform acceptance matrix were not run on this macOS host. No release
+  gate is marked passed.
+- **Next:** Manually dispatch the stabilization workflow for the exact accepted
+  `2.0.0` source with **Windows update rehearsal** enabled, follow the artifact's
+  instructions on x64 Windows, record the observed `2.0.0 → 2.0.1` install and
+  relaunch evidence, and only then consider the update portion of the release
+  matrix complete.
+
+## 2026-08-23 — Complete the Tauri 2.0 source integration and local package gates
+
+- **Completed:** Integrated the Tauri 2 shell, shell-neutral renderer bridge,
+  supervised screen sidecar, fail-closed isolated-audio lifecycle, single-active
+  soundboard coordinator, native external-call mixer, generation reset, and
+  exact-source release/update gates as Bakbak `2.0.0`. Kept the Electron shell
+  buildable as the required rollback path. Split macOS release packaging into a
+  verified application build followed by a separate verified DMG build because
+  Tauri removes the staging application after DMG creation. Rebuilt the final
+  Apple Silicon Tauri app and DMG plus the Electron fallback package from the
+  resulting source tree.
+- **Decisions:** Mark source implementation complete but do not mark the release
+  accepted. Electron remains until installed Apple Silicon macOS and Windows x64
+  product, capture, external-audio, migration, and update matrices all pass.
+  Preserve manual-only ad-hoc macOS delivery and signed Windows updates; a local
+  package build is evidence, not a replacement for installed multi-client
+  acceptance.
+- **Validation:**
+  - `./node_modules/.bin/prettier --check .`, full ESLint with zero warnings,
+    and strict renderer, Node, Electron, and Electron-test TypeScript — passed.
+  - `./node_modules/.bin/vitest run` — passed 101 files / 619 tests.
+  - `node --test scripts/*.test.mjs` — passed 93/93 repository contracts.
+  - `node scripts/set-version.mjs --check`, the production Vite build, Electron
+    compile, and a fail-closed sample live release-environment check — passed at
+    synchronized version `2.0.0`; Vite retained its non-fatal large-chunk
+    warning.
+  - `deno task --config supabase/deno.json check` — linted and checked 30 files
+    and all five entrypoints; `deno task --config supabase/deno.json test` —
+    passed 44/44 tests.
+  - Screen-helper Rust format/clippy/tests — passed 22 library plus 1 binary
+    test. External-audio Rust format/clippy/tests — passed 14/14. Tauri Rust
+    format/clippy/tests — passed 34/34. Every Clippy run denied warnings.
+  - The locked release screen helper and final Tauri application build passed.
+    Strict deep signature checks found `Identifier=com.bakbak.desktop`,
+    `Signature=adhoc`, `TeamIdentifier=not set`; the app and packaged helper are
+    arm64, version `2.0.0`, with minimum macOS `12.3`.
+  - The final `Bakbak_2.0.0_aarch64.dmg` is 18,062,699 bytes and passed
+    `hdiutil verify`. Its SHA-256 is
+    `55211cf4a3d25a03a9735be4c056ff89bdd0bb0594372af2dbb6e7323c437f4f`.
+    A sandboxed read-only mount failed with `Device not configured`; the
+    approved retry used fail-fast shell handling, mounted the DMG read-only,
+    and strictly verified the contained app/helper identity, signature,
+    architecture, version, and minimum OS before detaching it.
+  - The sandboxed Electron packager stalled after loading configuration and was
+    interrupted. The approved retry passed native rebuild, Apple Silicon app,
+    DMG/ZIP, and block-map generation; strict deep app signature verification
+    and packaged app/helper arm64 checks passed.
+  - The compiled secret scan passed across renderer, Electron, Tauri bundle,
+    and staged/release helper outputs. All three workflow YAML files parsed,
+    and `git diff --check` passed.
+  - `supabase test db` — skipped locally because the Supabase CLI is not
+    installed; CI still requires the pgTAP gate.
+- **Documentation updated:** Updated `README.md`, `docs/architecture.md`, active
+  plans 0001 and 0038, release/candidate workflow contracts, and this canonical
+  progress log.
+- **Known limitations:** No hosted Windows package or protected-key updater job
+  ran on this macOS host. The final DMG was mounted and inspected but not used
+  for the installed product matrix. Startup/channel/voice/memory baselines,
+  coordinated friend rollout, both 30-minute three-client screen-share runs,
+  both 30-minute Discord/Meet external-audio runs, Electron-to-Tauri migration,
+  Windows `2.0.0 → 2.0.1`, macOS manual `2.0.0 → 2.0.1`, and local pgTAP remain
+  open. Ad-hoc macOS signing still means manual replacement, no unattended
+  updates, no notarization, and uncertain permission continuity.
+- **Next:** Push the exact source revision, run CI plus the exact-SHA
+  stabilization candidates, execute the private signed Windows update rehearsal,
+  and complete every installed macOS/Windows acceptance row. Publish `2.0.0`
+  and remove Electron only after those results are recorded here.

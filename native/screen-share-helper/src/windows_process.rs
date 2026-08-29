@@ -69,11 +69,13 @@ pub(crate) struct WebViewProcessTracker {
 }
 
 impl WebViewProcessTracker {
-    pub(crate) fn start_electron(root_pid: u32) -> Result<Self, String> {
-        verify_direct_parent(root_pid)?;
+    pub(crate) fn start_audio_root(root_pid: u32) -> Result<Self, String> {
+        if root_pid == 0 {
+            return Err("The desktop audio process root is invalid.".into());
+        }
         // A transient snapshot failure must not disable video capture. Audio
         // remains disabled unless there is a positive, current tree proof.
-        let initial = prove_electron_tree(root_pid)
+        let initial = prove_host_tree(root_pid)
             .map(WebViewProcessState::Proven)
             .unwrap_or(WebViewProcessState::Unavailable);
         let (sender, _) = watch::channel(initial);
@@ -83,7 +85,7 @@ impl WebViewProcessTracker {
             let mut interval = tokio::time::interval(Duration::from_secs(1));
             loop {
                 interval.tick().await;
-                let state = prove_electron_tree(root_pid)
+                let state = prove_host_tree(root_pid)
                     .map(WebViewProcessState::Proven)
                     .unwrap_or(WebViewProcessState::Unavailable);
                 sender.send_replace(state);
@@ -103,20 +105,20 @@ impl WebViewProcessTracker {
 
 pub(crate) fn verify_direct_parent(root_pid: u32) -> Result<(), String> {
     if root_pid == 0 {
-        return Err("The Electron root process is invalid.".into());
+        return Err("The desktop host process is invalid.".into());
     }
     let current = unsafe { GetCurrentProcessId() };
     let parents = process_parent_map()?;
     if parents.get(&current).copied() != Some(root_pid) {
-        return Err("The helper is not a direct child of the declared Electron root.".into());
+        return Err("The helper is not a direct child of the declared desktop host.".into());
     }
     Ok(())
 }
 
-pub(crate) fn prove_electron_tree(root_pid: u32) -> Result<WebViewProcessProof, String> {
+pub(crate) fn prove_host_tree(root_pid: u32) -> Result<WebViewProcessProof, String> {
     let parents = process_parent_map()?;
     if !parents.contains_key(&root_pid) {
-        return Err("The Electron process tree is unavailable.".into());
+        return Err("The desktop host process tree is unavailable.".into());
     }
     let process_ids = parents
         .keys()
@@ -124,7 +126,7 @@ pub(crate) fn prove_electron_tree(root_pid: u32) -> Result<WebViewProcessProof, 
         .filter(|process_id| process_is_in_tree(*process_id, root_pid, &parents))
         .collect::<HashSet<_>>();
     if process_ids.is_empty() {
-        return Err("The Electron process tree is empty.".into());
+        return Err("The desktop host process tree is empty.".into());
     }
     Ok(WebViewProcessProof {
         browser_process_id: root_pid,

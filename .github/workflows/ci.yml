@@ -13,62 +13,120 @@ env:
 
 jobs:
   validate:
-    name: Validate renderer and Electron shell
+    name: Validate renderer, backend, and native controllers
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
+          version: 11.17.0
           run_install: false
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: pnpm
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version-file: .dvmrc
+          cache: true
+      - uses: dtolnay/rust-toolchain@1.93.1
+        with:
+          components: clippy, rustfmt
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Install Linux native build prerequisites
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          libasound2-dev
+          libayatana-appindicator3-dev
+          librsvg2-dev
+          libssl-dev
+          libwebkit2gtk-4.1-dev
+          libxdo-dev
       - run: pnpm install --frozen-lockfile
-      - run: pnpm native:test
-      - run: pnpm check
-      - run: pnpm electron:compile
+      - name: Validate screen-share helper
+        run: |
+          cargo fmt --check --manifest-path native/screen-share-helper/Cargo.toml
+          cargo clippy --locked --manifest-path native/screen-share-helper/Cargo.toml --all-targets -- -D warnings
+          cargo test --locked --manifest-path native/screen-share-helper/Cargo.toml
+      - name: Validate external-audio mixer
+        run: |
+          cargo fmt --check --manifest-path native/external-audio/Cargo.toml
+          cargo clippy --locked --manifest-path native/external-audio/Cargo.toml --all-targets -- -D warnings
+          cargo test --locked --manifest-path native/external-audio/Cargo.toml
+      - name: Validate Tauri shell
+        run: |
+          cargo fmt --check --manifest-path src-tauri/Cargo.toml
+          cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+          cargo test --locked --manifest-path src-tauri/Cargo.toml
+      - name: Validate Supabase Edge Functions
+        run: |
+          deno task --config supabase/deno.json check
+          deno task --config supabase/deno.json test
+      - name: Validate renderer and shell contracts
+        run: |
+          pnpm check
+          pnpm electron:compile
+      - name: Validate database policies with pgTAP
+        run: |
+          supabase start --exclude vector
+          supabase test db
 
   package:
-    name: Package ${{ matrix.name }}
+    name: Package Tauri ${{ matrix.name }}
+    needs: validate
     strategy:
       fail-fast: false
       matrix:
         include:
-          - id: macos-arm64
+          - id: macos-aarch64
             name: macOS Apple Silicon
             runner: macos-26
-            builder_args: --mac --arm64
+            rust_target: aarch64-apple-darwin
+            tauri_config: src-tauri/tauri.macos.conf.json
             artifact_paths: |
-              release/*.dmg
-              release/*.zip
-              release/latest-mac.yml
+              src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
           - id: windows-x64
             name: Windows x64
             runner: windows-latest
-            builder_args: --win --x64
+            rust_target: x86_64-pc-windows-msvc
+            tauri_config: src-tauri/tauri.windows.conf.json
             artifact_paths: |
-              release/*.exe
-              release/latest.yml
+              src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
+          version: 11.17.0
           run_install: false
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: pnpm
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.93.1
+        with:
+          components: clippy, rustfmt
+          targets: ${{ matrix.rust_target }}
       - run: pnpm install --frozen-lockfile
-      - run: pnpm native:test
-      - run: pnpm desktop:prepare
-      - run: pnpm exec electron-builder ${{ matrix.builder_args }} --publish never
+      - name: Validate platform-native Rust controllers
+        run: |
+          cargo clippy --locked --manifest-path native/screen-share-helper/Cargo.toml --all-targets --target ${{ matrix.rust_target }} -- -D warnings
+          cargo test --locked --manifest-path native/screen-share-helper/Cargo.toml --target ${{ matrix.rust_target }}
+          cargo clippy --locked --manifest-path native/external-audio/Cargo.toml --all-targets --target ${{ matrix.rust_target }} -- -D warnings
+          cargo test --locked --manifest-path native/external-audio/Cargo.toml --target ${{ matrix.rust_target }}
+          cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --target ${{ matrix.rust_target }} -- -D warnings
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --target ${{ matrix.rust_target }}
+      - name: Build installable Tauri candidate
+        run: |
+          pnpm tauri:prepare
+          pnpm exec tauri build --target ${{ matrix.rust_target }} --config src-tauri/tauri.sidecar.conf.json --config ${{ matrix.tauri_config }} --config src-tauri/tauri.candidate.conf.json
+      - name: Scan compiled candidate for forbidden secrets
+        run: node scripts/check-bundle-secrets.mjs
       - uses: actions/upload-artifact@v4
         with:
-          name: bakbak-pr-${{ matrix.id }}
+          name: bakbak-tauri-pr-${{ matrix.id }}
           path: ${{ matrix.artifact_paths }}
           if-no-files-found: error
           retention-days: 3

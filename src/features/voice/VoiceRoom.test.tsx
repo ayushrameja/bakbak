@@ -104,8 +104,7 @@ function createVoice(
     screenShareFailure: null,
     soundboard: mockSoundboardController,
     soundboardVolume: 0.7,
-    activeLocalSoundCount: 0,
-    maxConcurrentSounds: 5,
+    activeLocalSound: null,
     prepareVoiceChannel: vi.fn(),
     join: vi.fn().mockResolvedValue(undefined),
     leave: vi.fn().mockResolvedValue(undefined),
@@ -131,7 +130,7 @@ function createVoice(
     watchScreenShare: vi.fn(),
     stopWatchingScreenShare: vi.fn(),
     dispatchSound: vi.fn().mockResolvedValue(undefined),
-    stopLocalSounds: vi.fn().mockResolvedValue(undefined),
+    stopLocalSound: vi.fn().mockResolvedValue(undefined),
     setSoundboardVolume: vi.fn(),
     updateSoundMetadata: vi.fn().mockResolvedValue(undefined),
     ...overrides,
@@ -803,7 +802,7 @@ describe("VoiceRoom", () => {
     ).toBeVisible();
     expect(
       screen.getByRole("img", { name: "Ayu is playing Latest" }),
-    ).toHaveTextContent("🔥2/5");
+    ).toHaveTextContent("🔥");
     expect(screen.getByText("Ayu")).toBeVisible();
     expect(screen.queryByText("Ayu (you)")).not.toBeInTheDocument();
     expect(container.querySelector(".participant-card__identity time")).toBe(

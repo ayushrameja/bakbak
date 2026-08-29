@@ -18,6 +18,8 @@ interface ActiveSoundSource {
   localGain: GainNode;
   localSuppressed: boolean;
   finish: () => void;
+  stopWithFade: () => void;
+  stopImmediately: () => void;
 }
 
 export interface SoundboardPlayback {
@@ -37,9 +39,10 @@ export class SoundboardAudioPublisher {
   private publication: LocalTrackPublication | null = null;
   private publishPromise: Promise<void> | null = null;
   private readonly decoded = new Map<string, AudioBuffer>();
-  private readonly active = new Map<string, ActiveSoundSource>();
-  private readonly pendingPlaybacks = new Set<symbol>();
+  private active: ActiveSoundSource | null = null;
+  private pendingPlayback: symbol | null = null;
   private generation = 0;
+  private playOperation = 0;
   private volume = 0.7;
   private deafened = false;
 
@@ -49,8 +52,14 @@ export class SoundboardAudioPublisher {
   ) {}
 
   async ensurePublished(participant: SoundboardParticipant): Promise<void> {
-    if (this.participant === participant && this.outboundTrack) return;
-    if (this.publishPromise) return await this.publishPromise;
+    if (this.publishPromise) await this.publishPromise;
+    if (
+      this.participant === participant &&
+      this.outboundTrack &&
+      this.publication
+    ) {
+      return;
+    }
 
     const target = this.requireTarget();
     const generation = this.generation;
@@ -100,13 +109,22 @@ export class SoundboardAudioPublisher {
     eventId: string,
     sound: SoundboardSound,
     blob: Blob,
+    signal?: AbortSignal,
   ): Promise<SoundboardPlayback> {
     const generation = this.generation;
+    const playOperation = ++this.playOperation;
     const pendingPlayback = Symbol(eventId);
     const ensureCurrent = () => {
-      if (this.generation !== generation) throw playbackCancelled();
+      if (
+        this.generation !== generation ||
+        this.playOperation !== playOperation ||
+        signal?.aborted
+      ) {
+        throw playbackCancelled();
+      }
     };
-    this.pendingPlaybacks.add(pendingPlayback);
+    this.pendingPlayback = pendingPlayback;
+    this.stopActive();
     try {
       await this.ensurePublished(participant);
       ensureCurrent();
@@ -140,24 +158,54 @@ export class SoundboardAudioPublisher {
         resolveFinished = resolve;
       });
       let stopped = false;
+      let stopScheduled = false;
+      let stopFallback: ReturnType<typeof setTimeout> | null = null;
       const finish = () => {
         if (stopped) return;
         stopped = true;
-        this.active.delete(eventId);
+        if (stopFallback !== null) clearTimeout(stopFallback);
+        if (this.active?.source === source) this.active = null;
         source.disconnect();
         tailGain.disconnect();
         localGain.disconnect();
         this.settleIfIdle();
         resolveFinished();
       };
+      const stopWithFade = () => {
+        if (stopped || stopScheduled) return;
+        stopScheduled = true;
+        const stopAt = scheduleDeClickStop(tailGain);
+        try {
+          source.stop(stopAt);
+          stopFallback = setTimeout(
+            finish,
+            Math.ceil(ZERO_TAIL_SECONDS * 1_000) + 25,
+          );
+        } catch {
+          silenceImmediately(tailGain);
+          finish();
+        }
+      };
+      const stopImmediately = () => {
+        if (stopped) return;
+        silenceImmediately(tailGain);
+        try {
+          source.stop();
+        } catch {
+          // The source may already have ended; finish still owns cleanup.
+        }
+        finish();
+      };
       source.onended = finish;
-      this.active.set(eventId, {
+      this.active = {
         source,
         tailGain,
         localGain,
         localSuppressed,
         finish,
-      });
+        stopWithFade,
+        stopImmediately,
+      };
       try {
         await this.unmuteOutbound();
         ensureCurrent();
@@ -170,56 +218,48 @@ export class SoundboardAudioPublisher {
 
       return {
         finished,
-        stop: () => {
-          silenceImmediately(tailGain);
-          try {
-            source.stop();
-          } catch {
-            // The source may already have ended; finish still owns cleanup.
-          }
-          finish();
-        },
+        stop: stopWithFade,
       };
     } finally {
-      this.pendingPlaybacks.delete(pendingPlayback);
+      if (this.pendingPlayback === pendingPlayback) {
+        this.pendingPlayback = null;
+      }
       this.settleIfIdle();
     }
   }
 
   setVolume(volume: number): void {
     this.volume = Math.max(0, Math.min(1, volume));
-    this.active.forEach((active) => {
-      if (!active.localSuppressed) active.localGain.gain.value = this.volume;
-    });
+    if (this.active && !this.active.localSuppressed) {
+      this.active.localGain.gain.value = this.volume;
+    }
   }
 
   setDeafened(deafened: boolean): void {
     this.deafened = deafened;
     if (!deafened) return;
-    this.active.forEach((active) => {
-      active.localSuppressed = true;
-      active.localGain.gain.value = 0;
-    });
+    if (!this.active) return;
+    this.active.localSuppressed = true;
+    this.active.localGain.gain.value = 0;
   }
 
-  stopAll(): void {
-    [...this.active.values()].forEach(({ source, tailGain, finish }) => {
-      silenceImmediately(tailGain);
-      try {
-        source.stop();
-      } catch {
-        // The source may already have ended; finish still owns cleanup.
-      }
-      finish();
-    });
-    this.muteOutbound();
+  stopCurrent(): void {
+    this.playOperation += 1;
+    this.pendingPlayback = null;
+    const hadActiveSound = this.active !== null;
+    this.stopActive();
+    if (!hadActiveSound) {
+      this.muteOutbound();
+      this.onIdle();
+    }
   }
 
   cleanup(): void {
     this.generation += 1;
-    this.pendingPlaybacks.clear();
-    this.stopAll();
-    [...this.active.values()].forEach(({ finish }) => finish());
+    this.playOperation += 1;
+    this.pendingPlayback = null;
+    this.stopActiveImmediately();
+    this.muteOutbound();
     if (this.participant && this.outboundTrack) {
       void this.participant
         .unpublishTrack(this.outboundTrack)
@@ -259,14 +299,40 @@ export class SoundboardAudioPublisher {
     void this.publication?.mute().catch(() => undefined);
   }
 
+  private stopActive(): void {
+    this.active?.stopWithFade();
+  }
+
+  private stopActiveImmediately(): void {
+    this.active?.stopImmediately();
+  }
+
   private settleIfIdle(): void {
-    if (this.active.size > 0 || this.pendingPlaybacks.size > 0) return;
+    if (this.active || this.pendingPlayback) return;
     this.muteOutbound();
     this.onIdle();
   }
 }
 
 const ZERO_TAIL_SECONDS = 0.02;
+
+function scheduleDeClickStop(gain: GainNode): number {
+  const now = gain.context.currentTime;
+  const stopAt = now + ZERO_TAIL_SECONDS;
+  if (typeof gain.gain.cancelScheduledValues === "function") {
+    gain.gain.cancelScheduledValues(now);
+  }
+  if (
+    typeof gain.gain.setValueAtTime === "function" &&
+    typeof gain.gain.linearRampToValueAtTime === "function"
+  ) {
+    gain.gain.setValueAtTime(gain.gain.value, now);
+    gain.gain.linearRampToValueAtTime(0, stopAt);
+  } else {
+    gain.gain.value = 0;
+  }
+  return stopAt;
+}
 
 function scheduleZeroTail(
   context: AudioContext,

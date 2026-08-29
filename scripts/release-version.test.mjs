@@ -166,86 +166,215 @@ test("rejects Intel macOS and other unsupported updater targets", () => {
   );
 });
 
-test("release builds only Apple Silicon macOS and Windows Electron installers", async () => {
-  const workflow = await readFile(
-    new URL("../.github/workflows/release.yml", import.meta.url),
-    "utf8",
-  );
+test("release builds only Apple Silicon macOS and Windows Tauri installers", async () => {
+  const [
+    workflow,
+    macosConfig,
+    windowsConfig,
+    candidateConfig,
+    prebuiltConfig,
+  ] = await Promise.all([
+    readFile(
+      new URL("../.github/workflows/release.yml", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../src-tauri/tauri.macos.conf.json", import.meta.url),
+      "utf8",
+    ).then(JSON.parse),
+    readFile(
+      new URL("../src-tauri/tauri.windows.conf.json", import.meta.url),
+      "utf8",
+    ).then(JSON.parse),
+    readFile(
+      new URL("../src-tauri/tauri.candidate.conf.json", import.meta.url),
+      "utf8",
+    ).then(JSON.parse),
+    readFile(
+      new URL("../src-tauri/tauri.prebuilt.conf.json", import.meta.url),
+      "utf8",
+    ).then(JSON.parse),
+  ]);
 
-  assert.match(workflow, /builder_args: --mac --arm64/);
-  assert.doesNotMatch(workflow, /--mac --x64/);
+  assert.match(workflow, /rust_target: aarch64-apple-darwin/);
+  assert.doesNotMatch(workflow, /x86_64-apple-darwin/);
   assert.match(workflow, /name: macOS Apple Silicon\n {12}runner: macos-26\n/);
   assert.doesNotMatch(workflow, /name: macOS Intel/);
   assert.match(workflow, /name: Windows x64\n {12}runner: windows-latest\n/);
-  assert.match(workflow, /builder_args: --win --x64/);
-  assert.match(workflow, /Build signed and notarized macOS release/);
-  assert.match(workflow, /Build temporary ad-hoc macOS release/);
-  assert.match(workflow, /Build Windows release/);
-  assert.match(workflow, /secrets\.MAC_CSC_LINK/);
-  assert.match(workflow, /secrets\.MAC_CSC_KEY_PASSWORD/);
-  assert.match(workflow, /secrets\.APPLE_API_KEY/);
-  assert.match(workflow, /secrets\.APPLE_API_KEY_ID/);
-  assert.match(workflow, /secrets\.APPLE_API_ISSUER/);
-  assert.match(workflow, /secrets\.APPLE_TEAM_ID/);
-  assert.match(workflow, /--config\.mac\.identity="Developer ID Application"/);
-  assert.match(workflow, /--config\.mac\.notarize=true/);
-  assert.match(workflow, /--config\.mac\.identity=-/);
-  assert.match(workflow, /--config\.mac\.notarize=false/);
-  assert.match(workflow, /mode=adhoc/);
-  assert.match(workflow, /Apple signing is only partially configured/);
+  assert.match(workflow, /rust_target: x86_64-pc-windows-msvc/);
+  assert.equal(workflow.match(/pnpm exec tauri build/g)?.length, 3);
+  assert.match(workflow, /src-tauri\/tauri\.macos\.conf\.json/);
+  assert.match(workflow, /src-tauri\/tauri\.windows\.conf\.json/);
+  assert.doesNotMatch(workflow, /electron-builder|Tauri-to-Electron/);
+  assert.match(workflow, /pnpm electron:compile/);
+  assert.doesNotMatch(workflow, /secrets\.MAC_CSC_LINK|secrets\.APPLE_/);
+  assert.match(workflow, /Signature=adhoc/);
+  assert.match(workflow, /pnpm exec tauri build\n {10}--bundles app/);
+  assert.match(workflow, /pnpm exec tauri build\n {10}--bundles dmg/);
+  assert.match(workflow, /hdiutil verify "\$\{dmgs\[0\]\}"/);
   assert.match(workflow, /MACOS-MANUAL-INSTALL\.txt/);
-  assert.match(workflow, /--windows-only/);
   assert.match(workflow, /--allow-missing-macos/);
-  assert.match(workflow, /rm -f release\/\*\.zip .*release\/latest-mac\.yml/);
+  assert.match(workflow, /macOS updater metadata must not be produced/);
   assert.match(
     workflow,
-    /if: matrix\.id == 'macos-arm64' && steps\.mac-signing\.outputs\.mode == 'signed'[\s\S]*?Create legacy macOS updater payload/,
+    /find "\$app_path\/Contents\/MacOS" .*bakbak-screen-share-helper/,
   );
-  assert.match(workflow, /xcrun stapler validate "\$app_path"/);
-  assert.match(workflow, /spctl --assess --verbose=2 --type exec "\$app_path"/);
-  assert.match(
-    workflow,
-    /helper_path="\$app_path\/Contents\/Resources\/native\/bakbak-screen-share-helper"/,
-  );
-  assert.match(
-    workflow,
-    /codesign --verify --strict --verbose=2 "\$helper_path"/,
-  );
-  assert.match(workflow, /latest-mac\.yml/);
-  assert.match(workflow, /latest\.yml/);
-  assert.match(workflow, /create-legacy-updater-manifest\.mjs/);
-  assert.match(
-    workflow,
-    /codesign --verify --deep --strict release\/mac-arm64\/Bakbak\.app/,
+  assert.match(workflow, /secrets\.TAURI_SIGNING_PRIVATE_KEY/);
+  assert.match(workflow, /The Windows updater signature is required/);
+  assert.match(workflow, /release-tauri\/\*\.exe\.sig/);
+  assert.equal(
+    workflow.match(/node scripts\/verify-tauri-updater-signature\.mjs/g)
+      ?.length,
+    2,
   );
   assert.match(
     workflow,
-    /tar --no-mac-metadata --no-xattrs -czf "\$artifact" -C release\/mac-arm64 Bakbak\.app/,
+    /verify-tauri-updater-signature\.mjs [`\\]\s*--artifact ["$\w{]/,
   );
-  assert.match(workflow, /verify-legacy-macos-archive\.mjs/);
-  assert.match(workflow, /pnpm dlx @tauri-apps\/cli@2\.11\.4 signer sign/);
-  assert.match(workflow, /migration_rehearsal_passed:/);
-  assert.match(workflow, /vars\.ELECTRON_MIGRATION_REHEARSED == 'true'/);
-  assert.match(workflow, /dtolnay\/rust-toolchain@stable/);
-  assert.match(workflow, /pnpm native:test/);
-  assert.doesNotMatch(workflow, /src-tauri|tauri-action/i);
+  assert.match(workflow, /--signature ["$]/);
+  assert.match(workflow, /--config src-tauri\/tauri\.conf\.json/);
+  assert.match(workflow, /create-tauri-updater-manifest\.mjs/);
+  assert.match(workflow, /tauri_2_acceptance_matrix_passed:/);
+  assert.match(workflow, /acceptance_matrix_source_sha:/);
+  assert.match(workflow, /vars\.TAURI_2_ACCEPTANCE_MATRIX_SHA == github\.sha/);
+  assert.match(workflow, /inputs\.acceptance_matrix_source_sha == github\.sha/);
+  assert.doesNotMatch(workflow, /TAURI_2_ACCEPTANCE_MATRIX_PASSED/);
+  assert.equal(workflow.match(/version: 11\.17\.0/g)?.length, 2);
+  assert.equal(workflow.match(/node-version-file: \.node-version/g)?.length, 4);
+  assert.equal(workflow.match(/dtolnay\/rust-toolchain@1\.93\.1/g)?.length, 2);
+  assert.match(workflow, /deno task --config supabase\/deno\.json check/);
+  assert.match(workflow, /deno task --config supabase\/deno\.json test/);
+  assert.match(
+    workflow,
+    /cargo clippy --locked --manifest-path native\/external-audio\/Cargo\.toml/,
+  );
+  assert.match(
+    workflow,
+    /cargo clippy --locked --manifest-path src-tauri\/Cargo\.toml/,
+  );
+  assert.match(workflow, /supabase test db/);
+  assert.match(workflow, /node scripts\/check-bundle-secrets\.mjs/);
+  assert.doesNotMatch(workflow, /create-legacy|verify-legacy|latest-mac\.yml/);
+  assert.deepEqual(macosConfig.bundle.targets, ["dmg"]);
+  assert.equal(macosConfig.bundle.createUpdaterArtifacts, false);
+  assert.equal(macosConfig.bundle.macOS.signingIdentity, "-");
+  assert.deepEqual(windowsConfig.bundle.targets, ["nsis"]);
+  assert.equal(windowsConfig.bundle.createUpdaterArtifacts, true);
+  assert.equal(candidateConfig.bundle.createUpdaterArtifacts, false);
+  assert.equal(prebuiltConfig.build.beforeBuildCommand, "");
+
+  const prepareStep = workflow.indexOf(
+    "Prepare helper and renderer without signing secrets",
+  );
+  const windowsSigningStep = workflow.indexOf(
+    "- name: Build signed Windows Tauri release",
+  );
+  const windowsSigningStepEnd = workflow.indexOf(
+    "\n      - name:",
+    windowsSigningStep + 1,
+  );
+  const signingBoundary = workflow.slice(
+    windowsSigningStep,
+    windowsSigningStepEnd,
+  );
+  const outsideSigningBoundary = `${workflow.slice(0, windowsSigningStep)}${workflow.slice(windowsSigningStepEnd)}`;
+  assert.ok(
+    prepareStep >= 0 && prepareStep < windowsSigningStep,
+    "helper and renderer must be prepared before signing secrets exist",
+  );
+  assert.match(signingBoundary, /if: matrix\.id == 'windows-x64'/);
+  assert.equal(
+    signingBoundary.match(/secrets\.TAURI_SIGNING_PRIVATE_KEY\b/g)?.length,
+    1,
+  );
+  assert.equal(
+    signingBoundary.match(/secrets\.TAURI_SIGNING_PRIVATE_KEY_PASSWORD\b/g)
+      ?.length,
+    1,
+  );
+  assert.match(signingBoundary, /test -n "\$\{TAURI_SIGNING_PRIVATE_KEY:-\}"/);
+  assert.match(
+    signingBoundary,
+    /test -n "\$\{TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-\}"/,
+  );
+  assert.match(signingBoundary, /src-tauri\/tauri\.prebuilt\.conf\.json/);
+  assert.doesNotMatch(
+    signingBoundary,
+    /pnpm (?:install|build|tauri:prepare|typecheck|test|check)\b/,
+  );
+  assert.doesNotMatch(
+    outsideSigningBoundary,
+    /secrets\.TAURI_SIGNING_PRIVATE_KEY(?:_PASSWORD)?\b/,
+  );
+  assert.equal(
+    workflow.match(/src-tauri\/tauri\.prebuilt\.conf\.json/g)?.length,
+    3,
+  );
+
+  const renamedArtifact = workflow.indexOf(
+    '$target = "release-tauri/Bakbak-$env:RELEASE_VERSION-windows-x64-setup.exe"',
+  );
+  const buildVerification = workflow.indexOf(
+    "node scripts/verify-tauri-updater-signature.mjs",
+    renamedArtifact,
+  );
+  const artifactUpload = workflow.indexOf("actions/upload-artifact@v4");
+  const downloadedArtifact = workflow.indexOf(
+    'windows_artifact="release-assets/Bakbak-${RELEASE_VERSION}-windows-x64-setup.exe"',
+  );
+  const publishVerification = workflow.indexOf(
+    "node scripts/verify-tauri-updater-signature.mjs",
+    downloadedArtifact,
+  );
+  const manifestGeneration = workflow.indexOf(
+    "node scripts/create-tauri-updater-manifest.mjs",
+  );
+  assert.ok(
+    renamedArtifact < buildVerification && buildVerification < artifactUpload,
+    "the exact renamed updater must verify before artifact upload",
+  );
+  assert.ok(
+    downloadedArtifact < publishVerification &&
+      publishVerification < manifestGeneration,
+    "the downloaded updater must verify again before manifest generation",
+  );
 });
 
-test("published releases synchronize their version through a protected-branch PR", async () => {
+test("release publishes only an already-versioned exact candidate draft", async () => {
   const workflow = await readFile(
     new URL("../.github/workflows/release.yml", import.meta.url),
     "utf8",
   );
 
-  assert.match(workflow, /sync-version:\n {4}needs: \[prepare, publish\]/);
-  assert.match(workflow, /pull-requests: write/);
-  assert.match(workflow, /node scripts\/set-version\.mjs "\$RELEASE_VERSION"/);
-  assert.match(workflow, /git diff --quiet -- package\.json/);
-  assert.doesNotMatch(workflow, /Cargo\.lock|Cargo\.toml|tauri\.conf/);
-  assert.match(workflow, /git commit -m ".*\[skip ci\]"/);
-  assert.match(workflow, /node scripts\/sync-release-pr\.mjs/);
-  assert.doesNotMatch(workflow, /gh pr create/);
-  assert.doesNotMatch(workflow, /gh pr merge/);
+  assert.match(
+    workflow,
+    /Require the accepted candidate to carry the release version[\s\S]*node scripts\/set-version\.mjs --check[\s\S]*"\$tracked_version" != "\$RELEASE_VERSION"/,
+  );
+  assert.equal(workflow.match(/node scripts\/set-version\.mjs/g)?.length, 1);
+  assert.doesNotMatch(
+    workflow,
+    /node scripts\/set-version\.mjs \$\{\{ needs\.prepare\.outputs\.version \}\}/,
+  );
+  assert.doesNotMatch(workflow, /^ {2}sync-version:/m);
+  assert.doesNotMatch(workflow, /node scripts\/sync-release-pr\.mjs/);
+
+  assert.match(
+    workflow,
+    /gh release view "\$RELEASE_TAG" --json isDraft,targetCommitish/,
+  );
+  assert.match(
+    workflow,
+    /"\$is_draft" != "true" \|\| "\$target_commitish" != "\$GITHUB_SHA"/,
+  );
+  assert.match(workflow, /--target "\$GITHUB_SHA"/);
+  assert.match(
+    workflow,
+    /test "\$\(jq -r '\.isDraft' <<< "\$release_state"\)" = "true"/,
+  );
+  assert.match(
+    workflow,
+    /test "\$\(jq -r '\.targetCommitish' <<< "\$release_state"\)" = "\$GITHUB_SHA"/,
+  );
 });
 
 test("ordinary release publication has no chat-announcement dependency", async () => {

@@ -14,18 +14,17 @@ import {
   DesktopPermissionError,
   type BakbakDesktopBridge,
 } from "../../lib/desktop-runtime";
-import {
-  MAX_CONCURRENT_SOUNDS_PER_USER,
-  clampSoundboardActivities,
-} from "../soundboard/limits";
+import { keepLatestSoundboardActivity } from "../soundboard/soundboard-activity";
 import { mockSoundboardController } from "../soundboard/mock-catalog";
 import {
   SOUNDBOARD_TRACK_NAME,
   SoundboardAudioPublisher,
 } from "../soundboard/soundboard-audio";
 import {
+  createSoundPlayEvent,
   createSoundStopEvent,
   encodeSoundEvent,
+  parseSoundEvent,
 } from "../soundboard/sound-events";
 import { AudioOutputRouter } from "./audio-output-router";
 import { SPEECH_MICROPHONE_TRACK_NAME } from "./microphone-publication";
@@ -51,6 +50,7 @@ import {
 interface Deferred<T> {
   promise: Promise<T>;
   resolve: (value: T) => void;
+  reject: (reason?: unknown) => void;
 }
 
 interface RoomDouble {
@@ -390,7 +390,7 @@ describe("prepared voice tokens", () => {
     expect(isPreparedVoiceTokenUsable({ expiresAt: null }, now)).toBe(false);
   });
 
-  it("keeps only the newest five remote sound activities", () => {
+  it("keeps only the newest remote sound activity", () => {
     const activities = Array.from({ length: 7 }, (_, index) => ({
       eventId: `event-${index + 1}`,
       soundId: `sound-${index + 1}`,
@@ -399,8 +399,8 @@ describe("prepared voice tokens", () => {
       startedAt: index + 1,
     }));
 
-    expect(clampSoundboardActivities(activities)).toEqual(
-      activities.slice(-MAX_CONCURRENT_SOUNDS_PER_USER),
+    expect(keepLatestSoundboardActivity(activities)).toEqual(
+      activities.slice(-1),
     );
   });
 });
@@ -774,6 +774,39 @@ describe("useVoiceRoom join lifecycle", () => {
     });
   });
 
+  it("offers Windows settings recovery when native status is unknown and capture is denied", async () => {
+    window.bakbakDesktop = {
+      platform: "windows",
+    } as unknown as BakbakDesktopBridge;
+    screenShareState.requestMicrophone.mockResolvedValueOnce({
+      kind: "microphone",
+      status: "unknown",
+      canRequest: false,
+      canOpenSettings: true,
+      requiresRestart: false,
+    });
+    liveKitState.createLocalAudioTrack.mockRejectedValueOnce(
+      new DOMException("Permission denied", "NotAllowedError"),
+    );
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const { result } = renderHook(() => useVoiceRoom(user, "live"));
+
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+
+    expect(result.current.inputDeviceError).toContain(
+      "Let desktop apps access your microphone",
+    );
+    expect(result.current.microphonePermission).toEqual({
+      kind: "microphone",
+      status: "unknown",
+      canRequest: false,
+      canOpenSettings: true,
+      requiresRestart: false,
+    });
+  });
+
   it("baselines the initial roster, filters share companions, and reports later room events", async () => {
     screenShareState.desktop = true;
     screenShareState.getCapabilities.mockResolvedValue({
@@ -915,7 +948,7 @@ describe("useVoiceRoom join lifecycle", () => {
     ).toBe(1.5);
   });
 
-  it("hard-mutes remote soundboard elements when their track or stop event goes idle", async () => {
+  it("uses LiveKit track state, not sound metadata, as audible truth", async () => {
     const setTrackMuted = vi.spyOn(
       RemoteAudioRenderer.prototype,
       "setTrackMuted",
@@ -949,15 +982,41 @@ describe("useVoiceRoom join lifecycle", () => {
       setSubscribed: vi.fn(),
     };
     participant.testTrackPublications.push(publication);
+    room.remoteParticipants.set("mira", participant);
 
     act(() => room.emit("trackSubscribed", track, publication, participant));
     expect(setTrackMuted).toHaveBeenLastCalledWith(track, true);
 
     act(() => room.emit("trackUnmuted", publication, participant));
     expect(setTrackMuted).toHaveBeenLastCalledWith(track, false);
+    const callsAfterTrackUnmuted = setTrackMuted.mock.calls.length;
+
+    const playEvent = createSoundPlayEvent({
+      eventId: "remote-play",
+      soundId: result.current.soundboard.sounds[0]!.id,
+      sentAt: Date.now(),
+    });
+    act(() =>
+      room.emit(
+        "dataReceived",
+        encodeSoundEvent(playEvent),
+        participant,
+        undefined,
+        "bakbak-soundboard",
+      ),
+    );
+    expect(
+      result.current.participants.find((item) => item.id === "mira")
+        ?.activeSounds,
+    ).toHaveLength(1);
+    expect(setTrackMuted).toHaveBeenCalledTimes(callsAfterTrackUnmuted);
 
     act(() => room.emit("trackMuted", publication, participant));
     expect(setTrackMuted).toHaveBeenLastCalledWith(track, true);
+    expect(
+      result.current.participants.find((item) => item.id === "mira")
+        ?.activeSounds,
+    ).toHaveLength(0);
 
     const stopEvent = createSoundStopEvent({
       eventId: "remote-stop",
@@ -972,7 +1031,7 @@ describe("useVoiceRoom join lifecycle", () => {
         "bakbak-soundboard",
       ),
     );
-    expect(setTrackMuted).toHaveBeenLastCalledWith(track, true);
+    expect(setTrackMuted).toHaveBeenCalledTimes(callsAfterTrackUnmuted + 1);
   });
 
   it("reconciles a missed subscribed track after signal-only and full reconnects without duplicates", async () => {
@@ -1333,7 +1392,11 @@ describe("useVoiceRoom join lifecycle", () => {
     expect(result.current.joinStage).toBeNull();
   });
 
-  it("destroys local sound routing on stop-all and voice leave", async () => {
+  it("stops the current sound without destroying routing until voice leave", async () => {
+    const soundStop = vi.spyOn(
+      SoundboardAudioPublisher.prototype,
+      "stopCurrent",
+    );
     const soundCleanup = vi.spyOn(
       SoundboardAudioPublisher.prototype,
       "cleanup",
@@ -1345,23 +1408,25 @@ describe("useVoiceRoom join lifecycle", () => {
     await act(async () => {
       await result.current.join(lounge);
     });
+    const soundStopsAfterJoin = soundStop.mock.calls.length;
     const soundCallsAfterJoin = soundCleanup.mock.calls.length;
     const outputCallsAfterJoin = outputCleanup.mock.calls.length;
 
-    await act(async () => {
-      await result.current.stopLocalSounds();
-    });
-    expect(soundCleanup).toHaveBeenCalledTimes(soundCallsAfterJoin + 1);
-    expect(outputCleanup).toHaveBeenCalledTimes(outputCallsAfterJoin + 1);
-    expect(soundCleanup.mock.invocationCallOrder.at(-1)).toBeLessThan(
-      outputCleanup.mock.invocationCallOrder.at(-1)!,
+    liveKitState.rooms[0]?.localParticipant.publishData.mockRejectedValueOnce(
+      new Error("signaling unavailable"),
     );
+    await act(async () => {
+      await result.current.stopLocalSound();
+    });
+    expect(soundStop).toHaveBeenCalledTimes(soundStopsAfterJoin + 1);
+    expect(soundCleanup).toHaveBeenCalledTimes(soundCallsAfterJoin);
+    expect(outputCleanup).toHaveBeenCalledTimes(outputCallsAfterJoin);
 
     await act(async () => {
       await result.current.leave();
     });
-    expect(soundCleanup).toHaveBeenCalledTimes(soundCallsAfterJoin + 2);
-    expect(outputCleanup).toHaveBeenCalledTimes(outputCallsAfterJoin + 2);
+    expect(soundCleanup).toHaveBeenCalledTimes(soundCallsAfterJoin + 1);
+    expect(outputCleanup).toHaveBeenCalledTimes(outputCallsAfterJoin + 1);
   });
 
   it("requests a companion token and stops the native share on voice leave", async () => {
@@ -2448,98 +2513,236 @@ describe("useVoiceRoom join lifecycle", () => {
     );
   });
 
-  it("allows five overlapping local sounds and rejects the sixth before playback", async () => {
+  it("replaces the active local sound instead of enforcing an overlap cap", async () => {
     const { result } = renderHook(() => useVoiceRoom(user, "mock"));
     await act(async () => {
       await result.current.join(lounge);
     });
-    const soundId = result.current.soundboard.sounds[0]!.id;
-
-    let outcomes!: PromiseSettledResult<void>[];
-    await act(async () => {
-      outcomes = await Promise.allSettled(
-        Array.from({ length: 6 }, () => result.current.dispatchSound(soundId)),
-      );
-    });
-
-    expect(
-      outcomes.filter((outcome) => outcome.status === "fulfilled"),
-    ).toHaveLength(5);
-    expect(
-      outcomes.filter((outcome) => outcome.status === "rejected"),
-    ).toHaveLength(1);
-    expect(result.current.activeLocalSoundCount).toBe(5);
+    const firstSound = result.current.soundboard.sounds[0]!;
+    const secondSound = result.current.soundboard.sounds[1]!;
 
     await act(async () => {
-      await result.current.stopLocalSounds();
+      await result.current.dispatchSound(firstSound.id);
     });
-    expect(result.current.activeLocalSoundCount).toBe(0);
+    expect(result.current.activeLocalSound?.soundId).toBe(firstSound.id);
+
+    await act(async () => {
+      await result.current.dispatchSound(secondSound.id);
+    });
+    expect(result.current.activeLocalSound?.soundId).toBe(secondSound.id);
+
+    await act(async () => {
+      await result.current.stopLocalSound();
+    });
+    expect(result.current.activeLocalSound).toBeNull();
   });
 
-  it("keeps pending starts reserved and cancels them through stop-all", async () => {
+  it("lets the latest sound win when an older asset finishes loading late", async () => {
     supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
-    const pendingAsset = deferred<Blob | null>();
-    const getBlob = vi.fn(() => pendingAsset.promise);
+    const firstAsset = deferred<Blob | null>();
+    const firstSound = mockSoundboardController.sounds[0]!;
+    const secondSound = mockSoundboardController.sounds[1]!;
+    const getBlob = vi.fn((soundId: string) =>
+      soundId === firstSound.id
+        ? firstAsset.promise
+        : Promise.resolve(new Blob(["second"], { type: "audio/mpeg" })),
+    );
+    const playbackStop = vi.fn();
+    const audioPlay = vi
+      .spyOn(SoundboardAudioPublisher.prototype, "play")
+      .mockResolvedValue({
+        finished: new Promise<void>(() => {}),
+        stop: playbackStop,
+      });
     const soundboard = { ...mockSoundboardController, getBlob };
     const { result } = renderHook(() => useVoiceRoom(user, "live", soundboard));
 
     await act(async () => {
       await result.current.join(lounge);
     });
-    vi.useFakeTimers();
-    const sound = soundboard.sounds[0]!;
-    const pendingPlays: Promise<unknown>[] = [];
+    let firstPlay!: Promise<unknown>;
     act(() => {
-      for (let index = 0; index < MAX_CONCURRENT_SOUNDS_PER_USER; index += 1) {
-        pendingPlays.push(
-          result.current
-            .dispatchSound(sound.id)
-            .catch((error: unknown) => error),
-        );
-      }
-    });
-
-    await act(async () => Promise.resolve());
-    expect(getBlob).toHaveBeenCalledTimes(MAX_CONCURRENT_SOUNDS_PER_USER);
-    expect(result.current.activeLocalSoundCount).toBe(
-      MAX_CONCURRENT_SOUNDS_PER_USER,
-    );
-
-    await act(async () => {
-      vi.advanceTimersByTime(sound.durationMs + 1_000);
-      await Promise.resolve();
-    });
-    expect(result.current.activeLocalSoundCount).toBe(
-      MAX_CONCURRENT_SOUNDS_PER_USER,
-    );
-
-    let sixthError: unknown;
-    await act(async () => {
-      sixthError = await result.current
-        .dispatchSound(sound.id)
+      firstPlay = result.current
+        .dispatchSound(firstSound.id)
         .catch((error: unknown) => error);
     });
-    expect(sixthError).toBeInstanceOf(Error);
-    expect(getBlob).toHaveBeenCalledTimes(MAX_CONCURRENT_SOUNDS_PER_USER);
+    await act(async () => Promise.resolve());
 
     await act(async () => {
-      await result.current.stopLocalSounds();
+      await result.current.dispatchSound(secondSound.id);
     });
-    expect(result.current.activeLocalSoundCount).toBe(0);
+    expect(await firstPlay).toMatchObject({ name: "AbortError" });
+    expect(result.current.activeLocalSound?.soundId).toBe(secondSound.id);
+    expect(audioPlay).toHaveBeenCalledOnce();
+    expect(audioPlay.mock.calls[0]?.[2].id).toBe(secondSound.id);
+    expect(publishedSoundEventTypes(liveKitState.rooms[0]!)).toEqual([
+      "soundboard:stop-all",
+      "soundboard:stop-all",
+      "soundboard:play",
+    ]);
 
-    let cancelledStarts: unknown[] = [];
+    await act(async () => {
+      firstAsset.resolve(new Blob(["first"], { type: "audio/mpeg" }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(audioPlay).toHaveBeenCalledOnce();
+    expect(playbackStop).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await result.current.stopLocalSound();
+    });
+    expect(playbackStop).toHaveBeenCalledOnce();
+    expect(result.current.activeLocalSound).toBeNull();
+  });
+
+  it("cancels a pending sound through stop-current", async () => {
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const pendingAsset = deferred<Blob | null>();
+    const getBlob = vi.fn(() => pendingAsset.promise);
+    const audioPlay = vi.spyOn(SoundboardAudioPublisher.prototype, "play");
+    const soundboard = { ...mockSoundboardController, getBlob };
+    const { result } = renderHook(() => useVoiceRoom(user, "live", soundboard));
+
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    let pendingPlay!: Promise<unknown>;
+    act(() => {
+      pendingPlay = result.current
+        .dispatchSound(soundboard.sounds[0]!.id)
+        .catch((error: unknown) => error);
+    });
+    await act(async () => Promise.resolve());
+    expect(result.current.activeLocalSound?.soundId).toBe(
+      soundboard.sounds[0]!.id,
+    );
+
+    await act(async () => {
+      await result.current.stopLocalSound();
+    });
+    expect(await pendingPlay).toMatchObject({ name: "AbortError" });
+    expect(result.current.activeLocalSound).toBeNull();
+
     await act(async () => {
       pendingAsset.resolve(new Blob(["audio"], { type: "audio/mpeg" }));
-      cancelledStarts = await Promise.all(pendingPlays);
+      await Promise.resolve();
+      await Promise.resolve();
     });
-    expect(
-      cancelledStarts.every(
-        (error) => error instanceof DOMException && error.name === "AbortError",
-      ),
-    ).toBe(true);
-    expect(
-      liveKitState.rooms[0]?.localParticipant.publishData,
-    ).toHaveBeenCalledOnce();
+    expect(audioPlay).not.toHaveBeenCalled();
+    expect(publishedSoundEventTypes(liveKitState.rooms[0]!)).toEqual([
+      "soundboard:stop-all",
+      "soundboard:stop-all",
+    ]);
+  });
+
+  it("suppresses a stale play-publication failure after replacement", async () => {
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const firstPublication = deferred<void>();
+    const firstPlaybackFinished = deferred<void>();
+    const firstPlayback = {
+      finished: firstPlaybackFinished.promise,
+      stop: vi.fn(() => firstPlaybackFinished.resolve()),
+    };
+    const secondPlayback = {
+      finished: new Promise<void>(() => {}),
+      stop: vi.fn(),
+    };
+    vi.spyOn(SoundboardAudioPublisher.prototype, "play")
+      .mockResolvedValueOnce(firstPlayback)
+      .mockResolvedValueOnce(secondPlayback);
+    const soundboard = {
+      ...mockSoundboardController,
+      getBlob: vi
+        .fn()
+        .mockResolvedValue(new Blob(["audio"], { type: "audio/mpeg" })),
+    };
+    const { result } = renderHook(() => useVoiceRoom(user, "live", soundboard));
+
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    const room = liveKitState.rooms[0]!;
+    room.localParticipant.publishData
+      .mockResolvedValueOnce(undefined)
+      .mockReturnValueOnce(firstPublication.promise)
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined);
+
+    let firstResult!: Promise<unknown>;
+    act(() => {
+      firstResult = result.current
+        .dispatchSound(soundboard.sounds[0]!.id)
+        .catch((error: unknown) => error);
+    });
+    await waitFor(() =>
+      expect(room.localParticipant.publishData).toHaveBeenCalledTimes(2),
+    );
+
+    await act(async () => {
+      await result.current.dispatchSound(soundboard.sounds[1]!.id);
+    });
+    expect(result.current.activeLocalSound?.soundId).toBe(
+      soundboard.sounds[1]!.id,
+    );
+
+    let staleResult: unknown;
+    await act(async () => {
+      firstPublication.reject(new Error("late signaling failure"));
+      staleResult = await firstResult;
+    });
+
+    expect(staleResult).toMatchObject({ name: "AbortError" });
+    expect(firstPlayback.stop).toHaveBeenCalledOnce();
+    expect(secondPlayback.stop).not.toHaveBeenCalled();
+    expect(result.current.activeLocalSound?.soundId).toBe(
+      soundboard.sounds[1]!.id,
+    );
+    expect(publishedSoundEventTypes(room)).toEqual([
+      "soundboard:stop-all",
+      "soundboard:play",
+      "soundboard:stop-all",
+      "soundboard:play",
+    ]);
+  });
+
+  it("announces natural completion and clears the active sound", async () => {
+    supabaseState.invoke.mockResolvedValueOnce(tokenResponse);
+    const finished = deferred<void>();
+    vi.spyOn(SoundboardAudioPublisher.prototype, "play").mockResolvedValue({
+      finished: finished.promise,
+      stop: vi.fn(),
+    });
+    const soundboard = {
+      ...mockSoundboardController,
+      getBlob: vi
+        .fn()
+        .mockResolvedValue(new Blob(["audio"], { type: "audio/mpeg" })),
+    };
+    const { result } = renderHook(() => useVoiceRoom(user, "live", soundboard));
+
+    await act(async () => {
+      await result.current.join(lounge);
+    });
+    await act(async () => {
+      await result.current.dispatchSound(soundboard.sounds[0]!.id);
+    });
+    expect(result.current.activeLocalSound?.soundId).toBe(
+      soundboard.sounds[0]!.id,
+    );
+
+    await act(async () => {
+      finished.resolve(undefined);
+      await finished.promise;
+      await Promise.resolve();
+    });
+
+    expect(result.current.activeLocalSound).toBeNull();
+    expect(publishedSoundEventTypes(liveKitState.rooms[0]!)).toEqual([
+      "soundboard:stop-all",
+      "soundboard:play",
+      "soundboard:stop-all",
+    ]);
   });
 
   it("rolls back the reservation before publishing when an asset start fails", async () => {
@@ -2563,10 +2766,10 @@ describe("useVoiceRoom join lifecycle", () => {
     });
 
     expect(receivedError).toBe(startFailure);
-    expect(result.current.activeLocalSoundCount).toBe(0);
-    expect(
-      liveKitState.rooms[0]?.localParticipant.publishData,
-    ).not.toHaveBeenCalled();
+    expect(result.current.activeLocalSound).toBeNull();
+    expect(publishedSoundEventTypes(liveKitState.rooms[0]!)).toEqual([
+      "soundboard:stop-all",
+    ]);
   });
 
   it("publishes 720p camera video only after an explicit toggle", async () => {
@@ -2603,8 +2806,17 @@ function createLocalAudioTrackDouble(): LocalAudioTrackDouble {
 
 function deferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((promiseResolve) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
     resolve = promiseResolve;
+    reject = promiseReject;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
+}
+
+function publishedSoundEventTypes(room: RoomDouble) {
+  return room.localParticipant.publishData.mock.calls.flatMap(([payload]) => {
+    const event = parseSoundEvent(payload);
+    return event ? [event.type] : [];
+  });
 }

@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isStableSemver, withPackageVersion } from "./set-version-lib.mjs";
+import {
+  isStableSemver,
+  lockedBakbakVersion,
+  packageVersionFromCargo,
+  withCargoPackageVersion,
+  withLockedBakbakVersion,
+  withPackageVersion,
+} from "./set-version-lib.mjs";
 
 test("accepts stable desktop release versions only", () => {
   assert.equal(isStableSemver("1.6.0"), true);
@@ -21,4 +28,19 @@ test("updates package metadata without mutating unrelated Electron config", () =
   assert.deepEqual(updated.build, original.build);
   assert.equal(original.version, "1.6.0");
   assert.throws(() => withPackageVersion(original, "1.7"), /stable SemVer/);
+});
+
+test("keeps Tauri package and lock metadata on the same release version", () => {
+  const cargo =
+    '[package]\nname = "bakbak"\nversion = "1.8.1"\n\n[dependencies]\nserde = "1"\n';
+  const lock =
+    '[[package]]\nname = "bakbak"\nversion = "1.8.1"\ndependencies = []\n\n[[package]]\nname = "serde"\nversion = "1.0.0"\n';
+
+  const updatedCargo = withCargoPackageVersion(cargo, "2.0.0");
+  const updatedLock = withLockedBakbakVersion(lock, "2.0.0");
+
+  assert.equal(packageVersionFromCargo(updatedCargo), "2.0.0");
+  assert.equal(lockedBakbakVersion(updatedLock), "2.0.0");
+  assert.match(updatedCargo, /serde = "1"/);
+  assert.match(updatedLock, /name = "serde"\nversion = "1\.0\.0"/);
 });

@@ -61,7 +61,7 @@ pub fn lifecycle(payload: LifecyclePayload) -> Outbound {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{LifecycleState, StopResult};
+    use crate::model::{DisableAudioResult, LifecycleState, StopResult};
 
     #[test]
     fn serializes_locked_v1_response_shape() {
@@ -94,5 +94,21 @@ mod tests {
         assert_eq!(value["event"], "lifecycle");
         assert_eq!(value["payload"]["state"], "audio-downgraded");
         assert!(value.get("requestId").is_none());
+    }
+
+    #[test]
+    fn serializes_internal_audio_disable_without_exposing_host_identity() {
+        let value = serde_json::to_value(success(
+            "req-2".to_string(),
+            DisableAudioResult {
+                session_id: "00000000-0000-4000-8000-000000000001".into(),
+                audio_published: false,
+            },
+        ))
+        .unwrap();
+
+        assert_eq!(value["result"]["audioPublished"], false);
+        assert!(value["result"].get("audioRootPid").is_none());
+        assert!(value["result"].get("hostRootPid").is_none());
     }
 }

@@ -488,9 +488,7 @@ function ParticipantOrb({
           status: "online" as const,
         });
   const activityLabel = soundActive
-    ? participant.activeSounds.length > 1
-      ? `${participant.activeSounds.length} sounds playing`
-      : `Playing ${latestSound?.label ?? "sound"}`
+    ? `Playing ${latestSound?.label ?? "sound"}`
     : participant.isSpeaking
       ? "Speaking"
       : participant.isMuted
@@ -571,8 +569,6 @@ function ParticipantOrb({
             key={latestSound.eventId}
             emoji={latestSound.emoji}
             label={`${displayName} is playing ${latestSound.label}`}
-            count={participant.activeSounds.length}
-            maximum={voice.maxConcurrentSounds}
             blend
           />
         ) : null}
@@ -803,15 +799,11 @@ function OrphanShareOrb({
 function SoundEmoji({
   emoji,
   label,
-  count,
-  maximum,
   overlay = false,
   blend = false,
 }: {
   emoji: string;
   label: string;
-  count: number;
-  maximum: number;
   overlay?: boolean;
   blend?: boolean;
 }) {
@@ -822,11 +814,6 @@ function SoundEmoji({
       role="img"
     >
       <b aria-hidden="true">{emoji}</b>
-      {count > 1 ? (
-        <i>
-          {count}/{maximum}
-        </i>
-      ) : null}
     </span>
   );
 }

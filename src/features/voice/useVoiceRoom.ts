@@ -48,15 +48,12 @@ import {
   parseSoundEvent,
 } from "../soundboard/sound-events";
 import { mockSoundboardController } from "../soundboard/mock-catalog";
-import {
-  MAX_CONCURRENT_SOUNDS_PER_USER,
-  clampSoundboardActivities,
-  hasReachedSoundLimit,
-} from "../soundboard/limits";
+import { keepLatestSoundboardActivity } from "../soundboard/soundboard-activity";
 import {
   SOUNDBOARD_TRACK_NAME,
   SoundboardAudioPublisher,
 } from "../soundboard/soundboard-audio";
+import { SoundboardPlaybackCoordinator } from "../soundboard/soundboard-playback-coordinator";
 import type {
   SoundboardActivity,
   SoundboardCatalogController,
@@ -273,8 +270,7 @@ interface VoiceRoomState {
   screenShareFailure: ScreenShareFailure | null;
   soundboard: SoundboardCatalogController;
   soundboardVolume: number;
-  activeLocalSoundCount: number;
-  maxConcurrentSounds: number;
+  activeLocalSound: SoundboardActivity | null;
   prepareVoiceChannel: (channel: Channel, immediate?: boolean) => void;
   join: (channel: Channel) => Promise<void>;
   leave: (reason?: VoiceLeaveReason) => Promise<void>;
@@ -304,7 +300,7 @@ interface VoiceRoomState {
   watchScreenShare: (shareId: string) => void;
   stopWatchingScreenShare: () => void;
   dispatchSound: (soundId: string) => Promise<void>;
-  stopLocalSounds: () => Promise<void>;
+  stopLocalSound: () => Promise<void>;
   setSoundboardVolume: (volume: number) => void;
   updateSoundMetadata: (
     soundId: string,
@@ -407,7 +403,8 @@ export function useVoiceRoom(
   const [soundboardVolume, setSoundboardVolumeState] = useState(
     initialPreferences.soundboardVolume,
   );
-  const [activeLocalSoundCount, setActiveLocalSoundCount] = useState(0);
+  const [activeLocalSound, setActiveLocalSound] =
+    useState<SoundboardActivity | null>(null);
   const [remoteAudio] = useState(() => new RemoteAudioRenderer());
   const [voiceDiagnostics] = useState(() => new VoiceDiagnosticsRecorder());
   const [audioOutput] = useState(() => new AudioOutputRouter());
@@ -417,6 +414,9 @@ export function useVoiceRoom(
         () => audioOutput.soundTarget,
         () => audioOutput.resetMonitor(),
       ),
+  );
+  const [soundboardPlayback] = useState(
+    () => new SoundboardPlaybackCoordinator(),
   );
   const outputSelectionSupported = audioOutput.supported;
   const roomRef = useRef<Room | null>(null);
@@ -438,7 +438,6 @@ export function useVoiceRoom(
   const deafenedRef = useRef(false);
   const joinOperationRef = useRef(0);
   const playbackOperationRef = useRef(0);
-  const soundStartOperationRef = useRef(0);
   const cameraOperationRef = useRef(0);
   const screenShareOperationRef = useRef(0);
   const screenShareSessionRef = useRef<string | null>(null);
@@ -1010,7 +1009,6 @@ export function useVoiceRoom(
       playbackOperationRef.current += 1;
       outputSwitchOperationRef.current += 1;
       microphoneTestIsolationOperationRef.current += 1;
-      soundStartOperationRef.current += 1;
       cameraOperationRef.current += 1;
       screenShareOperationRef.current += 1;
       const screenSessionId = screenShareSessionRef.current;
@@ -1019,6 +1017,7 @@ export function useVoiceRoom(
         ? stopNativeScreenShare(screenSessionId).catch(() => undefined)
         : Promise.resolve();
       remoteAudio.cleanup();
+      soundboardPlayback.stopCurrent();
       soundboardAudio.cleanup();
       audioOutput.cleanup();
       soundActivities.current.clear();
@@ -1029,7 +1028,7 @@ export function useVoiceRoom(
       soundboardTracks.current.clear();
       failedSubscriptionSidsRef.current.clear();
       subscriptionRecoveryAttemptsRef.current.clear();
-      setActiveLocalSoundCount(0);
+      setActiveLocalSound(null);
       seenSoundEvents.current.clear();
       setParticipants([]);
       setConnectionQuality("unknown");
@@ -1063,7 +1062,7 @@ export function useVoiceRoom(
       setScreenShareFailure(null);
       return screenStop;
     },
-    [audioOutput, remoteAudio, soundboardAudio],
+    [audioOutput, remoteAudio, soundboardAudio, soundboardPlayback],
   );
 
   const clearParticipantSounds = useCallback(
@@ -1082,7 +1081,9 @@ export function useVoiceRoom(
         : [];
       if (next.length > 0) soundActivities.current.set(participantId, next);
       else soundActivities.current.delete(participantId);
-      if (participantId === user.id) setActiveLocalSoundCount(next.length);
+      if (participantId === user.id) {
+        setActiveLocalSound(next.at(-1) ?? null);
+      }
       const room = roomRef.current;
       if (room) refreshParticipants(room);
       else {
@@ -1113,7 +1114,7 @@ export function useVoiceRoom(
         startedAt: Date.now(),
       };
       const current = soundActivities.current.get(participantId) ?? [];
-      const next = clampSoundboardActivities([...current, activity]);
+      const next = keepLatestSoundboardActivity([...current, activity]);
       const retainedEventIds = new Set(next.map((item) => item.eventId));
       current
         .filter((item) => !retainedEventIds.has(item.eventId))
@@ -1123,7 +1124,7 @@ export function useVoiceRoom(
           soundActivityTimers.current.delete(item.eventId);
         });
       soundActivities.current.set(participantId, next);
-      if (participantId === user.id) setActiveLocalSoundCount(next.length);
+      if (participantId === user.id) setActiveLocalSound(activity);
       if (scheduleExpiry) {
         const timer = window.setTimeout(
           () => clearParticipantSounds(participantId, eventId),
@@ -1139,7 +1140,7 @@ export function useVoiceRoom(
             participant.id === participantId
               ? {
                   ...participant,
-                  activeSounds: clampSoundboardActivities([
+                  activeSounds: keepLatestSoundboardActivity([
                     ...participant.activeSounds,
                     activity,
                   ]),
@@ -1435,6 +1436,7 @@ export function useVoiceRoom(
           ) {
             const track = soundboardTracks.current.get(participant.identity);
             if (track) remoteAudio.setTrackMuted(track, true);
+            clearParticipantSounds(participant.identity);
           }
           sync();
         })
@@ -1676,12 +1678,6 @@ export function useVoiceRoom(
             return;
           seenSoundEvents.current.add(event.eventId);
           if (event.type === SOUND_STOP_EVENT_TYPE) {
-            const soundboardTrack = soundboardTracks.current.get(
-              participant.identity,
-            );
-            if (soundboardTrack) {
-              remoteAudio.setTrackMuted(soundboardTrack, true);
-            }
             clearParticipantSounds(participant.identity);
             return;
           }
@@ -1689,8 +1685,9 @@ export function useVoiceRoom(
           const sound = soundboardRef.current.sounds.find(
             (item) => item.id === event.soundId,
           );
-          if (sound)
+          if (sound) {
             addParticipantSound(participant.identity, event.eventId, sound);
+          }
         })
         .on(RoomEvent.Disconnected, () => {
           if (roomRef.current !== room) return;
@@ -2042,12 +2039,13 @@ export function useVoiceRoom(
           if (!result.track) {
             if (
               result.permission &&
-              (result.permission.status === "denied" ||
+              (result.permission.canOpenSettings ||
+                result.permission.status === "denied" ||
                 result.permission.status === "restricted")
             ) {
               setMicrophonePermission(result.permission);
               setInputDeviceError(
-                result.error instanceof Error
+                result.error instanceof DesktopPermissionError
                   ? result.error.message
                   : microphonePermissionRecoveryMessage(
                       result.permission.status,
@@ -3027,6 +3025,18 @@ export function useVoiceRoom(
     }
   }, [screenShareFailure, startScreenShare]);
 
+  const publishSoundStop = useCallback(async (room: Room) => {
+    const event = createSoundStopEvent({
+      eventId: crypto.randomUUID(),
+      sentAt: Date.now(),
+    });
+    seenSoundEvents.current.add(event.eventId);
+    await room.localParticipant.publishData(encodeSoundEvent(event), {
+      reliable: true,
+      topic: "bakbak-soundboard",
+    });
+  }, []);
+
   const dispatchSound = useCallback(
     async (soundId: string) => {
       if (status !== "connected")
@@ -3037,12 +3047,6 @@ export function useVoiceRoom(
       if (!sound) throw new Error("That sound is no longer available.");
       if (sound.assetStatus === "error") {
         throw new Error("That sound failed to download. Retry it first.");
-      }
-      const localSounds = soundActivities.current.get(user.id) ?? [];
-      if (hasReachedSoundLimit(localSounds.length)) {
-        throw new Error(
-          `Five sounds are already playing. Stop one before adding another.`,
-        );
       }
       const event = createSoundPlayEvent({
         eventId: crypto.randomUUID(),
@@ -3058,47 +3062,44 @@ export function useVoiceRoom(
         clearParticipantSounds(user.id, event.eventId);
         throw new Error("Voice room disconnected before playback.");
       }
-      const startOperation = soundStartOperationRef.current;
-      const ensureStartIsCurrent = () => {
-        if (
-          soundStartOperationRef.current === startOperation &&
-          roomRef.current === room
-        ) {
-          return;
-        }
-        clearParticipantSounds(user.id, event.eventId);
-        throw new DOMException("Sound playback was stopped.", "AbortError");
-      };
-      let blob: Blob | null;
-      try {
-        blob = await soundboardRef.current.getBlob(soundId);
-      } catch (caught) {
-        clearParticipantSounds(user.id, event.eventId);
-        throw caught;
-      }
-      if (!blob) {
-        clearParticipantSounds(user.id, event.eventId);
-        throw new Error("Bakbak could not download that sound.");
-      }
-      ensureStartIsCurrent();
-      await audioOutput.start().catch(() => undefined);
-      ensureStartIsCurrent();
+      soundboardAudio.stopCurrent();
+      const stopSignal = publishSoundStop(room);
+      void stopSignal.catch(() => undefined);
       let playback;
       try {
-        playback = await soundboardAudio.play(
-          room.localParticipant,
+        playback = await soundboardPlayback.play(
           event.eventId,
-          sound,
-          blob,
+          async (attempt) => {
+            const blob = await soundboardRef.current.getBlob(soundId);
+            if (!blob) {
+              throw new Error("Bakbak could not download that sound.");
+            }
+            attempt.throwIfCancelled();
+            await audioOutput.start().catch(() => undefined);
+            attempt.throwIfCancelled();
+            if (roomRef.current !== room) {
+              throw new DOMException(
+                "Sound playback was stopped.",
+                "AbortError",
+              );
+            }
+            return soundboardAudio.play(
+              room.localParticipant,
+              event.eventId,
+              sound,
+              blob,
+              attempt.signal,
+            );
+          },
+          (finishedEventId) => {
+            clearParticipantSounds(user.id, finishedEventId);
+            if (roomRef.current === room) {
+              void publishSoundStop(room).catch(() => undefined);
+            }
+          },
         );
       } catch (caught) {
         clearParticipantSounds(user.id, event.eventId);
-        throw caught;
-      }
-      try {
-        ensureStartIsCurrent();
-      } catch (caught) {
-        playback.stop();
         throw caught;
       }
       const expiryTimer = window.setTimeout(
@@ -3106,15 +3107,22 @@ export function useVoiceRoom(
         sound.durationMs + 250,
       );
       soundActivityTimers.current.set(event.eventId, expiryTimer);
-      void playback.finished.then(() =>
-        clearParticipantSounds(user.id, event.eventId),
-      );
+      const isPlaybackCurrent = () =>
+        roomRef.current === room &&
+        soundboardPlayback.activeEventId === event.eventId;
       try {
+        await stopSignal;
+        if (!isPlaybackCurrent()) throw soundPlaybackCancelled();
         await room.localParticipant.publishData(encodeSoundEvent(event), {
           reliable: true,
           topic: "bakbak-soundboard",
         });
+        if (!isPlaybackCurrent()) throw soundPlaybackCancelled();
       } catch (caught) {
+        if (!isPlaybackCurrent()) {
+          clearParticipantSounds(user.id, event.eventId);
+          throw soundPlaybackCancelled();
+        }
         playback.stop();
         clearParticipantSounds(user.id, event.eventId);
         throw caught;
@@ -3125,34 +3133,28 @@ export function useVoiceRoom(
       audioOutput,
       clearParticipantSounds,
       mode,
+      publishSoundStop,
       soundboardAudio,
+      soundboardPlayback,
       status,
       user.id,
     ],
   );
 
-  const stopLocalSounds = useCallback(async () => {
-    soundStartOperationRef.current += 1;
-    soundboardAudio.cleanup();
-    audioOutput.cleanup();
+  const stopLocalSound = useCallback(async () => {
+    soundboardAudio.stopCurrent();
+    soundboardPlayback.stopCurrent();
     clearParticipantSounds(user.id);
     if (mode === "mock") return;
     const room = roomRef.current;
     if (!room || status !== "connected") return;
-    const event = createSoundStopEvent({
-      eventId: crypto.randomUUID(),
-      sentAt: Date.now(),
-    });
-    seenSoundEvents.current.add(event.eventId);
-    await room.localParticipant.publishData(encodeSoundEvent(event), {
-      reliable: true,
-      topic: "bakbak-soundboard",
-    });
+    await publishSoundStop(room).catch(() => undefined);
   }, [
-    audioOutput,
     clearParticipantSounds,
     mode,
+    publishSoundStop,
     soundboardAudio,
+    soundboardPlayback,
     status,
     user.id,
   ]);
@@ -3175,7 +3177,6 @@ export function useVoiceRoom(
     () => () => {
       joinOperationRef.current += 1;
       playbackOperationRef.current += 1;
-      soundStartOperationRef.current += 1;
       cameraOperationRef.current += 1;
       screenShareOperationRef.current += 1;
       const screenSessionId = screenShareSessionRef.current;
@@ -3193,13 +3194,14 @@ export function useVoiceRoom(
       preparedJoinRef.current = null;
       stopJoiningMicrophone(joiningMicrophoneRef);
       remoteAudio.cleanup();
+      soundboardPlayback.stopCurrent();
       soundboardAudio.cleanup();
       audioOutput.cleanup();
       if (screenSessionId) void stopNativeScreenShare(screenSessionId);
       void prepared?.room.disconnect().catch(() => undefined);
       void room?.disconnect();
     },
-    [audioOutput, remoteAudio, soundboardAudio],
+    [audioOutput, remoteAudio, soundboardAudio, soundboardPlayback],
   );
 
   return {
@@ -3258,8 +3260,7 @@ export function useVoiceRoom(
     screenShareFailure,
     soundboard,
     soundboardVolume,
-    activeLocalSoundCount,
-    maxConcurrentSounds: MAX_CONCURRENT_SOUNDS_PER_USER,
+    activeLocalSound,
     prepareVoiceChannel,
     join,
     leave,
@@ -3285,7 +3286,7 @@ export function useVoiceRoom(
     watchScreenShare,
     stopWatchingScreenShare,
     dispatchSound,
-    stopLocalSounds,
+    stopLocalSound,
     setSoundboardVolume,
     updateSoundMetadata: soundboard.updateSound,
   };
@@ -3422,6 +3423,10 @@ function microphonePermissionRecoveryMessage(
     return "Bakbak could not use that microphone. Allow Bakbak in macOS Privacy & Security > Microphone, then restart Bakbak.";
   }
   return "Bakbak could not use that microphone. Check microphone permission and the selected input device.";
+}
+
+function soundPlaybackCancelled(): DOMException {
+  return new DOMException("Sound playback was stopped.", "AbortError");
 }
 
 function stopJoiningMicrophone(ref: { current: LocalAudioTrack | null }): void {
