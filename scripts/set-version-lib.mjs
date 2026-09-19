@@ -22,21 +22,21 @@ export function withCargoPackageVersion(source, version) {
 }
 
 export function lockedBakbakVersion(source) {
-  const marker = '[[package]]\nname = "bakbak"';
-  const start = source.indexOf(marker);
+  const marker = /^\[\[package\]\]\r?\nname = "bakbak"$/m.exec(source);
+  const start = marker?.index ?? -1;
   if (start < 0) return null;
-  const end = source.indexOf("\n[[package]]", start + marker.length);
+  const end = source.indexOf("\n[[package]]", start + marker[0].length);
   const section = source.slice(start, end < 0 ? source.length : end);
   return section.match(/^version = "([^"]+)"$/m)?.[1] ?? null;
 }
 
 export function withLockedBakbakVersion(source, version) {
   assertVersion(version);
-  const marker = '[[package]]\nname = "bakbak"';
-  const start = source.indexOf(marker);
+  const marker = /^\[\[package\]\]\r?\nname = "bakbak"$/m.exec(source);
+  const start = marker?.index ?? -1;
   if (start < 0)
     throw new Error("Bakbak is missing from the Tauri Cargo lockfile.");
-  const end = source.indexOf("\n[[package]]", start + marker.length);
+  const end = source.indexOf("\n[[package]]", start + marker[0].length);
   const sectionEnd = end < 0 ? source.length : end;
   const section = source.slice(start, sectionEnd);
   const updated = section.replace(

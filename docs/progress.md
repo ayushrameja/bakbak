@@ -8920,3 +8920,30 @@ src-tauri/tauri.sidecar.conf.json --config
   database suite; those sources were not changed in this cleanup. Local installer
   and manual multi-client checks were not repeated for unused internal fields.
 - **Next:** Push the helper cleanup to PR 65 and verify the complete native matrix.
+
+## 2026-09-19 — Fix Windows update rehearsal version parsing
+
+- **Completed:** Diagnosed candidate run `35451178634`, job `105919841138`.
+  Windows CRLF checkout line endings prevented the literal LF-only Cargo lock
+  package marker from matching, so synchronized `2.0.0` metadata incorrectly
+  failed validation. Both lockfile reading and updating now accept LF and CRLF.
+  Added regressions for both formats, preserving surrounding dependencies and
+  original line endings when updating to the next patch.
+- **Decisions:** Fix the parser instead of relaxing version consistency or
+  changing checkout settings. The same fix covers candidate and release scripts.
+- **Validation:**
+  - Actual lockfile converted to CRLF before the fix — reproduced `null` version
+    while the LF source returned `2.0.0`.
+  - `node --test scripts/set-version.test.mjs` — passed 5 tests.
+  - Isolated CRLF copy of release metadata and scripts — CLI `--check`, update
+    to `2.0.1`, and subsequent `--check` all passed.
+  - `pnpm test` — passed 103 files / 636 Vitest tests and 96 repository tests.
+  - `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and
+    `git diff --check` — passed; build retains the existing large-chunk warning.
+- **Documentation updated:** This canonical log; no architecture or setup change.
+- **Known limitations:** Native/Rust, Deno, database, and installer checks were
+  not repeated locally for this JavaScript parser-only fix. The original run's
+  shared validation passed; Windows signed rehearsal must run on the fixed
+  revision. Installed release acceptance remains pending.
+- **Next:** Push the fix for review and run a fresh candidate including the
+  signed Windows update rehearsal on this exact revision.
