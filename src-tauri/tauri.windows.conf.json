@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Bakbak",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1024,
+        "minHeight": 680,
+        "center": true,
+        "resizable": true,
+        "shadow": true,
+        "transparent": true,
+        "decorations": false,
+        "zoomHotkeysEnabled": true,
+        "backgroundThrottling": "disabled",
+        "allowLinkPreview": false
+      }
+    ]
+  },
+  "bundle": {
+    "targets": ["nsis"],
+    "createUpdaterArtifacts": true
+  }
+}

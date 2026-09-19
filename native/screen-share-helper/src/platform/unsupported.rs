@@ -1,8 +1,5 @@
 use super::*;
 
-pub struct PreparedCapture;
-pub struct CaptureSession;
-
 pub fn platform_name() -> PlatformName {
     PlatformName::Unsupported
 }

@@ -6,16 +6,20 @@ import { AppUpdateSettings } from "./AppUpdateSettings";
 
 const mocks = vi.hoisted(() => ({
   check: vi.fn(),
+  downloadAndInstall: vi.fn(),
   openExternal: vi.fn(),
   writeText: vi.fn<(value: string) => Promise<void>>(),
 }));
 
-function installDesktopBridge(): void {
+function installDesktopBridge(
+  deliveryMode: "automatic" | "manual" = "automatic",
+): void {
   window.bakbakDesktop = {
-    platform: "macos",
+    platform: deliveryMode === "manual" ? "macos" : "windows",
     updates: {
+      deliveryMode,
       check: mocks.check,
-      downloadAndInstall: vi.fn(),
+      downloadAndInstall: mocks.downloadAndInstall,
       onProgress: () => () => undefined,
       onInstallError: () => () => undefined,
     },
@@ -122,5 +126,38 @@ describe("AppUpdateSettings", () => {
     expect(JSON.stringify(diagnostics)).not.toMatch(
       /email|message|credential|token/i,
     );
+  });
+
+  it("keeps macOS startup quiet and opens the manual DMG download", async () => {
+    installDesktopBridge("manual");
+    render(
+      <AppUpdateProvider startupDelayMs={1} retryDelaysMs={[]}>
+        <AppUpdateSettings />
+      </AppUpdateProvider>,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+
+    expect(mocks.check).not.toHaveBeenCalled();
+    expect(
+      screen.getByText("macOS updates are installed manually"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /replace it in Applications.*grant microphone and screen permissions again/i,
+      ),
+    ).toBeVisible();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Download latest DMG" }),
+    );
+    await act(async () => Promise.resolve());
+
+    expect(mocks.openExternal).toHaveBeenCalledWith(
+      "https://github.com/ayushrameja/bakbak/releases",
+    );
+    expect(mocks.downloadAndInstall).not.toHaveBeenCalled();
   });
 });

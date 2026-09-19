@@ -124,6 +124,14 @@ values
 insert into public.servers (id, name)
 values ('50000000-0000-4000-8000-000000000100', 'Other channel server');
 
+insert into public.channel_categories (id, server_id, name, position)
+values (
+  '50000000-0000-4000-8000-000000000401',
+  '50000000-0000-4000-8000-000000000100',
+  'Channels',
+  10
+);
+
 insert into public.memberships (server_id, user_id, role)
 values
   (
@@ -275,8 +283,8 @@ select is(
     where server_id = '00000000-0000-4000-8000-000000000001'
       and name = 'planning'
   ),
-  10,
-  'new uncategorized text channels start their own ordered shelf'
+  500,
+  'new text channels append after Random Things in the active Channels shelf'
 );
 select is(
   (
@@ -285,8 +293,8 @@ select is(
     where server_id = '00000000-0000-4000-8000-000000000001'
       and name = 'Studio'
   ),
-  10,
-  'new uncategorized voice channels start their own ordered shelf'
+  1400,
+  'new voice channels append after Game #3 in the active Channels shelf'
 );
 
 set local role authenticated;
@@ -315,8 +323,8 @@ select ok(
   (
     select name = 'road-map'
       and kind = 'text'
-      and category_id is null
-      and position = 10
+      and category_id = '00000000-0000-4000-8000-000000000401'
+      and position = 500
     from public.channels
     where server_id = '00000000-0000-4000-8000-000000000001'
       and lower(name) = 'road-map'
@@ -328,7 +336,7 @@ set local role authenticated;
 set local "request.jwt.claim.sub" = '50000000-0000-4000-8000-000000000001';
 set local "request.jwt.claims" = '{"sub":"50000000-0000-4000-8000-000000000001","role":"authenticated"}';
 select throws_ok(
-  $$select public.rename_channel((select id from public.channels where server_id = '00000000-0000-4000-8000-000000000001' and name = 'road-map'), 'SPAWN')$$,
+  $$select public.rename_channel((select id from public.channels where server_id = '00000000-0000-4000-8000-000000000001' and name = 'road-map'), 'CHAT')$$,
   '23505',
   'channel_name_unavailable',
   'rename rejects a case-insensitive duplicate'

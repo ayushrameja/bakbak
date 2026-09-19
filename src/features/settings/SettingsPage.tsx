@@ -13,6 +13,7 @@ import {
   PanelLeft,
   PanelRight,
   Play,
+  Radio,
   RefreshCw,
   Square,
   Sun,
@@ -74,6 +75,8 @@ import { GiphyPicker } from "../chat/GiphyPicker";
 import { AppUpdateSettings } from "./AppUpdateSettings";
 import { SidebarThemeEditor } from "./SidebarThemeEditor";
 import type { SidebarThemePreferences } from "./sidebar-theme-preferences";
+import { ExternalAudioSettings } from "./ExternalAudioSettings";
+import type { ExternalAudioControllerState } from "../soundboard/useExternalAudio";
 
 const emptyProfileMediaLoader: LoadProfileMedia = () => Promise.resolve(null);
 
@@ -150,7 +153,9 @@ interface SettingsPageProps {
   onPreviewInterfaceSound: (category: InterfaceSoundCategory) => void;
   onToggleMute: () => void;
   onToggleDeafen: () => void;
-  onLeaveVoice: () => void;
+  onLeaveVoice: () => Promise<void>;
+  externalAudio?: ExternalAudioControllerState;
+  onOpenExternal?: (url: string) => Promise<void>;
   onCopyVoiceDiagnostics: () => Promise<boolean>;
   onSignOut: () => Promise<void>;
   onClose: () => void;
@@ -1957,6 +1962,60 @@ function AudioSettings(props: SettingsPageProps) {
             </div>
           </div>
         </section>
+
+        {props.externalAudio ? (
+          <section
+            className="audio-settings-category"
+            aria-labelledby="external-soundboard-title"
+          >
+            <header className="audio-settings-category__heading">
+              <span aria-hidden="true">
+                <Radio size={19} />
+              </span>
+              <div>
+                <small>External calls</small>
+                <h3 id="external-soundboard-title">Discord, Meet & more</h3>
+                <p>
+                  Route your real microphone and one Bakbak sound through a
+                  user-installed virtual cable.
+                </p>
+              </div>
+            </header>
+            <div className="audio-settings-category__body">
+              <ExternalAudioSettings
+                platform={props.externalAudio.platform}
+                devices={props.externalAudio.devices}
+                state={props.externalAudio.state}
+                levels={props.externalAudio.levels}
+                loading={props.externalAudio.loading}
+                error={props.externalAudio.error}
+                setupRecordingStatus={props.externalAudio.setupRecordingStatus}
+                voiceConnected={
+                  props.voiceStatus !== "disconnected" &&
+                  props.voiceStatus !== "error"
+                }
+                onRefresh={props.externalAudio.refreshDevices}
+                onStartSetupTest={props.externalAudio.startSetupTest}
+                onPlaySetupTone={props.externalAudio.playSetupTone}
+                onRecordSetupSample={props.externalAudio.recordSetupSample}
+                onPlaySetupRecording={props.externalAudio.playSetupRecording}
+                onStopSetupTest={props.externalAudio.stopSetupTest}
+                onLeaveVoice={props.onLeaveVoice}
+                onStart={props.externalAudio.start}
+                onUpdate={props.externalAudio.update}
+                onStop={props.externalAudio.stop}
+                onShowOverlay={props.externalAudio.showOverlay}
+                onOpenExternal={
+                  props.onOpenExternal ??
+                  ((url) => {
+                    window.open(url, "_blank", "noopener,noreferrer");
+                    return Promise.resolve();
+                  })
+                }
+              />
+            </div>
+          </section>
+        ) : null}
       </div>
       {testError ? (
         <div className="settings-permission-recovery">

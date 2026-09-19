@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "createUpdaterArtifacts": false,
+    "externalBin": ["binaries/bakbak-screen-share-helper"],
+    "targets": ["app"],
+    "macOS": {
+      "signingIdentity": "-"
+    }
+  }
+}

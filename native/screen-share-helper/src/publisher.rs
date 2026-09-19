@@ -38,6 +38,7 @@ mod native {
         inner: Arc<Mutex<PublisherInner>>,
         monitor: JoinHandle<()>,
         finished: Arc<AtomicBool>,
+        outbound: tokio::sync::mpsc::UnboundedSender<Outbound>,
     }
 
     struct PublisherInner {
@@ -213,26 +214,16 @@ mod native {
             let session_for_monitor = session_id.clone();
             let finished = Arc::new(AtomicBool::new(false));
             let finished_for_monitor = finished.clone();
+            let outbound_for_monitor = outbound.clone();
             let monitor = tokio::spawn(async move {
                 while let Some(event) = event_receiver.recv().await {
                     match event {
                         CaptureEvent::IsolationLost { code, message } => {
                             let mut state = inner_for_monitor.lock().await;
-                            if !state.audio_state.isolation_lost() {
+                            if !disable_published_audio(&mut state).await {
                                 continue;
                             }
-                            if let Some(capture) = state.capture.as_mut() {
-                                capture.stop_audio().await;
-                            }
-                            if let Some(track_sid) = state.audio_track_sid.take() {
-                                let _ = state
-                                    .room
-                                    .local_participant()
-                                    .unpublish_track(&track_sid)
-                                    .await;
-                            }
-                            state.audio_track = None;
-                            let _ = outbound.send(lifecycle(LifecyclePayload {
+                            let _ = outbound_for_monitor.send(lifecycle(LifecyclePayload {
                                 session_id: Some(session_for_monitor.clone()),
                                 state: LifecycleState::AudioDowngraded,
                                 reason_code: Some(code),
@@ -255,7 +246,7 @@ mod native {
                                 capture.stop().await;
                             }
                             let _ = state.room.close().await;
-                            let _ = outbound.send(lifecycle(LifecyclePayload {
+                            let _ = outbound_for_monitor.send(lifecycle(LifecyclePayload {
                                 session_id: Some(session_for_monitor.clone()),
                                 state: LifecycleState::Failed,
                                 reason_code: Some(code),
@@ -273,6 +264,7 @@ mod native {
                 inner,
                 monitor,
                 finished,
+                outbound,
             })
         }
 
@@ -298,19 +290,47 @@ mod native {
             let mut state = self.inner.lock().await;
             if let Some(settings) = input.settings {
                 let settings = settings.validate()?;
-                if let Some(capture) = state.capture.as_ref() {
-                    capture.update_settings(settings).await?;
+                if settings != state.settings {
+                    let previous_settings = state.settings;
+                    let previous_sid = state.video_track_sid.clone();
+                    let mut operations = LiveQualityUpdateOperations { state: &mut state };
+                    match update_video_quality(
+                        &mut operations,
+                        previous_sid,
+                        previous_settings,
+                        settings,
+                    )
+                    .await
+                    {
+                        QualityUpdateOutcome::Applied { publication_id } => {
+                            state.video_track_sid = publication_id;
+                            state.settings = settings;
+                            self.result.settings = settings;
+                        }
+                        QualityUpdateOutcome::RolledBack {
+                            publication_id,
+                            error,
+                        } => {
+                            state.video_track_sid = publication_id;
+                            return Err(error);
+                        }
+                        QualityUpdateOutcome::Terminal { error } => {
+                            self.monitor.abort();
+                            self.finished.store(true, Ordering::Release);
+                            self.result.audio_published = false;
+                            self.result.diagnostics.audio_isolation_mode =
+                                AudioIsolationMode::Disabled;
+                            let _ = self.outbound.send(lifecycle(LifecyclePayload {
+                                session_id: Some(self.result.session_id.clone()),
+                                state: LifecycleState::Failed,
+                                reason_code: Some(error.code.clone()),
+                                message: Some(error.message.clone()),
+                                audio_published: Some(false),
+                            }));
+                            return Err(error);
+                        }
+                    }
                 }
-                let previous_sid = state.video_track_sid.clone();
-                let _ = state
-                    .room
-                    .local_participant()
-                    .unpublish_track(&previous_sid)
-                    .await;
-                state.video_track_sid =
-                    publish_video(&state.room, state.video_track.clone(), settings).await?;
-                state.settings = settings;
-                self.result.settings = settings;
             }
             if let Some(paused) = input.paused {
                 if paused {
@@ -325,6 +345,26 @@ mod native {
                 settings: state.settings,
                 paused: state.paused,
             })
+        }
+
+        pub async fn disable_audio(&mut self, session_id: &str) -> Result<bool, HelperError> {
+            if session_id != self.result.session_id {
+                return Err(HelperError::invalid(
+                    "stale-session",
+                    "The requested screen-share session is no longer active.",
+                ));
+            }
+            let mut state = self.inner.lock().await;
+            let downgraded = disable_published_audio(&mut state).await;
+            if downgraded {
+                self.result.audio_published = false;
+                self.result.audio_unavailable_reason = Some(
+                    "Bakbak could no longer prove its Windows webview audio processes; video is still sharing."
+                        .into(),
+                );
+                self.result.diagnostics.audio_isolation_mode = AudioIsolationMode::Disabled;
+            }
+            Ok(downgraded)
         }
 
         pub async fn stop(self) {
@@ -355,6 +395,172 @@ mod native {
                     ),
                 )
             })
+    }
+
+    trait QualityUpdateOperations {
+        type PublicationId: Clone;
+
+        async fn update_capture(&mut self, settings: CaptureSettings) -> Result<(), HelperError>;
+        async fn unpublish_video(
+            &mut self,
+            publication_id: &Self::PublicationId,
+        ) -> Result<(), HelperError>;
+        async fn publish_video(
+            &mut self,
+            settings: CaptureSettings,
+        ) -> Result<Self::PublicationId, HelperError>;
+        async fn terminate(&mut self);
+    }
+
+    struct LiveQualityUpdateOperations<'a> {
+        state: &'a mut PublisherInner,
+    }
+
+    impl QualityUpdateOperations for LiveQualityUpdateOperations<'_> {
+        type PublicationId = TrackSid;
+
+        async fn update_capture(&mut self, settings: CaptureSettings) -> Result<(), HelperError> {
+            let capture = self.state.capture.as_ref().ok_or_else(|| {
+                HelperError::invalid(
+                    "capture-ended",
+                    "The screen capture ended before its quality could be changed.",
+                )
+            })?;
+            capture.update_settings(settings).await
+        }
+
+        async fn unpublish_video(
+            &mut self,
+            publication_id: &Self::PublicationId,
+        ) -> Result<(), HelperError> {
+            self.state
+                .room
+                .local_participant()
+                .unpublish_track(publication_id)
+                .await
+                .map(|_| ())
+                .map_err(|_| {
+                    HelperError::retryable(
+                        "video-unpublish-failed",
+                        "Bakbak could not replace the current screen quality.",
+                    )
+                })
+        }
+
+        async fn publish_video(
+            &mut self,
+            settings: CaptureSettings,
+        ) -> Result<Self::PublicationId, HelperError> {
+            publish_video(&self.state.room, self.state.video_track.clone(), settings).await
+        }
+
+        async fn terminate(&mut self) {
+            self.state.video_track.mute();
+            if let Some(capture) = self.state.capture.take() {
+                capture.stop().await;
+            }
+            let _ = self.state.room.close().await;
+            self.state.audio_track = None;
+            self.state.audio_track_sid = None;
+        }
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum QualityUpdateOutcome<PublicationId> {
+        Applied {
+            publication_id: PublicationId,
+        },
+        RolledBack {
+            publication_id: PublicationId,
+            error: HelperError,
+        },
+        Terminal {
+            error: HelperError,
+        },
+    }
+
+    async fn update_video_quality<Operations>(
+        operations: &mut Operations,
+        previous_publication_id: Operations::PublicationId,
+        previous_settings: CaptureSettings,
+        requested_settings: CaptureSettings,
+    ) -> QualityUpdateOutcome<Operations::PublicationId>
+    where
+        Operations: QualityUpdateOperations,
+    {
+        if let Err(error) = operations.update_capture(requested_settings).await {
+            return match operations.update_capture(previous_settings).await {
+                Ok(()) => QualityUpdateOutcome::RolledBack {
+                    publication_id: previous_publication_id,
+                    error,
+                },
+                Err(_) => {
+                    terminate_quality_update(
+                        operations,
+                        "quality-update-rollback-failed",
+                        "Bakbak stopped screen sharing because it could not safely restore the previous quality.",
+                    )
+                    .await
+                }
+            };
+        }
+
+        if operations
+            .unpublish_video(&previous_publication_id)
+            .await
+            .is_err()
+        {
+            return terminate_quality_update(
+                operations,
+                    "quality-update-unpublish-uncertain",
+                    "Bakbak stopped screen sharing because it could not prove the previous video publication ended.",
+            )
+            .await;
+        }
+
+        match operations.publish_video(requested_settings).await {
+            Ok(publication_id) => QualityUpdateOutcome::Applied { publication_id },
+            Err(_) => {
+                terminate_quality_update(
+                    operations,
+                    "quality-update-publish-uncertain",
+                    "Bakbak stopped screen sharing because it could not prove the replacement video publication was safe.",
+                )
+                .await
+            }
+        }
+    }
+
+    async fn terminate_quality_update<Operations>(
+        operations: &mut Operations,
+        code: &'static str,
+        message: &'static str,
+    ) -> QualityUpdateOutcome<Operations::PublicationId>
+    where
+        Operations: QualityUpdateOperations,
+    {
+        operations.terminate().await;
+        QualityUpdateOutcome::Terminal {
+            error: HelperError::invalid(code, message),
+        }
+    }
+
+    async fn disable_published_audio(state: &mut PublisherInner) -> bool {
+        if !state.audio_state.isolation_lost() {
+            return false;
+        }
+        if let Some(capture) = state.capture.as_mut() {
+            capture.stop_audio().await;
+        }
+        if let Some(track_sid) = state.audio_track_sid.take() {
+            let _ = state
+                .room
+                .local_participant()
+                .unpublish_track(&track_sid)
+                .await;
+        }
+        state.audio_track = None;
+        true
     }
 
     fn video_publish_options(settings: CaptureSettings) -> TrackPublishOptions {
@@ -388,7 +594,258 @@ mod native {
 
     #[cfg(test)]
     mod tests {
+        use std::collections::VecDeque;
+
         use super::*;
+
+        #[derive(Debug, PartialEq, Eq)]
+        enum QualityOperationCall {
+            UpdateCapture(CaptureSettings),
+            Unpublish(String),
+            Publish(CaptureSettings),
+            Terminate,
+        }
+
+        #[derive(Default)]
+        struct FakeQualityUpdateOperations {
+            calls: Vec<QualityOperationCall>,
+            update_results: VecDeque<Result<(), HelperError>>,
+            unpublish_results: VecDeque<Result<(), HelperError>>,
+            publish_results: VecDeque<Result<String, HelperError>>,
+        }
+
+        impl QualityUpdateOperations for FakeQualityUpdateOperations {
+            type PublicationId = String;
+
+            async fn update_capture(
+                &mut self,
+                settings: CaptureSettings,
+            ) -> Result<(), HelperError> {
+                self.calls
+                    .push(QualityOperationCall::UpdateCapture(settings));
+                self.update_results.pop_front().unwrap_or(Ok(()))
+            }
+
+            async fn unpublish_video(
+                &mut self,
+                publication_id: &Self::PublicationId,
+            ) -> Result<(), HelperError> {
+                self.calls
+                    .push(QualityOperationCall::Unpublish(publication_id.to_string()));
+                self.unpublish_results.pop_front().unwrap_or(Ok(()))
+            }
+
+            async fn publish_video(
+                &mut self,
+                settings: CaptureSettings,
+            ) -> Result<Self::PublicationId, HelperError> {
+                self.calls.push(QualityOperationCall::Publish(settings));
+                self.publish_results
+                    .pop_front()
+                    .unwrap_or_else(|| Ok("published".into()))
+            }
+
+            async fn terminate(&mut self) {
+                self.calls.push(QualityOperationCall::Terminate);
+            }
+        }
+
+        #[tokio::test]
+        async fn quality_update_commits_only_after_capture_and_publication_succeed() {
+            let previous = quality_settings(1280, 720, 30, 2_000_000);
+            let requested = quality_settings(1920, 1080, 30, 5_000_000);
+            let mut operations = FakeQualityUpdateOperations {
+                publish_results: VecDeque::from([Ok("new-publication".into())]),
+                ..Default::default()
+            };
+
+            let outcome = update_video_quality(
+                &mut operations,
+                "old-publication".into(),
+                previous,
+                requested,
+            )
+            .await;
+
+            assert_eq!(
+                outcome,
+                QualityUpdateOutcome::Applied {
+                    publication_id: "new-publication".into()
+                }
+            );
+            assert_eq!(
+                operations.calls,
+                [
+                    QualityOperationCall::UpdateCapture(requested),
+                    QualityOperationCall::Unpublish("old-publication".into()),
+                    QualityOperationCall::Publish(requested),
+                ]
+            );
+        }
+
+        #[tokio::test]
+        async fn capture_update_failure_restores_settings_without_touching_publication() {
+            let previous = quality_settings(1280, 720, 30, 2_000_000);
+            let requested = quality_settings(1920, 1080, 60, 8_000_000);
+            let update_error = helper_error("capture-update-failed");
+            let mut operations = FakeQualityUpdateOperations {
+                update_results: VecDeque::from([Err(update_error.clone()), Ok(())]),
+                ..Default::default()
+            };
+
+            let outcome = update_video_quality(
+                &mut operations,
+                "old-publication".into(),
+                previous,
+                requested,
+            )
+            .await;
+
+            assert_eq!(
+                outcome,
+                QualityUpdateOutcome::RolledBack {
+                    publication_id: "old-publication".into(),
+                    error: update_error,
+                }
+            );
+            assert_eq!(
+                operations.calls,
+                [
+                    QualityOperationCall::UpdateCapture(requested),
+                    QualityOperationCall::UpdateCapture(previous),
+                ]
+            );
+        }
+
+        #[tokio::test]
+        async fn failed_republish_terminates_instead_of_risking_duplicate_publication() {
+            let previous = quality_settings(1280, 720, 30, 2_000_000);
+            let requested = quality_settings(1920, 1080, 60, 8_000_000);
+            let mut operations = FakeQualityUpdateOperations {
+                publish_results: VecDeque::from([Err(helper_error("video-publish-failed"))]),
+                ..Default::default()
+            };
+
+            let outcome = update_video_quality(
+                &mut operations,
+                "old-publication".into(),
+                previous,
+                requested,
+            )
+            .await;
+
+            assert_eq!(
+                outcome,
+                QualityUpdateOutcome::Terminal {
+                    error: HelperError::invalid(
+                        "quality-update-publish-uncertain",
+                        "Bakbak stopped screen sharing because it could not prove the replacement video publication was safe.",
+                    )
+                }
+            );
+            assert_eq!(
+                operations.calls,
+                [
+                    QualityOperationCall::UpdateCapture(requested),
+                    QualityOperationCall::Unpublish("old-publication".into()),
+                    QualityOperationCall::Publish(requested),
+                    QualityOperationCall::Terminate,
+                ]
+            );
+        }
+
+        #[tokio::test]
+        async fn failed_capture_rollback_terminates_the_companion() {
+            let previous = quality_settings(1280, 720, 30, 2_000_000);
+            let requested = quality_settings(1920, 1080, 60, 8_000_000);
+            let mut operations = FakeQualityUpdateOperations {
+                update_results: VecDeque::from([
+                    Err(helper_error("capture-update-failed")),
+                    Err(helper_error("capture-rollback-failed")),
+                ]),
+                ..Default::default()
+            };
+
+            let outcome = update_video_quality(
+                &mut operations,
+                "old-publication".into(),
+                previous,
+                requested,
+            )
+            .await;
+
+            assert_eq!(
+                outcome,
+                QualityUpdateOutcome::Terminal {
+                    error: HelperError::invalid(
+                        "quality-update-rollback-failed",
+                        "Bakbak stopped screen sharing because it could not safely restore the previous quality.",
+                    )
+                }
+            );
+            assert_eq!(
+                operations.calls,
+                [
+                    QualityOperationCall::UpdateCapture(requested),
+                    QualityOperationCall::UpdateCapture(previous),
+                    QualityOperationCall::Terminate,
+                ]
+            );
+        }
+
+        #[tokio::test]
+        async fn uncertain_unpublish_terminates_without_risking_duplicate_publication() {
+            let previous = quality_settings(1280, 720, 30, 2_000_000);
+            let requested = quality_settings(1920, 1080, 30, 5_000_000);
+            let mut operations = FakeQualityUpdateOperations {
+                unpublish_results: VecDeque::from([Err(helper_error("video-unpublish-failed"))]),
+                ..Default::default()
+            };
+
+            let outcome = update_video_quality(
+                &mut operations,
+                "old-publication".into(),
+                previous,
+                requested,
+            )
+            .await;
+
+            assert_eq!(
+                outcome,
+                QualityUpdateOutcome::Terminal {
+                    error: HelperError::invalid(
+                        "quality-update-unpublish-uncertain",
+                        "Bakbak stopped screen sharing because it could not prove the previous video publication ended.",
+                    )
+                }
+            );
+            assert_eq!(
+                operations.calls,
+                [
+                    QualityOperationCall::UpdateCapture(requested),
+                    QualityOperationCall::Unpublish("old-publication".into()),
+                    QualityOperationCall::Terminate,
+                ]
+            );
+        }
+
+        fn quality_settings(
+            width: u32,
+            height: u32,
+            frame_rate: u32,
+            max_bitrate: u64,
+        ) -> CaptureSettings {
+            CaptureSettings {
+                width,
+                height,
+                frame_rate,
+                max_bitrate,
+            }
+        }
+
+        fn helper_error(code: &str) -> HelperError {
+            HelperError::retryable(code, "injected quality operation failure")
+        }
 
         #[test]
         fn game_rate_shares_keep_motion_in_the_fallback_layer() {
@@ -463,6 +920,13 @@ impl PublisherSession {
         &mut self,
         _input: crate::model::UpdatePayload,
     ) -> Result<crate::model::UpdateResult, crate::model::HelperError> {
+        Err(crate::platform::unavailable())
+    }
+
+    pub async fn disable_audio(
+        &mut self,
+        _session_id: &str,
+    ) -> Result<bool, crate::model::HelperError> {
         Err(crate::platform::unavailable())
     }
 

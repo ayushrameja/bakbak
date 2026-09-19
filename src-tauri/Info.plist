@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Bakbak uses your microphone when you join voice chat.</string>
+  <key>NSCameraUsageDescription</key>
+  <string>Bakbak uses your camera when you enable video.</string>
+  <key>NSScreenCaptureUsageDescription</key>
+  <string>Bakbak captures only the screen, application, or window you choose to share.</string>
+  <key>NSAudioCaptureUsageDescription</key>
+  <string>Bakbak captures system audio only when you include audio with a screen share.</string>
+</dict>
+</plist>
+

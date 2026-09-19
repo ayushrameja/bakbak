@@ -317,7 +317,7 @@ export class ScreenShareHelperManager {
       ),
     );
     const starting = this.sendRequest("hello", {
-      electronRootPid: this.config.electronRootPid,
+      hostRootPid: this.config.electronRootPid,
       bundleId: this.config.bundleId,
       appVersion: this.config.appVersion,
     }).then((result) => {

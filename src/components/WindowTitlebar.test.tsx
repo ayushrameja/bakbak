@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BakbakDesktopBridge } from "../lib/desktop-runtime";
 import { WindowTitlebar } from "./WindowTitlebar";
@@ -128,6 +128,44 @@ describe("WindowTitlebar", () => {
       container.querySelector(
         ".window-titlebar .window-controls-overlay-scrim",
       ),
+    ).toBeNull();
+  });
+
+  it("renders functional caption controls only when the shell requests them", async () => {
+    const minimize = vi.fn().mockResolvedValue(undefined);
+    const toggleMaximize = vi.fn().mockResolvedValue(undefined);
+    const close = vi.fn().mockResolvedValue(undefined);
+    const startDragging = vi.fn().mockResolvedValue(undefined);
+    window.bakbakDesktop = {
+      runtime: { shell: "tauri", generation: 2 },
+      platform: "windows",
+      window: {
+        controlsMode: "renderer",
+        minimize,
+        toggleMaximize,
+        close,
+        startDragging,
+        isMaximized: vi.fn().mockResolvedValue(false),
+        onMaximizedChange: vi.fn(() => () => undefined),
+      },
+    } as unknown as BakbakDesktopBridge;
+
+    const { container } = render(<WindowTitlebar showSpaceSwitcher />);
+    fireEvent.click(screen.getByRole("button", { name: "Minimize window" }));
+    fireEvent.click(screen.getByRole("button", { name: "Maximize window" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close window" }));
+    fireEvent.mouseDown(container.querySelector(".tauri-window-drag-region")!, {
+      button: 0,
+    });
+
+    await waitFor(() => {
+      expect(minimize).toHaveBeenCalledOnce();
+      expect(toggleMaximize).toHaveBeenCalledOnce();
+      expect(close).toHaveBeenCalledOnce();
+      expect(startDragging).toHaveBeenCalledOnce();
+    });
+    expect(
+      container.querySelector(".window-controls-overlay-scrim"),
     ).toBeNull();
   });
 });

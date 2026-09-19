@@ -10,7 +10,8 @@
 ## Summary
 
 Build Bakbak as a private desktop app for 5–10 friends using **pnpm,
-TypeScript, Electron, React, and Vite**. The collaborative chat remains the
+TypeScript, Tauri 2, React, and Vite**. Electron remains a temporary rollback
+shell until plan 0038's installed `2.0.0` acceptance gates pass. The collaborative chat remains the
 product and technical guide, while the repository keeps a durable record of
 plans, decisions, completed work, and verification results so future work
 starts with context instead of archaeological guessing.
@@ -35,14 +36,16 @@ starts with context instead of archaeological guessing.
 ## Accepted architecture and structure
 
 - Use one pnpm application with strict TypeScript.
-- Use Electron as the desktop shell and React + Vite as the UI layer.
+- Use Tauri 2 as the target desktop shell and React + Vite as the UI layer.
+  Keep Electron buildable only until plan 0038 authorizes its removal.
 - Organize frontend code by feature under
   `src/features/{auth,server,channels,chat,voice,soundboard,settings}`.
 - Place shared UI in `src/components`, service clients in `src/lib`, and the
   application shell/providers in `src/app`.
-- Keep the trusted Electron main/preload code in `electron`, renderer-safe
-  bridge types in `src/lib/desktop-runtime.ts`, and bundle resources in
-  `build`. The renderer remains sandboxed without Node.js or generic IPC.
+- Keep trusted Tauri controllers in `src-tauri`, native helpers in `native`,
+  renderer-safe bridge types in `src/lib/desktop-runtime.ts`, and bundle
+  resources in `build`. Feature code cannot import Tauri directly. The renderer
+  remains sandboxed without Node.js, generic commands, or generic IPC.
 - Use a device-local Auto/Light/Dark canvas with scoped semantic status colors
   and account-scoped Personal/Bakbak chrome. Glass is the untouched default;
   the sidebar remains permanently transparent over the current material or
@@ -54,8 +57,8 @@ starts with context instead of archaeological guessing.
   macOS keeps native traffic lights on the standard left edge—inside the
   sidebar at `y: 16` when it is left-positioned and centered at `y: 8` in the
   30 px main strip when it is right-positioned—and hides them with the sidebar.
-  Main-process state reapplies their position and visibility across focus,
-  restore, and fullscreen return. Windows uses Window Controls Overlay on the right, and
+  Native-shell state reapplies their position and visibility across focus,
+  restore, and fullscreen return. Windows uses Bakbak-styled window controls on the right, and
   the signed-in native-safe overlay stays empty. One close control sits after
   Settings in the bottom user dock. `Cmd/Ctrl+B` or View → Toggle Sidebar
   restores it after hiding. The 280 px default unified sidebar resizes within
@@ -174,9 +177,10 @@ approved under `0006-discord-shaped-bakbak-hearted-ui.md`. Plan 0006 supersedes
 only the conflicting UI decisions in plans 0004 and 0005; their backend and
 compatibility work remains in force.
 Prepared voice joins, verified-claims token authorization, microphone reuse,
-compact participant sizing, animated sound activity, and the five-sound safety
-limit are approved under
-`0007-voice-join-acceleration-and-soundboard-polish.md`.
+compact participant sizing, animated sound activity, and the historical
+five-sound safety limit were approved under
+`0007-voice-join-acceleration-and-soundboard-polish.md`; plan 0038 supersedes
+that limit with one latest-wins sound.
 The Settings focus repair, animated GIF avatar/cover pipeline, plain-text
 descriptions, cover focal points, and anchored private profile cards are
 approved under `0008-rich-animated-profiles.md`.
@@ -326,8 +330,8 @@ Plan 0036 also supersedes the 2026-08-09 untouched gradient default and
 one-time setup prompt. Account-scoped chrome-theme v2 defaults both spaces to
 Glass, offers only Glass or translucent Gradient with independent 20–100%
 transparency and a 100% Glass default, and normalizes legacy Solid records to single-color gradients.
-The editor remains in Appearance Settings without onboarding state. Electron
-reports vibrancy/Mica/fallback and reduced-transparency state so inaccessible
+The editor remains in Appearance Settings without onboarding state. The typed
+desktop adapter reports vibrancy/Mica/fallback and reduced-transparency state so inaccessible
 or unsupported glass falls back to an opaque scheme-aware surface without
 filtering message or live-media content. A 2026-08-14 follow-up removes the
 visible shell gutter, canvas border/radius/shadow, and separate default sidebar
@@ -354,23 +358,19 @@ macOS updater metadata. Partial credentials fail. The first signed release may
 require one last permission grant after the ad-hoc transition; later same-team
 releases preserve TCC continuity.
 
-The 2026-08-09 Electron shell amendment supersedes Tauri-specific runtime,
-window, capture, packaging, and updater implementation details throughout the
-older plans without rewriting their historical decisions. The application ID,
-product name, GitHub release channel, Apple Silicon macOS minimum, Windows x64
-target, renderer, Supabase contracts, and LiveKit room contracts stay stable.
-Electron uses a sandboxed renderer, secure custom protocol, and narrow typed
-preload bridge. Plan 0037 supersedes the Chromium capture amendment: a bundled
-native helper restores fail-closed process-tree screen-audio isolation and owns
-companion publication, while the renderer owns UI state only. Its installed
-macOS/Windows and three-client no-self/no-duplicate-audio matrix is a release
-gate. Until that matrix passes, default/PR/release Electron builds embed native
-audio disabled and only stabilization candidates embed it enabled.
-The first Electron release must serve Electron updater YAML and a signed legacy
-Tauri JSON bridge, then prove both the old-shell handoff and a subsequent pure
-Electron update on real supported machines before publication. Windows keeps
-the Tauri current-user install directory and translates its passive/restart
-NSIS invocation so the handoff does not create a second application location.
+The 2026-08-23 plan 0038 amendment supersedes the Electron-specific runtime,
+window, capture, packaging, updater, and five-concurrent-sound decisions without
+rewriting their history. The application ID, product name, GitHub release
+channel, Apple Silicon macOS minimum, Windows x64 target, renderer, Supabase
+contracts, and LiveKit room contracts stay stable. Tauri uses a secure
+application protocol, explicit capabilities, and the existing shell-neutral
+typed desktop adapter. The native helper remains the fail-closed screen-audio
+authority as a supervised sidecar. Source completion does not clear release:
+the installed shell, three-client capture, external-call audio, migration, and
+update matrices remain mandatory. Electron stays buildable as fallback until
+those gates pass. `2.0.0` is a manual replacement and re-login on both
+platforms; later Windows packages use signature-mandatory Tauri updates, while
+ad-hoc macOS remains manual-DMG-only.
 
 ### Phase 5 — Post-v1 improvements
 
@@ -378,12 +378,11 @@ NSIS invocation so the handoff does not create a second application location.
       Windows under plans `0003-screen-sharing.md` and
       `0010-cross-platform-screen-share-and-focus.md`; plans 0015 and 0032's
       installed isolation matrices remain the release gate.
-- [x] Fail closed to video-only in ordinary and release Electron builds until
-      plan 0037 proves native call-audio exclusion on installed macOS and
-      Windows clients. Video source enumeration/selection uses Electron on both
-      platforms and never requests unrestricted loopback audio.
+- [x] Fail closed to video-only whenever the Tauri sidecar cannot prove native
+      process-tree audio isolation; never request unrestricted loopback audio.
 - [ ] Add invite management UI.
-- [ ] Add desktop notifications and tray controls.
+- [x] Add Tauri tray controls for main/overlay visibility, external microphone
+      stop, and quit. General desktop notifications remain deferred.
 - [x] Add locally persisted microphone, speaker, and camera preferences.
 - [x] Add System, Light, and Dark appearance preferences applied before render.
 - [x] Add Profile, Audio & Video, and Appearance settings while
@@ -413,9 +412,9 @@ NSIS invocation so the handoff does not create a second application location.
       direct-switch microphone reuse, relay preference, and accessible join
       stages while preserving the soundboard-publication connection gate under
       plan 0007.
-- [x] Add occupancy-aware participant tiles, active-sound emoji treatment, a
-      sender-enforced five-sound limit, and prominent soundboard/dock stop
-      controls under plan 0007.
+- [x] Add occupancy-aware participant tiles and active-sound emoji treatment;
+      plan 0038 replaces plan 0007's sender-enforced five-sound/stop-all
+      controls with latest-wins and stop-current.
 - [x] Deploy the plan 0007 voice-context migration and token function with the
       JWT gate preserved.
 - [ ] Measure hosted warm/cold joins and complete plan 0007's authenticated
@@ -579,8 +578,9 @@ NSIS invocation so the handoff does not create a second application location.
 - [ ] Complete plan 0019's light/dark three-resolution and 200/240/360 px panel
       visual matrix plus installed macOS/Windows control/member observation.
 - [ ] Evaluate optional global push-to-talk.
-- [x] Implement plan 0037's native helper, protocol-v1 Electron supervision,
-      renderer delegation, packaging, and no-Chromium-loopback contracts.
+- [x] Implement plan 0037's native helper and protocol-v1 fallback supervision;
+      plan 0038 generalizes the host contract and moves primary supervision and
+      packaging to a Tauri sidecar without Chromium loopback.
 - [ ] Complete plan 0037's installed Windows x64, Apple Silicon macOS, and
       three-client no-self/no-duplicate-audio acceptance matrix.
 - [ ] Complete the cross-platform installed-client acceptance matrix.
@@ -642,6 +642,35 @@ NSIS invocation so the handoff does not create a second application location.
       window-control, drag, sidebar/call continuity, Glass/fallback, and media
       permission-recovery acceptance matrix. The first Developer ID build and
       one later same-team update must prove TCC continuity.
+
+### Plan 0038 — Tauri 2.0 reliability upgrade
+
+- [x] Restore the source-level Tauri 2 shell and shell-neutral renderer adapter
+      while retaining Electron as a temporary fallback.
+- [x] Supervise the host-neutral isolated screen-share helper as a Tauri
+      sidecar with Windows WebView2 process proof and video-only fail-closed
+      behavior.
+- [x] Replace five concurrent sounds with one latest-wins coordinator and one
+      persistent LiveKit publication.
+- [x] Add the virtual-cable external-call mixer, setup wizard, compact overlay,
+      tray lifecycle, mutual-exclusion confirmation, and privacy/release paths.
+- [x] Pin toolchains, fix Deno entrypoint checks, and move candidate/release
+      packaging plus Deno/Rust/pgTAP/security gates to Tauri.
+- [ ] Record startup/channel/voice/bundle/installer/memory baselines and reject
+      regressions against the accepted targets.
+- [ ] Pass plan 0038's installed Apple Silicon macOS and Windows x64 shell and
+      product matrix.
+- [ ] Pass the 30-minute three-client isolated-share matrix on both platforms.
+- [ ] Pass the 30-minute Discord/Meet external-audio matrix on both platforms.
+- [ ] Pass Electron → Tauri `2.0.0`, Windows automatic `2.0.0 → 2.0.1`, and
+      macOS manual `2.0.0 → 2.0.1` rehearsals.
+- [ ] Remove Electron only after every preceding installed gate passes.
+
+- [x] Implement plan 0038's gaming sound wheel follow-up: hold/release,
+      six sounds per category page, bidirectional wrapping scroll, remembered
+      pages, local selection feedback, and cancellation/once-only playback.
+- [ ] Complete the installed macOS/Windows gaming sound wheel acceptance row
+      in plan 0038 before treating game input/focus behavior as verified.
 
 ### Phase 6 — Distribution
 
@@ -750,7 +779,8 @@ After every phase:
 - Global push-to-talk.
 - Advanced roles and permission management.
 - Invite-management UI.
-- Desktop notifications and tray controls.
+- General desktop notifications. Plan 0038 implements its narrowly scoped tray
+  lifecycle for the main window and external soundboard.
 - Intel macOS releases after Bakbak v0.4.0.
 - Linux packaging and any architecture beyond Apple Silicon macOS and Windows
   x64; operating-system signing for the two supported builds remains required

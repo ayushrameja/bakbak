@@ -2,12 +2,17 @@ import { z } from "zod";
 import type { DataMode } from "./types";
 
 const optionalUrl = z.union([z.string().url(), z.literal("")]).optional();
+const optionalTrimmedValue = z.preprocess(
+  (value) =>
+    typeof value === "string" && value.trim() === "" ? undefined : value,
+  z.string().trim().min(1).optional(),
+);
 const publicEnvSchema = z.object({
   VITE_DATA_MODE: z.enum(["mock", "live"]).optional(),
   VITE_SUPABASE_URL: optionalUrl,
   VITE_SUPABASE_ANON_KEY: z.string().optional(),
   VITE_LIVEKIT_URL: optionalUrl,
-  VITE_BACKEND_REGION: z.string().trim().min(1).optional(),
+  VITE_BACKEND_REGION: optionalTrimmedValue,
   VITE_GIPHY_API_KEY: z.string().trim().optional(),
 });
 

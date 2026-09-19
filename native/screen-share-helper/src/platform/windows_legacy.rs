@@ -63,8 +63,7 @@ use windows::{
 };
 
 use super::super::{
-    SCREEN_SHARE_FRAME_RATES, SCREEN_SHARE_RESOLUTIONS, ScreenShareCapabilities,
-    ScreenShareSettings, ScreenShareSource, ScreenShareSourceKind,
+    ScreenShareCapabilities, ScreenShareSettings, ScreenShareSource, ScreenShareSourceKind,
     windows_process::{
         WebViewProcessProof, WebViewProcessState, WebViewProcessTracker, process_is_in_tree,
         process_parent_map,
@@ -81,8 +80,8 @@ const AUDIO_FRAME_SAMPLES: usize = 480;
 const THUMBNAIL_TIMEOUT: Duration = Duration::from_millis(250);
 const THUMBNAIL_MAX_WIDTH: u32 = 320;
 const THUMBNAIL_MAX_HEIGHT: u32 = 180;
-const DISPLAY_AUDIO_ISOLATION_REASON: &str = "Bakbak could not verify its Electron audio process tree, so Entire screen audio is disabled; video sharing still works.";
-const AUDIO_ISOLATION_CHANGED: &str = "[audio-isolation-unavailable] Bakbak's Electron/source process topology changed, so screen audio was stopped; video is still sharing.";
+const DISPLAY_AUDIO_ISOLATION_REASON: &str = "Bakbak could not verify its desktop audio process tree, so Entire screen audio is disabled; video sharing still works.";
+const AUDIO_ISOLATION_CHANGED: &str = "[audio-isolation-unavailable] Bakbak's host/source process topology changed, so screen audio was stopped; video is still sharing.";
 
 enum CaptureTarget {
     Window(HWND),
@@ -234,14 +233,6 @@ pub fn capabilities() -> ScreenShareCapabilities {
         available: true,
         native_capture: true,
         system_audio: process_audio_supported,
-        source_kinds: vec![
-            ScreenShareSourceKind::Display,
-            ScreenShareSourceKind::Application,
-        ],
-        resolutions: SCREEN_SHARE_RESOLUTIONS.to_vec(),
-        frame_rates: SCREEN_SHARE_FRAME_RATES.to_vec(),
-        dynamic_settings: true,
-        custom_picker: true,
         reason: (!process_audio_supported).then(|| {
             format!(
                 "Matched source audio requires Windows build {PROCESS_LOOPBACK_MINIMUM_BUILD} or newer; video sharing still works."
@@ -559,7 +550,7 @@ fn prepare_audio_isolation(
             let kind = match audio_target {
                 ProcessLoopbackTarget::ExcludeProcessTree(_) => AudioIsolationWatchKind::Display {
                     proof: webview_proof
-                        .expect("display audio target requires an Electron process proof")
+                        .expect("display audio target requires a desktop host process proof")
                         .clone(),
                 },
                 ProcessLoopbackTarget::IncludeProcessTree(process_id) => {
@@ -1833,7 +1824,7 @@ mod tests {
     }
 
     #[test]
-    fn an_electron_topology_change_invalidates_active_audio() {
+    fn a_host_topology_change_invalidates_active_audio() {
         let initial = WebViewProcessProof::for_test(20, [20, 21]);
         let changed = WebViewProcessProof::for_test(20, [20, 21, 22]);
         let stop = AtomicBool::new(false);
@@ -1891,7 +1882,7 @@ mod tests {
     }
 
     #[test]
-    fn display_source_audio_availability_requires_build_and_electron_proof() {
+    fn display_source_audio_availability_requires_build_and_host_proof() {
         assert_eq!(display_audio_availability_for(true, true), (true, None));
         let unsupported = display_audio_availability_for(false, true);
         assert!(!unsupported.0);
@@ -1907,7 +1898,7 @@ mod tests {
             unproven
                 .1
                 .as_deref()
-                .is_some_and(|reason| reason.contains("Electron"))
+                .is_some_and(|reason| reason.contains("Bakbak"))
         );
     }
 

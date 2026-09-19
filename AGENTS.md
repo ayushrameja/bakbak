@@ -52,16 +52,20 @@ Other documentation is updated only when relevant:
 
 - Bakbak is a private desktop app for 5–10 friends.
 - Use `pnpm`; do not introduce npm, Yarn, or Bun lockfiles.
-- Use strict TypeScript, React, and Vite for the renderer and Electron for the
-  desktop shell.
+- Use strict TypeScript, React, and Vite for the renderer and Tauri 2 for the
+  target desktop shell. Keep Electron only as the temporary `2.0.0` fallback
+  until plan 0038's installed macOS and Windows release gates pass.
 - Organize product code by feature under
   `src/features/{auth,server,channels,chat,voice,soundboard,settings}`.
 - Put reusable UI in `src/components`, service clients and shared utilities in
   `src/lib`, and application shell/providers in `src/app`.
-- Keep trusted desktop process code in `electron`, renderer-safe bridge types in
-  `src/lib/desktop-runtime.ts`, and bundle resources in `build`.
-- Expose desktop features through a narrow, typed preload bridge. Do not enable
-  renderer Node.js access or expose generic IPC primitives.
+- Keep trusted Tauri commands and native controllers in `src-tauri`, native
+  helpers in `native`, renderer-safe bridge types in
+  `src/lib/desktop-runtime.ts`, and bundle resources in `build`. Existing
+  Electron main/preload code remains fallback-only until its removal gate.
+- Expose desktop features through the narrow, typed desktop runtime adapter.
+  Feature code must not import Tauri APIs, enable renderer Node.js access, or
+  expose generic commands/IPC primitives.
 - Keep Supabase migrations, policy tests, seed/setup SQL, and Edge Functions in
   `supabase` when that phase begins.
 - Preserve the v1 defaults and exclusions in the active plan. Do not quietly
@@ -102,11 +106,20 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
-pnpm desktop:build
+pnpm tauri:build
+pnpm tauri:check
+pnpm tauri:test
+pnpm native:test
+deno task --config supabase/deno.json check
+deno task --config supabase/deno.json test
 ```
 
-The full Electron bundle build is phase- and platform-dependent; if it cannot
-run, record the reason. Also run focused tests for the changed feature. Database
+Rust changes additionally require `cargo fmt --check`, clippy with warnings
+denied, and tests for each affected manifest under `native` and `src-tauri`.
+
+The full Tauri bundle build and temporary Electron fallback build are
+phase- and platform-dependent; if either cannot run, record the reason. Also
+run focused tests for the changed feature. Database
 work requires policy tests for admin, member, and non-member access. Voice or
 soundboard work requires the relevant manual multi-client checks described in
 the plan.

@@ -1,4 +1,5 @@
 import { createContext, useContext } from "react";
+import type { DesktopUpdateDeliveryMode } from "../../lib/desktop-runtime";
 
 export type AppUpdateStatus =
   | "idle"
@@ -14,6 +15,7 @@ export type AppUpdateStatus =
 export type AppUpdateFailure = "offline" | "timeout" | "service" | "install";
 
 export interface AppUpdateContextValue {
+  deliveryMode: DesktopUpdateDeliveryMode;
   status: AppUpdateStatus;
   failure: AppUpdateFailure | null;
   availableVersion: string | null;

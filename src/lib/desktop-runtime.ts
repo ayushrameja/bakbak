@@ -1,3 +1,5 @@
+import type { ExternalAudioDesktopApi } from "./external-audio-types";
+
 export type DesktopPlatform = "macos" | "windows";
 export type DesktopWindowMaterial = "vibrancy" | "mica" | "fallback";
 export type DesktopChromeScheme = "light" | "dark";
@@ -133,6 +135,17 @@ export interface DesktopNativeScreenShareLifecycleEvent {
   audioPublished?: boolean | null;
 }
 
+export interface DesktopScreenShareHostIdentity {
+  shell: "electron" | "tauri";
+  generation: 1 | 2;
+  protocolVersion: number;
+  helperVersion: string | null;
+  appVersion: string;
+  audioRootKind: "webview2" | "host-process";
+  proof: "proven" | "unavailable";
+  identityEpoch: number;
+}
+
 export interface DesktopUpdateCheckResult {
   supported: boolean;
   available: boolean;
@@ -144,9 +157,23 @@ export interface DesktopUpdateProgress {
   total: number | null;
 }
 
+export type DesktopUpdateDeliveryMode = "automatic" | "manual";
+
+export interface DesktopRuntimeIdentity {
+  shell: "electron" | "tauri";
+  generation: 1 | 2;
+}
+
+export interface DesktopDeepLinkApi {
+  getInitial(): Promise<string[]>;
+  onOpen(listener: (urls: string[]) => void): () => void;
+}
+
 export interface BakbakDesktopBridge {
+  runtime: DesktopRuntimeIdentity;
   platform: DesktopPlatform;
   window: {
+    controlsMode?: "native" | "renderer";
     getAppearance(): Promise<DesktopWindowAppearance>;
     setChromeScheme(scheme: DesktopChromeScheme): Promise<void>;
     setWindowControlsVisible?(
@@ -157,6 +184,12 @@ export interface BakbakDesktopBridge {
     onAppearanceChange(
       listener: (appearance: DesktopWindowAppearance) => void,
     ): () => void;
+    minimize?(): Promise<void>;
+    toggleMaximize?(): Promise<void>;
+    isMaximized?(): Promise<boolean>;
+    close?(): Promise<void>;
+    startDragging?(): Promise<void>;
+    onMaximizedChange?(listener: (maximized: boolean) => void): () => void;
   };
   systemAccent: {
     get(): Promise<unknown>;
@@ -168,12 +201,15 @@ export interface BakbakDesktopBridge {
   app: {
     relaunch(): Promise<void>;
   };
+  deepLinks?: DesktopDeepLinkApi;
+  externalAudio?: ExternalAudioDesktopApi;
   permissions: {
     get(kind: DesktopPermissionKind): Promise<DesktopPermissionSnapshot>;
     requestMicrophone(): Promise<DesktopPermissionSnapshot>;
     openSettings(kind: DesktopPermissionKind): Promise<boolean>;
   };
   screenShare: {
+    hostIdentity(): Promise<DesktopScreenShareHostIdentity>;
     capabilities(): Promise<DesktopScreenShareCapabilities>;
     listSources(input?: {
       includeThumbnails?: boolean;
@@ -200,6 +236,7 @@ export interface BakbakDesktopBridge {
     ): () => void;
   };
   updates: {
+    deliveryMode: DesktopUpdateDeliveryMode;
     check(timeoutMs: number): Promise<DesktopUpdateCheckResult>;
     downloadAndInstall(timeoutMs: number): Promise<void>;
     onProgress(listener: (progress: DesktopUpdateProgress) => void): () => void;
@@ -219,4 +256,22 @@ export function getDesktopBridge(): BakbakDesktopBridge | undefined {
 
 export function isDesktopRuntime(): boolean {
   return Boolean(getDesktopBridge());
+}
+
+export async function initializeDesktopRuntime(): Promise<
+  BakbakDesktopBridge | undefined
+> {
+  const existing = getDesktopBridge();
+  if (existing || typeof window === "undefined") return existing;
+  if (!("__TAURI_INTERNALS__" in window)) return undefined;
+
+  const { createTauriDesktopBridge } = await import("./tauri-desktop-runtime");
+  const bridge = await createTauriDesktopBridge();
+  Object.defineProperty(window, "bakbakDesktop", {
+    configurable: false,
+    enumerable: false,
+    writable: false,
+    value: bridge,
+  });
+  return bridge;
 }

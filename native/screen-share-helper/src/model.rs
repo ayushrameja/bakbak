@@ -24,6 +24,7 @@ pub enum Command {
     ListSources,
     Start,
     Update,
+    DisableAudio,
     Stop,
     Shutdown,
 }
@@ -31,7 +32,10 @@ pub enum Command {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HelloPayload {
-    pub electron_root_pid: u32,
+    #[serde(alias = "electronRootPid")]
+    pub host_root_pid: u32,
+    #[serde(default)]
+    pub audio_root_pid: Option<u32>,
     pub bundle_id: String,
     pub app_version: String,
 }
@@ -232,6 +236,19 @@ pub struct UpdateResult {
     pub session_id: String,
     pub settings: CaptureSettings,
     pub paused: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DisableAudioPayload {
+    pub session_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DisableAudioResult {
+    pub session_id: String,
+    pub audio_published: bool,
 }
 
 #[derive(Deserialize)]

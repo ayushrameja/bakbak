@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BakbakDesktopBridge } from "../../lib/desktop-runtime";
 import { AppUpdateNotice } from "./AppUpdateNotice";
 import { AppUpdateProvider } from "./AppUpdateProvider";
+import { useAppUpdate } from "./app-update-context";
 
 const mocks = vi.hoisted(() => ({
   check: vi.fn(),
@@ -11,10 +12,13 @@ const mocks = vi.hoisted(() => ({
   installErrorListener: null as (() => void) | null,
 }));
 
-function installDesktopBridge(): void {
+function installDesktopBridge(
+  deliveryMode: "automatic" | "manual" = "automatic",
+): void {
   window.bakbakDesktop = {
-    platform: "macos",
+    platform: deliveryMode === "manual" ? "macos" : "windows",
     updates: {
+      deliveryMode,
       check: mocks.check,
       downloadAndInstall: mocks.downloadAndInstall,
       onProgress: () => () => undefined,
@@ -29,6 +33,18 @@ function installDesktopBridge(): void {
     },
     external: { open: mocks.openExternal },
   } as unknown as BakbakDesktopBridge;
+}
+
+function ManualUpdateNoticeHarness() {
+  const updater = useAppUpdate();
+  return (
+    <>
+      <button type="button" onClick={() => void updater.checkForUpdates()}>
+        Check manually
+      </button>
+      <AppUpdateNotice />
+    </>
+  );
 }
 
 describe("AppUpdateNotice", () => {
@@ -92,7 +108,7 @@ describe("AppUpdateNotice", () => {
     expect(mocks.check).not.toHaveBeenCalled();
   });
 
-  it("recovers when macOS rejects an update after the archive downloads", async () => {
+  it("recovers when the automatic updater rejects an archive", async () => {
     render(
       <AppUpdateProvider startupDelayMs={1} retryDelaysMs={[]}>
         <AppUpdateNotice />
@@ -113,5 +129,34 @@ describe("AppUpdateNotice", () => {
       ),
     ).toBeVisible();
     expect(screen.getByRole("button", { name: "Try again" })).toBeVisible();
+  });
+
+  it("never auto-checks or installs in-app in manual macOS mode", async () => {
+    installDesktopBridge("manual");
+    render(
+      <AppUpdateProvider startupDelayMs={1} retryDelaysMs={[]}>
+        <ManualUpdateNoticeHarness />
+      </AppUpdateProvider>,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(mocks.check).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Check manually" }));
+    await act(async () => Promise.resolve());
+    expect(mocks.check).toHaveBeenCalledOnce();
+    expect(
+      screen.getByText(/replace it in Applications.*granted again/i),
+    ).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Download DMG" }));
+    await act(async () => Promise.resolve());
+
+    expect(mocks.openExternal).toHaveBeenCalledWith(
+      "https://github.com/ayushrameja/bakbak/releases",
+    );
+    expect(mocks.downloadAndInstall).not.toHaveBeenCalled();
   });
 });

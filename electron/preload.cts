@@ -25,6 +25,7 @@ function subscribe<T>(
 }
 
 const bridge = Object.freeze({
+  runtime: Object.freeze({ shell: "electron", generation: 1 }),
   platform: process.platform === "darwin" ? "macos" : "windows",
   window: Object.freeze({
     getAppearance: () =>
@@ -71,6 +72,8 @@ const bridge = Object.freeze({
       ipcRenderer.invoke("permissions:open-settings", kind) as Promise<boolean>,
   }),
   screenShare: Object.freeze({
+    hostIdentity: () =>
+      ipcRenderer.invoke("screen-share:host-identity") as Promise<unknown>,
     capabilities: () =>
       ipcRenderer.invoke("screen-share:capabilities") as Promise<unknown>,
     listSources: (input: { includeThumbnails?: boolean } = {}) =>
@@ -93,6 +96,7 @@ const bridge = Object.freeze({
       subscribe("screen-share:lifecycle", listener),
   }),
   updates: Object.freeze({
+    deliveryMode: process.platform === "darwin" ? "manual" : "automatic",
     check: (timeoutMs: number) =>
       ipcRenderer.invoke("updates:check", timeoutMs) as Promise<unknown>,
     downloadAndInstall: (timeoutMs: number) =>

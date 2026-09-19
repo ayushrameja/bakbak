@@ -56,8 +56,8 @@ export async function createLegacyUpdaterManifest({
   return {
     version,
     notes: macArtifact
-      ? "Bakbak now uses Electron. This compatibility update moves supported Tauri installations to the new desktop shell."
-      : "Bakbak now uses Electron on Windows. This release requires a manual DMG installation on macOS.",
+      ? "Bakbak desktop compatibility update for Apple Silicon macOS and Windows."
+      : "Bakbak desktop update for Windows. This release requires a manual DMG installation on macOS.",
     pub_date: publishedAt,
     platforms,
   };

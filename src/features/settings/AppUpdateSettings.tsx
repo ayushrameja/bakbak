@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { APP_VERSION } from "../../lib/app-version";
+import type { DesktopUpdateDeliveryMode } from "../../lib/desktop-runtime";
 import { useAppUpdate, type AppUpdateStatus } from "./app-update-context";
 
 function formatCheckedAt(value: string | null): string {
@@ -21,11 +22,20 @@ function formatCheckedAt(value: string | null): string {
 }
 
 function statusCopy(
+  deliveryMode: DesktopUpdateDeliveryMode,
   status: AppUpdateStatus,
   version: string | null,
   attempt: number,
   maxAttempts: number,
 ): { title: string; detail: string; tone: string } {
+  if (deliveryMode === "manual") {
+    return {
+      title: "macOS updates are installed manually",
+      detail:
+        "Download the latest ad-hoc-signed DMG, quit Bakbak, then replace it in Applications. macOS may ask you to grant microphone and screen permissions again.",
+      tone: "neutral",
+    };
+  }
   switch (status) {
     case "checking":
       return {
@@ -92,6 +102,7 @@ export function AppUpdateSettings() {
     "idle",
   );
   const copy = statusCopy(
+    updater.deliveryMode,
     updater.status,
     updater.availableVersion,
     updater.attempt,
@@ -105,11 +116,13 @@ export function AppUpdateSettings() {
         )
       : null;
   const busy = updater.status === "checking" || updater.status === "installing";
+  const manualDelivery = updater.deliveryMode === "manual";
   const hasUpdate = updater.availableVersion !== null;
   const showReleaseFallback =
-    updater.status === "failed" ||
-    updater.status === "offline" ||
-    updater.status === "install-failed";
+    !manualDelivery &&
+    (updater.status === "failed" ||
+      updater.status === "offline" ||
+      updater.status === "install-failed");
 
   async function copyDiagnostics() {
     const copied = await updater.copyDiagnostics();
@@ -122,7 +135,9 @@ export function AppUpdateSettings() {
         <span className="eyebrow">Desktop updates</span>
         <h2>Updates</h2>
         <p>
-          Check, recover, and install without waiting for the startup notice.
+          {manualDelivery
+            ? "Bakbak leaves macOS app replacement in your hands, so an updater cannot interrupt a call."
+            : "Check, recover, and install without waiting for the startup notice."}
         </p>
       </div>
 
@@ -131,7 +146,9 @@ export function AppUpdateSettings() {
         aria-live="polite"
       >
         <div className="update-settings__status-icon" aria-hidden="true">
-          {copy.tone === "success" ? (
+          {manualDelivery ? (
+            <Download size={21} />
+          ) : copy.tone === "success" ? (
             <CheckCircle2 size={21} />
           ) : copy.tone === "warning" ? (
             <TriangleAlert size={21} />
@@ -178,7 +195,15 @@ export function AppUpdateSettings() {
       </dl>
 
       <div className="update-settings__actions">
-        {hasUpdate ? (
+        {manualDelivery ? (
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => void updater.openReleasesPage()}
+          >
+            <ExternalLink size={15} /> Download latest DMG
+          </button>
+        ) : hasUpdate ? (
           <button
             className="primary-button"
             type="button"

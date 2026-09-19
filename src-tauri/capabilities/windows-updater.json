@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "windows-updater",
+  "description": "Automatic signed updater access is intentionally Windows-only",
+  "windows": ["main"],
+  "platforms": ["windows"],
+  "permissions": ["core:resources:allow-close", "updater:default"]
+}

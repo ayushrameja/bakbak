@@ -1,0 +1,74 @@
+[package]
+name = "bakbak"
+version = "2.0.0"
+description = "Private voice, text, and soundboard desktop app"
+authors = ["Bakbak contributors"]
+edition = "2024"
+
+[lib]
+name = "bakbak_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "=2.6.3", features = [] }
+
+[dependencies]
+bakbak-external-audio = { path = "../native/external-audio" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "=2.11.5", features = ["macos-private-api", "tray-icon"] }
+tauri-plugin-deep-link = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-opener = "=2.5.4"
+tauri-plugin-process = "=2.3.1"
+tauri-plugin-shell = "2"
+tauri-plugin-updater = "=2.10.1"
+tauri-plugin-window-state = "2"
+tokio = { version = "1", features = ["sync", "time"] }
+url = "2"
+uuid = "1"
+
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6.2"
+core-graphics = "0.25"
+objc2 = "0.6.2"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = [
+  "NSAccessibility",
+  "NSButton",
+  "NSColor",
+  "NSColorSpace",
+  "NSControl",
+  "NSView",
+  "NSWindow",
+  "NSWorkspace",
+  "NSRunningApplication",
+  "libc",
+] }
+objc2-av-foundation = { version = "0.3.2", default-features = false, features = [
+  "AVCaptureDevice",
+  "AVMediaFormat",
+  "block2",
+] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
+  "NSNotification",
+  "NSOperation",
+  "NSString",
+] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+tokio = { version = "1", features = ["sync"] }
+webview2-com = "=0.38.2"
+webview2-windows-core = { package = "windows-core", version = "=0.61.2" }
+windows = { version = "0.62.2", features = [
+  "Foundation",
+  "UI_ViewManagement",
+  "Win32_Foundation",
+  "Win32_Graphics_Dwm",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_Power",
+  "Win32_UI_WindowsAndMessaging",
+] }
+windows-version = "=0.1.7"

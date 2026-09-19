@@ -1,0 +1,15 @@
+[package]
+name = "bakbak-external-audio"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "bakbak_external_audio"
+path = "src/lib.rs"
+
+[dependencies]
+cpal = "=0.18.2"
+serde = { version = "1", features = ["derive"] }
+
+[lints.rust]
+unsafe_code = "forbid"

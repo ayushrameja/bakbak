@@ -52,11 +52,10 @@ interface SoundboardProps {
   loading: boolean;
   error: string | null;
   volume: number;
-  activeLocalSoundCount: number;
-  maxConcurrentSounds: number;
+  activeSoundId: string | null;
   readOnly?: boolean;
   onPlay: (soundId: string) => Promise<void>;
-  onStopAll: () => Promise<void>;
+  onStopCurrent: () => Promise<void>;
   onVolumeChange: (volume: number) => void;
   onRetry: (soundId: string) => Promise<void>;
   onToggleFavorite: (soundId: string) => Promise<void>;
@@ -84,11 +83,10 @@ export function Soundboard({
   loading,
   error: catalogError,
   volume,
-  activeLocalSoundCount,
-  maxConcurrentSounds,
+  activeSoundId,
   readOnly = false,
   onPlay,
-  onStopAll,
+  onStopCurrent,
   onVolumeChange,
   onRetry,
   onToggleFavorite,
@@ -96,7 +94,6 @@ export function Soundboard({
   onDelete,
   onUpdate,
 }: SoundboardProps) {
-  const [activeSound, setActiveSound] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [editingSound, setEditingSound] = useState<SoundboardSound | null>(
     null,
@@ -106,7 +103,6 @@ export function Soundboard({
     Record<string, boolean>
   >(() => loadCollapsedSections(serverId, categories));
   const [error, setError] = useState<string | null>(null);
-  const soundLimitReached = activeLocalSoundCount >= maxConcurrentSounds;
   const normalizedQuery = query.trim().toLocaleLowerCase();
 
   useEffect(() => {
@@ -153,8 +149,6 @@ export function Soundboard({
     }
     try {
       await onPlay(sound.id);
-      setActiveSound(sound.id);
-      window.setTimeout(() => setActiveSound(null), 520);
     } catch (caught) {
       if (caught instanceof DOMException && caught.name === "AbortError")
         return;
@@ -282,14 +276,12 @@ export function Soundboard({
                         return (
                           <div className="sound-card" key={sound.id}>
                             <button
-                              className={`sound-button ${activeSound === sound.id ? "is-playing" : ""}`}
+                              className={`sound-button ${activeSoundId === sound.id ? "is-playing" : ""}`}
                               data-asset-status={sound.assetStatus}
                               type="button"
                               disabled={
                                 sound.assetStatus === "loading" ||
-                                (readOnly && sound.assetStatus === "error") ||
-                                (sound.assetStatus === "ready" &&
-                                  soundLimitReached)
+                                (readOnly && sound.assetStatus === "error")
                               }
                               onClick={() => void play(sound)}
                               aria-label={`${sound.label}${sound.assetStatus === "error" ? ", retry download" : ""}`}
@@ -361,19 +353,17 @@ export function Soundboard({
       <div className="soundboard-stop-control">
         <button
           type="button"
-          disabled={activeLocalSoundCount === 0}
-          aria-label={`Stop my sounds (${activeLocalSoundCount}/${maxConcurrentSounds} playing)`}
-          title="Stop my sounds"
-          onClick={() => void onStopAll()}
+          disabled={!activeSoundId}
+          aria-label="Stop current sound"
+          title="Stop current sound"
+          onClick={() => void onStopCurrent()}
         >
           <Square size={14} />
         </button>
-        {activeLocalSoundCount > 0 ? (
-          <strong aria-live="polite">
-            {activeLocalSoundCount}/{maxConcurrentSounds}
-          </strong>
+        {activeSoundId ? (
+          <strong aria-live="polite">Playing</strong>
         ) : (
-          <span className="visually-hidden">No sounds playing</span>
+          <span className="visually-hidden">No sound playing</span>
         )}
       </div>
 

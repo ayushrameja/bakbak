@@ -5,9 +5,9 @@ use url::Url;
 use crate::{
     HELPER_VERSION,
     model::{
-        Command, HelloResult, HelperError, LifecyclePayload, LifecycleState, ListSourcesPayload,
-        ListSourcesResult, PROTOCOL_VERSION, Request, StartPayload, StopPayload, StopResult,
-        UpdatePayload,
+        Command, DisableAudioPayload, DisableAudioResult, HelloResult, HelperError,
+        LifecyclePayload, LifecycleState, ListSourcesPayload, ListSourcesResult, PROTOCOL_VERSION,
+        Request, StartPayload, StopPayload, StopResult, UpdatePayload,
     },
     platform,
     policy::HostIdentity,
@@ -77,6 +77,10 @@ impl HelperRuntime {
                 .map(|value| success(request_id.clone(), value)),
             Command::Update => self
                 .update(payload)
+                .await
+                .map(|value| success(request_id.clone(), value)),
+            Command::DisableAudio => self
+                .disable_audio(payload)
                 .await
                 .map(|value| success(request_id.clone(), value)),
             Command::Stop => self
@@ -185,6 +189,34 @@ impl HelperRuntime {
             HelperError::invalid("no-active-share", "There is no active screen share.")
         })?;
         session.update(input).await
+    }
+
+    async fn disable_audio(
+        &mut self,
+        payload: serde_json::Value,
+    ) -> Result<DisableAudioResult, HelperError> {
+        let input: DisableAudioPayload = parse_payload(payload)?;
+        validate_session_id(&input.session_id)?;
+        let session = self.active.as_mut().ok_or_else(|| {
+            HelperError::invalid("no-active-share", "There is no active screen share.")
+        })?;
+        let downgraded = session.disable_audio(&input.session_id).await?;
+        if downgraded {
+            self.send(lifecycle(LifecyclePayload {
+                session_id: Some(input.session_id.clone()),
+                state: LifecycleState::AudioDowngraded,
+                reason_code: Some("windows-webview-proof-lost".into()),
+                message: Some(
+                    "Bakbak could no longer prove its Windows webview audio processes. Video is still sharing."
+                        .into(),
+                ),
+                audio_published: Some(false),
+            }));
+        }
+        Ok(DisableAudioResult {
+            session_id: input.session_id,
+            audio_published: false,
+        })
     }
 
     async fn stop(&mut self, payload: serde_json::Value) -> Result<StopResult, HelperError> {
@@ -337,11 +369,21 @@ mod tests {
     #[test]
     fn rejects_unknown_payload_fields() {
         let result: Result<crate::model::HelloPayload, _> = parse_payload(serde_json::json!({
-            "electronRootPid": 42,
+            "hostRootPid": 42,
             "bundleId": "com.bakbak.desktop",
             "appVersion": "1.0.0",
             "token": "must-not-be-accepted"
         }));
+        assert_eq!(result.unwrap_err().code, "invalid-payload");
+    }
+
+    #[test]
+    fn internal_audio_disable_payload_accepts_only_a_session_id() {
+        let result: Result<crate::model::DisableAudioPayload, _> =
+            parse_payload(serde_json::json!({
+                "sessionId": "00000000-0000-4000-8000-000000000001",
+                "audioRootPid": 42,
+            }));
         assert_eq!(result.unwrap_err().code, "invalid-payload");
     }
 

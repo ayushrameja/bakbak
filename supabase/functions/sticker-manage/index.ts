@@ -108,7 +108,8 @@ Deno.serve(async (request) => {
             p_animation_path: animationPath,
             p_width: size.width,
             p_height: size.height,
-            p_byte_size: poster.size + (animation?.size ?? 0),
+            p_byte_size:
+              posterBytes.byteLength + (animationBytes?.byteLength ?? 0),
           })
           .select(
             "id,server_id,created_by,label,poster_path,animation_path,width,height,enabled,created_at",

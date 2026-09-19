@@ -22,7 +22,9 @@ revoke all privileges
 on function private.can_access_presence_topic(text)
 from public;
 
-alter table realtime.messages enable row level security;
+-- Supabase owns realtime.messages and enables its RLS. Recent Realtime
+-- versions prohibit ALTER TABLE here while still allowing policy management.
+-- Keep this historical migration replayable without changing platform ownership.
 
 drop policy if exists bakbak_members_receive_presence
 on realtime.messages;

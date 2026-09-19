@@ -260,7 +260,14 @@ test("native overlay chrome, directional motion, and scroll activity retain thei
   assert.doesNotMatch(titlebar, /titlebar-panel-controls|Hide sidebar/);
   assert.match(sidebarUserDock, /aria-label="Hide sidebar"/);
   assert.match(titlebar, /data-sidebar-visible=/);
-  assert.doesNotMatch(titlebar, /Window controls|Minimize window|Close window/);
+  assert.match(
+    titlebar,
+    /runtimePlatform === "windows" && desktopWindow\?\.controlsMode === "renderer"/,
+  );
+  assert.match(titlebar, /rendererWindowControls \? \(/);
+  assert.match(titlebar, /aria-label="Window controls"/);
+  assert.match(titlebar, /aria-label="Minimize window"/);
+  assert.match(titlebar, /aria-label="Close window"/);
   assert.doesNotMatch(app, /<TopBar|function TopBar/);
   assert.match(app, /onToggleSidebar/);
   assert.match(electronMain, /label:\s*"Toggle Sidebar"/);

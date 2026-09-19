@@ -8,7 +8,7 @@
     "livekit-server-sdk": "npm:livekit-server-sdk@2.17.0"
   },
   "tasks": {
-    "check": "deno lint functions && deno check functions/livekit-token/index.ts",
-    "test": "deno test --allow-env functions/tests"
+    "check": "deno lint functions && deno check --frozen functions/link-preview/index.ts functions/livekit-token/index.ts functions/message-media-manage/index.ts functions/soundboard-manage/index.ts functions/sticker-manage/index.ts",
+    "test": "deno test --frozen --allow-env functions/tests"
   }
 }

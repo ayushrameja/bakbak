@@ -4,14 +4,16 @@ use crate::model::{HelloPayload, HelperError, SourceKind};
 
 #[derive(Clone)]
 pub struct HostIdentity {
-    pub electron_root_pid: u32,
+    pub host_root_pid: u32,
+    pub audio_root_pid: u32,
     pub bundle_id: String,
     pub app_version: String,
 }
 
 impl HostIdentity {
     pub fn from_hello(payload: HelloPayload) -> Result<Self, HelperError> {
-        if payload.electron_root_pid == 0
+        if payload.host_root_pid == 0
+            || payload.audio_root_pid == Some(0)
             || payload.bundle_id.is_empty()
             || payload.bundle_id.len() > 255
             || payload.bundle_id.chars().any(char::is_whitespace)
@@ -24,7 +26,8 @@ impl HostIdentity {
             ));
         }
         Ok(Self {
-            electron_root_pid: payload.electron_root_pid,
+            host_root_pid: payload.host_root_pid,
+            audio_root_pid: payload.audio_root_pid.unwrap_or(payload.host_root_pid),
             bundle_id: payload.bundle_id,
             app_version: payload.app_version,
         })
@@ -34,7 +37,7 @@ impl HostIdentity {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AudioIsolationPolicy {
     Disabled,
-    ExcludeElectronProcessTree(u32),
+    ExcludeHostProcessTree(u32),
     IncludeSelectedProcessTree(u32),
     ExcludeMacApplications,
 }
@@ -43,7 +46,7 @@ pub fn choose_audio_policy(
     include_audio: bool,
     supported: bool,
     source_kind: SourceKind,
-    electron_root_pid: u32,
+    host_root_pid: u32,
     selected_process_id: Option<u32>,
     process_trees_overlap: bool,
 ) -> Result<AudioIsolationPolicy, HelperError> {
@@ -54,9 +57,7 @@ pub fn choose_audio_policy(
         return Ok(AudioIsolationPolicy::Disabled);
     }
     match source_kind {
-        SourceKind::Display => Ok(AudioIsolationPolicy::ExcludeElectronProcessTree(
-            electron_root_pid,
-        )),
+        SourceKind::Display => Ok(AudioIsolationPolicy::ExcludeHostProcessTree(host_root_pid)),
         SourceKind::Application => {
             let process_id = selected_process_id
                 .filter(|value| *value != 0)
@@ -132,10 +133,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn display_audio_excludes_the_verified_electron_root() {
+    fn display_audio_excludes_the_verified_host_root() {
         assert_eq!(
             choose_audio_policy(true, true, SourceKind::Display, 42, None, false).unwrap(),
-            AudioIsolationPolicy::ExcludeElectronProcessTree(42)
+            AudioIsolationPolicy::ExcludeHostProcessTree(42)
         );
     }
 

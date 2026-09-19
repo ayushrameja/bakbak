@@ -1,12 +1,13 @@
-use tokio::sync::mpsc;
-
 use crate::{
-    model::{
-        AudioIsolationMode, Capabilities, CaptureSettings, HelperError, PlatformName, Source,
-        SourceKind,
-    },
+    model::{Capabilities, HelperError, PlatformName, Source, SourceKind},
     policy::HostIdentity,
 };
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use tokio::sync::mpsc;
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use crate::model::{AudioIsolationMode, CaptureSettings};
 
 #[cfg(target_os = "macos")]
 mod macos;
@@ -25,6 +26,7 @@ mod unsupported;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 pub use unsupported::*;
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Debug)]
 pub enum CaptureEvent {
     IsolationLost { code: String, message: String },
@@ -32,12 +34,14 @@ pub enum CaptureEvent {
     Paused(bool),
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Clone)]
 pub struct PreparedMetadata {
     pub source_label: String,
     pub source_kind: SourceKind,
     pub width: u32,
     pub height: u32,
+    #[cfg(target_os = "macos")]
     pub audio_requested: bool,
     pub audio_isolation_mode: AudioIsolationMode,
     pub audio_unavailable_reason: Option<String>,
@@ -72,5 +76,5 @@ pub(crate) fn display_source(id: String, label: String, audio: bool) -> Source {
     }
 }
 
-#[allow(dead_code)]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub(crate) type CaptureEventSender = mpsc::UnboundedSender<CaptureEvent>;

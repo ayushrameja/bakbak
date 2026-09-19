@@ -572,6 +572,19 @@ function registerIpcHandlers(): void {
     assertTrustedSender(event);
     return screenShareCapabilities();
   });
+  ipcMain.handle("screen-share:host-identity", (event) => {
+    assertTrustedSender(event);
+    return {
+      shell: "electron" as const,
+      generation: 1 as const,
+      protocolVersion: 1,
+      helperVersion: null,
+      appVersion: app.getVersion(),
+      audioRootKind: "host-process" as const,
+      proof: "proven" as const,
+      identityEpoch: 0,
+    };
+  });
   ipcMain.handle("screen-share:list-sources", async (event, input: unknown) => {
     assertTrustedSender(event);
     return listScreenShareSources(input);
@@ -606,7 +619,7 @@ function registerIpcHandlers(): void {
   });
   ipcMain.handle("updates:check", async (event, rawTimeout: unknown) => {
     assertTrustedSender(event);
-    if (!app.isPackaged || !["darwin", "win32"].includes(process.platform)) {
+    if (!app.isPackaged || process.platform !== "win32") {
       return { supported: false, available: false, version: null };
     }
     const result = await withTimeout(
