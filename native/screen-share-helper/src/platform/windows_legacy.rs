@@ -63,8 +63,7 @@ use windows::{
 };
 
 use super::super::{
-    SCREEN_SHARE_FRAME_RATES, SCREEN_SHARE_RESOLUTIONS, ScreenShareCapabilities,
-    ScreenShareSettings, ScreenShareSource, ScreenShareSourceKind,
+    ScreenShareCapabilities, ScreenShareSettings, ScreenShareSource, ScreenShareSourceKind,
     windows_process::{
         WebViewProcessProof, WebViewProcessState, WebViewProcessTracker, process_is_in_tree,
         process_parent_map,
@@ -234,14 +233,6 @@ pub fn capabilities() -> ScreenShareCapabilities {
         available: true,
         native_capture: true,
         system_audio: process_audio_supported,
-        source_kinds: vec![
-            ScreenShareSourceKind::Display,
-            ScreenShareSourceKind::Application,
-        ],
-        resolutions: SCREEN_SHARE_RESOLUTIONS.to_vec(),
-        frame_rates: SCREEN_SHARE_FRAME_RATES.to_vec(),
-        dynamic_settings: true,
-        custom_picker: true,
         reason: (!process_audio_supported).then(|| {
             format!(
                 "Matched source audio requires Windows build {PROCESS_LOOPBACK_MINIMUM_BUILD} or newer; video sharing still works."

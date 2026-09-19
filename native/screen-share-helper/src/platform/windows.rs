@@ -175,7 +175,6 @@ pub async fn prepare(
         source_kind,
         width: inner.width,
         height: inner.height,
-        audio_requested,
         audio_isolation_mode: if !audio_requested {
             AudioIsolationMode::Disabled
         } else if source_kind == SourceKind::Display {

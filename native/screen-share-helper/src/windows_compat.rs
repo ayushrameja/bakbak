@@ -26,11 +26,6 @@ pub(crate) struct ScreenShareCapabilities {
     pub(crate) available: bool,
     pub(crate) native_capture: bool,
     pub(crate) system_audio: bool,
-    pub(crate) source_kinds: Vec<ScreenShareSourceKind>,
-    pub(crate) resolutions: Vec<u32>,
-    pub(crate) frame_rates: Vec<u32>,
-    pub(crate) dynamic_settings: bool,
-    pub(crate) custom_picker: bool,
     pub(crate) reason: Option<String>,
 }
 
@@ -44,6 +39,3 @@ pub(crate) struct ScreenShareSource {
     pub(crate) audio_unavailable_reason: Option<String>,
     pub(crate) thumbnail_data_url: Option<String>,
 }
-
-pub(crate) const SCREEN_SHARE_RESOLUTIONS: [u32; 3] = [480, 720, 1080];
-pub(crate) const SCREEN_SHARE_FRAME_RATES: [u32; 3] = [15, 30, 60];

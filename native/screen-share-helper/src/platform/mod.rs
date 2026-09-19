@@ -41,6 +41,7 @@ pub struct PreparedMetadata {
     pub source_kind: SourceKind,
     pub width: u32,
     pub height: u32,
+    #[cfg(target_os = "macos")]
     pub audio_requested: bool,
     pub audio_isolation_mode: AudioIsolationMode,
     pub audio_unavailable_reason: Option<String>,

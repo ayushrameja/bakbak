@@ -8893,3 +8893,30 @@ src-tauri/tauri.sidecar.conf.json --config
   installer rebuild or manual screen-share session was needed for these Windows
   compilation corrections; hosted packaging and installed release gates remain.
 - **Next:** Push this correction to PR 65 and follow the new platform CI results.
+
+## 2026-09-19 — Remove unused Windows helper compatibility fields
+
+- **Completed:** CI run `35448001335` passed shared validation, then the new
+  fail-fast Windows gate exposed helper dead-code errors. These were also present
+  earlier in run `35446669109`, but its PowerShell command sequence continued and
+  the initial log review missed them. Reviewed all errors in that full log.
+  Restrict `PreparedMetadata.audio_requested` to macOS, its only consumer, and
+  remove unused legacy capability fields/constants from the private Windows
+  adapter. Windows still derives audio inclusion directly from its capture
+  session; shared capability responses and supported settings are unchanged.
+- **Decisions:** Remove unused internal state rather than suppress dead-code
+  warnings. Keep strict native validation and all supported capture behavior.
+- **Validation:**
+  - `cargo fmt --check --manifest-path native/screen-share-helper/Cargo.toml`,
+    `cargo clippy --locked --manifest-path native/screen-share-helper/Cargo.toml --all-targets -- -D warnings`,
+    and `cargo test --locked --manifest-path native/screen-share-helper/Cargo.toml`
+    — passed; 22 library tests and 1 binary test on macOS.
+  - Focused CI and Tauri shell contracts — passed 8 tests.
+  - `git diff --check` — passed; only helper field definitions/initializers and
+    this canonical log changed.
+- **Documentation updated:** This progress log; no architecture or setup change.
+- **Known limitations:** Windows must rerun native lint/tests and packaging on
+  this revision. The prior shared CI job passed the renderer, Deno, Tauri, and
+  database suite; those sources were not changed in this cleanup. Local installer
+  and manual multi-client checks were not repeated for unused internal fields.
+- **Next:** Push the helper cleanup to PR 65 and verify the complete native matrix.
