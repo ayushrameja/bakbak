@@ -154,6 +154,33 @@ describe("Tauri desktop bridge", () => {
     });
   });
 
+  it("routes wheel lifecycle and local feedback through the narrow native bridge", async () => {
+    const invoke = vi.fn((command: string) =>
+      resolved(command === "get_desktop_platform" ? "windows" : undefined),
+    );
+    const listen = vi.fn(() => resolved(() => undefined));
+    const deps = dependencies({
+      invoke: invoke as TauriDesktopDependencies["invoke"],
+      listen,
+    });
+    const bridge = await createTauriDesktopBridge(deps);
+    await bridge.externalAudio?.getOverlayInteraction();
+    await bridge.externalAudio?.finishOverlayInteraction(7, true);
+    await bridge.externalAudio?.selectionFeedback();
+    const off = bridge.externalAudio?.onOverlayInteraction(() => undefined);
+    expect(invoke).toHaveBeenCalledWith("external_overlay_get_interaction");
+    expect(invoke).toHaveBeenCalledWith("external_overlay_finish", {
+      id: 7,
+      play: true,
+    });
+    expect(invoke).toHaveBeenCalledWith("external_audio_selection_feedback");
+    expect(listen).toHaveBeenCalledWith(
+      "external-audio:overlay-interaction",
+      expect.any(Function),
+    );
+    off?.();
+  });
+
   it("routes bounded credential-free links through the narrow native command", async () => {
     const invoke = vi.fn((command: string) =>
       resolved(command === "get_desktop_platform" ? "windows" : undefined),

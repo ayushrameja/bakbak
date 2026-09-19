@@ -3,6 +3,7 @@ mod permissions;
 mod power;
 mod screen_share;
 mod shell;
+mod soundboard_overlay;
 mod system_accent;
 #[cfg(target_os = "windows")]
 pub(crate) mod windows_process;
@@ -38,7 +39,10 @@ fn is_current_platform_app_origin(url: &tauri::Url) -> bool {
     #[cfg(target_os = "windows")]
     return is_windows_app_origin(url);
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    false
+    {
+        let _ = url;
+        false
+    }
 }
 
 #[cfg(any(target_os = "macos", test))]
@@ -111,13 +115,18 @@ pub fn run() {
 
     builder = builder
         .manage(external_audio::ExternalAudioManager::default())
+        .manage(soundboard_overlay::OverlayState::default())
         .manage(screen_share::ScreenShareManager::default())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
-                    if event.state() == ShortcutState::Pressed {
-                        external_audio::toggle_overlay(app);
-                    }
+                    let pressed = event.state() == ShortcutState::Pressed;
+                    let target = app.clone();
+                    // Serialize native show/hide with window commands even on
+                    // platforms whose global-hotkey callback runs off-thread.
+                    let _ = app.run_on_main_thread(move || {
+                        soundboard_overlay::shortcut(&target, pressed);
+                    });
                 })
                 .build(),
         );
@@ -198,9 +207,17 @@ pub fn run() {
             external_audio::external_audio_stop,
             external_audio::external_audio_show_overlay,
             external_audio::external_audio_hide_overlay,
+            external_audio::external_audio_selection_feedback,
+            soundboard_overlay::external_overlay_get_interaction,
+            soundboard_overlay::external_overlay_finish,
             system_accent::get_system_accent,
         ])
         .on_window_event(|window, event| {
+            if window.label() == "external-soundboard"
+                && matches!(event, tauri::WindowEvent::Focused(false))
+            {
+                soundboard_overlay::lost_focus(window.app_handle());
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "external-soundboard" {
                     api.prevent_close();

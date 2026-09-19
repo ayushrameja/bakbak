@@ -213,6 +213,12 @@ function apiDouble() {
     stop: vi.fn().mockResolvedValue({ ...liveState, status: "idle" }),
     play: vi.fn().mockResolvedValue(liveState),
     stopSound: vi.fn().mockResolvedValue(liveState),
+    getOverlayInteraction: vi
+      .fn()
+      .mockResolvedValue({ id: 1, phase: "open", mode: "browse" }),
+    onOverlayInteraction: vi.fn(() => () => undefined),
+    finishOverlayInteraction: vi.fn().mockResolvedValue(true),
+    selectionFeedback: vi.fn().mockResolvedValue(undefined),
     showOverlay: vi.fn(),
     hideOverlay: vi.fn(),
     onState: vi.fn(() => () => undefined),

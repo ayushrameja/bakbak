@@ -44,7 +44,7 @@ not permission to remove it.
 - [x] Keep ordinary close-as-quit behavior while allowing active external audio
       to continue after the explained first close.
 - [ ] Pass the complete installed macOS and Windows shell-parity matrix.
-      The smoke pass must include dragging the frameless compact overlay.
+      The smoke pass includes the full-screen hold wheel described below.
 
 ### Isolated screen audio
 
@@ -99,6 +99,26 @@ not permission to remove it.
 - [ ] Pass 30-minute Discord desktop and browser Google Meet sessions on both
       installed platforms, including hot-plug, sleep, permission loss, hidden
       windows, tray stop, and quit.
+
+### Gaming sound wheel — approved 2026-09-19
+
+This replaces the compact overlay above; favorites, recents, and search remain
+in the main soundboard, while the wheel follows existing catalog categories.
+
+- [x] Hold `Cmd/Ctrl+Shift+B` to open a borderless monitor-sized wheel; select
+      the first sound automatically and play once on release or left-click.
+- [x] Show six radial sound slots per category page with pointer selection,
+      reduced-motion-aware animation, and a monitor-only selection tick.
+- [x] Scroll up to advance and down to go back, wrap both ways, show pagination
+      below the wheel, and remember the category/page per account/server.
+- [x] Put close at the top right; close, Escape, and focus loss cancel playback.
+      Keep microphone mute, level, stop-sound, and stop-session controls.
+- [x] Fence native auto-repeat, stale interaction IDs, and click/release races;
+      retain click-only browsing from the tray and settings.
+- [ ] Validate installed hold/release, focus return, mixed-DPI monitors, cold
+      opening, click-then-release, Escape, app switching, and local-only ticks
+      with an actual game and Discord on macOS and Windows. Normal focused input
+      capture is expected; OS shortcuts and exclusive fullscreen are exceptions.
 
 ### Installation and updates
 

@@ -163,6 +163,7 @@ struct Shared {
     output_peak: AtomicU32,
     clipping: AtomicBool,
     sound_generation: AtomicU64,
+    feedback_generation: AtomicU64,
 }
 
 #[derive(Default)]
@@ -197,6 +198,7 @@ impl ExternalAudioEngine {
                 output_peak: AtomicU32::new(0.0f32.to_bits()),
                 clipping: AtomicBool::new(false),
                 sound_generation: AtomicU64::new(0),
+                feedback_generation: AtomicU64::new(0),
             }),
             streams: Mutex::new(None),
             lifecycle: Mutex::new(()),
@@ -324,6 +326,7 @@ impl ExternalAudioEngine {
         });
         if let Err(message) = result {
             self.shared.running.store(false, Ordering::Release);
+            self.shared.feedback_generation.store(0, Ordering::Release);
             self.fail("device-start-failed", &message);
             return Err(message);
         }
@@ -387,6 +390,7 @@ impl ExternalAudioEngine {
         });
         if let Err(message) = result {
             self.shared.running.store(false, Ordering::Release);
+            self.shared.feedback_generation.store(0, Ordering::Release);
             self.shared.setup_testing.store(false, Ordering::Release);
             self.shared
                 .setup_monitor_enabled
@@ -522,6 +526,18 @@ impl ExternalAudioEngine {
         Ok(state.clone())
     }
 
+    /// A quiet 24 ms selection tick, consumed exclusively by the headphone
+    /// callback. It never replaces the selected sound or reaches the cable.
+    pub fn selection_feedback(&self) {
+        if self.shared.running.load(Ordering::Acquire)
+            && !self.shared.setup_testing.load(Ordering::Acquire)
+        {
+            self.shared
+                .feedback_generation
+                .fetch_add(1, Ordering::AcqRel);
+        }
+    }
+
     pub fn play_sound(&self, sound_id: String, samples: Vec<f32>) -> Result<SessionState, String> {
         let _lifecycle = self
             .lifecycle
@@ -608,6 +624,7 @@ impl ExternalAudioEngine {
             return state;
         }
         self.shared.running.store(false, Ordering::Release);
+        self.shared.feedback_generation.store(0, Ordering::Release);
         self.shared.setup_testing.store(false, Ordering::Release);
         self.shared
             .setup_monitor_enabled
@@ -630,6 +647,7 @@ impl ExternalAudioEngine {
         }
         self.release_streams();
         self.shared.running.store(false, Ordering::Release);
+        self.shared.feedback_generation.store(0, Ordering::Release);
         self.shared.setup_testing.store(false, Ordering::Release);
         self.shared
             .setup_monitor_enabled
@@ -661,6 +679,7 @@ impl ExternalAudioEngine {
         stopping.status = SessionStatus::Stopping;
         self.set_state(stopping);
         self.shared.running.store(false, Ordering::Release);
+        self.shared.feedback_generation.store(0, Ordering::Release);
         self.shared.setup_testing.store(false, Ordering::Release);
         self.shared
             .setup_monitor_enabled
@@ -774,6 +793,7 @@ impl ExternalAudioEngine {
 
     fn fail(&self, code: &str, message: &str) {
         self.shared.running.store(false, Ordering::Release);
+        self.shared.feedback_generation.store(0, Ordering::Release);
         self.set_state(SessionState {
             status: SessionStatus::Error,
             config: self.state().config,
@@ -834,6 +854,7 @@ impl ExternalAudioEngine {
             SessionStatus::Error | SessionStatus::Suspended
         ) {
             self.shared.running.store(false, Ordering::Release);
+            self.shared.feedback_generation.store(0, Ordering::Release);
             self.shared.setup_testing.store(false, Ordering::Release);
             self.shared
                 .setup_monitor_enabled
@@ -1009,6 +1030,33 @@ fn build_output_stream(
     }
 }
 
+#[derive(Default)]
+struct SelectionFeedback {
+    generation: u64,
+    frame: u32,
+}
+impl SelectionFeedback {
+    fn next(&mut self, generation: u64, output_rate: u32, role: OutputRole) -> f32 {
+        if !matches!(role, OutputRole::Monitor) {
+            return 0.0;
+        }
+        if self.generation != generation {
+            self.generation = generation;
+            self.frame = 0;
+        }
+        if generation == 0 {
+            return 0.0;
+        }
+        let time = self.frame as f32 / output_rate as f32;
+        if time >= 0.024 {
+            return 0.0;
+        }
+        self.frame += 1;
+        let envelope = (time / 0.002).min(1.0) * (1.0 - time / 0.024).powi(2);
+        (time * 1_200.0 * std::f32::consts::TAU).sin() * envelope * 0.055
+    }
+}
+
 fn build_output<T>(
     device: Device,
     config: StreamConfig,
@@ -1021,6 +1069,7 @@ where
     let channels = usize::from(config.channels.max(1));
     let output_rate = config.sample_rate;
     let mut sound = SoundCursor::new();
+    let mut feedback = SelectionFeedback::default();
     let mut mic_current = 0.0f32;
     let mut mic_phase = 0u64;
     let shared_for_error = shared.clone();
@@ -1062,7 +1111,16 @@ where
                     } else {
                         0.0
                     };
-                    let raw = mic_sample + sound_sample;
+                    let tick = if running {
+                        feedback.next(
+                            shared.feedback_generation.load(Ordering::Acquire),
+                            output_rate,
+                            role,
+                        )
+                    } else {
+                        0.0
+                    };
+                    let raw = mic_sample + sound_sample + tick;
                     clipped |= raw.abs() > 1.0;
                     let output = soft_limit(raw);
                     peak = peak.max(output.abs());
@@ -1114,6 +1172,7 @@ fn finish_sound_if_current(shared: &Shared, generation: u64) {
 
 fn fail_shared(shared: &Shared, code: &str) {
     shared.running.store(false, Ordering::Release);
+    shared.feedback_generation.store(0, Ordering::Release);
     shared.setup_testing.store(false, Ordering::Release);
     shared.setup_monitor_enabled.store(false, Ordering::Release);
     let mut state = shared
@@ -1443,6 +1502,22 @@ fn config_error(error: impl std::fmt::Display) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn selection_tick_is_bounded_and_never_enters_the_cable() {
+        let mut cable = SelectionFeedback::default();
+        let mut headphones = SelectionFeedback::default();
+        let mut peak = 0.0f32;
+        for frame in 0..4_800 {
+            assert_eq!(cable.next(1, 48_000, OutputRole::Cable), 0.0);
+            let value = headphones.next(1, 48_000, OutputRole::Monitor);
+            peak = peak.max(value.abs());
+            if frame >= 1_152 {
+                assert_eq!(value, 0.0);
+            }
+        }
+        assert!(peak > 0.01 && peak <= 0.055);
+    }
 
     #[test]
     fn finds_supported_virtual_cables_without_guessing_unrelated_devices() {

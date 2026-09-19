@@ -40,6 +40,7 @@ async function renderApp(): Promise<void> {
   const externalOverlay =
     new URLSearchParams(window.location.search).get("window") ===
     "external-soundboard";
+  document.documentElement.dataset.soundWheel = String(externalOverlay);
 
   const continueStartup = async (): Promise<void> => {
     if (!externalOverlay) {

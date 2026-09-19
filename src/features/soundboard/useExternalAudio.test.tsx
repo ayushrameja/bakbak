@@ -249,6 +249,12 @@ function installExternalAudioBridge() {
         failureListener = undefined;
       };
     }),
+    getOverlayInteraction: vi
+      .fn()
+      .mockResolvedValue({ id: 1, phase: "open", mode: "browse" }),
+    onOverlayInteraction: vi.fn(() => () => undefined),
+    finishOverlayInteraction: vi.fn().mockResolvedValue(true),
+    selectionFeedback: vi.fn().mockResolvedValue(undefined),
     onCloseExplanation: vi.fn(() => () => undefined),
   } satisfies ExternalAudioDesktopApi;
   window.bakbakDesktop = {

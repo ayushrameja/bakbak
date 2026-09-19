@@ -8674,3 +8674,147 @@ docs/plans/0038-tauri-2-reliability-upgrade.md docs/progress.md` — passed.
   Ubuntu screen-helper Clippy step passes and that Deno teardown no longer emits
   a cache path-validation error; then continue the outstanding plan 0038
   installed-platform acceptance matrix.
+
+## 2026-08-29 — Fix the next Ubuntu Tauri warning gate
+
+- **Completed:** Confirmed the earlier screen-helper and Deno-cache fixes moved
+  CI forward to the Tauri shell, then corrected all eight newly exposed Linux
+  warning-denied failures. Unsupported builds now consume the intentionally
+  unused navigation URL, sleep-only mixer methods and helpers compile only for
+  macOS/Windows, platform appearance emission compiles only where an observer
+  can call it, and non-macOS permission statuses retain their stable serialized
+  protocol values with narrowly documented dead-code allowances.
+- **Decisions:** Preserve macOS and Windows sleep suspension, permission, and
+  appearance behavior while making unsupported Linux validation compile only
+  the surface it can exercise. Do not weaken the workflow's global
+  `-D warnings` policy.
+- **Validation:**
+  - `cargo fmt --check --manifest-path src-tauri/Cargo.toml` and locked
+    all-target Tauri Clippy with warnings denied — passed on Apple Silicon macOS
+    with zero warnings.
+  - `cargo test --locked --manifest-path src-tauri/Cargo.toml` — passed 34/34
+    Tauri library tests.
+  - Local Prettier, ESLint, four strict TypeScript checks, version validation,
+    production Vite build, and compiled-artifact secret scan — passed. Vite
+    retained its existing non-fatal large-chunk warning.
+  - `./node_modules/.bin/vitest run` — passed 101 files / 619 tests;
+    `node --test scripts/*.test.mjs` — passed 93/93 repository contracts.
+  - `deno task --config supabase/deno.json check` — checked 30 files and all
+    five entrypoints; `deno task --config supabase/deno.json test` — passed
+    44/44 tests.
+  - A clean Linux container run was attempted but not completed: Docker was not
+    running, and Colima could not start because its existing disk was locked by
+    another instance. The hosted Ubuntu rerun remains the exact proof for these
+    platform-specific lint paths.
+- **Documentation updated:** Appended this canonical progress entry. Product
+  architecture and user-facing behavior did not change.
+- **Known limitations:** The corrected Tauri shell has not yet been compiled by
+  the hosted Ubuntu runner. Tauri packaging, pgTAP, and installed-product or
+  multi-client release checks were outside this focused warning fix.
+- **Next:** Push this revision and rerun the failed GitHub job. Verify the Ubuntu
+  Tauri Clippy and test commands pass, then continue with the remaining plan
+  0038 package and installed-platform gates.
+
+## 2026-09-19 — Hold-to-open gaming sound wheel
+
+- **Completed:** Replaced the external soundboard's compact list with a
+  monitor-sized six-sector wheel. Hold Cmd/Ctrl+Shift+B to open, hover to select,
+  and release or left-click to play once and dismiss. The first sound is selected
+  on every opening. Existing categories split into pages of six; scroll up
+  advances, down reverses, both wrap, and the page persists per account/server.
+  Added bottom pagination, top-right cancel, keyboard navigation, reduced-motion
+  support, and retained microphone/meter/stop controls. A quiet native selection
+  tick goes exclusively to the configured headphones without replacing a clip
+  or entering BlackHole/VB-CABLE. Tray/settings retain click-to-play browsing.
+- **Decisions:** Native interaction IDs own hold/release and once-only commits,
+  reject stale renderer work, suppress auto-repeat, and dismiss even if the
+  webview is slow. Shortcut window actions run on the main thread; focus loss
+  cancels, while ordinary dismissal attempts to return focus to the prior app.
+  Use borderless monitor bounds instead of creating a macOS fullscreen Space.
+  Preserve all pre-existing working-tree changes, including the Ubuntu cfg fixes
+  and deleted VS Code recommendation. No credentials, backend state, or installed
+  app were changed; the working Discord route remains on the installed build.
+- **Validation:**
+  - `pnpm format:check` — passed for the complete final working tree.
+  - `pnpm lint` and `pnpm typecheck` — passed after correcting test mock typing
+    and the wheel event timestamp implementation.
+  - `pnpm test` — passed 102 files / 629 Vitest tests and 93 repository contracts.
+    The final adapter mock cleanup was followed by its focused 10/10 test pass.
+    Wheel coverage includes default release, hover/click/release deduplication,
+    cancel, stale events, wrapping, partial pages, and remembered categories.
+  - `pnpm build`, `pnpm version:check`, and `pnpm security:scan` — passed; Vite
+    retains the existing non-fatal large-chunk warning. The secret scan was
+    repeated after packaging and passed for the compiled artifacts.
+  - `pnpm tauri:check`, `pnpm tauri:test`, and `pnpm native:test` — passed:
+    36 Tauri tests and 22 library + 1 binary screen-helper tests.
+  - `cargo test --locked --manifest-path native/external-audio/Cargo.toml` —
+    passed 15 tests, including bounded headphone-only selection feedback.
+  - `cargo fmt --check` and `cargo clippy --locked --all-targets -- -D warnings`
+    for both affected manifests (`src-tauri` and `native/external-audio`) —
+    passed. Initial import/feature and collapsible-if failures were corrected;
+    Cargo.lock adds only objc2-app-kit's enabled libc dependency.
+  - `deno task --config supabase/deno.json check` — passed 30-file lint and five
+    entrypoint checks; corresponding `test` — passed 44/44.
+  - `pnpm tauri:build` — passed, creating an ad-hoc Apple Silicon DMG. After the
+    final native event-ordering correction, `pnpm exec tauri build --config
+src-tauri/tauri.sidecar.conf.json --config
+'{"build":{"beforeBuildCommand":""}}'` repackaged the already-validated
+    renderer with the final native code successfully. Artifact:
+    `src-tauri/target/release/bundle/dmg/Bakbak_2.0.0_aarch64.dmg` (18,090,131 bytes).
+  - CUA/Arc visual preview with synthetic catalog and native-API doubles —
+    verified the rendered six-sector layout, partial page, scroll-up navigation,
+    and restored category after reload. Preview server stopped after inspection.
+  - `git diff --check` — passed; inspected changed files and preserved unrelated
+    edits. Earlier format checks flagged one modified contract test; it was
+    formatted before the final handoff check.
+- **Documentation updated:** Architecture, plans 0001 and 0038, README external
+  setup/testing instructions, and this canonical log.
+- **Known limitations:** The DMG is ad-hoc signed, not notarized (no Apple
+  signing credentials). Installed gameplay/Discord hold-release and focus-return
+  checks, mixed-DPI and Windows validation, and the longer multi-client release
+  matrix remain pending. A cold release before catalog hydration safely plays
+  nothing. OS shortcuts and exclusive-fullscreen/protected game input cannot be
+  universally intercepted. Electron packaging and database policy tests were
+  skipped because this change does not alter the fallback shell or database.
+- **Next:** Install this local candidate and run the plan 0038 gaming-wheel row
+  with the JBL headset, BlackHole, Discord, and a borderless/windowed game; then
+  repeat on Windows before marking the installed acceptance gate complete.
+
+## 2026-09-19 — Fix held-shortcut sound wheel scrolling
+
+- **Completed:** Corrected wheel navigation for the reported mouse-wheel failure
+  while holding Cmd+Shift+B. Accept either scroll axis, including horizontal
+  events produced while Shift is held, and small wheel notches that the previous
+  35-pixel threshold discarded. Capture wheel events with a non-passive listener
+  so modifier keys cannot trigger default webview zoom or panning. Added regression
+  coverage for held macOS/Windows modifiers, section/category transitions, and
+  immediately reversing direction.
+- **Decisions:** Use the dominant axis for direction, keep the 180ms throttle for
+  repeated movement in one direction, and allow immediate reversal. No native or
+  backend changes were needed for this correction. Preserve all existing work.
+- **Validation:**
+  - Focused overlay and scroll tests — passed 2 files / 13 tests.
+  - `pnpm format:check`, `pnpm lint`, and `pnpm typecheck` — passed.
+  - `pnpm test` — passed 103 files / 636 Vitest tests and 93 repository contracts.
+  - `pnpm tauri:build` — passed, including native staging and `pnpm build`.
+    Produced `src-tauri/target/release/bundle/dmg/Bakbak_2.0.0_aarch64.dmg`
+    (18,090,314 bytes), also copied as `Bakbak_2.0.0_scroll-fix_aarch64.dmg`
+    to distinguish this installer from the previous candidate.
+  - `pnpm tauri:check`, `pnpm tauri:test`, and `pnpm native:test` — passed;
+    36 Tauri tests and 22 library + 1 binary screen-helper tests.
+  - `deno task --config supabase/deno.json check` — passed; corresponding
+    `test` — passed 44 tests.
+  - `pnpm security:scan` — passed after packaging for compiled artifacts.
+  - `git diff --check` — passed; reviewed the correction and preserved unrelated
+    working-tree edits.
+- **Documentation updated:** Architecture scroll behavior and this canonical log.
+- **Known limitations:** Physical modifier-held mouse input still needs testing
+  in the updated installed app. CUA could not attach to the installed app, and a
+  later inventory showed Bakbak was not running; no installed app was replaced.
+  The installer is ad-hoc signed, without notarization. Vite retains its existing
+  non-fatal large-chunk warning. Windows and gameplay/multi-client acceptance
+  remain pending. Electron packaging, database policy tests, and additional Rust
+  checks were not needed for this renderer-only correction.
+- **Next:** Install this candidate, restart External Soundboard, and test scrolling
+  forward/back through sections and categories while holding Cmd+Shift+B with the
+  user's mouse; retain the remaining plan 0038 installed release gates.

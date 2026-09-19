@@ -1,6 +1,10 @@
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, WebviewWindow};
+use tauri::{AppHandle, WebviewWindow};
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use tauri::Emitter;
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub const SYSTEM_ACCENT_CHANGED_EVENT: &str = "system-accent:changed";
 const MAIN_WINDOW_LABEL: &str = "main";
 
@@ -41,6 +45,7 @@ pub fn register_system_accent_observer(app: &AppHandle) -> Result<(), String> {
     register_platform_observer(app)
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn emit_current_appearance(app: &AppHandle) {
     if let Err(error) = app.emit(SYSTEM_ACCENT_CHANGED_EVENT, current_system_accent()) {
         eprintln!("failed to emit system accent update: {error}");

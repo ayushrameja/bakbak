@@ -265,7 +265,7 @@ export function ExternalAudioSettings({
               {state.microphoneMuted ? "Unmute mic" : "Mute mic"}
             </button>
             <button type="button" onClick={() => void onShowOverlay()}>
-              Show overlay
+              Open sound wheel
             </button>
             <button
               className="danger"
@@ -276,6 +276,8 @@ export function ExternalAudioSettings({
             </button>
           </div>
           <p className="settings-note">
+            Hold Cmd/Ctrl+Shift+B to choose a sound; release or click to play.
+            Scroll up for the next section and down to go back. Escape cancels.
             Keep your call app’s input set to the cable input. Closing Bakbak
             hides it to the tray while this remains live; Quit always stops it.
           </p>

@@ -69,7 +69,21 @@ Reload action uses the same stop-before-reload order. Renderer-only main-window
 recovery deliberately leaves the external-call mixer running so its state can
 rehydrate; a true process restart or quit releases it through normal application
 teardown.
-`Cmd/Ctrl+Shift+B` toggles the compact soundboard overlay. Ordinary main-window
+Holding `Cmd/Ctrl+Shift+B` opens the full-screen sound wheel on the monitor
+under the pointer; release plays the selected sound and hides the window.
+The first sound in the remembered category/page is selected on each opening.
+Six sounds occupy equal radial sectors; hovering selects with animation and a
+quiet headphone-only tick, while left-click plays once and dismisses. Scroll
+up advances and scroll down goes back through existing category pages, wrapping
+at both ends. A non-passive wheel listener handles either axis (Shift in the
+held shortcut can remap vertical mouse input to horizontal), consumes webview
+zoom/pan defaults, and accepts single-line notches without a pixel threshold.
+A 180 ms same-direction throttle limits momentum; reversal is immediate.
+Each account/server remembers its page locally. Escape, the
+top-right close button, and losing focus cancel without playback. Native
+interaction IDs fence repeated key-down, stale release, and click/release races;
+the native release hides even if the renderer is slow. Tray/settings opening is
+click-to-play browsing without requiring a held shortcut. Ordinary main-window
 close exits; while external-call audio is live, the first close explains that
 audio will continue and a confirmed close hides the window. Tray actions show
 Bakbak, show Soundboard, stop the external microphone, or quit.
@@ -960,9 +974,19 @@ release path. The overlay may show or hide, but cannot keep streams alive after
 logout, explicit stop, sleep, permission loss, fatal device loss, or quit.
 
 The tray owns show-main, show-overlay, stop-external-microphone, and quit. The
-tray action and `Cmd/Ctrl+Shift+B` can create or toggle the compact overlay while
-external mode is idle; its idle controls stay disabled, while the renderer's
-ordinary show-overlay command remains live-session-gated. Main
+tray action opens a browsing wheel and `Cmd/Ctrl+Shift+B` opens it only while
+held, including while external mode is idle. Idle playback stays disabled;
+the renderer's ordinary show-overlay command remains live-session-gated.
+`src-tauri/src/soundboard_overlay.rs` owns interaction snapshots, release,
+cancellation, and the once-only native commit. Its get/finish commands authorize
+only the overlay window. Borderless monitor geometry covers normal applications
+without creating a macOS fullscreen Space, and native focus restoration returns
+to the previous application on ordinary dismissal. OS shortcuts, exclusive
+fullscreen games, and protected input are outside the overlay's guarantees.
+The hidden overlay keeps event processing active; a cold release before its
+catalog is available dismisses without playing a stale selection. Selection
+ticks are generated only in the native monitor callback, never in cable output
+or the latest-wins clip slot. Main
 close quits while external audio is idle. During an external session, the first
 close emits a one-time explanation and a confirmed repeat hides the main
 window; closing the overlay always hides it. Process exit synchronously stops

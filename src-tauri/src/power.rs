@@ -4,6 +4,7 @@ pub fn register_sleep_observer(app: &AppHandle) -> Result<(), String> {
     register_platform_observer(app)
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn suspend_external_audio(app: &AppHandle) {
     crate::external_audio::suspend_for_sleep(app);
 }

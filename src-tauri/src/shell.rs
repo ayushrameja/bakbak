@@ -351,7 +351,9 @@ fn install_tray(app: &App) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "tray-show" => reveal_main_window(app),
-            "tray-show-soundboard" => crate::external_audio::toggle_overlay(app),
+            "tray-show-soundboard" => {
+                let _ = crate::soundboard_overlay::browse(app);
+            }
             "tray-stop-external" => crate::external_audio::stop_for_shutdown(app),
             "tray-quit" => {
                 crate::external_audio::stop_for_shutdown(app);

@@ -29,13 +29,6 @@ const MAX_FAILURE_CODE_CHARS: usize = 64;
 const MAX_FAILURE_MESSAGE_CHARS: usize = 500;
 const MAX_SOUND_ID_BYTES: usize = 128;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum OverlayToggleAction {
-    Hide,
-    Show,
-    Create,
-}
-
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct ExternalAudioFailure {
@@ -71,6 +64,7 @@ impl ExternalAudioManager {
         self.engine.stop()
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub fn suspend(&self) -> SessionState {
         self.engine.suspend()
     }
@@ -278,7 +272,7 @@ pub fn external_audio_start(
 ) -> Result<SessionState, String> {
     ensure_main_window(&window)?;
     let state = manager.engine.start(config)?;
-    if let Err(error) = show_overlay_window(&app) {
+    if let Err(error) = crate::soundboard_overlay::browse(&app) {
         let stopped = manager.stop();
         destroy_overlay(&app);
         emit_state(&app, &stopped);
@@ -356,15 +350,13 @@ pub fn external_audio_show_overlay(
     if !manager.is_live() {
         return Err("Start External Soundboard before opening its overlay.".into());
     }
-    show_overlay_window(&app)
+    crate::soundboard_overlay::browse(&app)
 }
 
 #[tauri::command]
 pub fn external_audio_hide_overlay(window: WebviewWindow) -> Result<(), String> {
     ensure_audio_window(&window)?;
-    if let Some(overlay) = window.app_handle().get_webview_window(OVERLAY_WINDOW) {
-        overlay.hide().map_err(|error| error.to_string())?;
-    }
+    crate::soundboard_overlay::cancel(window.app_handle());
     Ok(())
 }
 
@@ -394,64 +386,63 @@ pub fn setup(app: &AppHandle) {
     });
 }
 
-pub fn toggle_overlay(app: &AppHandle) {
-    let overlay = app.get_webview_window(OVERLAY_WINDOW);
-    let action = overlay_toggle_action(
-        overlay
-            .as_ref()
-            .map(|window| window.is_visible().unwrap_or(false)),
-    );
-    match (action, overlay) {
-        (OverlayToggleAction::Hide, Some(overlay)) => {
-            let _ = overlay.hide();
-        }
-        (OverlayToggleAction::Show, Some(overlay)) => {
-            let _ = overlay.show();
-            let _ = overlay.set_focus();
-        }
-        (OverlayToggleAction::Create, None) => {
-            let _ = show_overlay_window(app);
-        }
-        _ => {}
-    }
-}
-
-fn overlay_toggle_action(visible: Option<bool>) -> OverlayToggleAction {
-    match visible {
-        Some(true) => OverlayToggleAction::Hide,
-        Some(false) => OverlayToggleAction::Show,
-        None => OverlayToggleAction::Create,
-    }
-}
-
 pub fn show_overlay_window(app: &AppHandle) -> Result<(), String> {
-    if let Some(overlay) = app.get_webview_window(OVERLAY_WINDOW) {
-        overlay.show().map_err(|error| error.to_string())?;
-        overlay.set_focus().map_err(|error| error.to_string())?;
-        return Ok(());
+    let overlay = match app.get_webview_window(OVERLAY_WINDOW) {
+        Some(window) => window,
+        None => WebviewWindowBuilder::new(
+            app,
+            OVERLAY_WINDOW,
+            WebviewUrl::App("index.html?window=external-soundboard".into()),
+        )
+        .title("Bakbak Sound Wheel")
+        .inner_size(900.0, 700.0)
+        .visible(false)
+        .transparent(true)
+        .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
+        .always_on_top(true)
+        .visible_on_all_workspaces(true)
+        .decorations(false)
+        .resizable(false)
+        .shadow(false)
+        .skip_taskbar(true)
+        .build()
+        .map_err(|error| error.to_string())?,
+    };
+    // Borderless monitor-sized overlay avoids creating a separate macOS
+    // fullscreen Space. Position in physical pixels, including mixed-DPI setups.
+    let monitor = app
+        .cursor_position()
+        .ok()
+        .and_then(|point| app.monitor_from_point(point.x, point.y).ok().flatten())
+        .or_else(|| app.primary_monitor().ok().flatten());
+    if let Some(monitor) = monitor {
+        overlay
+            .set_position(*monitor.position())
+            .map_err(|error| error.to_string())?;
+        overlay
+            .set_size(*monitor.size())
+            .map_err(|error| error.to_string())?;
     }
-    WebviewWindowBuilder::new(
-        app,
-        OVERLAY_WINDOW,
-        WebviewUrl::App("index.html?window=external-soundboard".into()),
-    )
-    .title("Bakbak External Soundboard")
-    .inner_size(360.0, 520.0)
-    .min_inner_size(320.0, 420.0)
-    .always_on_top(true)
-    .decorations(false)
-    .resizable(true)
-    .skip_taskbar(true)
-    .build()
-    .map(|_| ())
-    .map_err(|error| format!("Bakbak could not open the soundboard overlay: {error}"))
+    overlay.show().map_err(|error| error.to_string())?;
+    overlay.set_focus().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn external_audio_selection_feedback(
+    window: WebviewWindow,
+    manager: State<'_, ExternalAudioManager>,
+) -> Result<(), String> {
+    ensure_audio_window(&window)?;
+    manager.engine.selection_feedback();
+    Ok(())
 }
 
 pub fn hide_overlay_on_close(window: &Window) {
-    let _ = window.hide();
+    crate::soundboard_overlay::cancel(window.app_handle());
 }
 
 pub fn destroy_overlay(app: &AppHandle) {
+    crate::soundboard_overlay::cancel(app);
     if let Some(overlay) = app.get_webview_window(OVERLAY_WINDOW) {
         let _ = overlay.destroy();
     }
@@ -464,6 +455,7 @@ pub fn stop_for_shutdown(app: &AppHandle) {
     emit_state(app, &state);
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub fn suspend_for_sleep(app: &AppHandle) {
     let manager = app.state::<ExternalAudioManager>();
     if session_requires_suspend(manager.state().status) {
@@ -473,6 +465,7 @@ pub fn suspend_for_sleep(app: &AppHandle) {
     }
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
 fn session_requires_suspend(status: SessionStatus) -> bool {
     matches!(
         status,
@@ -646,15 +639,5 @@ mod tests {
         ] {
             assert!(!session_requires_suspend(status));
         }
-    }
-
-    #[test]
-    fn trusted_overlay_shortcut_toggles_or_creates_even_without_a_live_session() {
-        assert_eq!(overlay_toggle_action(Some(true)), OverlayToggleAction::Hide);
-        assert_eq!(
-            overlay_toggle_action(Some(false)),
-            OverlayToggleAction::Show
-        );
-        assert_eq!(overlay_toggle_action(None), OverlayToggleAction::Create);
     }
 }

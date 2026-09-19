@@ -25,8 +25,13 @@ impl TryFrom<&str> for PermissionKind {
 #[serde(rename_all = "kebab-case")]
 enum PermissionStatus {
     NotDetermined,
+    // These are stable renderer protocol values even though non-macOS builds
+    // currently report Unknown instead of constructing them.
+    #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
     Granted,
+    #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
     Denied,
+    #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
     Restricted,
     Unknown,
 }

@@ -38,9 +38,12 @@ describe("parseExternalAudioOverlayMessage", () => {
       }),
     ).toEqual({
       type: "catalog",
+      scopeId: "local",
+      categories: [],
       sounds: [
         {
           id: "one",
+          categoryId: "uncategorized",
           label: "Airhorn",
           emoji: "📣",
           favorite: true,

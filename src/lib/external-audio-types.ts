@@ -64,6 +64,12 @@ export interface ExternalAudioPcmInput {
   samples: number[];
 }
 
+export interface ExternalOverlayInteraction {
+  id: number;
+  phase: "open" | "released" | "closed";
+  mode: "hold" | "browse";
+}
+
 export interface ExternalAudioDesktopApi {
   listDevices(): Promise<ExternalAudioDeviceSnapshot>;
   getState(): Promise<ExternalAudioSessionState>;
@@ -86,6 +92,12 @@ export interface ExternalAudioDesktopApi {
   stop(): Promise<ExternalAudioSessionState>;
   play(input: ExternalAudioPcmInput): Promise<ExternalAudioSessionState>;
   stopSound(): Promise<ExternalAudioSessionState>;
+  getOverlayInteraction(): Promise<ExternalOverlayInteraction>;
+  onOverlayInteraction(
+    listener: (interaction: ExternalOverlayInteraction) => void,
+  ): () => void;
+  finishOverlayInteraction(id: number, play: boolean): Promise<boolean>;
+  selectionFeedback(): Promise<void>;
   showOverlay(): Promise<void>;
   hideOverlay(): Promise<void>;
   onState(listener: (state: ExternalAudioSessionState) => void): () => void;

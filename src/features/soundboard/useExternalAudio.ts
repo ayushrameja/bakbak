@@ -378,8 +378,11 @@ export function useExternalAudio(
     const publishCatalog = () => {
       channel.postMessage({
         type: "catalog",
+        scopeId: `${accountId}:${soundboard.categories[0]?.serverId ?? "default"}`,
+        categories: soundboard.categories.map(({ id, name }) => ({ id, name })),
         sounds: soundboard.sounds.map((sound) => ({
           id: sound.id,
+          categoryId: sound.categoryId,
           label: sound.label,
           emoji: sound.emoji,
           favorite: soundboard.favoriteSoundIds.has(sound.id),
@@ -422,6 +425,7 @@ export function useExternalAudio(
     api,
     playSound,
     recentSoundIds,
+    soundboard.categories,
     soundboard.favoriteSoundIds,
     soundboard.sounds,
     stopSound,

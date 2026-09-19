@@ -666,6 +666,12 @@ ad-hoc macOS remains manual-DMG-only.
       macOS manual `2.0.0 → 2.0.1` rehearsals.
 - [ ] Remove Electron only after every preceding installed gate passes.
 
+- [x] Implement plan 0038's gaming sound wheel follow-up: hold/release,
+      six sounds per category page, bidirectional wrapping scroll, remembered
+      pages, local selection feedback, and cancellation/once-only playback.
+- [ ] Complete the installed macOS/Windows gaming sound wheel acceptance row
+      in plan 0038 before treating game input/focus behavior as verified.
+
 ### Phase 6 — Distribution
 
 - [x] Add synchronized SemVer tooling with patch-by-default release labels.

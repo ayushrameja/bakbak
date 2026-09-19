@@ -221,16 +221,17 @@ test("Tauri shell is additive while Electron remains a buildable fallback", asyn
     "audio-root monitoring must start even when recovery-hook registration fails",
   );
 
-  const trustedToggle = externalAudio.slice(
-    externalAudio.indexOf("pub fn toggle_overlay"),
-    externalAudio.indexOf("fn overlay_toggle_action"),
+  const overlay = await readFile(
+    new URL("src-tauri/src/soundboard_overlay.rs", root),
+    "utf8",
   );
   const rendererShow = externalAudio.slice(
     externalAudio.indexOf("pub fn external_audio_show_overlay"),
     externalAudio.indexOf("pub fn external_audio_hide_overlay"),
   );
-  assert.match(trustedToggle, /show_overlay_window\(app\)/);
-  assert.doesNotMatch(trustedToggle, /is_live|reveal_main_window/);
+  assert.match(overlay, /show_overlay_window\(app\)/);
+  assert.match(overlay, /fn ensure_overlay/);
+  assert.match(tauriLib, /soundboard_overlay::shortcut\(&target, pressed\)/);
   assert.match(rendererShow, /if !manager\.is_live\(\)/);
 });
 

@@ -9,6 +9,7 @@ import {
   type Update,
 } from "@tauri-apps/plugin-updater";
 import type {
+  ExternalOverlayInteraction,
   ExternalAudioDeviceSnapshot,
   ExternalAudioFailure,
   ExternalAudioLevels,
@@ -218,6 +219,23 @@ export async function createTauriDesktopBridge(
         dependencies.invoke<ExternalAudioSessionState>(
           "external_audio_stop_sound",
         ),
+      getOverlayInteraction: () =>
+        dependencies.invoke<ExternalOverlayInteraction>(
+          "external_overlay_get_interaction",
+        ),
+      onOverlayInteraction: (
+        listener: (interaction: ExternalOverlayInteraction) => void,
+      ) =>
+        subscribe(
+          dependencies.listen<ExternalOverlayInteraction>(
+            "external-audio:overlay-interaction",
+            ({ payload }) => listener(payload),
+          ),
+        ),
+      finishOverlayInteraction: (id: number, play: boolean) =>
+        dependencies.invoke<boolean>("external_overlay_finish", { id, play }),
+      selectionFeedback: () =>
+        dependencies.invoke<void>("external_audio_selection_feedback"),
       showOverlay: () =>
         dependencies.invoke<void>("external_audio_show_overlay"),
       hideOverlay: () =>

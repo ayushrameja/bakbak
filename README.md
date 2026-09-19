@@ -164,6 +164,25 @@ mode cannot run together and always ask before switching. The mixer monitors
 effects, never your live microphone, and stores/uploads/logs no microphone
 samples. Aggressive call-app noise suppression may remove effects.
 
+While external audio is live, **hold Cmd+Shift+B (Mac) or Ctrl+Shift+B
+(Windows)** to open the sound wheel. Point at a sound, then release the shortcut
+or left-click to play it and close the wheel. The first sound is selected by
+default. Each page holds up to six sounds from one existing category: scroll up
+for the next page and down for the previous page, with wraparound. The wheel
+remembers your last category/page for this account and server. Selection ticks
+play through your configured headphones only.
+
+**Escape** or the top-right **X** cancels without playing. Switching to another
+app also cancels. **Open sound wheel** in settings or **Show Soundboard** in the
+tray opens click-to-play browsing. Closing the wheel keeps the microphone live;
+**Stop mic** ends external mode. Keep Bakbak's external mode running while your
+call app uses the cable; switch that app back to your physical microphone when
+you stop external mode.
+
+The wheel covers the monitor under your pointer and takes normal keyboard/mouse
+focus. Use a borderless/windowed game for testing: system shortcuts, exclusive
+fullscreen, and games that capture input independently may bypass it.
+
 For the internal rehearsal, email/password authentication remains enabled while
 email confirmation may be disabled temporarily. Before external friend testing,
 configure custom SMTP and re-enable confirmation.

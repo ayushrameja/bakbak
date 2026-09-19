@@ -6,12 +6,15 @@ export interface ExternalAudioOverlaySound {
   id: string;
   label: string;
   emoji: string;
+  categoryId: string;
   favorite: boolean;
   assetStatus: SoundAssetStatus;
 }
 
 export interface ExternalAudioOverlayCatalog {
   type: "catalog";
+  scopeId: string;
+  categories: { id: string; name: string }[];
   sounds: ExternalAudioOverlaySound[];
   recentSoundIds: string[];
 }
@@ -65,6 +68,10 @@ export function parseExternalAudioOverlayMessage(
         id: item.id.slice(0, 128),
         label: item.label.slice(0, 80),
         emoji: item.emoji.slice(0, 16),
+        categoryId:
+          typeof item.categoryId === "string"
+            ? item.categoryId.slice(0, 128)
+            : "uncategorized",
         favorite: item.favorite,
         assetStatus: item.assetStatus as SoundAssetStatus,
       },
@@ -75,5 +82,20 @@ export function parseExternalAudioOverlayMessage(
         .filter((id): id is string => typeof id === "string")
         .slice(0, 12)
     : [];
-  return { type: "catalog", sounds, recentSoundIds };
+  const categories = Array.isArray(candidate.categories)
+    ? candidate.categories
+        .flatMap((category) => {
+          if (!category || typeof category !== "object") return [];
+          const item = category as Record<string, unknown>;
+          return typeof item.id === "string" && typeof item.name === "string"
+            ? [{ id: item.id.slice(0, 128), name: item.name.slice(0, 80) }]
+            : [];
+        })
+        .slice(0, 100)
+    : [];
+  const scopeId =
+    typeof candidate.scopeId === "string"
+      ? candidate.scopeId.slice(0, 256)
+      : "local";
+  return { type: "catalog", scopeId, categories, sounds, recentSoundIds };
 }
