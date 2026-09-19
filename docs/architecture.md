@@ -618,6 +618,11 @@ The hosted profile trigger created both initial test profiles, and the default
 server has one admin plus one member. Database-backed server and voice-room
 presence is deployed through backward-compatible membership-checked heartbeat
 RPCs, an RLS-filtered heartbeat table, and Postgres Realtime change events.
+Supabase owns `realtime.messages` and enables its row-level security. Historical
+private-presence migration replay manages only its policies, without attempting
+`ALTER TABLE` against the protected Realtime schema. The schema pgTAP test checks
+that platform-managed RLS remains enabled after replay; already-applied hosted
+migrations need no repair or replay for this compatibility correction.
 Voice join time comes from Postgres, remains stable across heartbeats, clears on
 graceful leave, and expires locally after 55 seconds if a client crashes. The
 clean local schema, invite, RLS, presence, Storage, catalog, structured-message,

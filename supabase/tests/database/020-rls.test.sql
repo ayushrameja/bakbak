@@ -71,8 +71,8 @@ set local "request.jwt.claims" = '{"sub":"20000000-0000-4000-8000-000000000002",
 select is((select count(*) from public.servers), 1::bigint, 'member sees one server');
 select is(
   (select count(*) from public.channels),
-  26::bigint,
-  'member sees the mirrored and System channels'
+  7::bigint,
+  'member sees only the seven active channels in its server'
 );
 select is(
   (select count(*) from public.messages),

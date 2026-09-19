@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(29);
+select plan(30);
 
 select has_table('public', 'profiles', 'profiles table exists');
 select has_table('public', 'servers', 'servers table exists');
@@ -39,6 +39,10 @@ select ok(
 select ok(
   (select relrowsecurity from pg_catalog.pg_class where oid = 'public.presence_heartbeats'::regclass),
   'presence heartbeats has RLS enabled'
+);
+select ok(
+  (select relrowsecurity from pg_catalog.pg_class where oid = 'realtime.messages'::regclass),
+  'Supabase-managed realtime messages retains RLS after migration replay'
 );
 
 select has_function(

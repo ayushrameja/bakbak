@@ -8818,3 +8818,43 @@ src-tauri/tauri.sidecar.conf.json --config
 - **Next:** Install this candidate, restart External Soundboard, and test scrolling
   forward/back through sections and categories while holding Cmd+Shift+B with the
   user's mouse; retain the remaining plan 0038 installed release gates.
+
+## 2026-09-19 — Repair PR 65 database CI replay and stale policy fixtures
+
+- **Completed:** Diagnosed CI run `35445640960`: all application/native/Deno
+  checks passed, but fresh database startup failed on the historical private
+  presence migration with `must be owner of table messages`. Removed its
+  unsupported `ALTER TABLE realtime.messages` statement while retaining policy
+  management. Added a pgTAP assertion that Supabase-managed Realtime RLS remains
+  enabled. Once replay worked, corrected seven stale assertion failures in the
+  channel policy suite to reflect plan 0034's seven active rooms, active Channels
+  category, append positions, and duplicate-name checks against active Chat.
+  Added the active category to the other-server fixture; admin/member/outsider
+  authorization assertions remain in place.
+- **Decisions:** Supabase now protects the Realtime schema from table alterations
+  while allowing policy management. Fix the historical migration because a new
+  migration cannot run before the failing one on a clean database. Already-applied
+  hosted migrations need no replay or production change. Preserve current product
+  behavior and correct obsolete test fixtures instead of relaxing policies.
+- **Validation:**
+  - Original `ALTER TABLE` as `postgres` against a fresh Supabase 2.117.0 local
+    database — reproduced the exact ownership error.
+  - `pnpm dlx supabase@2.117.0 start --exclude vector --workdir <isolated-copy>` —
+    passed a clean replay of all 22 migrations and complete local startup.
+  - `pnpm dlx supabase@2.117.0 test db --workdir <isolated-copy>` — passed 15 files
+    / 369 assertions, including schema RLS and admin/member/outsider policies.
+    Initial run exposed seven obsolete assertions; those were corrected.
+  - `pnpm test` — passed 103 files / 636 Vitest tests and 93 repository contracts.
+  - `pnpm lint`, `pnpm typecheck`, `pnpm format:check`, and `git diff --check` —
+    passed.
+- **Documentation updated:** Architecture documents platform-owned Realtime RLS
+  and replay compatibility; this canonical log records the diagnosis and checks.
+- **Known limitations:** Initial isolated testing encountered an unmounted macOS
+  temporary path and a 2 GiB Colima memory limit. Retried from a home-directory
+  fixture with 6 GiB/4 CPUs. No hosted data was touched. Renderer/native bundles,
+  Rust checks, and Deno checks were not repeated locally for this SQL/test-only
+  correction; they passed in the inspected failed CI run. Hosted CI and both
+  packaging jobs still need to run on the fix; installed release gates remain
+  open.
+- **Next:** Push this bounded correction to PR 65 and verify the fresh CI run,
+  then generate current-revision stabilization installers for platform testing.
