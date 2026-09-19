@@ -165,6 +165,7 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 let tracker = app
                     .state::<windows_process::WebViewProcessTracker>()
+                    .inner()
                     .clone();
                 let registration =
                     windows_process::register_webview_process_tracker(&window, tracker.clone());

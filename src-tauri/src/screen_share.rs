@@ -22,7 +22,7 @@ const LIFECYCLE_EVENT: &str = "screen-share:lifecycle";
 const MAX_LINE_BYTES: usize = 32 * 1024 * 1024;
 const MAX_TOKEN_BYTES: usize = 16 * 1024;
 const MAX_SOURCES: usize = 256;
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", test))]
 const WINDOWS_AUDIO_PROOF_LOST_MESSAGE: &str =
     "Bakbak could no longer prove its Windows webview audio processes. Video is still sharing.";
 
@@ -511,7 +511,7 @@ impl ScreenShareManager {
         self.lock_inner().helper_version.clone()
     }
 
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", test))]
     async fn handle_audio_root_change(
         &self,
         app: &AppHandle,
@@ -537,15 +537,18 @@ impl ScreenShareManager {
             }
             return;
         };
-        let mut inner = self.lock_inner();
-        let helper_running = inner.child.is_some();
-        let action = observe_audio_root_change(
-            &mut inner,
-            helper_running,
-            audio_root_pid,
-            audio_identity_epoch,
-        );
-        drop(inner);
+        // A lexical scope keeps the non-Send guard out of the async state
+        // machine before DisableAudio waits for the helper response.
+        let action = {
+            let mut inner = self.lock_inner();
+            let helper_running = inner.child.is_some();
+            observe_audio_root_change(
+                &mut inner,
+                helper_running,
+                audio_root_pid,
+                audio_identity_epoch,
+            )
+        };
         match action {
             AudioRootChangeAction::None => {}
             AudioRootChangeAction::ResetIdleHelper => self.reset_child(
@@ -1177,6 +1180,16 @@ fn validate_uuid_json(value: Option<&Value>) -> Result<(), ()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn audio_root_change_future_is_send() {
+        fn assert_send<T: Send>(_: T) {}
+        // Type-check the Windows background task on every test platform without
+        // starting a desktop runtime or accessing a real capture process.
+        let _check = |manager: &ScreenShareManager, app: &AppHandle| {
+            assert_send(manager.handle_audio_root_change(app, None, 0));
+        };
+    }
 
     #[test]
     fn validates_every_supported_quality_and_rejects_mismatched_bitrate() {

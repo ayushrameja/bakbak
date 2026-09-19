@@ -81,3 +81,17 @@ test("Windows helper uses the MSVC runtime required by pinned WebRTC", () => {
   assert.match(cargoConfig, /\[target\.x86_64-pc-windows-msvc\]/);
   assert.match(cargoConfig, /target-feature=\+crt-static/);
 });
+
+test("every platform-native gate stops on the first failed Cargo command", async () => {
+  for (const name of ["ci", "release", "stabilization-candidate"]) {
+    const source = await readFile(
+      new URL(`../.github/workflows/${name}.yml`, import.meta.url),
+      "utf8",
+    );
+    assert.match(
+      source,
+      /name: Validate platform-native Rust controllers\n\s+shell: bash\n\s+run: \|/,
+      `${name} must not let a later successful command hide an earlier Clippy failure on Windows`,
+    );
+  }
+});

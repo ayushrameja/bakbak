@@ -8858,3 +8858,38 @@ src-tauri/tauri.sidecar.conf.json --config
   open.
 - **Next:** Push this bounded correction to PR 65 and verify the fresh CI run,
   then generate current-revision stabilization installers for platform testing.
+
+## 2026-09-19 — Repair Windows native CI compilation
+
+- **Completed:** Followed CI run `35446669109` after pushing `2b7eaaa`.
+  Shared validation (including database replay/policies) and macOS packaging
+  passed. Windows reached its previously blocked native gate and exposed three
+  issues: cloning a Tauri State wrapper instead of its tracker, a non-Send mutex
+  guard retained across an async suspension, and a duplicated Windows cfg
+  attribute. Clone the inner tracker, end the synchronous lock's lexical scope
+  before awaiting the helper response, and retain Windows gating only at the
+  module declaration. Added a cross-platform compile-time Send regression.
+  CI, candidate, and release platform-native steps now use explicit Bash so a
+  later command cannot mask an earlier native-command failure on Windows.
+- **Decisions:** Preserve the existing audio-proof loss behavior, including
+  immediate reset when busy and video-preserving DisableAudio when idle. Expand
+  only test compilation of the Windows async handler to catch this on macOS and
+  Linux as well. No permissions, updater trust, or release gates were relaxed.
+- **Validation:**
+  - New `audio_root_change_future_is_send` regression before the scope fix —
+    reproduced the non-Send compilation error locally; after the fix it passed.
+  - `cargo fmt --check --manifest-path src-tauri/Cargo.toml`,
+    `cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`,
+    and `cargo test --locked --manifest-path src-tauri/Cargo.toml` — passed;
+    37 library tests plus binary/doc test targets.
+  - Focused CI/Tauri/candidate/release source contracts — passed 22 tests.
+  - `pnpm test` — passed 103 files / 636 Vitest tests and 94 repository contracts.
+  - `pnpm format:check` and `git diff --check` — passed; reviewed bounded changes.
+- **Documentation updated:** Architecture validation behavior and this log.
+- **Known limitations:** Windows compilation/packaging must be rerun on the new
+  revision; local macOS cannot execute the Windows APIs. The preceding revision's
+  macOS packaging passed, but that is not a Windows validation claim. Database
+  fixtures and policies were unchanged after their 369-assertion pass. No local
+  installer rebuild or manual screen-share session was needed for these Windows
+  compilation corrections; hosted packaging and installed release gates remain.
+- **Next:** Push this correction to PR 65 and follow the new platform CI results.

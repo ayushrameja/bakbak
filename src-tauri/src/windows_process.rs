@@ -1,5 +1,3 @@
-#![cfg(target_os = "windows")]
-
 use std::{
     collections::{HashMap, HashSet},
     sync::{

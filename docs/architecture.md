@@ -2176,6 +2176,11 @@ and desktop-adapter boundary tests, native macOS and Windows packages, compiled
 secret scans, and the bidirectional installed-client matrix in plan 0003. Pull
 requests always run the Ubuntu validation job and the native packaging matrix
 for both supported targets.
+Platform-native validation in CI, candidate, and release workflows uses explicit
+Bash fail-fast execution on both operating systems, so a later successful Cargo
+command cannot mask an earlier lint or test failure. The Windows audio-root
+monitor's async future is checked for `Send` in the cross-platform Rust test
+suite; synchronous state locks end before awaiting helper responses.
 Plan 0036 additionally covers layout/theme migrations, overlay/sidebar
 accessibility and shortcut behavior, focused-share geometry, window appearance,
 native menu/window-control source contracts, permission snapshots, structured source
